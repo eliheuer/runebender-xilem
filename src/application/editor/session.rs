@@ -439,12 +439,7 @@ impl Session {
 
     pub(crate) fn begin_point_drag(&mut self) {
         self.record(EditType::Drag);
-        self.drag_originals = self
-            .points()
-            .into_iter()
-            .filter(|p| self.selection.contains(&p.id))
-            .map(|p| (p.id, (p.point.x, p.point.y)))
-            .collect();
+        self.drag_originals = point_ops::drag_origins(&self.glyph, &self.selection, false);
     }
 
     /// Move the selection to `total` design units from where the drag began.
@@ -478,16 +473,10 @@ impl Session {
             return false;
         }
         self.record(EditType::Normal);
-        let originals: HashMap<PointId, (f64, f64)> = self
-            .points()
-            .into_iter()
-            .filter(|p| self.selection.contains(&p.id))
-            .map(|p| (p.id, (p.point.x, p.point.y)))
-            .collect();
         point_ops::translate_points(
             &mut self.glyph,
             &self.selection,
-            &originals,
+            &HashMap::new(),
             (dx, dy),
             false,
         )

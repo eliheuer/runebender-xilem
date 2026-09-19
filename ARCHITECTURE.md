@@ -111,6 +111,7 @@ New read-only callers use `document_glyph`, `document_layer`, `document_source` 
 `analysis::curve::ordinary_cubics_from_layer` supplies canonical ordinary contours to continuity and curvature analysis without a UFO glyph.
 New mutations use `edit_document_layer` and its owned `LayerEditDraft`; a failed or unchanged draft is discarded, while a committed draft advances the canonical revision once.
 Layer drafts address points by stable `PointId` for individual movement, snapped handle-aware dragging, smooth-state changes and selection transforms without positional remapping.
+Persistent point drags capture stable origins for selected points, carried handles and smooth-coupled handles before the first snapped event.
 They also shift contour points and anchors together for left-sidebearing edits while exact advance changes remain explicit metric operations.
 The committed `DocumentChange` identifies direct and component-dependent layers and whether geometry, metrics, metadata or compilation became stale.
 Source-wide feature text has canonical ownership in `VariableData` and changes through `edit_document_source_metadata`; UFO templates no longer retain a second feature-text value.

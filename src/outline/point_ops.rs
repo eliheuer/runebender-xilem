@@ -179,6 +179,76 @@ fn smooth_handle_updates(
     }
 }
 
+/// Point indices whose current positions a persistent drag must preserve.
+pub(crate) fn affected_indices(
+    points: &[PointState],
+    selected: &HashSet<usize>,
+    closed: bool,
+    independent: bool,
+) -> Vec<usize> {
+    let mut affected = Vec::new();
+    let push = |affected: &mut Vec<usize>, index| {
+        if !affected.contains(&index) {
+            affected.push(index);
+        }
+    };
+    for index in 0..points.len() {
+        if !selected.contains(&index) {
+            continue;
+        }
+        push(&mut affected, index);
+        if !independent && !points[index].off_curve {
+            for direction in [-1_isize, 1] {
+                if let Some(neighbor) = step_index(index, points.len(), closed, direction)
+                    && points[neighbor].off_curve
+                {
+                    push(&mut affected, neighbor);
+                }
+            }
+        }
+        if !points[index].off_curve {
+            continue;
+        }
+        for direction in [-1_isize, 1] {
+            let Some(anchor) = step_index(index, points.len(), closed, direction) else {
+                continue;
+            };
+            if points[anchor].off_curve || !points[anchor].smooth {
+                continue;
+            }
+            let Some(opposite) = step_index(anchor, points.len(), closed, direction) else {
+                continue;
+            };
+            if !selected.contains(&opposite) && points[opposite].off_curve {
+                push(&mut affected, opposite);
+            }
+        }
+    }
+    affected
+}
+
+fn moved_indices(
+    points: &[PointState],
+    selected: &HashSet<usize>,
+    closed: bool,
+    independent: bool,
+) -> Vec<usize> {
+    let mut moved = Vec::new();
+    for &index in &affected_indices(points, selected, closed, independent) {
+        if selected.contains(&index)
+            || (!independent
+                && points[index].off_curve
+                && [-1_isize, 1].into_iter().any(|direction| {
+                    step_index(index, points.len(), closed, direction)
+                        .is_some_and(|neighbor| selected.contains(&neighbor))
+                }))
+        {
+            moved.push(index);
+        }
+    }
+    moved
+}
+
 /// Calculate snapped point positions for one contour during a selection drag.
 pub(crate) fn translated_positions(
     points: &[PointState],
@@ -189,45 +259,11 @@ pub(crate) fn translated_positions(
     independent: bool,
 ) -> Vec<(usize, kurbo::Point)> {
     let mut result = points.to_vec();
-    let (moved, carried_by) = {
-        let mut moved = Vec::new();
-        let mut carried_by = HashMap::new();
-        let push = |moved: &mut Vec<usize>, index| {
-            if !moved.contains(&index) {
-                moved.push(index);
-            }
-        };
-        for index in 0..points.len() {
-            if !selected.contains(&index) {
-                continue;
-            }
-            push(&mut moved, index);
-            if independent || points[index].off_curve {
-                continue;
-            }
-            for direction in [-1_isize, 1] {
-                if let Some(neighbor) = step_index(index, points.len(), closed, direction)
-                    && points[neighbor].off_curve
-                {
-                    push(&mut moved, neighbor);
-                    if !selected.contains(&neighbor) {
-                        carried_by.entry(neighbor).or_insert(index);
-                    }
-                }
-            }
-        }
-        (moved, carried_by)
-    };
+    let moved = moved_indices(points, selected, closed, independent);
     for &index in &moved {
         let base = originals
             .get(&index)
             .copied()
-            .or_else(|| {
-                let carrier = *carried_by.get(&index)?;
-                let carrier_original = originals.get(&carrier)?;
-                let previous_delta = points[carrier].position - *carrier_original;
-                Some(points[index].position - previous_delta)
-            })
             .unwrap_or(points[index].position);
         result[index].position = snap_pt(base + kurbo::Vec2::new(delta.0, delta.1));
     }
@@ -250,10 +286,18 @@ pub(crate) fn translated_positions(
                 continue;
             }
             let update = if result[opposite].off_curve {
+                let opposite_position = if moved.contains(&opposite) {
+                    result[opposite].position
+                } else {
+                    originals
+                        .get(&opposite)
+                        .copied()
+                        .unwrap_or(result[opposite].position)
+                };
                 mirrored_smooth_handle(
                     result[index].position,
                     result[anchor_index].position,
-                    result[opposite].position,
+                    opposite_position,
                 )
                 .map(|position| (opposite, position))
             } else {
@@ -281,12 +325,52 @@ pub(crate) fn translated_positions(
         .collect()
 }
 
+/// Capture every point position needed to replay total-delta drag events.
+pub fn drag_origins(
+    glyph: &Glyph,
+    selected: &HashSet<PointId>,
+    independent: bool,
+) -> HashMap<PointId, (f64, f64)> {
+    let mut origins = HashMap::new();
+    for (contour_index, contour) in glyph.contours.iter().enumerate() {
+        let selected_here: HashSet<_> = selected
+            .iter()
+            .filter(|(candidate, _)| *candidate == contour_index)
+            .map(|(_, point)| *point)
+            .filter(|point| *point < contour.points.len())
+            .collect();
+        if selected_here.is_empty() {
+            continue;
+        }
+        let states: Vec<_> = contour
+            .points
+            .iter()
+            .map(|point| PointState {
+                position: pos(point),
+                off_curve: is_off(point),
+                smooth: point.smooth,
+            })
+            .collect();
+        for index in affected_indices(
+            &states,
+            &selected_here,
+            contour_is_closed(&contour.points),
+            independent,
+        ) {
+            origins.insert(
+                (contour_index, index),
+                (contour.points[index].x, contour.points[index].y),
+            );
+        }
+    }
+    origins
+}
+
 /// Move the selected points by `delta`.
 ///
-/// `originals` gives the positions a drag started from, keyed by point
-/// address; addresses missing from it move from where they are now, so
-/// a keyboard nudge can pass an empty map. Passing drag-start
-/// positions is what keeps a long drag free of rounding drift.
+/// `originals` gives every directly or smoothly affected position captured by
+/// [`drag_origins`]. A nonempty incomplete map rejects the operation. A keyboard
+/// nudge can pass an empty map.
 ///
 /// Returns true when any coordinate changed.
 pub fn translate_points(
@@ -298,6 +382,39 @@ pub fn translate_points(
 ) -> bool {
     if selected.is_empty() {
         return false;
+    }
+    if !originals.is_empty() {
+        for (contour_index, contour) in glyph.contours.iter().enumerate() {
+            let selected_here: HashSet<_> = selected
+                .iter()
+                .filter(|(candidate, _)| *candidate == contour_index)
+                .map(|(_, point)| *point)
+                .filter(|point| *point < contour.points.len())
+                .collect();
+            if selected_here.is_empty() {
+                continue;
+            }
+            let states: Vec<_> = contour
+                .points
+                .iter()
+                .map(|point| PointState {
+                    position: pos(point),
+                    off_curve: is_off(point),
+                    smooth: point.smooth,
+                })
+                .collect();
+            if affected_indices(
+                &states,
+                &selected_here,
+                contour_is_closed(&contour.points),
+                independent,
+            )
+            .into_iter()
+            .any(|index| !originals.contains_key(&(contour_index, index)))
+            {
+                return false;
+            }
+        }
     }
     let mut changed = false;
     for (ci, contour) in glyph.contours.iter_mut().enumerate() {
@@ -492,16 +609,56 @@ mod tests {
     }
 
     #[test]
-    fn selected_originals_also_anchor_carried_handles() {
-        let mut glyph = curve_glyph();
+    fn captured_origins_anchor_carried_handles_across_snapping_thresholds() {
+        let mut original = curve_glyph();
+        original.contours[0].points[2].x = 101.0;
+        original.contours[0].points[4].x = 101.0;
         let selected: HashSet<PointId> = [(0, 3)].into_iter().collect();
-        let originals: HashMap<PointId, (f64, f64)> =
-            [((0, 3), (100.0, 100.0))].into_iter().collect();
-        translate_points(&mut glyph, &selected, &originals, (10.0, 0.0), false);
-        translate_points(&mut glyph, &selected, &originals, (20.0, 0.0), false);
-        assert_eq!(at(&glyph, 2), (120.0, 20.0));
-        assert_eq!(at(&glyph, 3), (120.0, 100.0));
-        assert_eq!(at(&glyph, 4), (120.0, 180.0));
+        let originals = drag_origins(&original, &selected, false);
+        assert_eq!(originals.len(), 3);
+        let mut one_event = original.clone();
+        translate_points(&mut one_event, &selected, &originals, (2.0, 0.0), false);
+        let mut two_events = original;
+        translate_points(&mut two_events, &selected, &originals, (1.0, 0.0), false);
+        translate_points(&mut two_events, &selected, &originals, (2.0, 0.0), false);
+        assert_eq!(two_events, one_event);
+        assert_eq!(at(&two_events, 2), (104.0, 20.0));
+        assert_eq!(at(&two_events, 3), (102.0, 100.0));
+        assert_eq!(at(&two_events, 4), (104.0, 180.0));
+    }
+
+    #[test]
+    fn persistent_drag_rejects_incomplete_origins() {
+        let mut glyph = curve_glyph();
+        let before = glyph.clone();
+        let selected: HashSet<PointId> = [(0, 3)].into_iter().collect();
+        let incomplete = [((0, 3), (100.0, 100.0))].into_iter().collect();
+        assert!(!translate_points(
+            &mut glyph,
+            &selected,
+            &incomplete,
+            (2.0, 0.0),
+            false,
+        ));
+        assert_eq!(glyph, before);
+    }
+
+    #[test]
+    fn captured_origins_anchor_smooth_opposites_across_drag_events() {
+        let mut original = curve_glyph();
+        original.contours[0].points[2].x = 101.0;
+        original.contours[0].points[2].y = 19.0;
+        original.contours[0].points[4].x = 101.0;
+        original.contours[0].points[4].y = 181.0;
+        let selected: HashSet<PointId> = [(0, 4)].into_iter().collect();
+        let originals = drag_origins(&original, &selected, false);
+        assert_eq!(originals.len(), 2);
+        let mut one_event = original.clone();
+        translate_points(&mut one_event, &selected, &originals, (3.0, 1.0), false);
+        let mut two_events = original;
+        translate_points(&mut two_events, &selected, &originals, (1.0, 0.0), false);
+        translate_points(&mut two_events, &selected, &originals, (3.0, 1.0), false);
+        assert_eq!(two_events, one_event);
     }
 
     #[test]

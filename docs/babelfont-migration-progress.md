@@ -820,3 +820,37 @@ git diff --check
 The focused canonical comparison and all 27 variable-project integration tests passed.
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+### Explicit point-drag origin correction
+
+Evidence commit: `Capture every persistent point-drag origin` (the commit containing this correction).
+Resolve its exact ID with `git log --format=%H --grep='^Capture every persistent point-drag origin$' -1`.
+Affected paths: `src/outline/point_ops.rs`, `src/document/babelfont.rs`, `src/application/editor/session.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+Review found that reconstructing an automatically carried handle's origin from its selected owner's previous snapped displacement lost fractional offsets.
+The final handle position could therefore depend on how many intermediate pointer events occurred even when the final total delta was identical.
+
+The editor now captures explicit start positions for selected points, adjacent carried handles and smooth-coupled opposite handles before the first drag event.
+Keyboard nudges continue to use current positions through an empty origin map.
+Canonical `LayerView::point_drag_origins` exposes the same stable-ID capture, and both canonical and compatibility translation reject a nonempty persistent-drag origin set that omits any affected point.
+Smooth mirroring uses the captured opposite-handle baseline when that handle is not otherwise moving.
+
+Unit and integration regressions use off-grid handles across snapping thresholds and require one total-delta event to equal multiple intermediate events.
+They also verify explicit rejection of the formerly accepted selected-only persistent origin set while preserving caught-error transaction atomicity.
+
+Executed evidence:
+
+```sh
+cargo test --locked --lib outline::point_ops -- --test-threads=1
+cargo test --locked --test variable_project canonical_point_drag_matches_legacy_handle_behavior_atomically -- --exact --test-threads=1
+cargo test --locked --test variable_project -- --test-threads=1
+cargo test --locked --bin runebender -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+All nine point-operation unit tests, the focused canonical regression, all 27 variable-project integration tests and 165 application binary tests passed; four installed-model or external-font tests remained intentionally ignored.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.

@@ -248,6 +248,61 @@ impl<'a> LayerView<'a> {
             }
         })
     }
+
+    /// Capture every canonical point position needed for a persistent drag.
+    ///
+    /// The returned origins include adjacent handles carried by selected on-curve points and
+    /// opposite handles that preserve a smooth tangent.
+    pub fn point_drag_origins(
+        self,
+        selected: &[PointId],
+        independent: bool,
+    ) -> Result<Vec<(PointId, kurbo::Point)>, DocumentEditError> {
+        for id in selected {
+            if !self.layer.paths().flat_map(|path| &path.nodes).any(|node| {
+                read_id(&node.format_specific).is_some_and(|candidate| candidate == id.0)
+            }) {
+                return Err(DocumentEditError::MissingPoint(*id));
+            }
+        }
+        let selected: HashSet<_> = selected.iter().copied().collect();
+        let mut origins = Vec::new();
+        for path in self.layer.paths() {
+            let ids: Vec<_> = path
+                .nodes
+                .iter()
+                .map(|node| {
+                    PointId(read_id(&node.format_specific).expect("canonical point identity"))
+                })
+                .collect();
+            let selected_indices: HashSet<_> = ids
+                .iter()
+                .enumerate()
+                .filter_map(|(index, id)| selected.contains(id).then_some(index))
+                .collect();
+            if selected_indices.is_empty() {
+                continue;
+            }
+            let states: Vec<_> = path
+                .nodes
+                .iter()
+                .map(|node| crate::outline::point_ops::PointState {
+                    position: kurbo::Point::new(node.x, node.y),
+                    off_curve: node.nodetype == NodeType::OffCurve,
+                    smooth: node.smooth,
+                })
+                .collect();
+            for index in crate::outline::point_ops::affected_indices(
+                &states,
+                &selected_indices,
+                path.closed,
+                independent,
+            ) {
+                origins.push((ids[index], states[index].position));
+            }
+        }
+        Ok(origins)
+    }
 }
 
 /// Read-only access to one canonical contour.
@@ -476,8 +531,9 @@ impl LayerEditDraft {
 
     /// Move selected points with the editor's snapping and smooth-handle rules.
     ///
-    /// `originals` supplies drag-start positions, allowing repeated pointer events to apply their
-    /// total delta without accumulating intermediate snapping. An empty selection is unchanged.
+    /// `originals` supplies every position returned by [`LayerView::point_drag_origins`], allowing
+    /// repeated pointer events to apply their total delta without accumulating intermediate
+    /// snapping. An empty origins slice performs a one-step nudge. An empty selection is unchanged.
     /// Returns whether any point moved.
     pub fn translate_points(
         &mut self,
@@ -530,11 +586,23 @@ impl LayerEditDraft {
                     smooth: node.smooth,
                 })
                 .collect();
-            let path_originals = ids
+            let path_originals: HashMap<usize, kurbo::Point> = ids
                 .iter()
                 .enumerate()
                 .filter_map(|(index, id)| originals.get(id).copied().map(|point| (index, point)))
                 .collect();
+            if !originals.is_empty() {
+                for index in crate::outline::point_ops::affected_indices(
+                    &states,
+                    &selected_indices,
+                    path.closed,
+                    independent,
+                ) {
+                    if !path_originals.contains_key(&index) {
+                        return Err(DocumentEditError::MissingDragOrigin(ids[index]));
+                    }
+                }
+            }
             for (index, position) in crate::outline::point_ops::translated_positions(
                 &states,
                 &selected_indices,
@@ -879,6 +947,8 @@ pub enum DocumentEditError {
     MissingSource,
     /// The requested point identity does not exist in the layer.
     MissingPoint(PointId),
+    /// A persistent drag omitted an automatically affected point's start position.
+    MissingDragOrigin(PointId),
     /// A move point was requested anywhere except the start of an open contour.
     NonInitialMove(PointId),
     /// The requested component identity does not exist in the layer.
@@ -897,6 +967,9 @@ impl std::fmt::Display for DocumentEditError {
             Self::MissingLayer => formatter.write_str("glyph layer does not exist"),
             Self::MissingSource => formatter.write_str("source does not exist"),
             Self::MissingPoint(id) => write!(formatter, "point {id:?} does not exist"),
+            Self::MissingDragOrigin(id) => {
+                write!(formatter, "point {id:?} is missing its drag-start position")
+            }
             Self::NonInitialMove(id) => {
                 write!(formatter, "point {id:?} cannot be a noninitial move point")
             }

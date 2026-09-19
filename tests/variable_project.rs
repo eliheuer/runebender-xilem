@@ -1074,9 +1074,9 @@ fn canonical_point_drag_matches_legacy_handle_behavior_atomically() {
             vec![
                 point(0.0, 0.0, PointType::Curve, false),
                 point(20.0, 0.0, PointType::OffCurve, false),
-                point(100.0, 20.0, PointType::OffCurve, false),
+                point(101.0, 20.0, PointType::OffCurve, false),
                 point(100.0, 100.0, PointType::Curve, true),
-                point(100.0, 180.0, PointType::OffCurve, false),
+                point(101.0, 180.0, PointType::OffCurve, false),
                 point(20.0, 200.0, PointType::OffCurve, false),
                 point(0.0, 200.0, PointType::Curve, false),
                 point(-20.0, 100.0, PointType::OffCurve, false),
@@ -1107,24 +1107,22 @@ fn canonical_point_drag_matches_legacy_handle_behavior_atomically() {
         .map(|point| point.id())
         .collect();
     let selected = point_ids[3];
-    let original_position = project
+    let originals = project
         .document_layer("drag", &layer_id)
         .unwrap()
-        .contours()
-        .next()
-        .unwrap()
-        .points()
-        .nth(3)
-        .unwrap()
-        .position();
+        .point_drag_origins(&[selected], false)
+        .unwrap();
+    assert_eq!(originals.len(), 3, "carried handle origins were omitted");
     let initial = project.glyph_layer("drag", &layer_id).unwrap();
     let selected_indices: HashSet<_> = [(0, 3)].into_iter().collect();
+    let legacy_originals =
+        runebender::outline::point_ops::drag_origins(&initial, &selected_indices, false);
     let mut expected = initial.clone();
     assert!(runebender::outline::point_ops::translate_points(
         &mut expected,
         &selected_indices,
-        &HashMap::new(),
-        (10.0, 0.0),
+        &legacy_originals,
+        (1.0, 0.0),
         false,
     ));
 
@@ -1132,8 +1130,8 @@ fn canonical_point_drag_matches_legacy_handle_behavior_atomically() {
         .edit_document_layer("drag", &layer_id, |draft| {
             assert!(draft.translate_points(
                 &[selected],
-                &[],
-                kurbo::Vec2::new(10.0, 0.0),
+                &originals,
+                kurbo::Vec2::new(1.0, 0.0),
                 false,
             )?);
             Ok(())
@@ -1142,19 +1140,15 @@ fn canonical_point_drag_matches_legacy_handle_behavior_atomically() {
     assert_eq!(
         project.glyph_layer("drag", &layer_id).unwrap(),
         expected,
-        "canonical on-curve drag did not carry adjacent handles like the editor"
+        "canonical first drag event did not carry adjacent handles like the editor"
     );
 
-    let originals = [(selected, original_position)];
-    let mut expected = initial;
-    let legacy_originals = [((0, 3), (original_position.x, original_position.y))]
-        .into_iter()
-        .collect();
+    let mut expected = initial.clone();
     assert!(runebender::outline::point_ops::translate_points(
         &mut expected,
         &selected_indices,
         &legacy_originals,
-        (20.0, 0.0),
+        (2.0, 0.0),
         false,
     ));
     project
@@ -1162,7 +1156,7 @@ fn canonical_point_drag_matches_legacy_handle_behavior_atomically() {
             assert!(draft.translate_points(
                 &[selected],
                 &originals,
-                kurbo::Vec2::new(20.0, 0.0),
+                kurbo::Vec2::new(2.0, 0.0),
                 false,
             )?);
             Ok(())
@@ -1173,6 +1167,10 @@ fn canonical_point_drag_matches_legacy_handle_behavior_atomically() {
         expected,
         "successive canonical drag events accumulated instead of using drag-start positions"
     );
+    let projected = project.glyph_layer("drag", &layer_id).unwrap();
+    assert_eq!(projected.contours[0].points[2].x, 104.0);
+    assert_eq!(projected.contours[0].points[3].x, 102.0);
+    assert_eq!(projected.contours[0].points[4].x, 104.0);
 
     let selected_handle = point_ids[4];
     let handle_indices: HashSet<_> = [(0, 4)].into_iter().collect();
@@ -1226,6 +1224,12 @@ fn canonical_point_drag_matches_legacy_handle_behavior_atomically() {
         .next()
         .unwrap()
         .id();
+    let mut overflow_origins = originals.clone();
+    overflow_origins
+        .iter_mut()
+        .find(|(id, _)| *id == selected)
+        .unwrap()
+        .1 = kurbo::Point::new(f64::MAX, 0.0);
     assert_eq!(
         project
             .edit_document_layer("drag", &layer_id, |draft| {
@@ -1238,7 +1242,24 @@ fn canonical_point_drag_matches_legacy_handle_behavior_atomically() {
                 assert_eq!(
                     draft.translate_points(
                         &[selected],
-                        &[(selected, kurbo::Point::new(f64::MAX, 0.0))],
+                        &[(
+                            selected,
+                            kurbo::Point::new(
+                                initial.contours[0].points[3].x,
+                                initial.contours[0].points[3].y,
+                            ),
+                        )],
+                        kurbo::Vec2::new(2.0, 0.0),
+                        false,
+                    ),
+                    Err(runebender::document::DocumentEditError::MissingDragOrigin(
+                        point_ids[2]
+                    ))
+                );
+                assert_eq!(
+                    draft.translate_points(
+                        &[selected],
+                        &overflow_origins,
                         kurbo::Vec2::new(f64::MAX, 0.0),
                         false,
                     ),

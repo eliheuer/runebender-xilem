@@ -58,7 +58,7 @@ No release has been published yet.
 
 ### Fixed
 
-- Kept automatically carried curve handles anchored to their drag-start positions during repeated pointer updates.
+- Kept off-grid curve handles anchored to their captured drag-start positions during repeated snapped pointer updates.
 - Reject unsupported Designspace fields, invalid mappings, missing sources and incompatible glyph structures before they can be silently dropped or misinterpreted.
 - Prevented external reloads, stale model results, or stale proposals from overwriting
   unsaved or subsequently edited document state.
