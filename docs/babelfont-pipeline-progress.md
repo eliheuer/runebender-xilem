@@ -33,6 +33,10 @@ Baseline: `fa6caca673fb28827d29e69fff8f7cf4e5b70183`.
 - `cf0f1a6` (`Test Project-owned canonical Designspace`) proves the Project-owned snapshot preserves mapped axes, interleaved sparse-source order, stable identities, instances and rules.
 - `09de268` (`Compile canonical Designspace structure directly`) makes compilation consume canonical axes, full sources, sparse sources, instances and rules without reading the mutable legacy Designspace projections.
   The preview cache key is now the document revision plus the typed immutable `CanonicalCompilerStructure`, and a regression proves compilation still works after deliberately clearing the legacy structural projections while slider-only location changes reuse the compiled result.
+- `c174466` (`Resolve compiler feature includes from source paths`) retains canonical source identity and semantics while resolving the source's persistence path by stable `SourceId`, so relative feature includes use the loaded UFO directory instead of the process directory.
+  Dedicated tests prove both the snapshot path and compilation of a Designspace-relative include outside the repository.
+- `246b2bb` (`Build native text inputs from canonical sources`) removes the native text tool's production reads of the active Norad font for glyph inventory, kerning and generated mark features.
+  Canonical Project queries now supply exact advances, codepoints, UPM, groups, pairs, feature text, anchors and component-propagated anchors; boundary-parity tests retain the existing behavior.
 
 ## Executed checks
 
@@ -45,6 +49,9 @@ Baseline: `fa6caca673fb28827d29e69fff8f7cf4e5b70183`.
 - `cargo test --locked --test canonical_font_info -- --test-threads=1`: 3 passed.
 - `cargo test --locked --test canonical_pipeline -- --test-threads=1`: 2 passed.
 - `cargo test --locked --test canonical_designspace -- --test-threads=1`: 5 passed.
+- `cargo test --locked --test compiler_include_path -- --test-threads=1`: 2 passed.
+- `cargo test --locked --lib text::features::tests:: -- --test-threads=1`: 5 passed.
+- `cargo test --locked --lib text::buffer::tests::canonical_project_builds_the_same_text_inputs_as_its_source_boundary -- --exact --test-threads=1`: 1 passed.
 - `cargo clippy --locked --lib --tests -- -D warnings`: passed.
 - `cargo fmt --all --check`: passed.
 - `git diff --check`: passed.
@@ -66,6 +73,8 @@ The focused HOI fixture test could not run through interpolation with the curren
   Snapshot construction uses canonical Designspace source descriptors for names, locations and default-layer addresses.
 - Axes, full sources, sparse sources, instances and rules now reach compilation through one owned immutable `CanonicalCompilerStructure` snapshot.
   The compiler cache no longer builds a debug-string fingerprint from `axes`, `master_locations`, `master_names`, `instances` and `ds_doc`.
+- Native text-tool inventory, kerning fallback and generated mark-feature inputs now come from canonical Project queries.
+  The Norad constructors remain for explicit source-boundary and fixture callers, not the production editor path.
 
 ## Remaining ownership and integration gap
 
