@@ -19,6 +19,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use masonry::kurbo::{self as kurbo, BezPath, Point, Rect};
+use runebender::document::model::glyph_metadata::MarkColor;
 use runebender::document::project::CanonicalLayerTransaction;
 use runebender::document::{AnchorId, ComponentId, ContourId, LayerPointType, LayerView, PointId};
 use runebender::outline::glyph_paths;
@@ -83,6 +84,21 @@ pub(crate) enum SessionSyncOutcome {
     Changed,
     Unchanged,
     Rejected,
+}
+
+/// Resolve one palette label to the canonical semantic mark pair.
+///
+/// Unknown labels retain the established application behavior of clearing the
+/// mark rather than storing a label without a public color.
+pub(crate) fn semantic_mark(label: Option<&str>) -> (Option<&str>, Option<MarkColor>) {
+    let color = label
+        .and_then(runebender::ui::theme::ufo_rgba_for_label)
+        .and_then(|rgba| MarkColor::parse(&rgba));
+    if color.is_some() {
+        (label, color)
+    } else {
+        (None, None)
+    }
 }
 
 #[derive(Clone)]
@@ -1861,12 +1877,9 @@ impl Session {
     }
 
     pub(crate) fn set_mark(&mut self, label: Option<&str>) {
-        let label = label.map(str::to_owned);
-        let _ = self.compatibility_edit("set glyph mark", move |glyph| {
-            let before = glyph.lib.clone();
-            runebender::ui::theme::set_glyph_mark(glyph, label.as_deref());
-            glyph.lib != before
-        });
+        let (label, color) = semantic_mark(label);
+        let _ =
+            self.stage_canonical_edit("set glyph mark", move |draft| draft.set_mark(label, color));
     }
 
     /// The contours to copy: the ones holding a selected point, or every

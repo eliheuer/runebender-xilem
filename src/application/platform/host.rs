@@ -1213,6 +1213,28 @@ mod tests {
         workspace.undo_active_edit(true);
         assert_eq!(workspace.session.codepoint(), Some('\u{0628}'));
 
+        workspace.set_mark(Some("blue".into()));
+        let marked = projected_glyph(&workspace.session);
+        assert_eq!(
+            marked
+                .lib
+                .get(runebender::document::model::glyph_metadata::MARK_LABEL_KEY),
+            Some(&plist::Value::String("blue".into()))
+        );
+        assert!(
+            marked
+                .lib
+                .contains_key(runebender::document::model::glyph_metadata::MARK_COLOR_KEY)
+        );
+        workspace.undo_active_edit(false);
+        let unmarked = projected_glyph(&workspace.session);
+        assert!(
+            !unmarked
+                .lib
+                .contains_key(runebender::document::model::glyph_metadata::MARK_LABEL_KEY)
+        );
+        workspace.undo_active_edit(true);
+
         workspace.set_advance_from_buf("620".into());
         assert_eq!(workspace.session.advance(), 620.0);
         workspace.undo_active_edit(false);
@@ -1276,6 +1298,12 @@ mod tests {
             .expect("the renamed glyph survives reopening");
         assert_eq!(glyph.width, 650.0);
         assert_eq!(glyph.codepoints.iter().collect::<Vec<_>>(), ['\u{0628}']);
+        assert_eq!(
+            glyph
+                .lib
+                .get(runebender::document::model::glyph_metadata::MARK_LABEL_KEY),
+            Some(&plist::Value::String("blue".into()))
+        );
         std::fs::remove_dir_all(path).expect("the metadata fixture is removed");
     }
 

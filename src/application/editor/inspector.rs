@@ -3,7 +3,7 @@
 
 //! The info panel's fields, and what typing in them does to the font.
 
-use crate::application::editor::session::Session;
+use crate::application::editor::session::{Session, semantic_mark};
 use crate::application::font_model::FontModel;
 use crate::application::view::canvas;
 use crate::application::view::canvas::grid::cells_of;
@@ -707,35 +707,53 @@ impl Workspace {
                 self.multi_selected.iter().copied().collect()
             };
             indices.sort_unstable();
-            indices.retain(|index| {
-                self.font
-                    .glyphs
-                    .get(*index)
-                    .is_some_and(|glyph| glyph.mark.as_deref() != label.as_deref())
-            });
-            if indices.is_empty() {
+            let Some(source) = self.font.project.source_id(self.font.active()) else {
+                return;
+            };
+            let Some(layer) = self
+                .font
+                .project
+                .document_source(source)
+                .map(|source| source.default_layer())
+            else {
+                return;
+            };
+            let (mark_label, mark_color) = semantic_mark(label.as_deref());
+            let mut changed = Vec::new();
+            for index in indices {
+                let Some(name) = self.font.glyphs.get(index).map(|glyph| glyph.name.clone()) else {
+                    continue;
+                };
+                let address = runebender::document::variable::GlyphLayerAddress {
+                    glyph: name.clone(),
+                    layer: layer.clone(),
+                };
+                let Ok(mut transaction) =
+                    self.font.project.begin_document_layer_transaction(&address)
+                else {
+                    continue;
+                };
+                if transaction.draft_mut().set_mark(mark_label, mark_color) != Ok(true) {
+                    continue;
+                }
+                if matches!(
+                    self.font
+                        .project
+                        .commit_document_layer_transaction(transaction),
+                    Ok(runebender::document::project::DocumentEditOutcome::Changed { .. })
+                ) {
+                    changed.push(name);
+                }
+            }
+            if changed.is_empty() {
                 return;
             }
-            for &index in &indices {
-                self.font.master_mut().record_undo(index);
-                self.font.master_mut().edit_glyph(index, |glyph| {
-                    runebender::ui::theme::set_glyph_mark(glyph, label.as_deref());
-                });
-                self.font.refresh_entry(index);
-            }
             self.overview_undo.push(OverviewEditBatch {
-                source: self
-                    .font
-                    .project
-                    .source_id(self.font.active())
-                    .expect("active source identity"),
-                glyphs: indices
-                    .iter()
-                    .filter_map(|index| self.font.glyphs.get(*index))
-                    .map(|glyph| glyph.name.clone())
-                    .collect(),
+                source,
+                glyphs: changed,
             });
             self.overview_redo.clear();
+            self.font.rebuild_cache();
             self.cells = Arc::new(cells_of(&self.font, &self.palette));
             self.modified = true;
             return;
@@ -1127,11 +1145,38 @@ mod size_tests {
         assert_eq!(app.font.glyphs[a].mark.as_deref(), Some("blue"));
         assert_eq!(app.font.glyphs[b].mark.as_deref(), Some("blue"));
         assert!(app.cells[a].mark.is_some() && app.cells[b].mark.is_some());
+        assert_eq!(app.font.master().undo_depth(a), 0);
+        assert_eq!(app.font.master().undo_depth(b), 0);
         assert_eq!(
             Some(app.overview_undo[0].source),
             app.font.project.source_id(app.font.active())
         );
         assert_eq!(app.overview_undo[0].glyphs, vec!["mark_a", "mark_b"]);
+        let source = app.overview_undo[0].source;
+        let layer = app
+            .font
+            .project
+            .document_source(source)
+            .expect("the active source exists")
+            .default_layer();
+        for glyph in ["mark_a", "mark_b"] {
+            let address = runebender::document::variable::GlyphLayerAddress {
+                glyph: glyph.into(),
+                layer: layer.clone(),
+            };
+            assert!(
+                app.font
+                    .project
+                    .can_replay_document_layer_history(&address, HistoryDirection::Undo)
+            );
+            let view = app
+                .font
+                .project
+                .document_layer(glyph, &layer)
+                .expect("the marked layer exists");
+            assert_eq!(view.mark_label().unwrap(), Some("blue"));
+            assert!(view.mark_color().unwrap().is_some());
+        }
 
         app.undo_active_edit(false);
         assert!(app.font.glyphs[a].mark.is_none());

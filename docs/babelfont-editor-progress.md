@@ -306,8 +306,8 @@ git diff --check
 - Direct canonical draft operations now own filters, cleanup, transforms, shapes, anchors, images, boolean operations, knife cuts, curve conversion, re-interpolation and mask baking.
 - Place Image installs bytes through a stable-source Project operation and attaches the image through the layer draft; it no longer mutates `FontModel::font_mut().images`.
 - Overview metaball conversion now commits guarded layer transactions and replays Project-owned layer history instead of calling `FontModel::replace_glyph` or recording `Master.history` snapshots.
-- The remaining temporary bridge callers are exact and finite: mark-label writes; compatibility contour replacement and its test-only paste helper; and background send and swap.
-- `FontModel` still exposes mutable source/font access for overview marks, Unicode, metrics formulas, local-model workflow boundaries, source retargeting and background layers; those callers remain M06/M13 work rather than completion claims.
+- The remaining temporary bridge callers are exact and finite: compatibility contour replacement and its test-only paste helper; and background send and swap.
+- `FontModel` still exposes mutable source/font access for Unicode, metrics formulas, local-model workflow boundaries, source retargeting and background layers; those callers remain M06/M13 work rather than completion claims.
 - Pen, Rectangle, Ellipse and Knife Pointer Cancel paths now have real widget-event coverage.
 
 ## Canonical Session storage and history cutover
@@ -476,6 +476,36 @@ git diff --check
 
 The focused canonical Pen and Pointer Cancel regressions passed.
 The complete binary suite passed 171 tests with four documented model or external-font tests ignored.
+Warning-denied native workspace/all-target Clippy, the release WASM build, warning-denied browser Clippy, formatting and diff checks passed.
+
+## Direct canonical semantic-mark slice
+
+Implementation commit: `Edit semantic marks without glyph projection`.
+Resolve its exact ID with `git log --format=%H --grep='^Edit semantic marks without glyph projection$' -1`.
+Affected paths: `src/application/editor/session.rs`, `src/application/editor/inspector.rs`, `src/application/platform/host.rs` and this log.
+
+Reviewed core commit `b5f0052` adds one atomic canonical operation for a semantic mark's label and typed public color.
+The application resolves its frozen palette label/color pair at the UI boundary and passes both halves to `LayerEditDraft::set_mark`.
+Unknown labels retain the established clear behavior, and a semantic no-op preserves exact valid source color spelling.
+
+Foreground mark edits now stage through the open Session's canonical transaction and enter Project-owned history.
+Overview multi-selection edits commit one guarded transaction per changed glyph in sorted cell order, retain one application-level batch for ordered undo/redo, rebuild the cache once and never touch `Master.history`.
+The regressions cover foreground and multi-glyph edit, canonical undo/redo, no-op suppression, paired label/color storage and save/reopen persistence.
+
+Executed evidence:
+
+```sh
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::editor::inspector::size_tests::overview_mark_batch_updates_cells_and_undoes_once -- --exact --nocapture
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::platform::host::tests::glyph_metadata_validates_undoes_and_survives_save_reopen -- --exact --nocapture
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender -- --test-threads=1
+CARGO_BUILD_JOBS=1 cargo clippy --workspace --all-targets --locked -- -D warnings
+CARGO_BUILD_JOBS=1 ./web/build.sh
+CARGO_BUILD_JOBS=1 CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS='-C target-feature=+simd128' cargo clippy --manifest-path web/Cargo.toml --locked --target wasm32-unknown-unknown --no-deps -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+Both focused application regressions and the complete binary suite passed.
 Warning-denied native workspace/all-target Clippy, the release WASM build, warning-denied browser Clippy, formatting and diff checks passed.
 
 ## Next action
