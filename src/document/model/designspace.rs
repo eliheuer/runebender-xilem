@@ -851,6 +851,15 @@ impl CanonicalDesignspace {
         self.instances.iter_mut().find(|instance| instance.id == id)
     }
 
+    /// Remove one instance by stable identity.
+    pub fn remove_instance(&mut self, id: InstanceId) -> Option<CanonicalInstance> {
+        let index = self
+            .instances
+            .iter()
+            .position(|instance| instance.id == id)?;
+        Some(self.instances.remove(index))
+    }
+
     /// Find one rule mutably within a checked edit draft.
     pub fn rule_mut(&mut self, id: RuleId) -> Option<&mut CanonicalRule> {
         self.rules.iter_mut().find(|rule| rule.id == id)

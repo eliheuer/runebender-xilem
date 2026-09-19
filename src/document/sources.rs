@@ -15,7 +15,9 @@ use crate::document::canonical_metadata::{CanonicalFontMetadata, KerningParticip
 use crate::document::history::{
     EditHistory, HistoryDirection, HistoryReplayError, HistoryReplayOutcome, TransactionHistory,
 };
-use crate::document::model::designspace::{CanonicalLocation, SourceDescriptor, SourceOrderEntry};
+use crate::document::model::designspace::{
+    CanonicalLocation, InstanceId, SourceDescriptor, SourceOrderEntry, SparseSourceDescriptor,
+};
 use crate::document::model::font_info::CanonicalFontInfo;
 use crate::document::variable::source_builder;
 
@@ -125,6 +127,7 @@ impl SourceFrame {
             previous_masters,
             retired_histories,
         )?;
+        project.refresh_instances_from_doc();
         project.finish_source_restore();
         Ok(())
     }
@@ -689,6 +692,77 @@ impl Project {
         self.masters[index].font.font_info.style_name = Some(name.into());
         self.record_source_change(before);
         Ok(())
+    }
+
+    /// Register an existing auxiliary layer as a sparse interpolation source.
+    pub fn add_sparse_source(
+        &mut self,
+        layer: &LayerId,
+        location: &Location,
+    ) -> Result<(), String> {
+        let source_index = self.source_index(layer.source).ok_or("unknown source")?;
+        let source = self.document_source(layer.source).ok_or("unknown source")?;
+        if &source.default_layer() == layer {
+            return Err("the default layer is already a full source".into());
+        }
+        if !self.variable.has_layer(layer) {
+            return Err("the sparse source layer has no canonical glyphs".into());
+        }
+        let designspace = self
+            .begin_source_designspace_edit()
+            .ok_or("not a Designspace")?;
+        let exact = CanonicalLocation::from_normalized(location, designspace.axes())?;
+        let owner = designspace
+            .source_order()
+            .iter()
+            .position(|entry| *entry == SourceOrderEntry::Full(layer.source))
+            .ok_or("sparse source owner is absent from source order")?;
+        let mut order_index = owner + 1;
+        while designspace.source_order().get(order_index).is_some_and(|entry| {
+            matches!(entry, SourceOrderEntry::Sparse(candidate) if candidate.source == layer.source)
+        }) {
+            order_index += 1;
+        }
+        let mut replacement = designspace.clone();
+        replacement.edit_checked(|draft| {
+            draft.insert_sparse_source(
+                SparseSourceDescriptor::new(layer.clone(), exact),
+                order_index,
+            )
+        })?;
+        let before = SourceFrame::capture(self);
+        self.install_source_designspace_edit(&designspace, replacement)?;
+        self.brace.push(BraceSource {
+            master: source_index,
+            layer: layer.name.clone(),
+            location: location.clone(),
+        });
+        self.record_canonical_source_change(before);
+        Ok(())
+    }
+
+    /// Remove one named instance from the canonical Designspace.
+    pub fn remove_instance(&mut self, id: InstanceId) -> Result<bool, String> {
+        let designspace = self
+            .begin_source_designspace_edit()
+            .ok_or("not a Designspace")?;
+        if !designspace
+            .instances()
+            .iter()
+            .any(|instance| instance.id() == id)
+        {
+            return Ok(false);
+        }
+        let mut replacement = designspace.clone();
+        replacement.edit_checked(|draft| {
+            draft.remove_instance(id).ok_or("missing instance")?;
+            Ok(())
+        })?;
+        let before = SourceFrame::capture(self);
+        self.install_source_designspace_edit(&designspace, replacement)?;
+        self.refresh_instances_from_doc();
+        self.record_canonical_source_change(before);
+        Ok(true)
     }
 
     /// Duplicate one glyph into an auxiliary UFO layer, creating that layer if needed.

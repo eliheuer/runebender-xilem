@@ -2372,10 +2372,12 @@ mod tests {
         // location, adding at a fresh one, deleting.
         let mut project = Project::load(&path).expect("designspace loads");
         let before = project.instances.len();
-        let doc = project.ds_doc.as_mut().expect("designspace doc kept");
-        doc.instances.remove(0);
-        project.ds_dirty = true;
-        project.refresh_instances_from_doc();
+        let instance = project.document_designspace().unwrap().instances()[0].id();
+        assert!(project.remove_instance(instance).unwrap());
+        assert_eq!(project.instances.len(), before - 1);
+        assert!(project.undo_sources(false).unwrap());
+        assert_eq!(project.instances.len(), before);
+        assert!(project.undo_sources(true).unwrap());
         assert_eq!(project.instances.len(), before - 1);
     }
 
@@ -2400,25 +2402,29 @@ mod tests {
             );
             l
         };
-        let mut frozen = project.sources()[0]
-            .font
-            .get_glyph(name)
-            .expect("has n")
-            .clone();
-        let orig = frozen.contours[0].points[0].x;
-        frozen.contours[0].points[0].x = orig + 40.0;
-        project.edit_sources()[0]
-            .font
-            .layers
-            .get_or_create_layer("{500}")
+        let source = project.source_id(0).unwrap();
+        let default = project.document_source(source).unwrap().default_layer();
+        let layer = project.add_glyph_layer(name, &default, "{500}").unwrap();
+        let point = project
+            .document_layer(name, &layer)
             .unwrap()
-            .insert_glyph(frozen);
-        project.brace.push(BraceSource {
-            master: 0,
-            layer: "{500}".into(),
-            location: loc_500.clone(),
-        });
-        project.location = loc_500;
+            .contours()
+            .next()
+            .unwrap()
+            .points()
+            .next()
+            .unwrap();
+        let position = point.position();
+        let orig = position.x;
+        let point = point.id();
+        project
+            .edit_document_layer(name, &layer, |draft| {
+                draft.set_point_position(point, kurbo::Point::new(orig + 40.0, position.y))?;
+                Ok(())
+            })
+            .unwrap();
+        project.add_sparse_source(&layer, &loc_500).unwrap();
+        project.location = loc_500.clone();
         let refined = project
             .interpolated_norad_glyph(name)
             .expect("interpolates");
@@ -2428,6 +2434,18 @@ mod tests {
             refined.contours[0].points[0].x,
             orig + 40.0,
         );
+        assert!(project.undo_sources(false).unwrap());
+        let linear = project
+            .try_interpolated_at(name, &loc_500)
+            .unwrap_or_else(|error| panic!("interpolates without the sparse source: {error}"));
+        assert!((linear.contours[0].points[0].x - (orig + 40.0)).abs() > 1.0);
+        assert!(project.undo_sources(true).unwrap());
+        let restored = project
+            .try_interpolated_at(name, &loc_500)
+            .unwrap_or_else(|error| {
+                panic!("interpolates with the restored sparse source: {error}")
+            });
+        assert!((restored.contours[0].points[0].x - (orig + 40.0)).abs() < 0.6);
     }
 
     #[test]
@@ -2641,24 +2659,33 @@ mod tests {
         // A brace at wght 550 (the axis midpoint) pushing the point
         // +60 bends the track's middle away from the straight line.
         let axis = project.axes[0].clone();
-        let mut frozen = regular.clone();
-        frozen.contours[0].points[0].x += 60.0;
-        project.edit_sources()[0]
-            .font
-            .layers
-            .get_or_create_layer("{550}")
-            .unwrap()
-            .insert_glyph(frozen);
         let mut loc = Location::new();
         loc.insert(
             axis.name.clone(),
             crate::document::var_model::normalize_value(550.0, axis.min, axis.default, axis.max),
         );
-        project.brace.push(BraceSource {
-            master: 0,
-            layer: "{550}".into(),
-            location: loc,
-        });
+        let source = project.source_id(0).unwrap();
+        let default = project.document_source(source).unwrap().default_layer();
+        let layer = project.add_glyph_layer(name, &default, "{550}").unwrap();
+        let point = project
+            .document_layer(name, &layer)
+            .unwrap()
+            .contours()
+            .next()
+            .unwrap()
+            .points()
+            .next()
+            .unwrap();
+        let position = point.position();
+        let point = point.id();
+        project
+            .edit_document_layer(name, &layer, |draft| {
+                draft
+                    .set_point_position(point, kurbo::Point::new(position.x + 60.0, position.y))?;
+                Ok(())
+            })
+            .unwrap();
+        project.add_sparse_source(&layer, &loc).unwrap();
         let bent = project.trajectory_samples(name, 10).expect("still samples");
         assert!(
             (bent[0][5].x - mid_linear).abs() > 20.0,

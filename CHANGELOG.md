@@ -66,6 +66,7 @@ No release has been published yet.
 
 ### Fixed
 
+- Made sparse-source and instance edits canonical and restored instance projections across structural undo and redo.
 - Rendered canonical hyperbeziers, live metaballs, smart-component poles, and nested full-affine components through Project layer paths without hidden UFO glyph reconstruction.
 - Invalidated metric-dependent previews and compilation when metadata history is replayed.
 - Prevented handle harmonizing and balancing from treating implied quadratic chains as cubic segments.
