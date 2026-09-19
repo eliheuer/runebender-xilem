@@ -1207,4 +1207,35 @@ The focused repository regressions, both independent-review tests and all 35 var
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
-The next M04 substep moves point deletion onto canonical topology.
+### Canonical point-deletion substep
+
+Evidence commit: `Delete points directly from canonical contours` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Delete points directly from canonical contours$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md` and this log.
+
+`LayerEditDraft::delete_points` now deletes stable point identities directly from canonical paths.
+Deleting an on-curve point removes its incoming controls, while deleting one control removes every control on that segment and reconnects it as a line.
+Affected open and closed contours are rebuilt from the surviving canonical nodes and preservation records, and contours with no remaining on-curve point are removed.
+Surviving points and contours retain their identities, names, identifiers and object libraries.
+
+The integration comparison follows the existing editor operation through control deletion, on-curve deletion, removal of an all-off-curve contour and deletion of an open contour's move point.
+It requires equivalent drawn geometry while separately verifying stronger identity and metadata preservation, open/closed state, contour identity and missing-point rejection atomicity.
+Point deletion is complete within M04's first checklist item.
+Reversal, split/join and copy/paste remain, so the item stays open.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_point_deletion_preserves_surviving_identities_and_metadata -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused deletion comparison and all 36 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+The next M04 substep moves contour reversal onto canonical topology.

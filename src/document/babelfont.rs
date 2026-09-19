@@ -1123,6 +1123,153 @@ impl LayerEditDraft {
         Ok(changed)
     }
 
+    /// Delete selected points while preserving surviving canonical identities and metadata.
+    ///
+    /// Deleting an on-curve point also removes its incoming controls. Deleting any control turns
+    /// that segment into a line by removing all of its controls. Contours without an on-curve point
+    /// are removed. Returns whether any topology changed.
+    pub fn delete_points(&mut self, selected: &[PointId]) -> Result<bool, DocumentEditError> {
+        if selected.is_empty() {
+            return Ok(false);
+        }
+        for id in selected {
+            if self.node(*id).is_none() {
+                return Err(DocumentEditError::MissingPoint(*id));
+            }
+        }
+        let selected: HashSet<_> = selected.iter().map(|id| id.0).collect();
+        let mut changed = false;
+        let mut shape_index = 0_usize;
+        while shape_index < self.layer.shapes.len() {
+            let Shape::Path(path) = &self.layer.shapes[shape_index] else {
+                shape_index += 1;
+                continue;
+            };
+            let contour_id =
+                ContourId(read_id(&path.format_specific).expect("canonical contour identity"));
+            let point_ids: Vec<_> = path
+                .nodes
+                .iter()
+                .map(|node| read_id(&node.format_specific).expect("canonical point identity"))
+                .collect();
+            if !point_ids.iter().any(|id| selected.contains(id)) {
+                shape_index += 1;
+                continue;
+            }
+            changed = true;
+            let closed = path.closed;
+            let on_indices: Vec<_> = path
+                .nodes
+                .iter()
+                .enumerate()
+                .filter_map(|(index, node)| (node.nodetype != NodeType::OffCurve).then_some(index))
+                .collect();
+            if on_indices.is_empty() {
+                self.layer.shapes.remove(shape_index);
+                self.preserved
+                    .contours
+                    .retain(|candidate| candidate.id != contour_id);
+                continue;
+            }
+            struct SegmentRecord {
+                on_index: usize,
+                controls: Vec<usize>,
+            }
+            let controls_between = |start: usize, end: usize| {
+                let mut controls = Vec::new();
+                let mut index = start + 1;
+                if index == path.nodes.len() {
+                    index = 0;
+                }
+                while index != end {
+                    controls.push(index);
+                    index += 1;
+                    if index == path.nodes.len() {
+                        index = 0;
+                    }
+                }
+                controls
+            };
+            let mut records = Vec::with_capacity(on_indices.len());
+            for (position, on_index) in on_indices.iter().copied().enumerate() {
+                let controls = if !closed && position == 0 {
+                    Vec::new()
+                } else {
+                    let previous = if position == 0 {
+                        *on_indices.last().expect("on-curve point exists")
+                    } else {
+                        on_indices[position - 1]
+                    };
+                    controls_between(previous, on_index)
+                };
+                records.push(SegmentRecord { on_index, controls });
+            }
+            records.retain(|record| !selected.contains(&point_ids[record.on_index]));
+            for record in &mut records {
+                if record
+                    .controls
+                    .iter()
+                    .any(|index| selected.contains(&point_ids[*index]))
+                {
+                    record.controls.clear();
+                }
+            }
+            if records.is_empty() {
+                self.layer.shapes.remove(shape_index);
+                self.preserved
+                    .contours
+                    .retain(|candidate| candidate.id != contour_id);
+                continue;
+            }
+            if !closed {
+                records[0].controls.clear();
+            }
+            let preserved = self
+                .preserved
+                .contours
+                .iter_mut()
+                .find(|candidate| candidate.id == contour_id)
+                .expect("canonical contour preservation");
+            let old_nodes = path.nodes.clone();
+            let old_points = preserved.points.clone();
+            let mut nodes = Vec::new();
+            let mut points = Vec::new();
+            let append = |index: usize, nodes: &mut Vec<Node>, points: &mut Vec<PreservedPoint>| {
+                nodes.push(old_nodes[index].clone());
+                points.push(old_points[index].clone());
+            };
+            for (position, record) in records.iter().enumerate() {
+                if !(closed && position == 0) {
+                    for control in &record.controls {
+                        append(*control, &mut nodes, &mut points);
+                    }
+                }
+                append(record.on_index, &mut nodes, &mut points);
+                let endpoint = nodes.last_mut().expect("on-curve point was appended");
+                if !closed && position == 0 {
+                    endpoint.nodetype = NodeType::Move;
+                } else if record.controls.is_empty() {
+                    endpoint.nodetype = NodeType::Line;
+                }
+            }
+            if closed {
+                for control in &records[0].controls {
+                    append(*control, &mut nodes, &mut points);
+                }
+                if records[0].controls.is_empty() {
+                    nodes[0].nodetype = NodeType::Line;
+                }
+            }
+            let Shape::Path(path) = &mut self.layer.shapes[shape_index] else {
+                unreachable!("edited contour remains a path");
+            };
+            path.nodes = nodes;
+            preserved.points = points;
+            shape_index += 1;
+        }
+        Ok(changed)
+    }
+
     /// Shift every contour point and anchor horizontally.
     ///
     /// Component transforms and the advance remain unchanged, matching a left-sidebearing edit.

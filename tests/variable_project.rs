@@ -2404,6 +2404,201 @@ fn canonical_implied_quadratic_insertion_rejects_stale_segment_identity() {
 }
 
 #[test]
+fn canonical_point_deletion_preserves_surviving_identities_and_metadata() {
+    let scratch = Scratch::new();
+    let point = |x, y, typ, label: &str| {
+        let mut point = ContourPoint::new(
+            x,
+            y,
+            typ,
+            false,
+            Some(Name::new(label).unwrap()),
+            Some(norad::Identifier::new(label).unwrap()),
+        );
+        point.replace_lib(object_lib(label));
+        point
+    };
+    let mut glyph = Glyph::new("delete-points");
+    glyph.contours.push(Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::Line, "corner a"),
+            point(100.0, 0.0, PointType::Line, "corner b"),
+            point(100.0, 100.0, PointType::Line, "corner c"),
+            point(80.0, 130.0, PointType::OffCurve, "first control"),
+            point(20.0, 130.0, PointType::OffCurve, "second control"),
+            point(0.0, 100.0, PointType::Curve, "curve end"),
+        ],
+        Some(norad::Identifier::new("main contour").unwrap()),
+    ));
+    glyph.contours.push(Contour::new(
+        vec![
+            point(200.0, 0.0, PointType::OffCurve, "all off a"),
+            point(250.0, 100.0, PointType::OffCurve, "all off b"),
+            point(300.0, 0.0, PointType::OffCurve, "all off c"),
+        ],
+        Some(norad::Identifier::new("all off contour").unwrap()),
+    ));
+    glyph.contours.push(Contour::new(
+        vec![
+            point(400.0, 0.0, PointType::Move, "open start"),
+            point(430.0, 80.0, PointType::OffCurve, "open first control"),
+            point(470.0, 80.0, PointType::OffCurve, "open second control"),
+            point(500.0, 0.0, PointType::Curve, "open curve end"),
+            point(550.0, 0.0, PointType::Line, "open line end"),
+        ],
+        Some(norad::Identifier::new("open contour").unwrap()),
+    ));
+    let source = glyph.clone();
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(glyph);
+    font.default_layer_mut().insert_glyph(Glyph::new("other"));
+    let mut project =
+        Project::from_source(Master::from_font(font, scratch.0.join("DeletePoints.ufo")));
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let layer = project.document_layer("delete-points", &layer_id).unwrap();
+    let contour_id = layer.contours().next().unwrap().id();
+    let ids: Vec<Vec<_>> = layer
+        .contours()
+        .map(|contour| contour.points().map(|point| point.id()).collect())
+        .collect();
+    let mut expected = source.clone();
+
+    assert!(runebender::outline::glyph_ops::delete_points(
+        &mut expected,
+        &HashSet::from([(0, 3)])
+    ));
+    project
+        .edit_document_layer("delete-points", &layer_id, |draft| {
+            assert!(draft.delete_points(&[ids[0][3]])?);
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        runebender::outline::glyph_paths::contours_to_bezpath(
+            &project.glyph_layer("delete-points", &layer_id).unwrap(),
+        ),
+        runebender::outline::glyph_paths::contours_to_bezpath(&expected)
+    );
+
+    assert!(runebender::outline::glyph_ops::delete_points(
+        &mut expected,
+        &HashSet::from([(0, 1)])
+    ));
+    project
+        .edit_document_layer("delete-points", &layer_id, |draft| {
+            assert!(draft.delete_points(&[ids[0][1]])?);
+            Ok(())
+        })
+        .unwrap();
+    let projected = project.glyph_layer("delete-points", &layer_id).unwrap();
+    assert_eq!(
+        runebender::outline::glyph_paths::contours_to_bezpath(&projected),
+        runebender::outline::glyph_paths::contours_to_bezpath(&expected)
+    );
+    let contour = project
+        .document_layer("delete-points", &layer_id)
+        .unwrap()
+        .contours()
+        .next()
+        .unwrap();
+    assert_eq!(contour.id(), contour_id);
+    let surviving: Vec<_> = contour.points().collect();
+    assert_eq!(
+        surviving.iter().map(|point| point.id()).collect::<Vec<_>>(),
+        [ids[0][0], ids[0][2], ids[0][5]]
+    );
+    assert_eq!(
+        surviving
+            .iter()
+            .map(|point| point.name().unwrap())
+            .collect::<Vec<_>>(),
+        ["corner a", "corner c", "curve end"]
+    );
+    for (point, source_index) in projected.contours[0].points.iter().zip([0_usize, 2, 5]) {
+        let source_point = &source.contours[0].points[source_index];
+        assert_eq!(point.name, source_point.name);
+        assert_eq!(point.identifier(), source_point.identifier());
+        assert_eq!(point.lib(), source_point.lib());
+    }
+
+    assert!(runebender::outline::glyph_ops::delete_points(
+        &mut expected,
+        &HashSet::from([(1, 0)])
+    ));
+    project
+        .edit_document_layer("delete-points", &layer_id, |draft| {
+            assert!(draft.delete_points(&[ids[1][0]])?);
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        project
+            .document_layer("delete-points", &layer_id)
+            .unwrap()
+            .contours()
+            .count(),
+        2
+    );
+    assert_eq!(
+        runebender::outline::glyph_paths::contours_to_bezpath(
+            &project.glyph_layer("delete-points", &layer_id).unwrap(),
+        ),
+        runebender::outline::glyph_paths::contours_to_bezpath(&expected)
+    );
+
+    assert!(runebender::outline::glyph_ops::delete_points(
+        &mut expected,
+        &HashSet::from([(1, 0)])
+    ));
+    project
+        .edit_document_layer("delete-points", &layer_id, |draft| {
+            assert!(draft.delete_points(&[ids[2][0]])?);
+            Ok(())
+        })
+        .unwrap();
+    let open = project
+        .document_layer("delete-points", &layer_id)
+        .unwrap()
+        .contours()
+        .nth(1)
+        .unwrap();
+    assert!(!open.is_closed());
+    assert_eq!(
+        open.points().map(|point| point.id()).collect::<Vec<_>>(),
+        [ids[2][3], ids[2][4]]
+    );
+    assert_eq!(
+        runebender::outline::glyph_paths::contours_to_bezpath(
+            &project.glyph_layer("delete-points", &layer_id).unwrap(),
+        ),
+        runebender::outline::glyph_paths::contours_to_bezpath(&expected)
+    );
+
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    assert_eq!(
+        project
+            .edit_document_layer("delete-points", &layer_id, |draft| {
+                assert_eq!(
+                    draft.delete_points(&[ids[1][0]]),
+                    Err(runebender::document::DocumentEditError::MissingPoint(
+                        ids[1][0]
+                    ))
+                );
+                assert!(!draft.delete_points(&[])?);
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision }
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision);
+}
+
+#[test]
 fn canonical_snapshot_isolated_from_later_edits_and_format_projections() {
     let (_scratch, mut project, _fonts) = adversarial_fixture();
     let source = SourceId(0);

@@ -118,6 +118,7 @@ Direct line-to-cubic conversion inserts newly identified canonical controls and 
 Direct topology operations create pen, rectangle and ellipse contours with stable identities before any UFO projection is refreshed.
 Direct segment subdivision supports stored-endpoint lines, quadratics and cubics, preserving existing control identities and metadata while assigning fresh identities to inserted topology and rejecting nonfinite computed geometry before mutation.
 Quadratic subdivision represents stored and implied endpoints explicitly; it validates that implied pairs still belong to a quadratic chain and materializes a midpoint before moving either defining control.
+Direct point deletion rebuilds only affected canonical contours from surviving objects, retaining their identities and source metadata while removing dependent incoming controls.
 The committed `DocumentChange` identifies direct and component-dependent layers and whether geometry, metrics, metadata or compilation became stale.
 Source-wide feature text has canonical ownership in `VariableData` and changes through `edit_document_source_metadata`; UFO templates no longer retain a second feature-text value.
 `document_snapshot` clones Babelfont glyph geometry, exact extensions, typed source metadata and stable source order without cloning UFO templates or Master projections.
