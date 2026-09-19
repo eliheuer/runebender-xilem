@@ -1,6 +1,6 @@
 # Babelfont canonical metadata lane
 
-Status: **IN PROGRESS — typed M07 values and algorithms are ready; canonical storage, history and application integration remain**.
+Status: **IN PROGRESS — font-level storage is integrated; glyph-level storage, history and application integration remain**.
 M07 must not be marked complete until the M05 history and M06 application integrations pass the checklist acceptance criteria.
 
 ## Checkout
@@ -18,6 +18,8 @@ Evidence commit: `b814d6c` (`Add canonical font metadata values`).
 Follow-up evidence commit: `709c6f2` (`Preserve canonical UFO glyph metadata`).
 Group-operation commits: `4aad3aa` (`Make canonical group renames atomic`) and `3541f35` (`Reject ambiguous canonical group edits`).
 Project integration regression: `d40ca12` (`Test canonical source metadata transactions`).
+Glyph ownership split: `94ccd8a` (`Separate layer and source glyph metadata`).
+Metrics formula move: `480ffe2` (`Move metrics formulas into canonical metadata`).
 
 `CanonicalFontMetadata` now retains every UFO group and exact source-local `f64` kerning value without a Norad or Babelfont live model.
 Kerning participants distinguish glyphs from side-specific groups, and pair construction rejects a group on the wrong side.
@@ -26,7 +28,9 @@ Pair and membership edits reject non-finite or invalid input before mutation.
 Group removal, glyph-reference removal and glyph rename update all related group and pair references atomically while preserving unrelated groups.
 The UFO boundary helpers decode and encode these values in one step, with no quantization.
 
-`CanonicalGlyphMetadata` now retains ordered unique Unicode values, an exact optional note, the export flag and an optional OpenType category.
+`CanonicalLayerGlyphMetadata` now retains ordered unique Unicode values and an exact optional note at the layer that owns the GLIF fields.
+`CanonicalSourceGlyphMetadata` retains the export flag and optional OpenType category for one glyph identity in one source.
+`CanonicalGlyphMetadata` is only the UFO boundary transfer value that decodes and encodes both parts together; it is not intended as another live owner.
 Known categories are typed, while an unknown source category remains an exact `Other(String)` for explicit downstream handling.
 Unicode input accepts multiple hexadecimal values with `U+` or `0x` spelling and rejects an invalid scalar without changing the target glyph.
 The existing Norad compatibility operation delegates Unicode parsing to that canonical parser.
@@ -36,6 +40,9 @@ The [official UFO group contract](https://unifiedfontobject.org/versions/ufo3/gr
 The [official lib key contract](https://unifiedfontobject.org/versions/ufo3/lib.plist/) defines `unassigned` alongside base, mark, ligature and component, and the canonical category type now represents it explicitly.
 Group rename retains membership and rewrites every pair reference in one staged operation.
 Whole-group edits reject adding a glyph to two kerning groups on one side while arbitrary groups remain free to overlap and retain duplicates.
+Metrics formulas now live with canonical glyph metadata rather than in the UFO-format module.
+The parser preserves hyphenated glyph names, recognizes rightmost finite arithmetic, rejects non-finite constants, exposes the referenced glyph and renames only matching references atomically.
+Evaluation rejects non-finite referenced inputs or results, while constants remain independent of a reference value.
 
 The lead's `a1f3d35` (`Own source groups and kerning canonically`) is adopted through merge commit `578c76e`.
 `SourceMetadata` now owns the value by stable `SourceId`; the preserving UFO template no longer owns groups or kerning.
@@ -58,7 +65,7 @@ git diff --check
 ```
 
 The canonical integration suite now passes ten tests.
-The focused font-metadata UFO boundary test passed one test, glyph metadata passed six tests, and the existing glyph-operation regression group passed eighteen tests.
+The focused font-metadata UFO boundary test passed one test, glyph metadata passed seven tests, the metrics-key parser passed one test, and the existing glyph-operation regression group passed eighteen tests.
 Warning-denied test Clippy, public API documentation, formatting and whitespace checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 An initial unit-test invocation combined incompatible repeated `--lib` flags and did not run.
@@ -76,6 +83,7 @@ Its compiler snapshot must quantize a copy, reject unsupported categories explic
 
 ## Next concrete step
 
-The lead has integrated `b814d6c`, `709c6f2` and `4aad3aa`; hand it `3541f35` plus the dedicated Project regression `d40ca12`.
+The lead has integrated `b814d6c`, `709c6f2` and `4aad3aa`; hand it `3541f35`, the dedicated Project regression `d40ca12`, the glyph ownership split `94ccd8a` and the metrics formula move `480ffe2`.
+The central glyph hook should store the layer value in `LayerPreservation` and the source value by `SourceId` in `VariableGlyph`, removing recognized glyph entries from the preserving templates while retaining unmatched names and opaque lib data.
 The history lane has the `a1f3d35` API and is preparing guarded source-metadata history without UFO serialization.
 After that M05 API lands, add canonical metadata snapshot replay tests covering no-op suppression, redo invalidation, source reorder and failed replay atomicity.
