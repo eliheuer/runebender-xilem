@@ -389,3 +389,34 @@ The unchanged `block v0.1.6` future-incompatibility notice remains a dependency 
 
 M02's explicit change-information and compatibility-isolation checklist items are complete.
 The remaining M02 work is atomic structural mutation and a canonical whole-document snapshot suitable for history and experimental versions without cloning Master fonts or UFO templates.
+
+### Canonical document snapshot substep
+
+Evidence commit: `Add canonical document snapshots` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Add canonical document snapshots$' -1`.
+Affected paths: `src/document/variable.rs`, `src/document/project.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, the checklist and this log.
+
+`Project::document_snapshot` now clones the complete currently canonical editing state: Babelfont glyph geometry, typed exact-value and object-metadata extensions, typed source feature metadata and stable source identity order.
+The snapshot deliberately excludes UFO templates, Master projections, compiled caches and edit histories.
+It exposes the same direct layer and feature readers as the live document, so future history and experimental versions can compare or retain canonical content without a source-format round trip.
+
+The integration test verifies source and glyph order, exact layer reads, equality after cloning and isolation from later canonical geometry and source-metadata commits.
+Existing SourceFrame and experiment callers are intentionally unchanged here; M05 and M10 own replacing their Norad snapshots with this canonical substrate.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_snapshot_isolated_from_later_edits_and_format_projections -- --exact --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused snapshot test passed.
+Warning-denied Clippy passed for library and integration-test targets, and public API documentation built successfully.
+Formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+M02's canonical snapshot checklist item is complete.
+The remaining M02 item is atomic structural mutation, beginning with direct canonical auxiliary-layer copy and removal while preserving the existing guarded structural undo contract.

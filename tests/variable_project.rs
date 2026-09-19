@@ -605,6 +605,64 @@ fn canonical_layer_transactions_commit_atomically_and_skip_noops() {
 }
 
 #[test]
+fn canonical_snapshot_isolated_from_later_edits_and_format_projections() {
+    let (_scratch, mut project, _fonts) = adversarial_fixture();
+    let source = SourceId(0);
+    let layer = project.document_source(source).unwrap().default_layer();
+    let snapshot = project.document_snapshot();
+    assert_eq!(
+        snapshot.source_ids(),
+        &[SourceId(0), SourceId(1), SourceId(2), SourceId(3)],
+        "snapshot source order changed"
+    );
+    assert_eq!(
+        snapshot.glyph_names().collect::<Vec<_>>(),
+        vec!["A", "B", "base"],
+        "snapshot glyph order changed"
+    );
+    let old_width = snapshot.layer("A", &layer).unwrap().width();
+    let old_features = snapshot.feature_text(source).unwrap().to_owned();
+    assert_eq!(
+        snapshot.clone(),
+        snapshot,
+        "cloning changed canonical snapshot contents"
+    );
+
+    project
+        .edit_document_layer("A", &layer, |draft| {
+            draft.set_width(old_width + 25.0)?;
+            Ok(())
+        })
+        .unwrap();
+    project
+        .edit_document_source_metadata(source, |draft| {
+            draft.set_feature_text("feature liga { sub A B by base; } liga;".into());
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        snapshot.layer("A", &layer).unwrap().width(),
+        old_width,
+        "later geometry edit changed the snapshot"
+    );
+    assert_eq!(
+        snapshot.feature_text(source),
+        Some(old_features.as_str()),
+        "later source metadata edit changed the snapshot"
+    );
+    assert_eq!(
+        project.document_layer("A", &layer).unwrap().width(),
+        old_width + 25.0,
+        "live document did not retain its later geometry edit"
+    );
+    assert_ne!(
+        project.document_feature_text(source),
+        Some(old_features.as_str()),
+        "live document did not retain its later metadata edit"
+    );
+}
+
+#[test]
 fn source_authoring_keeps_identity_and_round_trips_the_designspace() {
     let (scratch, mut project) = fixture();
     let original = project.source_snapshot(SourceId(1)).unwrap();

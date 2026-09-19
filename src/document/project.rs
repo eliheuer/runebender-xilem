@@ -17,7 +17,7 @@ use kurbo::BezPath;
 
 pub use super::source::{GlyphEntry, GlyphPoint, Master, extract_anchors, extract_points};
 use super::variable::{
-    GlyphLayerAddress, GlyphSource, GlyphView, LayerId, SourceEdit, SourceId,
+    DocumentSnapshot, GlyphLayerAddress, GlyphSource, GlyphView, LayerId, SourceEdit, SourceId,
     SourceMetadataEditDraft, SourcesEdit, VariableData, VariableGlyph,
 };
 use crate::document::var_model::{Location, VariationModel};
@@ -1243,6 +1243,11 @@ impl Project {
     /// Current canonical document revision used by derived compiler data.
     pub fn document_revision(&self) -> u64 {
         self.variable.revision
+    }
+
+    /// Clone the canonical editing state without UFO templates or Master projections.
+    pub fn document_snapshot(&self) -> DocumentSnapshot {
+        self.variable.snapshot()
     }
 
     /// Apply an owned canonical layer draft atomically.

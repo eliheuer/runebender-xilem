@@ -80,9 +80,48 @@ pub struct GlyphSource {
 }
 
 /// One glyph across all sources, including sparse and auxiliary layers.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct VariableGlyph {
     layers: BTreeMap<LayerId, super::babelfont::LayerPreservation>,
+}
+
+/// Cloneable canonical editing state without UFO format templates or Master projections.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DocumentSnapshot {
+    glyph_geometry: babelfont::GlyphList,
+    glyphs: BTreeMap<String, VariableGlyph>,
+    source_metadata: BTreeMap<SourceId, SourceMetadata>,
+    source_ids: Vec<SourceId>,
+}
+
+impl DocumentSnapshot {
+    /// Stable source identities in current display order.
+    pub fn source_ids(&self) -> &[SourceId] {
+        &self.source_ids
+    }
+
+    /// Every glyph name in canonical document order.
+    pub fn glyph_names(&self) -> impl Iterator<Item = &str> {
+        self.glyph_geometry
+            .0
+            .iter()
+            .map(|glyph| glyph.name.as_str())
+    }
+
+    /// Read one snapshotted canonical layer without constructing UFO values.
+    pub fn layer(&self, name: &str, id: &LayerId) -> Option<super::LayerView<'_>> {
+        let preserved = self.glyphs.get(name)?.layers.get(id)?;
+        let layer = self
+            .glyph_geometry
+            .get(name)?
+            .get_layer(&super::babelfont::layer_key(id))?;
+        Some(super::LayerView::new(layer, preserved))
+    }
+
+    /// Read snapshotted OpenType feature text for one source.
+    pub fn feature_text(&self, source: SourceId) -> Option<&str> {
+        Some(&self.source_metadata.get(&source)?.feature_text)
+    }
 }
 
 impl VariableGlyph {
@@ -153,6 +192,15 @@ impl Clone for VariableData {
 }
 
 impl VariableData {
+    pub(super) fn snapshot(&self) -> DocumentSnapshot {
+        DocumentSnapshot {
+            glyph_geometry: self.font.glyphs.clone(),
+            glyphs: self.glyphs.clone(),
+            source_metadata: self.source_metadata.clone(),
+            source_ids: self.source_ids.clone(),
+        }
+    }
+
     pub(super) fn glyph_view(&self, name: &str) -> Option<GlyphView<'_>> {
         Some(GlyphView {
             name: self.glyphs.get_key_value(name)?.0,
