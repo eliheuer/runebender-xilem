@@ -347,7 +347,7 @@ Depends on: M00–M12.
 Start in: `document/variable.rs`, `source.rs`, `project.rs`, `application/font_model.rs`, public module exports and the runtime inventory.
 
 - [ ] Remove `SourceEdit`, `SourceFontEdit`, `SourcesEdit`, `active_font_mut`, `edit_source(s)` compatibility mutation paths and the full Norad-backed Master editing model.
-- [ ] Remove full Norad glyph mirrors/templates used as editable state, reconciliation scans and obsolete helper/constructor overloads.
+- [ ] Remove full Norad glyph mirrors/templates used as editable state, reconciliation scans and obsolete helper/constructor overloads, including the transitional `CanonicalLayerTransaction` detached-glyph bridge after every residual algorithm has a direct canonical operation.
 - [ ] Keep paint caches derived from document revisions and verify a single-glyph edit does not clone or compare every source font.
 - [ ] Add a focused architecture check with a reviewed per-module boundary allowlist; it must catch prohibited Norad imports, aliases, fields, mutable accessors and hidden round-trip edit wrappers.
 - [ ] Update AGENTS, ARCHITECTURE, module headers, the decision record, limitations and changelog to describe the resulting ownership accurately.

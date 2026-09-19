@@ -2087,6 +2087,7 @@ The remaining legacy outline algorithms can receive a detached, short-lived UFO 
 That bridge is transitional codec access rather than persistent editor state.
 It retains matched contour, point, component and anchor identities, reports identical results as unchanged, and validates numeric geometry plus typed smart-component metadata before changing the draft.
 This unblocks removal of Session's persistent UFO glyph and mixed Master history without rewriting every remaining outline algorithm in the same change.
+It is not an accepted M13 boundary: every production caller must be inventoried and replaced with a direct canonical operation, then both public bridge methods and their reconciliation wrapper must be deleted before final acceptance.
 
 Executed integration evidence:
 
