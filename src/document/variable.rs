@@ -11,7 +11,7 @@
 //! and precision outside Babelfont's schema; saving materializes its geometry
 //! through the preserving adapter rather than its lossy UFO converter.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::ops::{Deref, DerefMut};
 
 use super::project::Master;
@@ -134,6 +134,7 @@ pub struct GlyphSource {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct VariableGlyph {
     layers: BTreeMap<LayerId, super::babelfont::LayerPreservation>,
+    source_metadata: BTreeMap<SourceId, super::model::glyph_metadata::CanonicalSourceGlyphMetadata>,
 }
 
 /// Cloneable canonical editing state without UFO format templates or Master projections.
@@ -434,6 +435,14 @@ impl VariableData {
         Some(&self.source_metadata.get(&source)?.font_metadata)
     }
 
+    pub(super) fn source_glyph_metadata(
+        &self,
+        source: SourceId,
+        name: &str,
+    ) -> Option<&super::model::glyph_metadata::CanonicalSourceGlyphMetadata> {
+        self.glyphs.get(name)?.source_metadata.get(&source)
+    }
+
     pub(super) fn source_metadata_edit_draft(
         &self,
         source: SourceId,
@@ -596,6 +605,9 @@ impl VariableData {
             glyph
                 .layers
                 .retain(|id, _| self.source_ids.contains(&id.source));
+            glyph
+                .source_metadata
+                .retain(|id, _| self.source_ids.contains(id));
         }
         for (index, source) in sources.iter().enumerate() {
             self.update_source(self.source_ids[index], &source.font);
@@ -605,6 +617,8 @@ impl VariableData {
 
     fn update_source(&mut self, source: SourceId, font: &norad::Font) -> bool {
         let mut changed = false;
+        let default_layer_name = font.default_layer().name().to_string();
+        let mut source_glyphs = HashSet::new();
         let metadata = SourceMetadata {
             feature_text: font.features.clone(),
             font_metadata: super::font_ops::canonical_metadata_from_ufo(font)
@@ -632,6 +646,17 @@ impl VariableData {
             };
             for payload in layer.iter() {
                 let name = payload.name().as_str();
+                if layer.name().as_str() == default_layer_name {
+                    source_glyphs.insert(name.to_owned());
+                    let metadata =
+                        super::model::glyph_metadata::canonical_glyph_metadata_from_ufo(font, name)
+                            .expect("UFO source glyph metadata must satisfy the canonical contract")
+                            .source()
+                            .clone();
+                    let glyph = self.glyphs.entry(name.to_owned()).or_default();
+                    changed |= glyph.source_metadata.get(&source) != Some(&metadata);
+                    glyph.source_metadata.insert(source, metadata);
+                }
                 let key = super::babelfont::layer_key(&id);
                 let unchanged = self
                     .glyphs
@@ -697,6 +722,11 @@ impl VariableData {
             });
             !glyph.layers.is_empty()
         });
+        for (name, glyph) in &mut self.glyphs {
+            if !source_glyphs.contains(name) {
+                changed |= glyph.source_metadata.remove(&source).is_some();
+            }
+        }
         // A template contains no glyphs or canonically owned source metadata.
         // Preserve layer ordering, paths, color, libs, images, data and all font-info fields.
         let previous = self.templates.get(&source);
@@ -757,6 +787,24 @@ impl VariableData {
                         ));
                 }
             }
+        }
+        for (name, glyph) in &self.glyphs {
+            let Some(metadata) = glyph.source_metadata.get(&source) else {
+                continue;
+            };
+            let Some(payload) = font.get_glyph(name) else {
+                continue;
+            };
+            let boundary = super::model::glyph_metadata::CanonicalGlyphMetadata::new(
+                payload.codepoints.iter(),
+                payload.note.clone(),
+                metadata.exported(),
+                metadata.category().cloned(),
+            );
+            super::model::glyph_metadata::write_canonical_glyph_metadata_to_ufo(
+                &mut font, name, &boundary,
+            )
+            .expect("canonical glyph metadata must remain writable as UFO");
         }
         Some(font)
     }

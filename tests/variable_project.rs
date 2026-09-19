@@ -12,6 +12,7 @@ use runebender::document::LayerPointType;
 use runebender::document::canonical_metadata::{KerningParticipant, KerningSide};
 use runebender::document::font_memory::designspace_from_str;
 use runebender::document::history::{HistoryDirection, HistoryReplayError};
+use runebender::document::model::glyph_metadata::OpenTypeGlyphCategory;
 use runebender::document::project::{
     DocumentEditOutcome, DocumentHistoryError, DocumentHistoryReplayOutcome,
     DocumentSourceMetadataHistoryError, Master, Project,
@@ -5484,6 +5485,34 @@ fn canonical_source_metadata_edits_are_atomic_and_round_trip_exactly() {
         reloaded.source_snapshot(source).unwrap().kerning,
         projected.kerning
     );
+}
+
+#[test]
+fn source_glyph_export_and_category_have_canonical_project_queries() {
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(Glyph::new("A"));
+    font.lib.insert(
+        "public.skipExportGlyphs".into(),
+        plist::Value::Array(vec![plist::Value::String("A".into())]),
+    );
+    font.lib.insert(
+        "public.openTypeCategories".into(),
+        plist::Value::Dictionary(plist::Dictionary::from_iter([(
+            String::from("A"),
+            plist::Value::String("mark".into()),
+        )])),
+    );
+    let project = Project::from_source(Master::from_font(
+        font.clone(),
+        PathBuf::from("SourceGlyphMetadata.ufo"),
+    ));
+
+    let metadata = project
+        .document_source_glyph_metadata(SourceId(0), "A")
+        .unwrap();
+    assert!(!metadata.exported());
+    assert_eq!(metadata.category(), Some(&OpenTypeGlyphCategory::Mark));
+    assert_eq!(project.source_snapshot(SourceId(0)).unwrap().lib, font.lib);
 }
 
 #[test]

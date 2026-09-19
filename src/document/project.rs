@@ -1360,6 +1360,15 @@ impl Project {
         self.variable.font_metadata(source)
     }
 
+    /// Read one glyph's canonical export and OpenType category metadata in a source.
+    pub fn document_source_glyph_metadata(
+        &self,
+        source: SourceId,
+        name: &str,
+    ) -> Option<&super::model::glyph_metadata::CanonicalSourceGlyphMetadata> {
+        self.variable.source_glyph_metadata(source, name)
+    }
+
     /// Current canonical document revision used by derived compiler data.
     pub fn document_revision(&self) -> u64 {
         self.variable.revision
