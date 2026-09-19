@@ -127,9 +127,11 @@ The automation must not claim completion merely because it reached a time or usa
 
 The user authorized parallel scheduled lanes on 2026-09-19 without changing any completion or preservation requirement.
 This integration lane owns M04, `project.rs`, `variable.rs`, `babelfont.rs`, `source.rs`, `sources.rs`, module wiring, shared architecture/checklist/progress documents and cross-lane integration tests.
-The M05 history lane, task `01a0ba27-44fc-7243-a672-aacc3e5b05de`, owns `history.rs`, optional new history modules, `tests/canonical_history.rs` and `docs/babelfont-history-progress.md`.
+The M05 history lane, task `01a0ba27-44fc-7243-a672-aacc3e5b05de`, owns `history.rs`, `sources.rs`, optional new history modules, `tests/canonical_history.rs` and `docs/babelfont-history-progress.md`.
 The M07 metadata lane, task `01a0ba27-8ba1-71c0-bc43-69eae82b773a`, owns its new typed metadata module, metadata algorithms, dedicated tests and its lane progress document.
 The M08/M09 pipeline lane, task `01a0ba2a-5670-7451-b05a-bd71293b2229`, owns `interpolation.rs`, `compile.rs`, `compile_metadata.rs`, dedicated pipeline tests and its lane progress document.
+The M06 application lane owns `src/application/`, editor sessions and commands, `FontModel`, workspace and view/platform synchronization after its coordinating task supplies the task identity.
+This integration lane reserves `project.rs`, `variable.rs`, `babelfont.rs`, `source.rs`, M04 special outline tools and extensions, module wiring, shared tests and central documentation; it alone integrates returned commits.
 Worker lanes request narrow shared-model APIs from this lane and return exact reviewed commits for integration.
 No lane edits another lane's owned files, merges into main, pushes or weakens the acceptance criteria.
 Shared Clippy, documentation and broader suites run at coherent integration checkpoints after focused lane checks.

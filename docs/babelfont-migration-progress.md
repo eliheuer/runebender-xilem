@@ -1873,3 +1873,13 @@ git diff --check
 The regression passed changed and unchanged replay after source reorder, stale rejection and both expected-live and replacement source-set mismatch cases.
 All failed cases retained the complete canonical document and exact revision.
 This supplies the atomic Project boundary required by `TransactionHistory<CanonicalSourceMetadataSnapshot>`; document-owned placement and application caller migration remain M05/M06 work.
+
+### Parallel ownership update after history integration
+
+Coordination checkpoint: `0b06ad2` plus the canonical HOI interpolation integration.
+
+The M05 history lane now owns `src/document/sources.rs` in addition to `history.rs` and its focused tests so canonical source/layer structural capture and replay have one writer.
+The new M06 application lane owns `src/application/`, editor sessions and commands, `FontModel`, workspace and view/platform synchronization after its task starts.
+This integration lane retains `project.rs`, `variable.rs`, `babelfont.rs`, `source.rs`, M04 special outline tools and extensions, shared module wiring, integration tests and central documentation.
+It will provide narrow shared hooks, place canonical histories in Project-owned state and integrate reviewed lane commits without duplicating history in frontends.
+API foundations do not complete M05 or M06; structural replay, Project-owned history routing and migrated application callers still require executed acceptance evidence.
