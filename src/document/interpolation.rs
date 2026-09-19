@@ -7,7 +7,9 @@
 //! interpolate as f64 values. Non-varying metadata comes from the default layer,
 //! never the currently selected editor source.
 
-use super::babelfont::{AnchorId, ComponentId, ContourId, LayerPointType, LayerView, PointId};
+use super::babelfont::{
+    AnchorId, ComponentId, ContourId, LayerPointType, LayerShapeView, LayerView, PointId,
+};
 use super::var_model::{Location, VariationModel};
 
 /// One interpolated canonical layer, retaining the default layer's object identities.
@@ -18,9 +20,31 @@ pub(super) struct InterpolatedLayer {
     pub(super) height: f64,
     pub(super) codepoints: Vec<char>,
     pub(super) note: Option<String>,
-    pub(super) contours: Vec<InterpolatedContour>,
-    pub(super) components: Vec<InterpolatedComponent>,
+    pub(super) shapes: Vec<InterpolatedShape>,
     pub(super) anchors: Vec<InterpolatedAnchor>,
+}
+
+impl InterpolatedLayer {
+    fn contours(&self) -> impl Iterator<Item = &InterpolatedContour> {
+        self.shapes.iter().filter_map(|shape| match shape {
+            InterpolatedShape::Contour(contour) => Some(contour),
+            InterpolatedShape::Component(_) => None,
+        })
+    }
+
+    fn components(&self) -> impl Iterator<Item = &InterpolatedComponent> {
+        self.shapes.iter().filter_map(|shape| match shape {
+            InterpolatedShape::Contour(_) => None,
+            InterpolatedShape::Component(component) => Some(component),
+        })
+    }
+}
+
+/// One contour or component in canonical paint order.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) enum InterpolatedShape {
+    Contour(InterpolatedContour),
+    Component(InterpolatedComponent),
 }
 
 /// One contour in an interpolated canonical layer.
@@ -58,19 +82,23 @@ pub(super) struct InterpolatedAnchor {
 }
 
 fn compatible_layers(base: LayerView<'_>, other: LayerView<'_>) -> bool {
-    let base_contours: Vec<_> = base.contours().collect();
-    let other_contours: Vec<_> = other.contours().collect();
-    base_contours.len() == other_contours.len()
-        && base_contours.iter().zip(&other_contours).all(|(a, b)| {
-            let a: Vec<_> = a.points().map(|point| point.point_type()).collect();
-            let b: Vec<_> = b.points().map(|point| point.point_type()).collect();
-            a == b
-        })
-        && base.components().count() == other.components().count()
-        && base
-            .components()
-            .zip(other.components())
-            .all(|(a, b)| a.reference() == b.reference())
+    let base_shapes: Vec<_> = base.shapes().collect();
+    let other_shapes: Vec<_> = other.shapes().collect();
+    base_shapes.len() == other_shapes.len()
+        && base_shapes
+            .iter()
+            .zip(&other_shapes)
+            .all(|(a, b)| match (*a, *b) {
+                (LayerShapeView::Contour(a), LayerShapeView::Contour(b)) => {
+                    let a_types: Vec<_> = a.points().map(|point| point.point_type()).collect();
+                    let b_types: Vec<_> = b.points().map(|point| point.point_type()).collect();
+                    a.is_closed() == b.is_closed() && a_types == b_types
+                }
+                (LayerShapeView::Component(a), LayerShapeView::Component(b)) => {
+                    a.reference() == b.reference()
+                }
+                _ => false,
+            })
         && base.anchors().count() == other.anchors().count()
         && base
             .anchors()
@@ -79,9 +107,16 @@ fn compatible_layers(base: LayerView<'_>, other: LayerView<'_>) -> bool {
 
 fn layer_values(layer: LayerView<'_>, base: LayerView<'_>) -> Vec<f64> {
     let mut values = vec![layer.width(), layer.height()];
-    for contour in layer.contours() {
-        for point in contour.points() {
-            values.extend([point.position().x, point.position().y]);
+    for shape in layer.shapes() {
+        match shape {
+            LayerShapeView::Contour(contour) => {
+                for point in contour.points() {
+                    values.extend([point.position().x, point.position().y]);
+                }
+            }
+            LayerShapeView::Component(component) => {
+                values.extend(component.transform().as_coeffs());
+            }
         }
     }
     for anchor in base.anchors() {
@@ -90,9 +125,6 @@ fn layer_values(layer: LayerView<'_>, base: LayerView<'_>) -> Vec<f64> {
             .find(|candidate| candidate.name() == anchor.name())
             .expect("validated anchors");
         values.extend([source.position().x, source.position().y]);
-    }
-    for component in layer.components() {
-        values.extend(component.transform().as_coeffs());
     }
     values
 }
@@ -159,21 +191,30 @@ pub(super) fn interpolate_layers(
     let mut next = || values.next().expect("validated interpolation dimensions");
     let width = next();
     let height = next();
-    let contours = base
-        .contours()
-        .map(|contour| InterpolatedContour {
-            id: contour.id(),
-            closed: contour.is_closed(),
-            points: contour
-                .points()
-                .map(|point| InterpolatedPoint {
-                    id: point.id(),
-                    position: kurbo::Point::new(next(), next()),
-                    point_type: point.point_type(),
-                    smooth: point.is_smooth(),
-                    name: point.name().map(str::to_owned),
+    let shapes = base
+        .shapes()
+        .map(|shape| match shape {
+            LayerShapeView::Contour(contour) => InterpolatedShape::Contour(InterpolatedContour {
+                id: contour.id(),
+                closed: contour.is_closed(),
+                points: contour
+                    .points()
+                    .map(|point| InterpolatedPoint {
+                        id: point.id(),
+                        position: kurbo::Point::new(next(), next()),
+                        point_type: point.point_type(),
+                        smooth: point.is_smooth(),
+                        name: point.name().map(str::to_owned),
+                    })
+                    .collect(),
+            }),
+            LayerShapeView::Component(component) => {
+                InterpolatedShape::Component(InterpolatedComponent {
+                    id: component.id(),
+                    reference: component.reference().to_owned(),
+                    transform: kurbo::Affine::new([next(), next(), next(), next(), next(), next()]),
                 })
-                .collect(),
+            }
         })
         .collect();
     let anchors = base
@@ -182,14 +223,6 @@ pub(super) fn interpolate_layers(
             id: anchor.id(),
             name: anchor.name().to_owned(),
             position: kurbo::Point::new(next(), next()),
-        })
-        .collect();
-    let components = base
-        .components()
-        .map(|component| InterpolatedComponent {
-            id: component.id(),
-            reference: component.reference().to_owned(),
-            transform: kurbo::Affine::new([next(), next(), next(), next(), next(), next()]),
         })
         .collect();
     if values.next().is_some() {
@@ -201,8 +234,7 @@ pub(super) fn interpolate_layers(
         height,
         codepoints: base.codepoints().collect(),
         note: base.note().map(str::to_owned),
-        contours,
-        components,
+        shapes,
         anchors,
     })
 }
@@ -257,7 +289,7 @@ pub(super) fn interpolate(
     for ((contour, output), source) in glyph
         .contours
         .iter_mut()
-        .zip(&output.contours)
+        .zip(output.contours())
         .zip(layers[default].contours())
     {
         if output.id != source.id() || output.closed != source.is_closed() {
@@ -295,7 +327,7 @@ pub(super) fn interpolate(
     for ((component, output), source) in glyph
         .components
         .iter_mut()
-        .zip(&output.components)
+        .zip(output.components())
         .zip(layers[default].components())
     {
         if output.id != source.id() || output.reference != source.reference() {
@@ -418,9 +450,19 @@ mod tests {
         assert_eq!(result.height, 1_000.987_654_321);
         assert_eq!(result.codepoints, ['I']);
         assert_eq!(result.note.as_deref(), Some("source 0"));
-        assert_eq!(result.contours[0].id, base.contours().next().unwrap().id());
+        assert!(matches!(
+            result.shapes.first(),
+            Some(InterpolatedShape::Contour(_))
+        ));
+        assert!(matches!(
+            result.shapes.get(1),
+            Some(InterpolatedShape::Component(_))
+        ));
+        let contours: Vec<_> = result.contours().collect();
+        let components: Vec<_> = result.components().collect();
+        assert_eq!(contours[0].id, base.contours().next().unwrap().id());
         assert_eq!(
-            result.contours[0].points[0].id,
+            contours[0].points[0].id,
             base.contours()
                 .next()
                 .unwrap()
@@ -429,26 +471,20 @@ mod tests {
                 .unwrap()
                 .id()
         );
-        assert_eq!(
-            result.contours[0].points[0].point_type,
-            LayerPointType::Move
-        );
-        assert!(result.contours[0].points[0].smooth);
-        assert_eq!(result.contours[0].points[0].name.as_deref(), Some("origin"));
-        assert_eq!(result.contours[0].points[0].position, (60.25, 120.5).into());
+        assert_eq!(contours[0].points[0].point_type, LayerPointType::Move);
+        assert!(contours[0].points[0].smooth);
+        assert_eq!(contours[0].points[0].name.as_deref(), Some("origin"));
+        assert_eq!(contours[0].points[0].position, (60.25, 120.5).into());
         assert_eq!(result.anchors[0].name, "top");
         assert_eq!(result.anchors[0].position, (250.5, 800.25).into());
         assert_eq!(result.anchors[1].name, "bottom");
         assert_eq!(result.anchors[1].position, (200.25, 79.5).into());
         assert_eq!(
-            result.components[0].transform.as_coeffs(),
+            components[0].transform.as_coeffs(),
             [1.05, 0.225, -0.125, 1.041_666_666_666_666_5, 62.5, 74.75,]
         );
-        assert_eq!(
-            result.components[0].id,
-            base.components().next().unwrap().id()
-        );
-        assert_eq!(result.components[0].reference, "base");
+        assert_eq!(components[0].id, base.components().next().unwrap().id());
+        assert_eq!(components[0].reference, "base");
         assert_eq!(result.anchors[0].id, base.anchors().next().unwrap().id());
     }
 
