@@ -33,8 +33,10 @@ use std::path::{Path, PathBuf};
 
 use norad::{Font, Glyph};
 
+use crate::document::LayerView;
+use crate::document::composites::effective_document_anchors;
 use crate::document::project::Project;
-use crate::document::variable::{LayerId, SourceId};
+use crate::document::variable::SourceId;
 use crate::outline::glyph_paths::round_units;
 
 /// The line `features.fea` gets so a compiled font positions marks
@@ -107,56 +109,59 @@ fn effective_anchors(font: &Font, glyph: &Glyph, depth: usize) -> Vec<(String, f
     out
 }
 
-fn effective_project_anchors(
-    project: &Project,
-    layer_id: &LayerId,
-    glyph_name: &str,
-    depth: usize,
-) -> Vec<(String, f64, f64)> {
-    let Some(layer) = project.document_layer(glyph_name, layer_id) else {
-        return Vec::new();
-    };
-    let own: Vec<_> = layer
-        .anchors()
-        .map(|anchor| {
-            let position = anchor.position();
-            (anchor.name().to_owned(), position.x, position.y)
-        })
-        .collect();
-    if !own.is_empty() || depth > 8 {
-        return own;
-    }
-    let mut out = Vec::new();
-    for component in layer.components() {
-        for (name, x, y) in
-            effective_project_anchors(project, layer_id, component.reference(), depth + 1)
-        {
-            if name.starts_with('_') {
-                continue;
-            }
-            let position = component.transform() * kurbo::Point::new(x, y);
-            out.retain(|(candidate, _, _)| *candidate != name);
-            out.push((name, position.x, position.y));
-        }
-    }
-    out
-}
-
 /// The feature text for a font, deterministic: glyphs and classes in
 /// name order, coordinates rounded to units.
 pub fn generate(font: &Font) -> Generated {
-    let mut glyphs: Vec<&Glyph> = font.default_layer().iter().collect();
-    glyphs.sort_by(|a, b| a.name().cmp(b.name()));
-    generate_from_anchors(
-        glyphs
-            .into_iter()
-            .map(|glyph| (glyph.name().to_string(), effective_anchors(font, glyph, 0))),
-    )
+    let glyphs = font
+        .default_layer()
+        .iter()
+        .map(|glyph| FeatureGlyph {
+            name: glyph.name().to_string(),
+            anchors: effective_anchors(font, glyph, 0),
+        })
+        .collect();
+    generate_from_anchors(glyphs)
 }
 
-fn generate_from_anchors(
-    glyphs: impl IntoIterator<Item = (String, Vec<(String, f64, f64)>)>,
+/// Generate mark-positioning features directly from canonical document layers.
+///
+/// `resolve` selects component bases in the same source/layer context as the input layers.
+/// Callers can pass document layers in any order; output remains name-sorted and deterministic.
+pub fn generate_document<'a>(
+    layers: impl IntoIterator<Item = LayerView<'a>>,
+    mut resolve: impl FnMut(&str) -> Option<LayerView<'a>>,
 ) -> Generated {
+    let glyphs = layers
+        .into_iter()
+        .map(|layer| FeatureGlyph {
+            name: layer.glyph_name().to_owned(),
+            anchors: effective_document_anchors(layer, &mut resolve)
+                .into_iter()
+                .map(|(name, point)| (name, point.x, point.y))
+                .collect(),
+        })
+        .collect();
+    generate_from_anchors(glyphs)
+}
+
+/// Generate mark features from one source's canonical default-layer data.
+pub fn generate_project(project: &Project, source: SourceId) -> Option<Generated> {
+    let layer = project.document_source(source)?.default_layer();
+    Some(generate_document(
+        project
+            .glyph_names()
+            .filter_map(|name| project.document_layer(name, &layer)),
+        |name| project.document_layer(name, &layer),
+    ))
+}
+
+#[derive(Debug)]
+struct FeatureGlyph {
+    name: String,
+    anchors: Vec<(String, f64, f64)>,
+}
+
+fn generate_from_anchors(mut glyphs: Vec<FeatureGlyph>) -> Generated {
     // Per anchor name: the marks that attach by it, with their
     // `_name` anchor, and the bases and marks that offer it.
     let mut attach: BTreeMap<String, BTreeMap<String, (i64, i64)>> = BTreeMap::new();
@@ -165,15 +170,19 @@ fn generate_from_anchors(
     let mut is_mark: BTreeSet<String> = BTreeSet::new();
     let round = |v: f64| round_units(v);
 
-    let mut glyphs: Vec<_> = glyphs.into_iter().collect();
-    glyphs.sort_by(|a, b| a.0.cmp(&b.0));
-    for (name, anchors) in &glyphs {
-        if anchors.iter().any(|(n, _, _)| n.starts_with('_')) {
-            is_mark.insert(name.clone());
+    glyphs.sort_by(|a, b| a.name.cmp(&b.name));
+    for glyph in &glyphs {
+        if glyph
+            .anchors
+            .iter()
+            .any(|(name, _, _)| name.starts_with('_'))
+        {
+            is_mark.insert(glyph.name.clone());
         }
     }
-    for (name, anchors) in &glyphs {
-        for (anchor, x, y) in anchors {
+    for glyph in &glyphs {
+        let name = glyph.name.clone();
+        for (anchor, x, y) in &glyph.anchors {
             let at = (round(*x), round(*y));
             if let Some(class) = anchor.strip_prefix('_') {
                 if class.is_empty() {
@@ -183,7 +192,7 @@ fn generate_from_anchors(
                     .entry(class.to_string())
                     .or_default()
                     .insert(name.clone(), at);
-            } else if is_mark.contains(name) {
+            } else if is_mark.contains(&name) {
                 offer_mark
                     .entry(anchor.clone())
                     .or_default()
@@ -287,21 +296,6 @@ fn generate_from_anchors(
     }
 }
 
-/// Generate mark features from one source's canonical default-layer data.
-pub fn generate_project(project: &Project, source: SourceId) -> Option<Generated> {
-    let layer = project.document_source(source)?.default_layer();
-    Some(generate_from_anchors(project.glyph_names().filter_map(
-        |name| {
-            project.document_layer(name, &layer).map(|_| {
-                (
-                    name.to_owned(),
-                    effective_project_anchors(project, &layer, name, 0),
-                )
-            })
-        },
-    )))
-}
-
 /// Whether feature text already defines a `mark` or `mkmk` feature,
 /// outside comments.
 pub fn defines_mark_features(fea: &str) -> bool {
@@ -333,22 +327,39 @@ pub fn with_generated(font: &Font) -> String {
     format!("{own}\n{}", generated.fea)
 }
 
-/// Feature text for shaping one canonical source, including generated mark features.
-pub fn with_generated_project(project: &Project, source: SourceId) -> Option<String> {
-    let own: String = project
-        .document_feature_text(source)?
+/// Combine a canonical feature draft with generated mark positioning.
+///
+/// The draft remains immutable, and an explicit `mark` or `mkmk` definition still wins.
+pub fn with_generated_document<'a>(
+    feature_text: &str,
+    layers: impl IntoIterator<Item = LayerView<'a>>,
+    resolve: impl FnMut(&str) -> Option<LayerView<'a>>,
+) -> String {
+    let own: String = feature_text
         .lines()
         .filter(|line| line.trim() != INCLUDE_LINE)
         .map(|line| format!("{line}\n"))
         .collect();
     if defines_mark_features(&own) {
-        return Some(own);
+        return own;
     }
-    let generated = generate_project(project, source)?;
+    let generated = generate_document(layers, resolve);
     if generated.is_empty() {
-        return Some(own);
+        return own;
     }
-    Some(format!("{own}\n{}", generated.fea))
+    format!("{own}\n{}", generated.fea)
+}
+
+/// Feature text for shaping one canonical source, including generated mark features.
+pub fn with_generated_project(project: &Project, source: SourceId) -> Option<String> {
+    let layer = project.document_source(source)?.default_layer();
+    Some(with_generated_document(
+        project.document_feature_text(source)?,
+        project
+            .glyph_names()
+            .filter_map(|name| project.document_layer(name, &layer)),
+        |name| project.document_layer(name, &layer),
+    ))
 }
 
 /// Writes `features.generated.fea` into the UFO and, when `include`
@@ -379,8 +390,13 @@ pub fn write(ufo: &Path, generated: &Generated, include: bool) -> Result<(PathBu
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
     use norad::{Anchor, Component, Name};
+
+    use crate::document::project::{Master, Project};
+    use crate::document::variable::SourceId;
 
     fn anchor(name: &str, x: f64, y: f64) -> Anchor {
         Anchor::new(x, y, Some(Name::new(name).unwrap()), None, None)
@@ -447,29 +463,32 @@ mod tests {
     }
 
     #[test]
-    fn canonical_project_generation_matches_the_source_boundary() {
-        let font = font();
-        let designspace = crate::document::font_memory::designspace_from_str(
-            r#"<designspace format="5.0">
-              <axes><axis tag="wght" name="Weight" minimum="400" default="400" maximum="900"/></axes>
-              <sources><source filename="Regular.ufo"><location><dimension name="Weight" xvalue="400"/></location></source></sources>
-            </designspace>"#,
-        )
-        .unwrap();
-        let project = Project::from_designspace(designspace, |path| {
-            Ok(crate::document::project::Master::from_font(
-                font.clone(),
-                path.into(),
-            ))
-        })
-        .unwrap();
-        let source = project.document_sources().next().unwrap().id();
-
-        assert_eq!(generate_project(&project, source), Some(generate(&font)));
-        assert_eq!(
-            with_generated_project(&project, source),
-            Some(with_generated(&font))
+    fn canonical_generation_matches_the_legacy_source_projection() {
+        let mut font = font();
+        font.features = "languagesystem DFLT dflt;\n".into();
+        let expected = generate(&font);
+        let project = Project::from_source(Master::from_font(
+            font,
+            PathBuf::from("CanonicalFeatures.ufo"),
+        ));
+        let source = SourceId(0);
+        let layer = project.document_source(source).unwrap().default_layer();
+        let layers = project
+            .glyph_names()
+            .filter_map(|name| project.document_layer(name, &layer));
+        let generated = generate_document(layers, |name| project.document_layer(name, &layer));
+        assert_eq!(generated, expected);
+        assert_eq!(generate_project(&project, source), Some(expected));
+        let combined = with_generated_document(
+            "languagesystem DFLT dflt;\n",
+            project
+                .glyph_names()
+                .filter_map(|name| project.document_layer(name, &layer)),
+            |name| project.document_layer(name, &layer),
         );
+        assert!(combined.starts_with("languagesystem DFLT dflt;\n\n"));
+        assert!(combined.contains("feature mark {"));
+        assert_eq!(with_generated_project(&project, source), Some(combined));
     }
 
     #[test]

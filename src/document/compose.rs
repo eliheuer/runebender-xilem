@@ -26,6 +26,7 @@ use kurbo::{Point, Vec2};
 use norad::{AffineTransform, Anchor, Component, Font, Glyph, Name};
 use serde::{Deserialize, Serialize};
 
+use crate::document::LayerView;
 use crate::document::composites::{AlignInput, realign_component_offsets};
 use crate::document::proposal::{self, ProposalSummary};
 
@@ -94,6 +95,29 @@ impl Report {
             .map(|d| d.glyph.as_str())
             .collect()
     }
+}
+
+/// One canonical proposal payload produced by a composition plan.
+///
+/// Component and anchor identities are allocated only when a guarded document transaction installs
+/// this payload; the plan itself is immutable and does not create a parallel font model.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CompositionGlyph {
+    /// Derived recipe, component placement, advance and foreground comparison.
+    pub derived: Derived,
+    /// Unicode scalar values retained from the current foreground layer.
+    pub codepoints: Vec<char>,
+    /// Outgoing anchors offered by the completed component stack.
+    pub anchors: Vec<(String, f64, f64)>,
+}
+
+/// A read-only canonical composition pass ready for a guarded proposal-layer transaction.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CompositionPlan {
+    /// Existing report schema used by GUI, CLI and node callers.
+    pub report: Report,
+    /// Payloads whose foregrounds are not already current.
+    pub replacements: Vec<CompositionGlyph>,
 }
 
 /// Combining marks that fonts usually draw as their spacing cousins.
@@ -428,9 +452,280 @@ pub fn compose(font: &mut Font, names: Option<&[String]>, write: bool) -> Report
     }
 }
 
+fn document_by_codepoint(layers: &HashMap<String, LayerView<'_>>) -> HashMap<u32, String> {
+    let mut map = HashMap::new();
+    for (name, layer) in layers {
+        for codepoint in layer.codepoints() {
+            map.entry(codepoint as u32).or_insert_with(|| name.clone());
+        }
+    }
+    map
+}
+
+fn explicit_recipe(text: Option<&str>, layers: &HashMap<String, LayerView<'_>>) -> Option<Recipe> {
+    let parts: Vec<String> = text?
+        .split(['+', ' '])
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(String::from)
+        .collect();
+    if parts.len() < 2 || parts.iter().any(|part| !layers.contains_key(part)) {
+        return None;
+    }
+    Some(Recipe {
+        base: parts[0].clone(),
+        marks: parts[1..].to_vec(),
+        source: RecipeSource::Lib,
+    })
+}
+
+fn document_recipe(
+    layers: &HashMap<String, LayerView<'_>>,
+    codepoints: &HashMap<u32, String>,
+    name: &str,
+    explicit: Option<&str>,
+) -> Option<Recipe> {
+    let layer = layers.get(name)?;
+    if let Some(codepoint) = layer.codepoints().next()
+        && let Some(recipe) = recipe_from_codepoint(codepoints, codepoint)
+        && recipe.base != name
+    {
+        return Some(recipe);
+    }
+    if let Some(recipe) = explicit_recipe(explicit, layers) {
+        return Some(recipe);
+    }
+    if let Some((stem, suffix)) = name.split_once('.')
+        && let Some(stem_layer) = layers.get(stem)
+        && let Some(codepoint) = stem_layer.codepoints().next()
+        && let Some(recipe) = recipe_from_codepoint(codepoints, codepoint)
+    {
+        let base = format!("{}.{suffix}", recipe.base);
+        if layers.contains_key(&base) {
+            return Some(Recipe {
+                base,
+                marks: recipe.marks,
+                source: RecipeSource::Name,
+            });
+        }
+    }
+    None
+}
+
+fn document_anchors(layer: LayerView<'_>) -> Vec<(String, Point)> {
+    layer
+        .anchors()
+        .map(|anchor| (anchor.name().to_owned(), anchor.position()))
+        .collect()
+}
+
+fn place_document(
+    layers: &HashMap<String, LayerView<'_>>,
+    recipe: &Recipe,
+) -> Result<Placement, String> {
+    let base = layers
+        .get(&recipe.base)
+        .ok_or_else(|| format!("no glyph named {}", recipe.base))?;
+    let mut inputs = vec![AlignInput {
+        anchors: document_anchors(*base),
+        offset: Vec2::ZERO,
+        aligned: true,
+    }];
+    for mark in &recipe.marks {
+        let layer = layers
+            .get(mark)
+            .ok_or_else(|| format!("no glyph named {mark}"))?;
+        let anchors = document_anchors(*layer);
+        if !anchors.iter().any(|(name, _)| name.starts_with('_')) {
+            return Err(format!("{mark} has no _anchor to attach by"));
+        }
+        inputs.push(AlignInput {
+            anchors,
+            offset: Vec2::ZERO,
+            aligned: true,
+        });
+    }
+    let mut offered: Vec<String> = inputs[0]
+        .anchors
+        .iter()
+        .filter(|(name, _)| !name.starts_with('_'))
+        .map(|(name, _)| name.clone())
+        .collect();
+    for (input, mark) in inputs[1..].iter().zip(&recipe.marks) {
+        let attaches = input
+            .anchors
+            .iter()
+            .filter_map(|(name, _)| name.strip_prefix('_'))
+            .any(|target| offered.iter().any(|name| name == target));
+        if !attaches {
+            let wants: Vec<_> = input
+                .anchors
+                .iter()
+                .filter_map(|(name, _)| name.strip_prefix('_'))
+                .collect();
+            return Err(format!(
+                "{mark} attaches by {} and nothing before it offers that",
+                wants.join(" or ")
+            ));
+        }
+        offered.extend(
+            input
+                .anchors
+                .iter()
+                .filter(|(name, _)| !name.starts_with('_'))
+                .map(|(name, _)| name.clone()),
+        );
+    }
+    let offsets = realign_component_offsets(&inputs, &[]);
+    let names = std::iter::once(&recipe.base).chain(&recipe.marks);
+    let mut placed = Vec::new();
+    let mut anchors = Vec::new();
+    for ((input, offset), name) in inputs.iter().zip(offsets).zip(names) {
+        placed.push((name.clone(), offset));
+        for (anchor, point) in &input.anchors {
+            if !anchor.starts_with('_') {
+                anchors.retain(|(candidate, _)| candidate != anchor);
+                anchors.push((anchor.clone(), *point + offset));
+            }
+        }
+    }
+    Ok((placed, anchors))
+}
+
+fn derive_document_with_map(
+    layers: &HashMap<String, LayerView<'_>>,
+    codepoints: &HashMap<u32, String>,
+    name: &str,
+    explicit: Option<&str>,
+) -> Result<CompositionGlyph, String> {
+    let current = layers
+        .get(name)
+        .ok_or_else(|| format!("no glyph named {name}"))?;
+    let recipe = document_recipe(layers, codepoints, name, explicit)
+        .ok_or_else(|| "no recipe: no decomposition, lib key, or positional stem".to_string())?;
+    if recipe.base == name || recipe.marks.iter().any(|mark| mark == name) {
+        return Err("the recipe names the glyph itself".into());
+    }
+    let (placed, anchors) = place_document(layers, &recipe)?;
+    let advance = layers
+        .get(&recipe.base)
+        .ok_or_else(|| format!("no glyph named {}", recipe.base))?
+        .width();
+    let components: Vec<_> = current.components().collect();
+    let same_glyph =
+        |a: &str, b: &str| a == b || a == format!("{b}comb") || b == format!("{a}comb");
+    let up_to_date = components.len() == placed.len()
+        && (current.width() - advance).abs() < 0.5
+        && components
+            .iter()
+            .zip(&placed)
+            .all(|(component, (name, offset))| {
+                let coefficients = component.transform().as_coeffs();
+                same_glyph(component.reference(), name)
+                    && (coefficients[4] - offset.x).abs() < 0.5
+                    && (coefficients[5] - offset.y).abs() < 0.5
+            });
+    let derived = Derived {
+        glyph: name.to_owned(),
+        recipe,
+        components: placed
+            .iter()
+            .map(|(name, offset)| (name.clone(), offset.x, offset.y))
+            .collect(),
+        advance,
+        up_to_date,
+    };
+    Ok(CompositionGlyph {
+        derived,
+        codepoints: current.codepoints().collect(),
+        anchors: anchors
+            .into_iter()
+            .map(|(name, point)| (name, point.x, point.y))
+            .collect(),
+    })
+}
+
+/// Plan composition directly from canonical document layers without constructing a UFO font.
+///
+/// `explicit_recipe` supplies the already decoded `com.runebender.compose` value for a glyph.
+/// The returned payloads are immutable and must be installed through a guarded Project proposal
+/// transaction; this function never mutates the document or compatibility projections.
+pub fn plan_document<'a, 'recipe>(
+    layers: impl IntoIterator<Item = LayerView<'a>>,
+    names: Option<&[String]>,
+    mut explicit_recipe: impl FnMut(&str) -> Option<&'recipe str>,
+) -> CompositionPlan {
+    let layers: HashMap<_, _> = layers
+        .into_iter()
+        .map(|layer| (layer.glyph_name().to_owned(), layer))
+        .collect();
+    let codepoints = document_by_codepoint(&layers);
+    let explicit_recipes: HashMap<_, _> = layers
+        .keys()
+        .map(|name| (name.clone(), explicit_recipe(name).map(ToOwned::to_owned)))
+        .collect();
+    let wanted = names.map_or_else(
+        || {
+            let mut names: Vec<_> = layers
+                .keys()
+                .filter(|name| {
+                    document_recipe(
+                        &layers,
+                        &codepoints,
+                        name,
+                        explicit_recipes
+                            .get(*name)
+                            .and_then(|recipe| recipe.as_deref()),
+                    )
+                    .is_some_and(|recipe| recipe.base != name.as_str())
+                })
+                .cloned()
+                .collect();
+            names.sort();
+            names
+        },
+        <[String]>::to_vec,
+    );
+    let mut derived = Vec::new();
+    let mut skipped = Vec::new();
+    let mut replacements = Vec::new();
+    for name in wanted {
+        match derive_document_with_map(
+            &layers,
+            &codepoints,
+            &name,
+            explicit_recipes
+                .get(&name)
+                .and_then(|recipe| recipe.as_deref()),
+        ) {
+            Ok(glyph) => {
+                if !glyph.derived.up_to_date {
+                    replacements.push(glyph.clone());
+                }
+                derived.push(glyph.derived);
+            }
+            Err(why) => skipped.push((name, why)),
+        }
+    }
+    CompositionPlan {
+        report: Report {
+            derived,
+            skipped,
+            proposal: None,
+        },
+        replacements,
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+
     use super::*;
+
+    use crate::document::project::{Master, Project};
+    use crate::document::variable::SourceId;
 
     fn anchor(name: &str, x: f64, y: f64) -> Anchor {
         Anchor::new(x, y, Some(Name::new(name).unwrap()), None, None)
@@ -485,6 +780,49 @@ mod tests {
             .find(|a| a.name.as_deref() == Some("top"))
             .unwrap();
         assert_eq!((top.x, top.y), (350.0, 900.0));
+    }
+
+    #[test]
+    fn canonical_plan_matches_the_legacy_derived_payload() {
+        let font = latin();
+        let (glyph, expected) = derive(&font, "Aacute").unwrap();
+        let project = Project::from_source(Master::from_font(
+            font,
+            PathBuf::from("CanonicalCompose.ufo"),
+        ));
+        let layer = project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
+        let plan = plan_document(
+            project
+                .glyph_names()
+                .filter_map(|name| project.document_layer(name, &layer)),
+            Some(&["Aacute".into()]),
+            |_| None,
+        );
+        assert!(plan.report.skipped.is_empty());
+        assert_eq!(plan.report.derived, [expected.clone()]);
+        assert_eq!(plan.replacements.len(), 1);
+        assert_eq!(plan.replacements[0].derived, expected);
+        assert_eq!(
+            plan.replacements[0].anchors,
+            glyph
+                .anchors
+                .iter()
+                .map(|anchor| {
+                    (
+                        anchor.name.as_ref().unwrap().to_string(),
+                        anchor.x,
+                        anchor.y,
+                    )
+                })
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            plan.replacements[0].codepoints,
+            glyph.codepoints.iter().collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -556,5 +894,26 @@ mod tests {
         font.default_layer_mut().insert_glyph(g);
         let (_, d) = derive(&font, "Aacute.alt").unwrap();
         assert_eq!(d.recipe.source, RecipeSource::Lib);
+
+        let mut recipes = HashMap::new();
+        recipes.insert("Aacute.alt", "A + acute");
+        let project = Project::from_source(Master::from_font(
+            font,
+            PathBuf::from("CanonicalExplicitCompose.ufo"),
+        ));
+        let layer = project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
+        let plan = plan_document(
+            project
+                .glyph_names()
+                .filter_map(|name| project.document_layer(name, &layer)),
+            Some(&["Aacute.alt".into()]),
+            |name| recipes.get(name).copied(),
+        );
+        assert_eq!(plan.report.derived[0].recipe.source, RecipeSource::Lib);
+        assert_eq!(plan.report.derived[0].recipe.base, "A");
+        assert_eq!(plan.report.derived[0].recipe.marks, ["acute"]);
     }
 }

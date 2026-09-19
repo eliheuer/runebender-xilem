@@ -15,6 +15,7 @@ use kurbo::{Point, Vec2};
 use norad::{Component, Font, Glyph};
 
 use super::model::glyph_metadata::ComponentAlignment;
+use super::{ComponentId, DocumentEditError, LayerEditDraft, LayerView};
 
 #[derive(Debug)]
 /// One component's contribution to anchor alignment: the anchors its
@@ -103,6 +104,148 @@ pub fn realign_component_offsets(components: &[AlignInput], seed: &[(String, Poi
     out
 }
 
+fn document_anchors(layer: LayerView<'_>) -> Vec<(String, Point)> {
+    layer
+        .anchors()
+        .map(|anchor| (anchor.name().to_owned(), anchor.position()))
+        .collect()
+}
+
+/// Read the anchors a canonical layer offers to generated features and composition.
+///
+/// A layer's own anchors win.
+/// A layer without anchors inherits outgoing anchors from its components recursively, using each
+/// exact component transform; incoming anchors never propagate through the composite.
+/// Missing component bases contribute no anchors, matching the established UFO workflow.
+pub fn effective_document_anchors<'a>(
+    layer: LayerView<'a>,
+    mut resolve: impl FnMut(&str) -> Option<LayerView<'a>>,
+) -> Vec<(String, Point)> {
+    fn recurse<'a>(
+        layer: LayerView<'a>,
+        resolve: &mut impl FnMut(&str) -> Option<LayerView<'a>>,
+        depth: usize,
+    ) -> Vec<(String, Point)> {
+        let own = document_anchors(layer);
+        if !own.is_empty() || depth > 8 {
+            return own;
+        }
+        let mut anchors = Vec::new();
+        for component in layer.components() {
+            let Some(base) = resolve(component.reference()) else {
+                continue;
+            };
+            for (name, point) in recurse(base, resolve, depth + 1) {
+                if name.starts_with('_') {
+                    continue;
+                }
+                let point = component.transform() * point;
+                anchors.retain(|(candidate, _)| candidate != &name);
+                anchors.push((name, point));
+            }
+        }
+        anchors
+    }
+
+    recurse(layer, &mut resolve, 0)
+}
+
+/// Build stable component identities and alignment inputs from one canonical layer.
+///
+/// `resolve` selects component bases in the same source/layer context as `layer`.
+/// A missing base has no anchors and therefore leaves that component at its stored position.
+pub fn document_align_inputs<'layer, 'base>(
+    layer: LayerView<'layer>,
+    mut resolve: impl FnMut(&str) -> Option<LayerView<'base>>,
+) -> Vec<(ComponentId, AlignInput)> {
+    layer
+        .components()
+        .map(|component| {
+            let transform = component.transform();
+            let coefficients = transform.as_coeffs();
+            (
+                component.id(),
+                AlignInput {
+                    anchors: resolve(component.reference())
+                        .map(document_anchors)
+                        .unwrap_or_default(),
+                    offset: Vec2::new(coefficients[4], coefficients[5]),
+                    aligned: !component.alignment_disabled(),
+                },
+            )
+        })
+        .collect()
+}
+
+/// Realign the anchor-locked components in a canonical edit draft.
+///
+/// Only the translation coefficients change; the exact linear transform and component metadata
+/// remain attached to their stable identities.
+pub fn realign_document_layer<'a>(
+    draft: &mut LayerEditDraft,
+    resolve: impl FnMut(&str) -> Option<LayerView<'a>>,
+    seed_own_anchors: bool,
+) -> Result<bool, DocumentEditError> {
+    let layer = draft.view();
+    let components = document_align_inputs(layer, resolve);
+    if components.is_empty() {
+        return Ok(false);
+    }
+    let seed = if seed_own_anchors {
+        document_anchors(layer)
+    } else {
+        Vec::new()
+    };
+    let inputs: Vec<_> = components
+        .iter()
+        .map(|(_, input)| AlignInput {
+            anchors: input.anchors.clone(),
+            offset: input.offset,
+            aligned: input.aligned,
+        })
+        .collect();
+    let placed = realign_component_offsets(&inputs, &seed);
+    let updates = components
+        .iter()
+        .zip(placed)
+        .map(|((id, _), offset)| {
+            let component = layer
+                .components()
+                .find(|component| component.id() == *id)
+                .expect("alignment input retains its canonical component");
+            let mut coefficients = component.transform().as_coeffs();
+            coefficients[4] = offset.x;
+            coefficients[5] = offset.y;
+            coefficients
+                .iter()
+                .all(|value| value.is_finite())
+                .then_some((*id, kurbo::Affine::new(coefficients)))
+                .ok_or(DocumentEditError::NonFinite)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut changed = false;
+    for (id, transform) in updates {
+        changed |= draft.set_component_transform(id, transform)?;
+    }
+    Ok(changed)
+}
+
+/// Return every canonical layer glyph that places `base` as a component.
+pub fn document_composites_using<'a>(
+    layers: impl IntoIterator<Item = LayerView<'a>>,
+    base: &str,
+) -> Vec<String> {
+    layers
+        .into_iter()
+        .filter(|layer| {
+            layer
+                .components()
+                .any(|component| component.reference() == base)
+        })
+        .map(|layer| layer.glyph_name().to_owned())
+        .collect()
+}
+
 fn base_anchors(font: &Font, base: &str) -> Vec<(String, Point)> {
     font.get_glyph(base)
         .map(|glyph| {
@@ -178,8 +321,13 @@ pub fn composites_using(font: &Font, base: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
     use norad::{AffineTransform, Anchor, Name};
+
+    use crate::document::project::{Master, Project};
+    use crate::document::variable::{GlyphLayerAddress, SourceId};
 
     fn glyph_with_anchor(name: &str, anchor: &str, x: f64, y: f64) -> Glyph {
         let mut glyph = Glyph::new(name);
@@ -247,6 +395,125 @@ mod tests {
         // the second's _top (300,720) aligns there: offset (50,180).
         assert_eq!(stacked.components[2].transform.x_offset, 50.0);
         assert_eq!(stacked.components[2].transform.y_offset, 180.0);
+    }
+
+    #[test]
+    fn canonical_alignment_matches_legacy_and_preserves_exact_linear_transform() {
+        let mut font = mark_font();
+        let mark = &mut font
+            .default_layer_mut()
+            .get_glyph_mut("Agrave")
+            .unwrap()
+            .components[1];
+        mark.transform.x_scale = 1.25;
+        mark.transform.xy_scale = 0.125;
+        mark.transform.yx_scale = -0.25;
+        mark.transform.y_scale = 0.875;
+        let project = Project::from_source(Master::from_font(
+            font,
+            PathBuf::from("CanonicalAlignment.ufo"),
+        ));
+        let source = SourceId(0);
+        let layer = project.document_source(source).unwrap().default_layer();
+        let address = GlyphLayerAddress {
+            glyph: "Agrave".into(),
+            layer: layer.clone(),
+        };
+        let mut transaction = project.begin_document_layer_transaction(&address).unwrap();
+        let moved = realign_document_layer(
+            transaction.draft_mut(),
+            |name| project.document_layer(name, &layer),
+            false,
+        )
+        .unwrap();
+        assert!(moved);
+        let component = transaction.draft().view().components().nth(1).unwrap();
+        assert_eq!(
+            component.transform().as_coeffs(),
+            [1.25, 0.125, -0.25, 0.875, 50.0, -20.0]
+        );
+        assert!(
+            !realign_document_layer(
+                transaction.draft_mut(),
+                |name| project.document_layer(name, &layer),
+                false,
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn canonical_effective_anchors_apply_complete_component_transform() {
+        let mut font = mark_font();
+        let mut inherited = Glyph::new("Inherited");
+        inherited.components.push(Component::new(
+            Name::new("A").unwrap(),
+            AffineTransform {
+                x_scale: 2.0,
+                xy_scale: 0.25,
+                yx_scale: -0.5,
+                y_scale: 1.5,
+                x_offset: 30.0,
+                y_offset: -40.0,
+            },
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(inherited);
+        let project = Project::from_source(Master::from_font(
+            font,
+            PathBuf::from("CanonicalAnchors.ufo"),
+        ));
+        let layer = project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
+        let inherited = project.document_layer("Inherited", &layer).unwrap();
+        assert_eq!(
+            effective_document_anchors(inherited, |name| project.document_layer(name, &layer)),
+            [("top".into(), Point::new(380.0, 1_097.5))]
+        );
+    }
+
+    #[test]
+    fn canonical_alignment_rejects_nonfinite_results_before_mutation() {
+        let mut font = mark_font();
+        font.default_layer_mut().get_glyph_mut("A").unwrap().anchors[0].x = f64::NAN;
+        let project = Project::from_source(Master::from_font(
+            font,
+            PathBuf::from("InvalidCanonicalAlignment.ufo"),
+        ));
+        let layer = project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
+        let address = GlyphLayerAddress {
+            glyph: "Agrave".into(),
+            layer: layer.clone(),
+        };
+        let mut transaction = project.begin_document_layer_transaction(&address).unwrap();
+        let before: Vec<_> = transaction
+            .draft()
+            .view()
+            .components()
+            .map(|component| component.transform())
+            .collect();
+        assert_eq!(
+            realign_document_layer(
+                transaction.draft_mut(),
+                |name| project.document_layer(name, &layer),
+                false,
+            ),
+            Err(DocumentEditError::NonFinite)
+        );
+        assert_eq!(
+            transaction
+                .draft()
+                .view()
+                .components()
+                .map(|component| component.transform())
+                .collect::<Vec<_>>(),
+            before
+        );
     }
 
     #[test]
