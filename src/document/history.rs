@@ -83,6 +83,124 @@ impl<S> Default for LayerHistory<S> {
     }
 }
 
+/// Exact before-and-after history for one guarded document transaction scope.
+///
+/// This stack is suitable for font-wide metadata or source-structural transactions
+/// whose snapshot already contains stable identities for everything in scope.
+/// Replay requires the current snapshot to match exactly and moves the stack only
+/// after the caller's atomic restore operation succeeds.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TransactionHistory<S> {
+    stack: LayerHistory<S>,
+}
+
+impl<S> Default for TransactionHistory<S> {
+    fn default() -> Self {
+        Self {
+            stack: LayerHistory::default(),
+        }
+    }
+}
+
+impl<S: PartialEq> TransactionHistory<S> {
+    /// Record one completed transaction, clearing redo only for a real change.
+    pub fn record(&mut self, before: S, after: S) -> bool {
+        if before == after {
+            return false;
+        }
+        self.stack.redo.clear();
+        self.stack.undo.push_back(CanonicalStep { before, after });
+        if self.stack.undo.len() > MAX_CANONICAL_HISTORY {
+            self.stack.undo.pop_front();
+        }
+        true
+    }
+
+    /// Extend the newest transaction while retaining its original before-state.
+    ///
+    /// Returning to the original state removes the no-op transaction.
+    pub fn coalesce(&mut self, current: &S, after: S) -> bool {
+        let Some(step) = self.stack.undo.back_mut() else {
+            return false;
+        };
+        if &step.after != current {
+            return false;
+        }
+        step.after = after;
+        if step.before == step.after {
+            self.stack.undo.pop_back();
+        }
+        true
+    }
+
+    /// Drop the newest undo transaction after its operation reports no usable change.
+    pub fn discard_last(&mut self) -> bool {
+        self.stack.undo.pop_back().is_some()
+    }
+
+    /// Replay one exact transaction through an atomic caller-owned restore boundary.
+    pub fn replay<E>(
+        &mut self,
+        current: &S,
+        direction: HistoryDirection,
+        apply: impl FnOnce(&S, &S) -> Result<(), E>,
+    ) -> Result<HistoryReplayOutcome, HistoryReplayError<E>> {
+        let step = match direction {
+            HistoryDirection::Undo => self.stack.undo.back(),
+            HistoryDirection::Redo => self.stack.redo.back(),
+        };
+        let Some(step) = step else {
+            return Ok(HistoryReplayOutcome::Empty);
+        };
+        let (expected, replacement) = match direction {
+            HistoryDirection::Undo => (&step.after, &step.before),
+            HistoryDirection::Redo => (&step.before, &step.after),
+        };
+        if current != expected {
+            return Err(HistoryReplayError::Stale);
+        }
+        apply(expected, replacement).map_err(HistoryReplayError::Apply)?;
+        match direction {
+            HistoryDirection::Undo => {
+                let step = self
+                    .stack
+                    .undo
+                    .pop_back()
+                    .expect("the replayed undo transaction exists");
+                self.stack.redo.push_back(step);
+            }
+            HistoryDirection::Redo => {
+                let step = self
+                    .stack
+                    .redo
+                    .pop_back()
+                    .expect("the replayed redo transaction exists");
+                self.stack.undo.push_back(step);
+            }
+        }
+        Ok(HistoryReplayOutcome::Applied)
+    }
+
+    /// Whether a transaction can replay in `direction`.
+    pub fn can_replay(&self, direction: HistoryDirection) -> bool {
+        self.depth(direction) != 0
+    }
+
+    /// Number of transactions available in `direction`.
+    pub fn depth(&self, direction: HistoryDirection) -> usize {
+        match direction {
+            HistoryDirection::Undo => self.stack.undo.len(),
+            HistoryDirection::Redo => self.stack.redo.len(),
+        }
+    }
+
+    /// Forget every transaction, such as after replacing the open document.
+    pub fn clear(&mut self) {
+        self.stack.undo.clear();
+        self.stack.redo.clear();
+    }
+}
+
 /// Exact before-and-after history for canonical glyph layers.
 ///
 /// Each stack is addressed by a stable source and layer identity plus the current
@@ -709,5 +827,38 @@ mod tests {
         );
         assert_eq!(live.address, new);
         assert_eq!(live.value, 2);
+    }
+
+    #[test]
+    fn guarded_transaction_history_rejects_stale_and_failed_replay() {
+        let mut history = TransactionHistory::default();
+        assert!(history.record(1, 2));
+        assert_eq!(
+            history.replay(&3, HistoryDirection::Undo, |_, _| Ok::<_, ()>(())),
+            Err(HistoryReplayError::Stale)
+        );
+        assert_eq!(history.depth(HistoryDirection::Undo), 1);
+        assert_eq!(
+            history.replay(&2, HistoryDirection::Undo, |_, _| Err("rejected")),
+            Err(HistoryReplayError::Apply("rejected"))
+        );
+        assert_eq!(history.depth(HistoryDirection::Undo), 1);
+        assert_eq!(history.depth(HistoryDirection::Redo), 0);
+
+        let mut live = 2;
+        let current = live;
+        assert_eq!(
+            history.replay(&current, HistoryDirection::Undo, |_, replacement| {
+                live = *replacement;
+                Ok::<_, ()>(())
+            }),
+            Ok(HistoryReplayOutcome::Applied)
+        );
+        assert_eq!(live, 1);
+        assert_eq!(history.depth(HistoryDirection::Redo), 1);
+        assert!(!history.record(live, live));
+        assert_eq!(history.depth(HistoryDirection::Redo), 1);
+        assert!(history.record(live, 4));
+        assert_eq!(history.depth(HistoryDirection::Redo), 0);
     }
 }
