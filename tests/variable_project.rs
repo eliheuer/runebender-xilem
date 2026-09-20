@@ -8,7 +8,6 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use norad::{Anchor, Component, Contour, ContourPoint, Font, Glyph, Name, PointType};
-use runebender::document::LayerPointType;
 use runebender::document::canonical_metadata::{KerningParticipant, KerningSide};
 use runebender::document::font_memory::designspace_from_str;
 use runebender::document::history::{HistoryDirection, HistoryReplayError};
@@ -19,10 +18,49 @@ use runebender::document::project::{
 };
 use runebender::document::var_model::Location;
 use runebender::document::variable::{GlyphLayerAddress, LayerId, SourceId};
+use runebender::document::{DocumentEditError as EditError, LayerEditDraft, LayerPointType};
 
 const DESIGNSPACE: &str = include_str!("fixtures/variable/TwoAxes.designspace");
 
 struct Scratch(PathBuf);
+
+fn commit_layer_edit(
+    project: &mut Project,
+    glyph: &str,
+    layer: &LayerId,
+    edit: impl FnOnce(&mut LayerEditDraft) -> Result<(), EditError>,
+) -> bool {
+    let address = GlyphLayerAddress {
+        glyph: glyph.to_owned(),
+        layer: layer.clone(),
+    };
+    let mut transaction = project
+        .begin_document_layer_transaction(&address)
+        .expect("the fixture layer exists");
+    edit(transaction.draft_mut()).expect("the fixture edit is valid");
+    matches!(
+        project.commit_document_layer_transaction(transaction),
+        Ok(DocumentEditOutcome::Changed { .. })
+    )
+}
+
+fn replay_layer_edit(project: &mut Project, glyph: &str, layer: &LayerId, redo: bool) -> bool {
+    let address = GlyphLayerAddress {
+        glyph: glyph.to_owned(),
+        layer: layer.clone(),
+    };
+    matches!(
+        project.replay_document_layer_history(
+            &address,
+            if redo {
+                HistoryDirection::Redo
+            } else {
+                HistoryDirection::Undo
+            },
+        ),
+        Ok(DocumentHistoryReplayOutcome::Changed { .. })
+    )
+}
 
 impl Scratch {
     fn new() -> Self {
@@ -505,12 +543,10 @@ fn document_views_read_exact_canonical_layers_and_stable_source_identity() {
         "anchor position changed"
     );
 
-    assert!(
-        project.edit_layer("A", &layer_id, |glyph| {
-            glyph.width += 0.000_000_001;
-        }),
-        "compatibility edit must change the layer"
-    );
+    assert!(commit_layer_edit(&mut project, "A", &layer_id, |draft| {
+        draft.set_width(draft.view().width() + 0.000_000_001)?;
+        Ok(())
+    }));
     assert_eq!(
         project.document_layer("A", &layer_id).unwrap().width(),
         600.123_456_79,
@@ -6967,7 +7003,15 @@ fn failed_interpolated_source_is_atomic() {
         .document_source(SourceId(1))
         .unwrap()
         .default_layer();
-    assert!(project.edit_layer("A", &incompatible, |glyph| glyph.contours.clear()));
+    assert!(commit_layer_edit(
+        &mut project,
+        "A",
+        &incompatible,
+        |draft| {
+            draft.clear_contours();
+            Ok(())
+        }
+    ));
     let before = project.document_snapshot();
     let revision = project.document_revision();
     let source_count = project.document_sources().count();
@@ -6994,9 +7038,12 @@ fn source_undo_refuses_to_overwrite_later_edits_and_layer_operations_preserve_ot
     };
     let layer = project.add_glyph_layer("A", &from, "backup").unwrap();
     assert!(project.glyph_layer("A", &layer).is_some());
-    project.edit_layer("A", &from, |glyph| glyph.width += 10.0);
+    assert!(commit_layer_edit(&mut project, "A", &from, |draft| {
+        draft.set_width(draft.view().width() + 10.0)?;
+        Ok(())
+    }));
     assert!(project.undo_sources(false).is_err());
-    assert!(project.undo_layer("A", &from, false));
+    assert!(replay_layer_edit(&mut project, "A", &from, false));
     assert!(project.undo_sources(false).unwrap());
     assert_eq!(project.source_snapshot(SourceId(0)).unwrap(), original);
     assert!(project.undo_sources(true).unwrap());
@@ -7303,13 +7350,14 @@ fn layer_edits_and_history_round_trip_all_source_data() {
         name: "intermediate".into(),
     };
     let original = project.glyph_layer("A", &layer).unwrap();
-    assert!(project.edit_layer("A", &layer, |g| {
-        g.width = 731.123_456_789;
-        g.note = Some("edited".into());
+    assert!(commit_layer_edit(&mut project, "A", &layer, |draft| {
+        draft.set_width(731.123_456_789)?;
+        draft.set_note(Some("edited".into()));
+        Ok(())
     }));
-    assert!(project.undo_layer("A", &layer, false));
+    assert!(replay_layer_edit(&mut project, "A", &layer, false));
     assert_eq!(project.glyph_layer("A", &layer), Some(original));
-    assert!(project.undo_layer("A", &layer, true));
+    assert!(replay_layer_edit(&mut project, "A", &layer, true));
     let before: Vec<_> = (0..4)
         .map(|i| project.source_snapshot(SourceId(i)).unwrap())
         .collect();
@@ -7354,16 +7402,40 @@ fn exact_values_and_object_metadata_survive_import_edit_undo_and_save() {
     let original_a = original.get_glyph("A").unwrap().clone();
     let mut edited_a = original_a.clone();
     edited_a.width = original.get_glyph("B").unwrap().width;
-    edited_a.contours.swap(0, 1);
-    edited_a.contours[0].points.swap(0, 1);
     edited_a.contours[0].points[0].x += 0.123_456_789;
-    edited_a.components.swap(0, 1);
     edited_a.components[0].transform.xy_scale += 0.000_000_001;
-    edited_a.anchors.swap(0, 1);
     edited_a.anchors[0].y += 0.987_654_321;
     assert!(
-        reloaded.edit_layer("A", &layer, |glyph| {
-            *glyph = edited_a.clone();
+        commit_layer_edit(&mut reloaded, "A", &layer, |draft| {
+            let view = draft.view();
+            let point = view
+                .contours()
+                .next()
+                .and_then(|contour| contour.points().next())
+                .expect("the fixture point exists");
+            let point_id = point.id();
+            let point_position = point.position();
+            let component = view
+                .components()
+                .next()
+                .expect("the fixture component exists");
+            let component_id = component.id();
+            let mut coefficients = component.transform().as_coeffs();
+            coefficients[1] += 0.000_000_001;
+            let anchor = view.anchors().next().expect("the fixture anchor exists");
+            let anchor_id = anchor.id();
+            let anchor_position = anchor.position();
+            draft.set_width(edited_a.width)?;
+            draft.set_point_position(
+                point_id,
+                kurbo::Point::new(point_position.x + 0.123_456_789, point_position.y),
+            )?;
+            draft.set_component_transform(component_id, kurbo::Affine::new(coefficients))?;
+            draft.set_anchor_position(
+                anchor_id,
+                kurbo::Point::new(anchor_position.x, anchor_position.y + 0.987_654_321),
+            )?;
+            Ok(())
         }),
         "adversarial edit must change the layer"
     );
@@ -7373,7 +7445,7 @@ fn exact_values_and_object_metadata_survive_import_edit_undo_and_save() {
         "edit must retain every exact field"
     );
     assert!(
-        reloaded.undo_layer("A", &layer, false),
+        replay_layer_edit(&mut reloaded, "A", &layer, false),
         "edit must be undoable"
     );
     assert_eq!(
@@ -7382,7 +7454,7 @@ fn exact_values_and_object_metadata_survive_import_edit_undo_and_save() {
         "undo must restore every exact field"
     );
     assert!(
-        reloaded.undo_layer("A", &layer, true),
+        replay_layer_edit(&mut reloaded, "A", &layer, true),
         "edit must be redoable"
     );
     assert_eq!(
@@ -7399,20 +7471,18 @@ fn exact_values_and_object_metadata_survive_import_edit_undo_and_save() {
 }
 
 #[test]
-fn guarded_legacy_edits_commit_to_canonical_layers_before_save() {
+fn canonical_edits_commit_to_layers_and_history() {
     let (_scratch, mut project) = fixture();
-    {
-        let mut source = project.active_font_mut();
-        let index = source.name_map["B"];
-        source.record_undo(index);
-        source.set_advance(index, 712.25);
-    }
     let layer = LayerId {
         source: SourceId(0),
         name: "public.default".into(),
     };
+    assert!(commit_layer_edit(&mut project, "B", &layer, |draft| {
+        draft.set_width(712.25)?;
+        Ok(())
+    }));
     assert_eq!(project.glyph_layer("B", &layer).unwrap().width, 712.25);
-    assert!(project.undo_layer("B", &layer, false));
+    assert!(replay_layer_edit(&mut project, "B", &layer, false));
     assert_eq!(
         project
             .source_snapshot(SourceId(0))
@@ -7431,18 +7501,33 @@ fn equal_point_counts_do_not_hide_incompatible_types_or_components() {
         source: SourceId(1),
         name: "public.default".into(),
     };
-    project.edit_layer("B", &layer, |g| {
-        g.contours[0].points[1].typ = PointType::Curve;
-    });
+    assert!(commit_layer_edit(&mut project, "B", &layer, |draft| {
+        let point = draft
+            .view()
+            .contours()
+            .next()
+            .and_then(|contour| contour.points().nth(1))
+            .expect("the fixture point exists")
+            .id();
+        draft.set_point_type(point, LayerPointType::Curve)?;
+        Ok(())
+    }));
     assert!(
         project
             .try_interpolated_at("B", &location(0.5, 0.0))
             .unwrap_err()
             .contains("incompatible")
     );
-    project.edit_layer("C", &layer, |g| {
-        g.components[0].base = Name::new("A").unwrap();
-    });
+    assert!(commit_layer_edit(&mut project, "C", &layer, |draft| {
+        let component = draft
+            .view()
+            .components()
+            .next()
+            .expect("the fixture component exists")
+            .id();
+        draft.set_component_reference(component, "A")?;
+        Ok(())
+    }));
     assert!(
         project
             .try_interpolated_at("C", &location(0.5, 0.0))

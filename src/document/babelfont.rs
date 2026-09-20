@@ -803,6 +803,36 @@ impl LayerEditDraft {
         true
     }
 
+    /// Replace the optional source glyph note.
+    pub fn set_note(&mut self, note: Option<String>) -> bool {
+        if self.preserved.note == note {
+            return false;
+        }
+        self.preserved.note = note;
+        true
+    }
+
+    /// Insert or replace one exact source glyph library value.
+    pub fn set_lib_value(&mut self, key: String, value: plist::Value) -> bool {
+        if self.preserved.lib.get(&key) == Some(&value) {
+            return false;
+        }
+        self.preserved.lib.insert(key, value);
+        true
+    }
+
+    /// Remove every contour while retaining components, anchors and layer metadata.
+    pub fn clear_contours(&mut self) -> bool {
+        if self.preserved.contours.is_empty() {
+            return false;
+        }
+        self.layer
+            .shapes
+            .retain(|shape| !matches!(shape, Shape::Path(_)));
+        self.preserved.contours.clear();
+        true
+    }
+
     /// Start a new open contour at `position`.
     ///
     /// Returns the stable contour and initial-point identities.
@@ -3833,6 +3863,33 @@ impl LayerEditDraft {
             );
         }
         Ok(point_ids)
+    }
+
+    /// Replace one component's referenced glyph by stable identity.
+    pub fn set_component_reference(
+        &mut self,
+        id: ComponentId,
+        reference: &str,
+    ) -> Result<bool, DocumentEditError> {
+        norad::Name::new(reference).map_err(|_| DocumentEditError::InvalidLayerMetadata)?;
+        let component = self
+            .layer
+            .shapes
+            .iter_mut()
+            .find_map(|shape| match shape {
+                Shape::Component(component)
+                    if read_id(&component.format_specific) == Some(id.0) =>
+                {
+                    Some(component)
+                }
+                Shape::Path(_) | Shape::Component(_) => None,
+            })
+            .ok_or(DocumentEditError::MissingComponent(id))?;
+        if component.reference.as_str() == reference {
+            return Ok(false);
+        }
+        component.reference = reference.into();
+        Ok(true)
     }
 
     /// Set one component's exact affine transform by stable identity.

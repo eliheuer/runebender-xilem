@@ -14,7 +14,7 @@ use crate::document::CanonicalSourceStructureSnapshot;
 use crate::document::LayerView;
 use crate::document::canonical_metadata::{CanonicalFontMetadata, KerningParticipant};
 use crate::document::history::{
-    EditHistory, HistoryDirection, HistoryReplayError, HistoryReplayOutcome, TransactionHistory,
+    HistoryDirection, HistoryReplayError, HistoryReplayOutcome, TransactionHistory,
 };
 use crate::document::model::designspace::{
     CanonicalLocation, InstanceId, SourceDescriptor, SourceOrderEntry, SparseSourceDescriptor,
@@ -47,13 +47,7 @@ impl SourceFrame {
         self == &Self::capture(project)
     }
 
-    fn restore_if_current(
-        &self,
-        project: &mut Project,
-        expected: &Self,
-        retired_histories: &mut BTreeMap<SourceId, EditHistory>,
-        retired_layer_histories: &mut BTreeMap<LayerId, EditHistory>,
-    ) -> Result<(), String> {
+    fn restore_if_current(&self, project: &mut Project, expected: &Self) -> Result<(), String> {
         if !expected.matches(project) {
             return Err("source structure changed after history capture".into());
         }
@@ -71,7 +65,6 @@ impl SourceFrame {
         if !canonical_changed {
             project.variable.revision = project.variable.revision.wrapping_add(1);
         }
-        reconcile_compatibility_layer_histories(&mut project.variable, retired_layer_histories);
         let Some(designspace) = project.document_designspace().cloned() else {
             debug_assert_eq!(
                 previous_ids, project.variable.source_ids,
@@ -152,12 +145,7 @@ impl SourceFrame {
             .active
             .and_then(|active| source_ids.iter().position(|source| *source == active))
             .unwrap_or(0);
-        project.rebuild_source_projections(
-            &sources,
-            previous_ids,
-            previous_masters,
-            retired_histories,
-        )?;
+        project.rebuild_source_projections(&sources, previous_ids, previous_masters)?;
         project.refresh_instances_from_doc();
         project.finish_source_restore();
         Ok(())
@@ -167,54 +155,6 @@ impl SourceFrame {
 #[derive(Debug, Default)]
 pub(super) struct SourceHistory {
     transactions: TransactionHistory<SourceFrame>,
-    retired_histories: BTreeMap<SourceId, EditHistory>,
-    retired_layer_histories: BTreeMap<LayerId, EditHistory>,
-}
-
-fn park_compatibility_layer_histories(
-    variable: &mut VariableData,
-    source: SourceId,
-    retired: &mut BTreeMap<LayerId, EditHistory>,
-) {
-    let layers = variable
-        .histories
-        .keys()
-        .filter(|layer| layer.source == source)
-        .cloned()
-        .collect::<Vec<_>>();
-    for layer in layers {
-        let history = variable
-            .histories
-            .remove(&layer)
-            .expect("the collected compatibility layer history exists");
-        retired.insert(layer, history);
-    }
-}
-
-fn reconcile_compatibility_layer_histories(
-    variable: &mut VariableData,
-    retired: &mut BTreeMap<LayerId, EditHistory>,
-) {
-    let removed_sources = variable
-        .histories
-        .keys()
-        .filter(|layer| !variable.source_ids.contains(&layer.source))
-        .map(|layer| layer.source)
-        .collect::<Vec<_>>();
-    for source in removed_sources {
-        park_compatibility_layer_histories(variable, source, retired);
-    }
-    let restored_layers = retired
-        .keys()
-        .filter(|layer| variable.source_ids.contains(&layer.source))
-        .cloned()
-        .collect::<Vec<_>>();
-    for layer in restored_layers {
-        let history = retired
-            .remove(&layer)
-            .expect("the collected retired layer history exists");
-        variable.histories.entry(layer).or_insert(history);
-    }
 }
 
 impl Project {
@@ -241,7 +181,6 @@ impl Project {
         descriptors: &[&SourceDescriptor],
         previous_ids: Vec<SourceId>,
         previous_masters: Vec<Master>,
-        retired_histories: &mut BTreeMap<SourceId, EditHistory>,
     ) -> Result<(), String> {
         let mut previous = previous_ids
             .into_iter()
@@ -290,18 +229,11 @@ impl Project {
                     rebuilt.preserved_files = std::mem::take(&mut old.preserved_files);
                     rebuilt.kerning_dirty = old.kerning_dirty;
                     rebuilt.revision = old.revision.wrapping_add(1);
-                    rebuilt.history = std::mem::take(&mut old.history);
-                    retired_histories.remove(&id);
-                } else if let Some(history) = retired_histories.remove(&id) {
-                    rebuilt.history = history;
                 }
                 rebuilt.dirty = true;
                 Ok(rebuilt)
             })
             .collect::<Result<_, String>>()?;
-        for (id, mut removed) in previous {
-            retired_histories.insert(id, std::mem::take(&mut removed.history));
-        }
         self.masters = rebuilt;
         Ok(())
     }
@@ -431,18 +363,9 @@ impl Project {
         };
         let current = SourceFrame::capture(self);
         let mut history = std::mem::take(&mut self.source_history);
-        let SourceHistory {
-            transactions,
-            retired_histories,
-            retired_layer_histories,
-        } = &mut history;
+        let transactions = &mut history.transactions;
         let replayed = transactions.replay(&current, direction, |expected, replacement| {
-            replacement.restore_if_current(
-                self,
-                expected,
-                retired_histories,
-                retired_layer_histories,
-            )
+            replacement.restore_if_current(self, expected)
         });
         self.source_history = history;
         match replayed {
@@ -607,15 +530,7 @@ impl Project {
             self.variable.source_ids.insert(index, removed_id);
             return Err(error);
         }
-        let mut removed = self.masters.remove(index);
-        self.source_history
-            .retired_histories
-            .insert(id, std::mem::take(&mut removed.history));
-        park_compatibility_layer_histories(
-            &mut self.variable,
-            id,
-            &mut self.source_history.retired_layer_histories,
-        );
+        self.masters.remove(index);
         self.master_names.remove(index);
         self.master_locations.remove(index);
         self.brace.retain_mut(|source| {

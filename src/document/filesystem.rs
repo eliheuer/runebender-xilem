@@ -880,7 +880,13 @@ mod tests {
         let mut project = Project::load(&path).unwrap();
         let source = project.document_source(SourceId(0)).unwrap();
         let default_layer = source.default_layer();
-        assert!(project.edit_layer("A", &default_layer, |glyph| glyph.width = 612.5));
+        assert!(matches!(
+            project.edit_document_layer("A", &default_layer, |draft| {
+                draft.set_width(612.5)?;
+                Ok(())
+            }),
+            Ok(super::DocumentEditOutcome::Changed { .. })
+        ));
         project.save().unwrap();
 
         let reloaded = norad::Font::load(&path).unwrap();
@@ -973,7 +979,13 @@ mod tests {
             .document_source(SourceId(0))
             .unwrap()
             .default_layer();
-        assert!(project.edit_layer("A", &regular_layer, |glyph| glyph.width = 777.0));
+        assert!(matches!(
+            project.edit_document_layer("A", &regular_layer, |draft| {
+                draft.set_width(777.0)?;
+                Ok(())
+            }),
+            Ok(super::DocumentEditOutcome::Changed { .. })
+        ));
         {
             let mut sources = project.edit_sources();
             sources[1]

@@ -298,7 +298,6 @@ pub(super) struct VariableData {
     pub(super) revision: u64,
     pub(super) compiled: std::sync::Mutex<super::compile::CompileCache>,
     pub(super) glyphs: BTreeMap<String, VariableGlyph>,
-    pub(super) histories: BTreeMap<LayerId, super::history::EditHistory>,
     source_formats: BTreeMap<SourceId, super::source_format::SourceFormatData>,
     source_metadata: BTreeMap<SourceId, SourceMetadata>,
     designspace: Option<super::model::designspace::CanonicalDesignspace>,
@@ -313,7 +312,6 @@ impl Clone for VariableData {
             revision: self.revision,
             compiled: std::sync::Mutex::default(),
             glyphs: self.glyphs.clone(),
-            histories: self.histories.clone(),
             source_formats: self.source_formats.clone(),
             source_metadata: self.source_metadata.clone(),
             designspace: self.designspace.clone(),
@@ -738,7 +736,6 @@ impl VariableData {
         };
         let removed = format.remove_empty_layer(&id.name);
         if removed {
-            self.histories.remove(id);
             self.revision = self.revision.wrapping_add(1);
         }
         removed
@@ -787,8 +784,6 @@ impl VariableData {
             .retain(|id, _| self.source_ids.contains(id));
         self.source_metadata
             .retain(|id, _| self.source_ids.contains(id));
-        self.histories
-            .retain(|id, _| self.source_ids.contains(&id.source));
         for glyph in self.glyphs.values_mut() {
             glyph
                 .layers
@@ -1082,21 +1077,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn structural_restore_is_guarded_and_preserves_history_and_allocator() {
+    fn structural_restore_is_guarded_and_preserves_allocator() {
         let mut original = Font::new();
-        let layer_name = original.default_layer().name().to_string();
         original.default_layer_mut().insert_glyph(Glyph::new("A"));
         let source = Master::from_font(original.clone(), PathBuf::from("Original.ufo"));
         let mut data = VariableData::from_sources(&[source]);
         let before = data.source_structure_snapshot();
-        let layer = LayerId {
-            source: SourceId(0),
-            name: layer_name,
-        };
-        data.histories.insert(
-            layer.clone(),
-            crate::document::history::EditHistory::default(),
-        );
         data.next_source = 17;
 
         let mut edited = original;
@@ -1110,7 +1096,6 @@ mod tests {
             Ok(true)
         );
         assert_eq!(data.source_structure_snapshot(), before);
-        assert!(data.histories.contains_key(&layer));
         assert_eq!(data.next_source, 17);
         assert_eq!(data.revision, revision.wrapping_add(1));
 
@@ -1125,6 +1110,5 @@ mod tests {
             Err(SourceStructureRestoreError::Stale)
         );
         assert_eq!(data.revision, restored_revision);
-        assert!(data.histories.contains_key(&layer));
     }
 }

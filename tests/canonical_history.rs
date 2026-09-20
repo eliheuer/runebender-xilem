@@ -11,7 +11,7 @@ use runebender::document::history::{
     CanonicalHistory, DocumentHistory, HistoryDirection, HistoryReplayError, HistoryReplayOutcome,
     SourceMetadataHistory,
 };
-use runebender::document::project::{Master, Project};
+use runebender::document::project::{DocumentEditOutcome, Master, Project};
 use runebender::document::variable::{GlyphLayerAddress, LayerId, SourceId};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -400,19 +400,27 @@ fn project_history_restores_exact_geometry_metadata_and_extensions() {
     let before = DocumentHistory::capture(&project, &address).unwrap();
     let mut history = DocumentHistory::default();
 
-    // Metadata draft operations land in M07. Use the transitional mutation boundary
-    // here only to prove that canonical history captures and restores those values.
-    assert!(project.edit_layer(&address.glyph, &address.layer, |glyph| {
-        glyph.width = 600.875;
-        glyph.height = 1_025.5;
-        glyph.note = Some("after note".into());
-        glyph.lib.insert(
-            "vendor.private".into(),
-            plist::Value::String("after extension".into()),
-        );
-        glyph.contours[0].points[1].x = 123.75;
-        glyph.contours[0].points[1].y = -45.5;
-    }));
+    assert!(matches!(
+        project.edit_document_layer(&address.glyph, &address.layer, |draft| {
+            draft.set_width(600.875)?;
+            draft.set_height(1_025.5)?;
+            draft.set_note(Some("after note".into()));
+            draft.set_lib_value(
+                "vendor.private".into(),
+                plist::Value::String("after extension".into()),
+            );
+            let point = draft
+                .view()
+                .contours()
+                .next()
+                .and_then(|contour| contour.points().nth(1))
+                .expect("the fixture point remains present")
+                .id();
+            draft.set_point_position(point, kurbo::Point::new(123.75, -45.5))?;
+            Ok(())
+        }),
+        Ok(DocumentEditOutcome::Changed { .. })
+    ));
     assert!(
         history
             .record_completed(&project, &address, before.clone())

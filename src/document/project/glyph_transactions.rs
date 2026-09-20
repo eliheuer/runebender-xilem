@@ -246,17 +246,10 @@ impl Project {
             HistoryUpdate::None => {}
             HistoryUpdate::Remove(name) => {
                 self.document_history.clear_glyph(name);
-                for source in &mut self.masters {
-                    source.history.clear_glyph(name);
-                }
             }
             HistoryUpdate::Rename { old, new } => {
                 let moved = self.document_history.rename_glyph(old, new);
                 debug_assert!(moved, "validated rename cannot collide with layer history");
-                for source in &mut self.masters {
-                    let moved = source.history.rename_glyph(old, new);
-                    debug_assert!(moved, "validated rename cannot collide with source history");
-                }
             }
         }
         self.refresh_glyph_projections(&transaction.history, &transaction.affected_layers);

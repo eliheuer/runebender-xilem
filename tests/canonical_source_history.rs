@@ -9,7 +9,9 @@ use norad::{Contour, ContourPoint, Font, Glyph, PointType};
 use runebender::document::font_memory::designspace_from_str;
 use runebender::document::history::HistoryDirection;
 use runebender::document::model::designspace::SourceOrderEntry;
-use runebender::document::project::{Master, Project};
+use runebender::document::project::{
+    DocumentEditOutcome, DocumentHistoryReplayOutcome, Master, Project,
+};
 use runebender::document::variable::{GlyphLayerAddress, LayerId, SourceId};
 
 const DESIGNSPACE: &str = include_str!("fixtures/variable/TwoAxes.designspace");
@@ -181,16 +183,31 @@ fn removed_source_roundtrip_preserves_auxiliary_compatibility_history() {
     let default = project.document_source(source).unwrap().default_layer();
     let auxiliary = project.add_glyph_layer("A", &default, "backup").unwrap();
     let initial_width = project.glyph_layer("A", &auxiliary).unwrap().width;
-    assert!(project.edit_layer("A", &auxiliary, |glyph| glyph.width = 750.625));
+    let address = GlyphLayerAddress {
+        glyph: "A".into(),
+        layer: auxiliary.clone(),
+    };
+    let mut transaction = project.begin_document_layer_transaction(&address).unwrap();
+    transaction.draft_mut().set_width(750.625).unwrap();
+    assert!(matches!(
+        project.commit_document_layer_transaction(transaction),
+        Ok(DocumentEditOutcome::Changed { .. })
+    ));
 
     project.remove_source(source).unwrap();
     assert!(project.undo_sources(false).unwrap());
-    assert!(project.undo_layer("A", &auxiliary, false));
+    assert!(matches!(
+        project.replay_document_layer_history(&address, HistoryDirection::Undo),
+        Ok(DocumentHistoryReplayOutcome::Changed { .. })
+    ));
     assert_eq!(
         project.glyph_layer("A", &auxiliary).unwrap().width,
         initial_width
     );
-    assert!(project.undo_layer("A", &auxiliary, true));
+    assert!(matches!(
+        project.replay_document_layer_history(&address, HistoryDirection::Redo),
+        Ok(DocumentHistoryReplayOutcome::Changed { .. })
+    ));
     assert_eq!(project.glyph_layer("A", &auxiliary).unwrap().width, 750.625);
 }
 

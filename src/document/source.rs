@@ -1,7 +1,7 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! UFO compatibility projections, source-local history, and paint caches.
+//! UFO compatibility projections and paint caches.
 //!
 //! A Project owns canonical variable glyph layers in `variable`.
 //! Existing tools edit these source projections through Project guards, which
@@ -14,7 +14,6 @@ use std::sync::{Arc, OnceLock};
 
 use kurbo::BezPath;
 
-use super::history::EditHistory;
 use crate::outline::glyph_ops::{self as ops, CurveOp, GlyphSnapshot};
 use crate::ui::theme::{self, Theme};
 
@@ -114,9 +113,6 @@ pub struct Master {
     pub revision: u64,
     /// True when anything changed since the last load or save.
     pub dirty: bool,
-    /// The undo pile, one stack per glyph. Shells push and pop here
-    /// and hold no snapshots of their own.
-    pub history: EditHistory,
 }
 
 /// Collects a glyph's anchors as `(name, x, y)`. An unnamed anchor gets an empty name.
@@ -227,7 +223,6 @@ impl Master {
         fresh.modified_glyphs = std::mem::take(&mut self.modified_glyphs);
         fresh.glif_paths = std::mem::take(&mut self.glif_paths);
         fresh.preserved_files = std::mem::take(&mut self.preserved_files);
-        fresh.history = std::mem::take(&mut self.history);
         *self = fresh;
     }
 
@@ -252,7 +247,6 @@ impl Master {
         }
         self.dirty = true;
         self.modified_glyphs.remove(name);
-        self.history.clear_glyph(name);
         self.refresh_from_font();
         true
     }
@@ -333,7 +327,6 @@ impl Master {
             glyphs,
             revision: 0,
             dirty: false,
-            history: EditHistory::new(),
         }
     }
 
@@ -385,84 +378,6 @@ impl Master {
     /// Replace a glyph's editable state (undo/redo) and rebuild caches.
     pub fn restore_contours(&mut self, glyph_index: usize, snapshot: GlyphSnapshot) {
         self.edit_glyph(glyph_index, |g| ops::restore(g, snapshot));
-    }
-
-    // ---- the undo pile ----
-
-    fn glyph_name(&self, glyph_index: usize) -> Option<String> {
-        self.glyphs.get(glyph_index).map(|g| g.name.to_string())
-    }
-
-    /// Records the glyph's state as a new undo step. Call before an
-    /// edit. Does nothing for an index out of range.
-    pub fn record_undo(&mut self, glyph_index: usize) {
-        let Some(name) = self.glyph_name(glyph_index) else {
-            return;
-        };
-        if let Some(glyph) = self.font.get_glyph(name.as_str()) {
-            self.history.record(&name, glyph);
-        }
-    }
-
-    /// Folds the glyph's current state into the latest undo step,
-    /// for the moves inside one drag.
-    pub fn amend_undo(&mut self, glyph_index: usize) {
-        let Some(name) = self.glyph_name(glyph_index) else {
-            return;
-        };
-        if let Some(glyph) = self.font.get_glyph(name.as_str()) {
-            self.history.amend(&name, glyph);
-        }
-    }
-
-    /// Drops the latest undo step, for an edit that changed nothing.
-    pub fn discard_last_undo(&mut self, glyph_index: usize) -> bool {
-        self.glyph_name(glyph_index)
-            .is_some_and(|name| self.history.discard_last(&name))
-    }
-
-    /// Undoes the glyph's latest step and rebuilds its caches.
-    pub fn undo(&mut self, glyph_index: usize) -> bool {
-        let Some(name) = self.glyph_name(glyph_index) else {
-            return false;
-        };
-        let mut history = std::mem::take(&mut self.history);
-        let done = self
-            .edit_glyph(glyph_index, |g| history.undo(&name, g))
-            .unwrap_or(false);
-        self.history = history;
-        done
-    }
-
-    /// Redoes the glyph's latest undone step and rebuilds its caches.
-    pub fn redo(&mut self, glyph_index: usize) -> bool {
-        let Some(name) = self.glyph_name(glyph_index) else {
-            return false;
-        };
-        let mut history = std::mem::take(&mut self.history);
-        let done = self
-            .edit_glyph(glyph_index, |g| history.redo(&name, g))
-            .unwrap_or(false);
-        self.history = history;
-        done
-    }
-
-    /// Whether the glyph has a step to undo.
-    pub fn can_undo(&self, glyph_index: usize) -> bool {
-        self.glyph_name(glyph_index)
-            .is_some_and(|name| self.history.can_undo(&name))
-    }
-
-    /// How many steps the glyph can undo.
-    pub fn undo_depth(&self, glyph_index: usize) -> usize {
-        self.glyph_name(glyph_index)
-            .map_or(0, |name| self.history.undo_depth(&name))
-    }
-
-    /// Whether the glyph has a step to redo.
-    pub fn can_redo(&self, glyph_index: usize) -> bool {
-        self.glyph_name(glyph_index)
-            .is_some_and(|name| self.history.can_redo(&name))
     }
 
     /// Moves an anchor to `(x, y)`. Ignores an out-of-range anchor index.
