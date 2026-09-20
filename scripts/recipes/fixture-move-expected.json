@@ -24,10 +24,9 @@
       }
     }
   ],
-  "input_hash": "fixture-capture-sha256-1",
+  "input_hash": "81b724e9788b5bb4c365095867ee81766d095b00201d63c578c3b5867cb5d8d6",
   "job_id": "fixture-anchor-move-1",
   "report": "Proposed 3 anchor move(s)\nglyph=A source=7 layer=Regular name=top id=a-top x=50.125 y=600.5\nglyph=B source=7 layer=Regular name=top id=anchor-top-1 x=100.5 y=700.25\nglyph=B source=7 layer=Regular name=top id=anchor-top-2 x=12.25 y=511.5",
   "reads": [],
-  "schema_version": 1,
-  "source": 7
+  "schema_version": 1
 }

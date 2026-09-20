@@ -33,6 +33,10 @@ class AnchorRecipeTests(unittest.TestCase):
         result = recipes.run("move_named_anchors", value)
         expected = fixture("fixture-move-expected.json")
         self.assertEqual(result, expected)
+        self.assertEqual(
+            set(result),
+            {"schema_version", "job_id", "input_hash", "report", "reads", "edits"},
+        )
         self.assertEqual(value, before)
         self.assertEqual(
             [edit["target"] for edit in result["edits"]],
@@ -44,6 +48,10 @@ class AnchorRecipeTests(unittest.TestCase):
 
     def test_list_reports_source_layer_name_coordinates_and_unnamed_anchor(self) -> None:
         result = recipes.run("list_anchors", fixture("fixture-list-input.json"))
+        self.assertEqual(
+            set(result),
+            {"schema_version", "job_id", "input_hash", "report", "reads", "edits"},
+        )
         lines = result["report"].splitlines()
         self.assertEqual(lines[0], "Listed 5 anchor(s)")
         self.assertIn("glyph=A source=7 layer=Regular name=bottom", lines[1])
@@ -80,6 +88,15 @@ class AnchorRecipeTests(unittest.TestCase):
             envelope["parameters"][key] = value
             with self.subTest(parameter=key), self.assertRaises(recipes.RecipeError):
                 recipes.run("move_named_anchors", envelope)
+        for schema_label, schema_version in (("bool", True), ("float", 1.0), ("huge", 10**10000)):
+            envelope = fixture("fixture-move-input.json")
+            envelope["schema_version"] = schema_version
+            with self.subTest(schema_version=schema_label), self.assertRaises(recipes.RecipeError):
+                recipes.run("move_named_anchors", envelope)
+        envelope = fixture("fixture-move-input.json")
+        envelope["parameters"]["dx"] = 10**10000
+        with self.assertRaises(recipes.RecipeError):
+            recipes.run("move_named_anchors", envelope)
 
     def test_unsupported_scope_is_reported_without_edits(self) -> None:
         envelope = fixture("fixture-move-input.json")
@@ -87,6 +104,45 @@ class AnchorRecipeTests(unittest.TestCase):
         with self.assertRaises(recipes.RecipeError) as context:
             recipes.run("move_named_anchors", envelope)
         self.assertEqual(context.exception.status, "unsupported")
+
+    def test_cli_rejects_unsupported_requests_with_nonzero_exit(self) -> None:
+        envelope = fixture("fixture-move-input.json")
+        envelope["parameters"]["sources"] = [7, 8]
+        completed = subprocess.run(
+            [sys.executable, "-I", str(ROOT / "anchor_recipes.py")],
+            input=json.dumps(envelope),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertNotIn("Traceback", completed.stderr)
+        result = json.loads(completed.stdout)
+        self.assertIn("unsupported", result["report"])
+        self.assertEqual(result["edits"], [])
+
+    def test_cli_rejects_each_missing_anchor_field_without_traceback(self) -> None:
+        for missing in ("id", "x", "y"):
+            for include_name in (True, False):
+                envelope = fixture("fixture-move-input.json")
+                anchor = {"id": "temporary", "name": "top", "x": 1.5, "y": 2.5}
+                if not include_name:
+                    anchor.pop("name")
+                anchor.pop(missing)
+                envelope["layers"][0]["anchors"] = [anchor]
+                completed = subprocess.run(
+                    [sys.executable, "-I", str(ROOT / "anchor_recipes.py")],
+                    input=json.dumps(envelope),
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                with self.subTest(missing=missing, include_name=include_name):
+                    self.assertNotEqual(completed.returncode, 0)
+                    self.assertNotIn("Traceback", completed.stderr)
+                    result = json.loads(completed.stdout)
+                    self.assertIn("anchors require id, x and y", result["report"])
+                    self.assertEqual(result["edits"], [])
 
     def test_output_is_stable_when_capture_order_changes(self) -> None:
         value = fixture("fixture-move-input.json")
@@ -144,7 +200,10 @@ class AnchorRecipeTests(unittest.TestCase):
         self.assertEqual(len(completed.stdout.splitlines()), 1)
         result = json.loads(completed.stdout)
         self.assertEqual(result["job_id"], "fixture-anchor-move-1")
-        self.assertEqual(result["input_hash"], "fixture-capture-sha256-1")
+        self.assertEqual(
+            result["input_hash"],
+            "81b724e9788b5bb4c365095867ee81766d095b00201d63c578c3b5867cb5d8d6",
+        )
         self.assertIn("recipe=move_named_anchors status=ok", completed.stderr)
 
 

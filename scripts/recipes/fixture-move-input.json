@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "job_id": "fixture-anchor-move-1",
-  "input_hash": "fixture-capture-sha256-1",
+  "input_hash": "81b724e9788b5bb4c365095867ee81766d095b00201d63c578c3b5867cb5d8d6",
   "source": 7,
   "parameters": {
     "recipe": "move_named_anchors",

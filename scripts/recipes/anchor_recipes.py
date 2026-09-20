@@ -56,9 +56,15 @@ def _is_number(value: Any) -> bool:
 
 
 def _finite_number(value: Any, label: str) -> float:
-    if not _is_number(value) or not math.isfinite(float(value)):
+    if not _is_number(value):
         _fail(f"{label} must be a finite number")
-    return float(value)
+    try:
+        number = float(value)
+    except OverflowError:
+        _fail(f"{label} is too large to represent as a finite number")
+    if not math.isfinite(number):
+        _fail(f"{label} must be a finite number")
+    return number
 
 
 def _string(value: Any, label: str) -> str:
@@ -134,9 +140,7 @@ def _layers(value: Any) -> list[dict[str, Any]]:
             anchor = _object(raw_anchor, f"anchors[{anchor_index}]")
             if set(anchor) - {"id", "name", "x", "y"}:
                 _fail("anchors may contain only id, optional name, x and y")
-            if "name" not in anchor and "id" not in anchor:
-                _fail("anchors require id, x and y")
-            if set(anchor) < {"id", "x", "y"}:
+            if not {"id", "x", "y"}.issubset(anchor):
                 _fail("anchors require id, x and y")
             anchor_id = _string(anchor["id"], f"anchors[{anchor_index}].id")
             if anchor_id in anchor_ids:
@@ -161,7 +165,12 @@ def _layers(value: Any) -> list[dict[str, Any]]:
 def _envelope(value: Any, recipe: str) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
     envelope = _object(value, "input")
     _exact_keys(envelope, TOP_LEVEL_KEYS, "input")
-    if envelope.get("schema_version") != SCHEMA_VERSION:
+    schema_version = envelope.get("schema_version")
+    if (
+        not isinstance(schema_version, int)
+        or isinstance(schema_version, bool)
+        or schema_version != SCHEMA_VERSION
+    ):
         _fail(f"schema_version must be {SCHEMA_VERSION}")
     job_id = _string(envelope.get("job_id"), "job_id")
     input_hash = _string(envelope.get("input_hash"), "input_hash")
@@ -291,7 +300,14 @@ def run(recipe: str, value: Any) -> dict[str, Any]:
         else f"Proposed {changed} anchor move(s)"
     )
     report = "\n".join([summary, *report_lines])
-    result: dict[str, Any] = {**identity, "report": report, "reads": reads, "edits": edits}
+    result: dict[str, Any] = {
+        "schema_version": identity["schema_version"],
+        "job_id": identity["job_id"],
+        "input_hash": identity["input_hash"],
+        "report": report,
+        "reads": reads,
+        "edits": edits,
+    }
     return result
 
 
@@ -338,7 +354,7 @@ def cli(recipe: str | None = None, argv: list[str] | None = None) -> int:
     except RecipeError as error:
         result = error_result(recipe, value if "value" in locals() else None, error)
         print(str(error), file=sys.stderr)
-        exit_code = 2 if error.status == "error" else 0
+        exit_code = 2
     except (TypeError, ValueError) as error:
         recipe_error = RecipeError(f"input could not be processed: {error}")
         result = error_result(recipe, value if "value" in locals() else None, recipe_error)
