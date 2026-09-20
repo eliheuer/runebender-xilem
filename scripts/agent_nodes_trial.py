@@ -413,37 +413,9 @@ def redact_socket(value: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def run_trial(binary: Path, output: Path, timeout: float) -> dict[str, Any]:
-    require(not output.exists(), f"output path already exists: {output}")
-    output.mkdir(parents=True)
-    require(binary.is_file(), f"binary does not exist: {binary}")
-    binary = binary.resolve()
-    version = subprocess.run(
-        [str(binary), "--version"],
-        capture_output=True,
-        text=True,
-        timeout=min(timeout, 15),
-        check=False,
-    )
-    require(version.returncode == 0, f"binary --version failed: {version.stderr.strip()}")
-    evidence: dict[str, Any] = {
-        "schema_version": 1,
-        "trial": "native_nodes_stdio_mcp",
-        "result": "running",
-        "claims": {
-            "external_model_used": False,
-            "model_interpretation_tested": False,
-            "native_host_used": True,
-            "actual_stdio_mcp_used": True,
-        },
-        "binary": {
-            "path": str(binary),
-            "sha256": sha256_file(binary),
-            "version": version.stdout.strip(),
-        },
-        "transcript": [],
-        "checks": {},
-    }
+def run_trial(
+    binary: Path, output: Path, timeout: float, evidence: dict[str, Any]
+) -> dict[str, Any]:
     host: Host | None = None
     mcp: McpClient | None = None
     with tempfile.TemporaryDirectory(prefix="runebender-nodes-trial-") as temporary:
@@ -467,11 +439,13 @@ def run_trial(binary: Path, output: Path, timeout: float) -> dict[str, Any]:
                 session = ready["session"]
                 source = ready.get("source_id")
                 evidence["host_ready"] = redact_socket(ready)
+                evidence["claims"]["native_host_used"] = True
 
                 initial = host.control("state", timeout)
                 state_width(initial, INITIAL_WIDTH, "initial state")
 
                 mcp = McpClient(binary, mcp_stderr, timeout)
+                evidence["transcript"] = mcp.transcript
                 initialized = mcp.request(
                     "initialize",
                     {
@@ -482,6 +456,7 @@ def run_trial(binary: Path, output: Path, timeout: float) -> dict[str, Any]:
                 )
                 mcp.notify("notifications/initialized", {})
                 tools = mcp.request("tools/list", {})
+                evidence["claims"]["actual_stdio_mcp_used"] = True
                 listed = {tool.get("name") for tool in tools.get("tools", [])}
                 require(
                     NODE_TOOLS <= listed,
@@ -746,10 +721,17 @@ def run_trial(binary: Path, output: Path, timeout: float) -> dict[str, Any]:
                 "host": host.process.returncode if host is not None else None,
                 "mcp": mcp.process.returncode if mcp is not None else None,
             }
+            after_cleanup = manifest(ufo)
+            evidence["fixture"]["manifest_after_cleanup"] = after_cleanup
+            evidence["checks"]["source_manifest_unchanged_after_cleanup"] = after_cleanup == before
     if evidence.get("result") == "passed":
         require(
             evidence["process_exit"] == {"host": 0, "mcp": 0},
             "trial processes did not exit cleanly",
+        )
+        require(
+            evidence["fixture"]["manifest_after_cleanup"] == before,
+            "disposable source manifest changed during cleanup",
         )
     return evidence
 
@@ -779,11 +761,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--timeout-seconds", type=float, default=90.0, help="per-operation and run timeout"
     )
+    parser.add_argument(
+        "--evidence-label",
+        default="unspecified",
+        help="short label such as preliminary or final",
+    )
     args = parser.parse_args()
     if not args.binary.is_absolute():
         parser.error("--binary must be an absolute path")
     if args.timeout_seconds < 5 or args.timeout_seconds > 300:
         parser.error("--timeout-seconds must be between 5 and 300")
+    if (
+        not args.evidence_label
+        or len(args.evidence_label.encode()) > 64
+        or any(character.isspace() for character in args.evidence_label)
+    ):
+        parser.error("--evidence-label must contain 1..=64 non-whitespace UTF-8 bytes")
     return args
 
 
@@ -792,17 +785,47 @@ def main() -> int:
     if args.output_dir.exists():
         print(f"agent_nodes_trial: output path already exists: {args.output_dir}", file=sys.stderr)
         return 1
+    args.output_dir.mkdir(parents=True)
+    binary = args.binary.resolve()
+    evidence: dict[str, Any] = {
+        "schema_version": 1,
+        "trial": "native_nodes_stdio_mcp",
+        "evidence_label": args.evidence_label,
+        "result": "running",
+        "claims": {
+            "external_model_used": False,
+            "model_interpretation_tested": False,
+            "native_host_used": False,
+            "actual_stdio_mcp_used": False,
+        },
+        "requested": {"binary": str(binary), "timeout_seconds": args.timeout_seconds},
+        "transcript": [],
+        "checks": {},
+    }
     try:
-        evidence = run_trial(args.binary, args.output_dir, args.timeout_seconds)
+        require(binary.is_file(), f"binary does not exist: {binary}")
+        version = subprocess.run(
+            [str(binary), "--version"],
+            capture_output=True,
+            text=True,
+            timeout=min(args.timeout_seconds, 15),
+            check=False,
+        )
+        require(version.returncode == 0, f"binary --version failed: {version.stderr.strip()}")
+        evidence["binary"] = {
+            "path": str(binary),
+            "sha256": sha256_file(binary),
+            "version": version.stdout.strip(),
+        }
+        run_trial(binary, args.output_dir, args.timeout_seconds, evidence)
     except (OSError, subprocess.SubprocessError, TrialError) as error:
-        if args.output_dir.exists():
-            failure = {
-                "schema_version": 1,
-                "trial": "native_nodes_stdio_mcp",
-                "result": "failed",
-                "error": str(error),
-            }
-            write_evidence(args.output_dir, failure)
+        evidence["result"] = "failed"
+        evidence["error"] = str(error)
+        evidence["limitations"] = [
+            "The trial did not reach every acceptance check.",
+            "A failed run does not establish end-to-end Nodes behavior or model interpretation.",
+        ]
+        write_evidence(args.output_dir, evidence)
         print(f"agent_nodes_trial: {error}", file=sys.stderr)
         return 1
     write_evidence(args.output_dir, evidence)

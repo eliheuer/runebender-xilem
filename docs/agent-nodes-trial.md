@@ -9,7 +9,8 @@ Run it after building the native binary elsewhere:
 ```sh
 python3 scripts/agent_nodes_trial.py \
   --binary /absolute/path/to/runebender \
-  --output-dir /absolute/path/to/new-evidence-directory
+  --output-dir /absolute/path/to/new-evidence-directory \
+  --evidence-label preliminary
 ```
 
 The trial starts `agent serve`, reads its socket and document epoch, starts a separate `mcp --live` process, performs the MCP handshake and `tools/list`, and explicitly selects the returned socket with `editor_connect`.
@@ -29,6 +30,7 @@ The source UFO manifest must remain byte-for-byte unchanged throughout.
 The evidence directory contains `evidence.json`, `artifact-manifest.json`, `original.png`, and `changed.png` after a passing run.
 `artifact-manifest.json` hashes every other retained evidence artifact.
 The JSON evidence identifies and hashes the supplied binary, hashes the discovered Nodes schemas and every tool argument set, records bounded host states and receipts, and states the limits of the trial's claims.
+Failure evidence retains each completed handshake or tool step, the source manifest, process diagnostics, binary identity, and an explicit statement that the remaining checks were not reached.
 Temporary sockets, the disposable source, and process working files are removed during cleanup.
 
 The parser and fixture checks require only Python's standard library:
