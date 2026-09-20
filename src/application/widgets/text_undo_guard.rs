@@ -192,9 +192,34 @@ fn blocks_text_history_key(key: &Key, modifiers: Modifiers) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::application::widgets::shortcuts::{AppAction, ShortcutHost};
+    use masonry::core::keyboard::{Code, KeyboardEvent};
+    use masonry::properties::Dimensions;
+    use masonry::theme::default_property_set;
+    use masonry::widgets::{TextAction, TextInput};
+    use masonry_testing::TestHarness;
+
+    fn key(key: Key, modifiers: Modifiers) -> TextEvent {
+        TextEvent::Keyboard(KeyboardEvent {
+            state: KeyState::Down,
+            key,
+            code: Code::Unidentified,
+            modifiers,
+            ..KeyboardEvent::default()
+        })
+    }
 
     #[test]
-    fn blocks_platform_text_history_but_not_unmodified_typing() {
+    fn focused_text_input_blocks_font_undo_but_still_accepts_typing() {
+        let input = TextInput::new("a");
+        let area_id = input.area_pod().id();
+        let guard = TextUndoGuard::new(input.prepare()).prepare();
+        let host = ShortcutHost::new(guard)
+            .prepare()
+            .with_props(Dimensions::MAX);
+        let mut harness = TestHarness::create_with_size(default_property_set(), host, (160, 40));
+        harness.focus_on(Some(area_id));
+
         let mut modifiers = Modifiers::empty();
         modifiers.set(
             if cfg!(target_os = "macos") {
@@ -204,17 +229,11 @@ mod tests {
             },
             true,
         );
-        assert!(blocks_text_history_key(
-            &Key::Character("z".into()),
-            modifiers
-        ));
-        assert!(blocks_text_history_key(
-            &Key::Character("Y".into()),
-            modifiers
-        ));
-        assert!(!blocks_text_history_key(
-            &Key::Character("z".into()),
-            Modifiers::empty()
-        ));
+        harness.process_text_event(key(Key::Character("z".into()), modifiers));
+        assert!(harness.pop_action::<AppAction>().is_none());
+
+        harness.process_text_event(key(Key::Character("b".into()), Modifiers::empty()));
+        let changed = harness.pop_action::<TextAction>().map(|(action, _)| action);
+        assert!(matches!(changed, Some(TextAction::Changed(text)) if text.contains('b')));
     }
 }
