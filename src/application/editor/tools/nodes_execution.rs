@@ -16,19 +16,20 @@ use runebender::document::agent_edit::AgentEditRequest;
 use runebender::document::compiled_proof::{CompileProofInput, CompiledProofRecipe};
 use runebender::document::nodes_session::{
     GraphCancelOutcome, GraphCancelRequest, GraphCancelResponse, GraphDocumentState,
-    GraphExecutionPlan, GraphFontCapture, GraphNodeOutput, GraphNodeOutputValue, GraphProofScope,
+    GraphFontCapture, GraphNodeOutput, GraphNodeOutputValue, GraphProofScope,
     GraphReceiptDisposition, GraphRunCompletion, GraphRunHandle, GraphRunIdentity,
     GraphRunInspection, GraphRunOutcome, GraphRunRequest, GraphRunResponse, GraphRunStatus,
     GraphRunWork, GraphSemanticGuard, GraphSession,
 };
-use runebender::document::project::{CanonicalDocumentEditTransaction, Project};
+use runebender::document::project::Project;
 use runebender::document::script_recipe::{ScriptRecipeInput, ScriptRecipeResult};
 use serde_json::Value;
+#[cfg(test)]
 use sha2::{Digest, Sha256};
 
 use crate::application::platform::script_jobs::{
-    ScriptJobCancelOutcome, ScriptJobFailure, ScriptJobHandle, ScriptJobOutcome, ScriptJobQueue,
-    ScriptJobRequest, ScriptJobStatus, ScriptJobSubmitError,
+    ScriptJobFailure, ScriptJobHandle, ScriptJobOutcome, ScriptJobQueue, ScriptJobRequest,
+    ScriptJobStatus, ScriptJobSubmitError,
 };
 
 const MAX_LIVE_GRAPH_RUNS: usize = 8;
@@ -69,8 +70,6 @@ pub(crate) struct LiveGraphSubmitRequest {
 pub(crate) struct LiveGraphSubmitResponse {
     /// Durable graph run receipt.
     pub(crate) graph: GraphRunResponse,
-    /// Shared Python queue handle, absent when submission failed or after explicit release.
-    pub(crate) script: Option<ScriptJobHandle>,
 }
 
 /// Staged output handed to the existing compiled-proof owner.
@@ -78,14 +77,10 @@ pub(crate) struct LiveGraphSubmitResponse {
 pub(crate) struct LiveGraphProofRequest {
     /// Exact graph run identity.
     pub(crate) identity: GraphRunIdentity,
-    /// Validated comparison topology.
-    pub(crate) plan: GraphExecutionPlan,
     /// Frozen unchanged whole-family compiler input.
     pub(crate) base_input: CompileProofInput,
     /// Complete derived whole-family compiler input with the staged edit overlaid.
     pub(crate) derived_input: CompileProofInput,
-    /// Guard-checked staged edit; never committed by graph traversal.
-    pub(crate) staged_edit: CanonicalDocumentEditTransaction,
     /// Strict Python result retained for report and later explicit Apply.
     pub(crate) recipe_result: ScriptRecipeResult,
     /// Bounded Python diagnostics.
@@ -132,8 +127,6 @@ pub(crate) struct LiveGraphResultSummary {
 pub(crate) struct LiveGraphCancelResponse {
     /// Durable graph cancellation receipt.
     pub(crate) graph: GraphCancelResponse,
-    /// Effect sent to the shared Python queue, when it still owned work.
-    pub(crate) script: Option<ScriptJobCancelOutcome>,
     /// Whether the proof owner must cancel its retained handles.
     pub(crate) cancel_proofs: bool,
 }
@@ -213,7 +206,7 @@ impl LiveGraphExecution {
     ) -> Result<LiveGraphSubmitResponse, LiveGraphExecutionError> {
         let request_key = (request.actor.clone(), request.operation_key.clone());
         if let Some(handle) = self.requests.get(&request_key).copied() {
-            let (original_request, script) = {
+            let original_request = {
                 let record = self.records.get(&handle).ok_or_else(|| {
                     LiveGraphExecutionError::new(
                         LiveGraphExecutionErrorCode::UnknownRun,
@@ -221,7 +214,7 @@ impl LiveGraphExecution {
                     )
                 })?;
                 validate_retry_request(record, &request)?;
-                (record.original_request(), record.script)
+                record.original_request()
             };
             let graph = session.start_run(original_request).map_err(graph_error)?;
             debug_assert_eq!(
@@ -229,7 +222,7 @@ impl LiveGraphExecution {
                 GraphReceiptDisposition::Replayed,
                 "an accepted adapter retry must replay its canonical graph receipt"
             );
-            return Ok(LiveGraphSubmitResponse { graph, script });
+            return Ok(LiveGraphSubmitResponse { graph });
         }
         if self.retained_count() >= MAX_LIVE_GRAPH_RUNS {
             return Err(LiveGraphExecutionError::new(
@@ -318,10 +311,7 @@ impl LiveGraphExecution {
                         phase,
                     },
                 );
-                return Ok(LiveGraphSubmitResponse {
-                    graph,
-                    script: None,
-                });
+                return Ok(LiveGraphSubmitResponse { graph });
             }
         };
         self.requests.insert(request_key, work.handle);
@@ -338,10 +328,7 @@ impl LiveGraphExecution {
                 phase: LiveGraphPhase::ScriptQueued,
             },
         );
-        Ok(LiveGraphSubmitResponse {
-            graph,
-            script: Some(script_handle),
-        })
+        Ok(LiveGraphSubmitResponse { graph })
     }
 
     /// Inspect only this adapter's queue handles and stage newly completed recipe results.
@@ -570,12 +557,11 @@ impl LiveGraphExecution {
         let handle = request.handle;
         let graph = session.cancel_run(request).map_err(graph_error)?;
         let record = self.record_mut(handle)?;
-        let mut script = None;
         let mut cancel_proofs = false;
         match record.phase {
             LiveGraphPhase::ScriptQueued | LiveGraphPhase::ScriptRunning => {
                 if let Some(script_handle) = record.script {
-                    script = Some(queue.cancel(script_handle));
+                    queue.cancel(script_handle);
                 }
             }
             LiveGraphPhase::RecipeStaged => {
@@ -589,7 +575,6 @@ impl LiveGraphExecution {
         }
         Ok(LiveGraphCancelResponse {
             graph,
-            script,
             cancel_proofs,
         })
     }
@@ -917,10 +902,8 @@ fn stage_result(
     };
     record.proof_request = Some(LiveGraphProofRequest {
         identity: record.work.identity.clone(),
-        plan: record.work.plan.clone(),
         base_input,
         derived_input,
-        staged_edit,
         recipe_result: result,
         stderr,
         proof_recipe,
@@ -1077,6 +1060,7 @@ fn run_error(
     }
 }
 
+#[cfg(test)]
 fn sha256(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()
@@ -1086,6 +1070,7 @@ fn sha256(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use crate::application::platform::script_jobs::ScriptJobCancelOutcome;
     use std::collections::BTreeMap;
     use std::path::PathBuf;
     use std::time::{Duration, Instant};
@@ -1235,7 +1220,7 @@ mod tests {
             .unwrap();
         assert_eq!(replay.graph.disposition, GraphReceiptDisposition::Replayed);
         assert_eq!(replay.graph.receipt, submitted.graph.receipt);
-        assert_eq!(replay.script, submitted.script);
+        assert_eq!(replay.graph.receipt.handle, submitted.graph.receipt.handle);
 
         let mut changed_input = LiveGraphSubmitRequest {
             guard: GraphSemanticGuard {
@@ -1329,7 +1314,7 @@ mod tests {
             submitted.graph.disposition,
             GraphReceiptDisposition::Applied
         );
-        assert_eq!(submitted.script, None);
+        assert_eq!(adapter.records[&handle].script, None);
         assert_eq!(
             adapter.phase(handle),
             Some(LiveGraphPhase::Terminal(GraphRunStatus::Failed))
@@ -1355,7 +1340,7 @@ mod tests {
             .unwrap();
         assert_eq!(replay.graph.disposition, GraphReceiptDisposition::Replayed);
         assert_eq!(replay.graph.receipt, submitted.graph.receipt);
-        assert_eq!(replay.script, None);
+        assert_eq!(adapter.records[&handle].script, None);
 
         assert!(adapter.release(&mut session, &queue, handle).unwrap());
         assert_eq!(adapter.phase(handle), Some(LiveGraphPhase::Released));
@@ -1367,7 +1352,7 @@ mod tests {
             GraphReceiptDisposition::Replayed
         );
         assert_eq!(released_replay.graph.receipt, submitted.graph.receipt);
-        assert_eq!(released_replay.script, None);
+        assert_eq!(adapter.records[&handle].script, None);
 
         assert_eq!(
             queue.cancel(queued),
@@ -1391,7 +1376,9 @@ mod tests {
         let submitted = adapter
             .submit(&mut session, &queue, &project, request)
             .unwrap();
-        let script = submitted.script.unwrap();
+        let script = adapter.records[&submitted.graph.receipt.handle]
+            .script
+            .unwrap();
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
             if queue.inspect(script).unwrap().status == ScriptJobStatus::Completed {
@@ -1425,7 +1412,6 @@ mod tests {
             cancelled.graph.receipt.outcome,
             GraphCancelOutcome::CancellationRequested
         );
-        assert_eq!(cancelled.script, Some(ScriptJobCancelOutcome::TooLate));
 
         adapter.poll_scripts(&mut session, &queue, &project);
         assert_eq!(
