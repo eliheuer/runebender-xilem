@@ -10,6 +10,10 @@ No release has been published yet.
 
 ### Added
 
+- Added native live `editor_context`, session-scoped object IDs in glyph reads, and document epoch guards for external agents.
+  Live tools now advertise stable source IDs, and MCP input and protocol negotiation are bounded.
+  This is the first [live context checkpoint](docs/agent-live-context.md); grouped atomic apply, retry receipts, and compiled agent proofs remain pending.
+
 - Documented the proposed [live agent-editing architecture](docs/agent-interface-research.md), client connection matrix, source audit, and gated acceptance plan.
   This is research only; it adds no runtime capability.
 - Added live Rust compilation for shaped variable-font previews and TTF export, including unsaved edits, variable kerning and mark positioning.

@@ -230,3 +230,10 @@ This layout borrows principles rather than copying another editor's technology c
 
 GPUI Runebender remains a behavioral and visual reference. It is not the architecture template;
 new application structure should stay idiomatic to Xilem and Masonry.
+
+## Live agent context
+
+`application/platform/live.rs` captures UI context and routes mailbox calls through `Workspace::call_live`, including cache refresh and existing install-history bookkeeping.
+`document/live.rs` remains the toolkit-independent font operation boundary.
+`document/live_socket.rs` owns the Unix endpoint lifetime and checks optional document epoch guards before dispatch.
+Canonical glyph and object identities are exposed as opaque session-scoped strings; the [live wire notes](docs/agent-live-context.md) distinguish these identities from revisions and describe current limits.

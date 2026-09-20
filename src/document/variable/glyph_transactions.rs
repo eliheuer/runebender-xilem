@@ -19,6 +19,11 @@ pub struct GlyphId(u64);
 static NEXT_GLYPH_ID: AtomicU64 = AtomicU64::new(1);
 
 impl GlyphId {
+    /// Opaque session-local wire identity; meaningful only within its document epoch.
+    pub fn to_wire(self) -> String {
+        self.0.to_string()
+    }
+
     fn next() -> Self {
         Self(NEXT_GLYPH_ID.fetch_add(1, Ordering::Relaxed))
     }

@@ -42,7 +42,14 @@ pub fn read_project_glyph(
         Ok(path) => path,
         Err(error) => return json!({"ok": false, "error": error.to_string()}),
     };
-    read_canonical_layer(name, &selected.name, glyph, path)
+    let mut result = read_canonical_layer(name, &selected.name, glyph, path);
+    result["source_id"] = json!(source.0);
+    result["glyph_id"] = json!(
+        project
+            .document_glyph(name)
+            .map(|glyph| glyph.id().to_wire())
+    );
+    result
 }
 
 /// Return geometry and metrics from one isolated canonical experiment layer.
@@ -85,9 +92,11 @@ fn read_canonical_layer(
         "points": glyph.contours().map(|contour| contour.points().count()).sum::<usize>(),
         "contour_count": glyph.contours().count(),
         "unicodes": glyph.codepoints().map(|codepoint| format!("U+{:04X}", codepoint as u32)).collect::<Vec<_>>(),
+        "contour_ids": glyph.contours().map(|contour| contour.id().to_wire()).collect::<Vec<_>>(),
         "contours": glyph.contours().map(|contour| json!(contour.points().map(|point| {
             let position = point.position();
             json!({
+                "id": point.id().to_wire(),
                 "x": position.x,
                 "y": position.y,
                 "type": format!("{:?}", point.point_type()).to_lowercase(),
@@ -98,12 +107,13 @@ fn read_canonical_layer(
         "join_notes": "Direct contours only; components excluded. Contour indices count nonempty contours. Curvature is signed inverse font units. Degenerate tangents are null; no G2 guarantee or optical quality score is inferred.",
         "components": glyph.components().map(|component| component.reference()).collect::<Vec<_>>(),
         "component_transforms": glyph.components().map(|component| json!({
+            "id": component.id().to_wire(),
             "base": component.reference(),
             "transform": component.transform().as_coeffs(),
         })).collect::<Vec<_>>(),
         "anchors": glyph.anchors().map(|anchor| {
             let position = anchor.position();
-            json!({"name": anchor.name(), "x": position.x, "y": position.y})
+            json!({"id": anchor.id().to_wire(), "name": anchor.name(), "x": position.x, "y": position.y})
         }).collect::<Vec<_>>(),
     })
 }
@@ -186,7 +196,7 @@ mod tests {
             None,
         ));
         font.default_layer_mut().insert_glyph(glyph);
-        let project = Project::from_source(SourceInput::from_font(
+        let mut project = Project::from_source(SourceInput::from_font(
             font,
             PathBuf::from("CanonicalInspect.ufo"),
         ));
@@ -204,13 +214,37 @@ mod tests {
         assert_eq!(actual["components"], json!(["base"]));
         assert_eq!(
             actual["component_transforms"],
-            json!([{"base":"base","transform":[1.25,0.125,-0.25,0.75,13.0,29.0]}])
+            json!([{"id":actual["component_transforms"][0]["id"],"base":"base","transform":[1.25,0.125,-0.25,0.75,13.0,29.0]}])
         );
         assert_eq!(
             actual["anchors"],
-            json!([{"name":"top","x":320.0,"y":700.0}])
+            json!([{"id":actual["anchors"][0]["id"],"name":"top","x":320.0,"y":700.0}])
         );
         assert!(actual["revision"].as_str().is_some());
+        assert!(actual["component_transforms"][0]["id"].as_str().is_some());
+        assert!(actual["anchors"][0]["id"].as_str().is_some());
+        let base = read_project_glyph(&project, SourceId(0), "base", None);
+        let layer = project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
+        project
+            .edit_document_layer("base", &layer, |draft| {
+                draft.set_width(500.0)?;
+                Ok(())
+            })
+            .unwrap();
+        project.rename_document_glyph("base", "renamed").unwrap();
+        let renamed = read_project_glyph(&project, SourceId(0), "renamed", None);
+        assert_eq!(base["glyph_id"], renamed["glyph_id"]);
+        assert_eq!(base["contour_ids"], renamed["contour_ids"]);
+        assert_eq!(
+            base["contours"][0][0]["id"],
+            renamed["contours"][0][0]["id"]
+        );
+        assert!(base["contours"][0][0]["id"].as_str().is_some());
+        assert_ne!(base["revision"], renamed["revision"]);
+
         assert_eq!(
             read_project_glyph(&project, SourceId(0), "A", Some("missing")),
             json!({"ok": false, "error": "no layer named missing"}),

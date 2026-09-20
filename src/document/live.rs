@@ -37,9 +37,19 @@ pub fn tools() -> Vec<agent::Tool> {
                 tool.parameters["properties"]["glyphs"]["minItems"] = json!(1);
                 tool.parameters["properties"]["glyphs"]["maxItems"] = json!(256);
             }
+            tool.parameters["properties"].as_object_mut().expect("tool properties").remove("master");
+            tool.description = tool.description.replace("master", "source");
+            if tool.name == "project_info" {
+                tool.description = "List the live project's stable source identities and current display indices. Choose a source by id, never by display index.".into();
+            }
             tool
         })
         .collect();
+    result.push(agent::Tool {
+        name: "editor_context".into(),
+        description: "Read one coherent application context: active stable source/layer/glyph, selection identities, text, features, axis values and gesture state. Widget-owned caret ranges are currently unavailable. Context never supplies implicit edit targets.".into(),
+        parameters: json!({"type":"object", "properties":{}, "additionalProperties":false}),
+    });
     result.push(agent::Tool {
         name: "glyph_inventory".into(),
         description: "Find live glyphs by mark label or Unicode scalar before selecting references and targets. Returns names, encoding, empty status and revisions. Green is a reference only when the project says so. Uses the dark theme to interpret legacy mark colors.".into(),
@@ -108,6 +118,10 @@ pub fn tools() -> Vec<agent::Tool> {
     }
     result.push(agent::Tool {name:"specimen".into(),description:"Designbot scene for a one-page live Latin text proof at 18,24,36,48 pt. Harfrust shaping plus current UFO kerning. Use identical text for A/B experiments. Does not save files.".into(),parameters:json!({"type":"object","properties":{"text":{"type":"string","maxLength":256}},"required":["text"],"additionalProperties":false})});
     for tool in &mut result {
+        tool.parameters["properties"]["expected_document_epoch"] = json!({
+            "type":"string",
+            "description":"Optional endpoint lifetime guard from a previous response; mismatch rejects before dispatch."
+        });
         if matches!(
             tool.name.as_str(),
             "proposal_install" | "experiment_apply" | "experiment_undo_apply"
@@ -124,7 +138,11 @@ pub fn tools() -> Vec<agent::Tool> {
         }
         if !matches!(
             tool.name.as_str(),
-            "design_context" | "project_info" | "experiment_list" | "experiment_undo_apply"
+            "editor_context"
+                | "design_context"
+                | "project_info"
+                | "experiment_list"
+                | "experiment_undo_apply"
         ) {
             tool.parameters["properties"]["source"] = json!({"type":"integer","minimum":0});
             if tool.name != "experiment_fork" {
@@ -140,7 +158,7 @@ pub fn tools() -> Vec<agent::Tool> {
 /// no tool saves files.
 /// Multi-source calls require an explicit stable source identity, independent of UI selection.
 pub fn call(project: &mut Project, name: &str, args: &Value) -> Value {
-    match handle(project, name, args) {
+    let mut result = match handle(project, name, args) {
         Ok(value) => {
             if name == "proposal_install"
                 && value["root_changed"] == true
@@ -153,11 +171,28 @@ pub fn call(project: &mut Project, name: &str, args: &Value) -> Value {
             value
         }
         Err(error) => json!({"ok": false, "error": error}),
-    }
+    };
+    result["document_revision"] = json!(project.document_revision());
+    result["saved"] = json!(false);
+    result
 }
 
 fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, String> {
     let object = args.as_object().ok_or("arguments must be an object")?;
+    if object.contains_key("master") {
+        return Err(
+            "live tools use stable source IDs from project_info; master indices are unsupported"
+                .into(),
+        );
+    }
+    if object.contains_key("expected_document_epoch") {
+        return Err("document epoch guards require the live socket session boundary".into());
+    }
+    if name == "editor_context" {
+        return Ok(
+            json!({"ok":false,"error":"application context is unavailable in this host", "error_code":"unsupported_context"}),
+        );
+    }
     if matches!(
         name,
         "proposal_install" | "experiment_apply" | "experiment_undo_apply"
@@ -195,7 +230,7 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
     if name == "experiment_undo_apply" {
         let (source, names) = super::experiments::undo_apply(project)?;
         return Ok(
-            json!({"ok":true,"source":source.0,"installed":{"installed":names},"root_changed":true}),
+            json!({"ok":true,"source":source.0,"source_id":source.0,"installed":{"installed":names},"root_changed":true}),
         );
     }
     let source = match object.get("source") {
@@ -234,7 +269,9 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
             .map(|v| v.as_str().ok_or("parent must be a string"))
             .transpose()?;
         super::experiments::fork(project, source, name, parent, reason)?;
-        return Ok(json!({"ok":true,"branch":name,"source":source.0,"session_only":true}));
+        return Ok(
+            json!({"ok":true,"branch":name,"source":source.0,"source_id":source.0,"session_only":true}),
+        );
     }
     if name == "experiment_apply" {
         let branch = branch.ok_or("branch is required")?;
@@ -261,7 +298,7 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
             .ok_or("keep_structure is required")?;
         let installed = super::experiments::apply(project, branch, &names, kerning, keep)?;
         return Ok(
-            json!({"ok":true,"source":source.0,"installed":{"installed":installed},"root_changed":true}),
+            json!({"ok":true,"source":source.0,"source_id":source.0,"installed":{"installed":installed},"root_changed":true}),
         );
     }
     if let Some(name) = branch

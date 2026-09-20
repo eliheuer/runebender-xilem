@@ -14,7 +14,7 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     mpsc,
 };
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use super::agent::ToolCall;
 use serde_json::Value;
@@ -47,6 +47,7 @@ pub fn sessions() -> Vec<PathBuf> {
 #[derive(Debug)]
 pub struct Pending {
     call: ToolCall,
+    epoch: String,
     deadline: Instant,
     reply: mpsc::Sender<Value>,
 }
@@ -54,9 +55,25 @@ pub struct Pending {
 impl Pending {
     /// Executes a still-current request on the caller's thread and sends its result.
     /// Expired requests are dropped without invoking `handle`.
-    pub fn respond(self, handle: impl FnOnce(&ToolCall) -> Value) {
+    pub fn respond(mut self, handle: impl FnOnce(&ToolCall) -> Value) {
         if Instant::now() < self.deadline {
-            let _ = self.reply.send(handle(&self.call));
+            let expected = self
+                .call
+                .arguments
+                .as_object_mut()
+                .and_then(|args| args.remove("expected_document_epoch"));
+            let mut result = if expected
+                .as_ref()
+                .is_some_and(|value| value.as_str() != Some(&self.epoch))
+            {
+                serde_json::json!({"ok":false,"error":"document epoch mismatch; reconnect and read the intended document", "error_code":"stale_document"})
+            } else {
+                handle(&self.call)
+            };
+            result["document_epoch"] = serde_json::json!(self.epoch);
+            result["live_schema_version"] = serde_json::json!(1);
+            result["server_version"] = serde_json::json!(env!("CARGO_PKG_VERSION"));
+            let _ = self.reply.send(result);
         }
     }
 }
@@ -73,11 +90,20 @@ impl Server {
     /// Creates a private directory and socket in the system temporary directory.
     /// No source data is written there. The path identifies this document lifetime.
     pub fn start() -> io::Result<Self> {
-        let directory = std::env::temp_dir().join(format!(
-            "runebender-live-{}-{}",
+        let epoch = format!(
+            "{}-{}-{}",
             std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(io::Error::other)?
+                .as_nanos(),
             NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
+        );
+        use sha2::{Digest as _, Sha256};
+        // macOS gives Unix sockets a short path budget, including the user temp root.
+        // Exclusive directory creation rejects even an unlikely digest collision.
+        let suffix = format!("{:x}", Sha256::digest(epoch.as_bytes()));
+        let directory = std::env::temp_dir().join(format!("runebender-live-{}", &suffix[..16]));
         std::fs::DirBuilder::new().mode(0o700).create(&directory)?;
         let path = directory.join("session.sock");
         let listener = match UnixListener::bind(&path) {
@@ -97,7 +123,7 @@ impl Server {
                     Ok((mut stream, _)) => {
                         let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
                         let _ = stream.set_write_timeout(Some(Duration::from_secs(2)));
-                        let result = serve(&mut stream, &sender);
+                        let result = serve(&mut stream, &sender, &epoch);
                         if let Err(error) = result {
                             let _ = writeln!(
                                 stream,
@@ -154,12 +180,17 @@ fn read_frame(stream: &mut UnixStream) -> io::Result<String> {
     Ok(line)
 }
 
-fn serve(stream: &mut UnixStream, sender: &mpsc::SyncSender<Pending>) -> io::Result<()> {
+fn serve(
+    stream: &mut UnixStream,
+    sender: &mpsc::SyncSender<Pending>,
+    epoch: &str,
+) -> io::Result<()> {
     let call = serde_json::from_str(&read_frame(stream)?)?;
     let (reply, receive) = mpsc::channel();
     sender
         .try_send(Pending {
             call,
+            epoch: epoch.to_owned(),
             deadline: Instant::now() + TIMEOUT,
             reply,
         })
@@ -234,6 +265,24 @@ mod tests {
     }
 
     #[test]
+    fn mismatched_epoch_rejects_before_dispatch() {
+        let (reply, receive) = mpsc::channel();
+        Pending {
+            call: ToolCall {
+                name: "proposal_install".into(),
+                arguments: serde_json::json!({"expected_document_epoch":"old"}),
+            },
+            epoch: "current".into(),
+            deadline: Instant::now() + TIMEOUT,
+            reply,
+        }
+        .respond(|_| panic!("stale document must never execute"));
+        let result = receive.recv().unwrap();
+        assert_eq!(result["error_code"], "stale_document");
+        assert_eq!(result["document_epoch"], "current");
+    }
+
+    #[test]
     fn expired_request_never_executes() {
         let (reply, _) = mpsc::channel();
         Pending {
@@ -241,6 +290,7 @@ mod tests {
                 name: "propose_edits".into(),
                 arguments: Value::Null,
             },
+            epoch: "expired".into(),
             deadline: Instant::now() - Duration::from_secs(1),
             reply,
         }

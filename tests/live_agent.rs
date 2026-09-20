@@ -156,3 +156,33 @@ fn cli_and_mcp_share_one_unsaved_authorized_document() {
         "the live socket must never save its editor-owned document"
     );
 }
+
+#[test]
+fn mcp_negotiates_known_versions_and_bounds_input() {
+    use std::io::BufRead as _;
+    for (requested, expected) in [("2024-11-05", "2024-11-05"), ("2099-01-01", "2025-11-25")] {
+        let mut mcp = Command::new(env!("CARGO_BIN_EXE_runebender"))
+            .args(["mcp", "--live"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut input = mcp.stdin.take().unwrap();
+        let mut output = std::io::BufReader::new(mcp.stdout.take().unwrap());
+        writeln!(input, "{}", json!({"jsonrpc":"2.0","id":1,"method":"initialize",
+            "params":{"protocolVersion":requested,"capabilities":{},"clientInfo":{"name":"test","version":"1"}}})).unwrap();
+        input.flush().unwrap();
+        let mut line = String::new();
+        output.read_line(&mut line).unwrap();
+        let reply: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(reply["result"]["protocolVersion"], expected);
+        input.write_all(&vec![b' '; 8 * 1024 * 1024 + 1]).unwrap();
+        input.flush().unwrap();
+        drop(input);
+        let mut line = String::new();
+        output.read_line(&mut line).unwrap();
+        let reply: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(reply["error"]["code"], -32600);
+        assert!(mcp.wait().unwrap().success());
+    }
+}

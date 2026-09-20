@@ -1,22 +1,48 @@
 # Implementation gates and acceptance plan
 
 This plan accompanies the [research report](agent-interface-research.md) and [client matrix](agent-client-matrix.md).
-All implementation steps remain pending.
-The research phase changes documentation only.
+The original research phase changed documentation only.
+Implementation began after the explicit migration release recorded below.
+Milestone 1 remains incomplete; its first context and identity checkpoint is implemented and validated.
 
 ## Gate 0: explicit migration release
 
-- [ ] Receive an explicit release from orchestration task `01a0b6c4-c0a7-7951-917f-7ed2ccda4428` with the exact final main commit.
-- [ ] Verify that commit is present on `/Users/eli/GH/repos/runebender-xilem` main and upstream, and review the migration's final validation evidence.
-- [ ] Inventory the research worktree and preserve unrelated changes before moving its base forward through an appropriate isolated branch.
-- [ ] Re-read the final `ARCHITECTURE.md`, relevant module headers, `DESIGN.md`, and browser boundary.
-- [ ] Re-audit canonical identity lifetime, snapshots, source/layer transactions, history, compile jobs and wire schemas.
-- [ ] Recheck the refresh-field mismatch and experiment proof revision finding; orchestration has already routed them to the migration owner.
+- [x] Receive an explicit release from orchestration task `01a0b6c4-c0a7-7951-917f-7ed2ccda4428` with the exact final main commit.
+- [x] Verify that commit is present on `/Users/eli/GH/repos/runebender-xilem` main and upstream, and review the migration's final validation evidence.
+- [x] Inventory the research worktree and preserve unrelated changes before moving its base forward through an appropriate isolated branch.
+- [x] Re-read the final `ARCHITECTURE.md`, relevant module headers, `DESIGN.md`, and browser boundary.
+- [x] Re-audit canonical identity lifetime, snapshots, source/layer transactions, history, compile jobs and wire schemas.
+- [x] Recheck the refresh-field mismatch and experiment proof revision finding; orchestration has already routed them to the migration owner.
   Do not duplicate their fixes in this task.
-- [ ] Record a revised implementation map against the released commit, including which audit gaps migration has already closed.
+- [x] Record a revised implementation map against the released commit, including which audit gaps migration has already closed.
 
 A testing checkpoint, a passing partial suite, a quiet migration task or elapsed time is not this gate.
 Research readiness is not permission to prototype, add dependencies or start production changes.
+
+## Released baseline and first implementation checkpoint
+
+Orchestration released final main `e40bd4ce338cb8270f2356a515946e52d2b6b21b` explicitly.
+Local main and GitHub main matched that commit, and its tree matched documentation completion `d864e211d73f134e53094928e496a8b4c97ee690`.
+The [migration final proof](babelfont-migration-final-proof.md) records the migration validation.
+The research branch incorporated it through merge `dbf2072`; main was not changed.
+
+The migrated code already fixes stable-source refresh routing and branch kerning proof revisions.
+It also removes the production whole-source projections described in the historical audit.
+The stable component-selection history regression coverage remains intact.
+The implementation keeps canonical `Project` authoritative and uses its existing revision, stable identities, layer transactions, and history.
+
+The first checkpoint adds `editor_context` in the application adapter and exposes stable glyph/contour/point/component/anchor identities in canonical reads.
+The Unix mailbox supplies a document epoch and rejects a mismatched optional `expected_document_epoch` before dispatch.
+The context includes active source/layer/glyph, selected object IDs, tab, tool, text/features, user axis values and gesture state.
+Its `context_revision` is a content hash, not a monotonic history counter; returning to identical context can reproduce the hash.
+Caret/selection ranges owned by the text widget remain explicitly unavailable, and there is no arbitrary auxiliary-layer canvas selector.
+
+Live schemas no longer advertise disk `master` indices; live calls reject that field and expose `source_id` on experiment results too.
+Canonical live results include `document_revision` and `saved=false`.
+The socket envelope reports schema version 1 and the package version; this is not an executable hash.
+MCP input is bounded to 8 MiB and initialization chooses a supported version instead of echoing an arbitrary version.
+Full schema validation, operation receipts, atomic grouped apply, cancellation, compiled proofs and real client/model trials remain pending.
+See [the live context wire notes](agent-live-context.md) for the implemented contract and its limits.
 
 ## Milestone 1: one correct live editing loop
 
@@ -191,5 +217,7 @@ A poor optical decision with perfect transaction behavior is a successful protoc
 
 The architecture, matrix, source audit and staged scenarios are complete as a research deliverable.
 No implementation milestone is complete.
-No client connection, model-quality result or new runtime test is claimed.
-The next action is a final-main re-audit after the orchestration release, not an automatic start based on this checklist.
+At research completion, no client connection, model-quality result or new runtime test was claimed.
+Implementation validation belongs to the checkpoint record above and the live context wire notes.
+The explicit final-main release and re-audit are recorded above.
+The next implementation work is the remainder of Milestone 1; research evidence remains historical, and transport tests do not establish model design quality.

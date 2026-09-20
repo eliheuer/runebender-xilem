@@ -42,6 +42,11 @@ macro_rules! object_id {
         pub struct $name(u64);
 
         impl $name {
+            /// Opaque session-local wire identity; meaningful only within its document epoch.
+            pub fn to_wire(self) -> String {
+                self.0.to_string()
+            }
+
             fn next() -> Self {
                 Self(NEXT_OBJECT_ID.fetch_add(1, Ordering::Relaxed))
             }

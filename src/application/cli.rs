@@ -1768,10 +1768,20 @@ fn mcp_serve(font: Option<&Path>, session: Option<&Path>, live: bool, tool: Opti
         let _ = writeln!(out, "{value}");
         let _ = out.flush();
     };
-    for line in stdin.lock().lines() {
-        let Ok(line) = line else {
+    let mut input = stdin.lock();
+    const MAX_MCP_FRAME: u64 = 8 * 1024 * 1024;
+    loop {
+        let mut line = String::new();
+        match std::io::Read::take(&mut input, MAX_MCP_FRAME + 1).read_line(&mut line) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
+        }
+        if line.len() as u64 > MAX_MCP_FRAME || !line.ends_with('\n') {
+            reply(json!({"jsonrpc":"2.0","id":null,"error":{
+                "code":-32600,"message":"invalid or oversized MCP frame (limit 8 MiB)"
+            }}));
             break;
-        };
+        }
         if line.trim().is_empty() {
             continue;
         }
@@ -1795,7 +1805,13 @@ fn mcp_serve(font: Option<&Path>, session: Option<&Path>, live: bool, tool: Opti
                 let version = params
                     .get("protocolVersion")
                     .and_then(|v| v.as_str())
-                    .unwrap_or("2024-11-05");
+                    .filter(|version| {
+                        matches!(
+                            *version,
+                            "2024-11-05" | "2025-03-26" | "2025-06-18" | "2025-11-25"
+                        )
+                    })
+                    .unwrap_or("2025-11-25");
                 Ok(json!({
                     "protocolVersion": version,
                     "capabilities": { "tools": {} },
@@ -1803,7 +1819,7 @@ fn mcp_serve(font: Option<&Path>, session: Option<&Path>, live: bool, tool: Opti
                         "name": "runebender",
                         "version": env!("CARGO_PKG_VERSION"),
                     },
-                    "instructions": if live_mode { "Live unsaved editor documents. Use editor_sessions then editor_connect if not connected. Verify the project and choose an explicit master. Read glyphs before proposing; only the designer installs proposals. Do not save font files. When multiple editors are open, choose the project the user requested. A closed endpoint never reconnects automatically.".into() } else { mcp_instructions(font.expect("font or session")) },
+                    "instructions": if live_mode { "Live unsaved editor documents. Use editor_sessions then editor_connect if not connected. Verify the project and document_epoch, read editor_context, and choose an explicit stable source ID. Read glyphs before proposing; apply only within the user's granted authorization. Do not save font files. When multiple editors are open, choose the project the user requested. A closed endpoint never reconnects automatically.".into() } else { mcp_instructions(font.expect("font or session")) },
                 }))
             }
             "ping" => Ok(json!({})),
@@ -1812,7 +1828,7 @@ fn mcp_serve(font: Option<&Path>, session: Option<&Path>, live: bool, tool: Opti
                     "name": t.name,
                     "description": t.description,
                     "inputSchema": t.parameters,
-                    "annotations": {"readOnlyHint": matches!(t.name.as_str(), "project_info" | "font_info" | "read_glyph" | "glyph_inventory" | "design_context" | "experiment_list" | "read_kerning" | "specimen" | "editor_sessions" | "editor_connect" | "proposal_list") || (live_mode && t.name == "proof"), "openWorldHint": !live_mode},
+                    "annotations": {"readOnlyHint": matches!(t.name.as_str(), "editor_context" | "project_info" | "font_info" | "read_glyph" | "glyph_inventory" | "design_context" | "experiment_list" | "read_kerning" | "specimen" | "editor_sessions" | "editor_connect" | "proposal_list") || (live_mode && t.name == "proof"), "openWorldHint": !live_mode},
                 })).collect::<Vec<_>>()
             })),
             "tools/call" => {
@@ -1850,11 +1866,11 @@ fn mcp_tools(live: bool) -> Vec<agent::Tool> {
     }
     let mut tools = runebender::document::live::tools();
     if let Some(proof) = tools.iter_mut().find(|tool| tool.name == "proof") {
-        proof.description = "Return a PNG proof image and metrics from the live unsaved master. Supply 1 to 256 explicit glyph names; use layer to view a proposal. Use small groups for legible images. Images are required for visual judgment; report if your client does not deliver them.".into();
+        proof.description = "Return a PNG proof image and metrics from the live unsaved source. Supply 1 to 256 explicit glyph names; use layer to view a proposal. Use small groups for legible images. Images are required for visual judgment; report if your client does not deliver them.".into();
     }
-    tools.push(agent::Tool {name:"export_proof".into(),description:"Export an explicit live or branch glyph/text proof using Designbot. Writes a new PNG or PDF file; refuses overwrite. Does not save the font. Supply either glyphs or text, an explicit output path, and format.".into(),parameters:json!({"type":"object","properties":{"master":{"type":"integer","minimum":0},"branch":{"type":"string"},"layer":{"type":"string"},"glyphs":{"type":"array","items":{"type":"string"}},"text":{"type":"string"},"output":{"type":"string"},"format":{"enum":["png","pdf"]}},"required":["output","format"],"additionalProperties":false})});
+    tools.push(agent::Tool {name:"export_proof".into(),description:"Export an explicit live or branch glyph/text proof using Designbot. Writes a new PNG or PDF file; refuses overwrite. Does not save the font. Supply either glyphs or text, an explicit output path, and format.".into(),parameters:json!({"type":"object","properties":{"source":{"type":"integer","minimum":0},"expected_document_epoch":{"type":"string"},"branch":{"type":"string"},"layer":{"type":"string"},"glyphs":{"type":"array","items":{"type":"string"}},"text":{"type":"string"},"output":{"type":"string"},"format":{"enum":["png","pdf"]}},"required":["output","format"],"additionalProperties":false})});
     tools.push(agent::Tool { name: "editor_sessions".into(), description: "List local editor endpoint paths. Connect to inspect the project. Never assume a different window is the requested font.".into(), parameters: json!({"type":"object", "properties":{}}) });
-    tools.push(agent::Tool { name: "editor_connect".into(), description: "Connect this agent to a listed editor endpoint and return its live project/master information. Opening another font closes the old connection; reconnect explicitly.".into(), parameters: json!({"type":"object", "properties":{"session":{"type":"string"}}, "required":["session"]}) });
+    tools.push(agent::Tool { name: "editor_connect".into(), description: "Connect this agent to a listed editor endpoint and return its live project/source information. Opening another font closes the old connection; reconnect explicitly.".into(), parameters: json!({"type":"object", "properties":{"session":{"type":"string"}}, "required":["session"]}) });
     tools
 }
 
@@ -1916,7 +1932,7 @@ fn live_client_call(
                     return Err(e.to_string());
                 }
                 Ok(
-                    json!({"ok":true,"output":path,"bytes":bytes.len(),"master":value["master"],"branch":value["branch"]}),
+                    json!({"ok":true,"output":path,"bytes":bytes.len(),"source_id":value["source_id"],"document_epoch":value["document_epoch"],"document_revision":value["document_revision"],"branch":value["branch"]}),
                 )
             })();
             return run.unwrap_or_else(|error| json!({"ok":false,"error":error}));
