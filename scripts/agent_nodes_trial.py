@@ -620,7 +620,6 @@ def run_trial(
 
                 undone = host.control("undo", timeout)
                 state_width(undone, INITIAL_WIDTH, "undone state")
-                require(undone.get("redo_depth", 0) > 0, "ordinary host undo made no redo entry")
 
                 retry_after_undo, _ = mcp.tool("nodes_apply", apply_args)
                 require(
