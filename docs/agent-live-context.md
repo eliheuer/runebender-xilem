@@ -86,3 +86,25 @@ The browser quality matrix passed at DPR 1, 2 and 1.25, including unsaved-outlin
 Gray and Light native headless captures were inspected.
 All 3,034 original Virtua source files retained their initial SHA-256 hashes; tests used a disposable copy.
 Local logs, source manifests and captures are stored under `/private/tmp/runebender-agent-interface-20260920-phase1a`.
+
+## Disposable application fixture
+
+`runebender agent fixture --duration-seconds 300` starts a synthetic native Workspace with a private Unix endpoint and no foreground window.
+It accepts no font path and has no save control.
+The synthetic `A` has a rectangle contour and top anchor, with an unsaved canonical width change from 400 to 412 before Workspace construction.
+This does not simulate native pointer or IME input.
+
+Keep stdin open and read the first stdout line for the readiness JSON, including `session`, `glyph`, `source_id`, `initial_advance`, `unsaved_advance` and `fixture_version: 1`.
+Send agent calls to that explicit socket through the ordinary CLI or MCP adapter.
+A separate stdin control channel accepts newline-delimited JSON with `action` equal to `state`, `undo`, `redo` or `shutdown`.
+These are fixture controls, not production agent tools.
+
+State, undo and redo responses expose `canonical_advance`, `cache_advance`, `session_advance`, layer history depths, document revision and `source_exists`.
+Undo and redo execute `Workspace::undo_active_edit`, allowing the harness to compare application state against the agent's read after an install.
+Frames are limited to 1024 bytes; lifetime is limited to 1–3600 seconds.
+Stdin EOF, shutdown or the deadline terminates the fixture and removes its endpoint.
+
+The process integration test `application_fixture_refreshes_and_undoes_an_agent_edit` passes against the fixture executable.
+It reads width 412 through the socket, installs width 430, verifies canonical/cache/session agreement, then checks ordinary undo to 412 and redo to 430.
+It also verifies that the synthetic source path does not exist and that shutdown removes the socket.
+Evidence and a pinned executable are under `/private/tmp/runebender-agent-fixture-20260920`; this test does not establish actual desktop or OMP model-client use.

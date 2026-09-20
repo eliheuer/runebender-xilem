@@ -2,7 +2,7 @@
 
 The user requested that the original task retain core work, planning and delegation, with parallel Sol, Terra and Luna tasks following the Babelfont migration pattern.
 The validated shared checkpoint is `170d14a756af58a041caa44878447c0fb03adbc8` on the isolated research branch.
-Main remains `e40bd4ce338cb8270f2356a515946e52d2b6b21b`; no automatic merge or push is authorized by this coordination plan.
+The released migration baseline is `e40bd4ce338cb8270f2356a515946e52d2b6b21b`; no automatic merge or push is authorized by this coordination plan.
 The [implementation checklist](agent-interface-plan.md) remains the acceptance authority, and [live context notes](agent-live-context.md) describe what is currently implemented.
 
 ## Ownership
@@ -42,7 +42,9 @@ The remaining CLI-generated live prompt also needs review alongside server-side 
 
 ## Scheduled continuation and build coordination
 
-Each worker has an hourly continuation in its existing task.
+Active workers have ten-minute continuations in their existing tasks, shortened at the user's request.
+Sol's bounded engine phase is committed at `de184bc25eaf2fbb4e33304bb49b275b8515b467` and its completed continuation has been removed; integration remains pending here.
+Terra's bounded proof phase is committed at `1b8cc22` with five focused tests and strict Clippy passing, and its completed continuation has also been removed.
 The coordinator's existing ten-minute continuation was updated to respect this ownership split and review worker progress without duplicating their work.
 Continuations stay quiet when unchanged or non-actionable, report meaningful results or blockers, and are removed when their bounded work is complete.
 
@@ -56,3 +58,25 @@ Do not overwrite the pinned final migration executable or evidence directory.
 Tests use synthetic or disposable copied fonts; original font sources remain untouched.
 Use headless checks and explicit client configuration boundaries.
 The full integrated native/browser matrix and a clean-checkout proof remain coordinator acceptance work, not something inferred from worker task creation.
+
+## Receipt integration constraints
+
+The coordinator's receipt ledger will be scoped to one document epoch and will not own font data.
+An operation key must bind to a canonical payload digest and actor; a retry with a different payload rejects.
+A retry of a committed operation returns its original receipt without reapplying the engine transaction or adding another application undo item.
+Bound the ledger by rejecting new operations at capacity instead of silently evicting keys and making an old retry execute again.
+Original receipts retain before/after revision and history handle; status can separately report the handle's current applied/undone state.
+
+Cancellation must distinguish requests prevented from committing from operations already committed.
+The existing serial socket accept loop cannot deliver an independent cancellation request while waiting on an earlier call, and the synchronous MCP loop cannot read cancellation notifications while a tool is running.
+Do not advertise cancellation until those routing limits and queue/commit races have actual fault-injection coverage.
+Timeouts and lost responses remain ambiguous until receipt lookup is integrated and tested over a real socket.
+
+## First user trials
+
+The user selected a local task chat in the Codex/ChatGPT desktop application and OMP CLI as the first two clients.
+Both should address the same native Xilem live document through its existing local protocol.
+First prove context/read, one bounded unsaved edit, application cache/session refresh and ordinary undo/redo using the synthetic Workspace fixture.
+Then connect each actual client to a disposable font session and retain the transport and visible result evidence.
+A bundled Codex CLI check does not establish that the desktop task has loaded the tools, and a tools-list response does not establish model image delivery.
+Full Milestone 1 acceptance still requires integrated atomic receipts, retries/conflicts/cancellation, asynchronous compiled proofs and the final validation matrix.

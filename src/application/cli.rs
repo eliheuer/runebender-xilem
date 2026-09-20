@@ -228,6 +228,12 @@ enum Command {
 
 #[derive(Subcommand)]
 enum AgentAction {
+    /// Serve a synthetic unsaved application fixture for headless live-client tests (Unix only).
+    Fixture {
+        /// Maximum lifetime; keep stdin open and send newline-delimited control JSON.
+        #[arg(long, default_value_t = 300, value_parser = clap::value_parser!(u64).range(1..=3600))]
+        duration_seconds: u64,
+    },
     /// The system prompt and every tool, as JSON.
     Tools,
     /// Run one tool call and print its result as JSON.
@@ -445,6 +451,21 @@ pub(crate) fn run() -> Startup {
             ProposalAction::Discard { source, task } => proposal_discard(source, task, json),
         },
         Command::Agent { action } => match action {
+            AgentAction::Fixture { duration_seconds } => {
+                #[cfg(unix)]
+                match crate::application::platform::live_fixture::serve(
+                    std::time::Duration::from_secs(*duration_seconds),
+                ) {
+                    Ok(()) => exit::OK,
+                    Err(error) => fail(true, exit::FAILED, &error),
+                }
+                #[cfg(not(unix))]
+                {
+                    let _ = duration_seconds;
+                    fail(true, exit::USAGE, "live fixtures require Unix")
+                }
+            }
+
             AgentAction::Tools => {
                 let tools = if std::env::var_os("RUNEBENDER_LIVE_SESSION").is_some() {
                     runebender::document::live::tools()

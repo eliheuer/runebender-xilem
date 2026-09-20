@@ -103,7 +103,7 @@ An agent with a vision-capable client receives the PNG and identifies a visual-o
 
 ### 1D. Real client end to end
 
-- [ ] Run the bounded scenario through Codex local and one of Claude Code/OMP with disposable fixtures and isolated configuration.
+- [ ] Run the bounded scenario through a local Codex/ChatGPT desktop task and OMP CLI with disposable fixtures and isolated configuration, as selected by the user.
 - [ ] Save redacted transport transcript, receipts, binary/client hashes, images and disk manifests.
 - [ ] Test via the real document/UI adapter; an in-process `live::call` test alone is insufficient.
 - [ ] If a client is unavailable or needs interactive login, report it as not tested and retain the ready harness instead of claiming success.

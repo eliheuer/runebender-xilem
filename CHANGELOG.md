@@ -10,6 +10,8 @@ No release has been published yet.
 
 ### Added
 
+- Added a disposable `agent fixture` process for testing live clients against real application state and ordinary editor undo/redo without opening a window.
+
 - Added native live `editor_context`, session-scoped object IDs in glyph reads, and document epoch guards for external agents.
   Live tools now advertise stable source IDs, and MCP input and protocol negotiation are bounded.
   This is the first [live context checkpoint](docs/agent-live-context.md); grouped atomic apply, retry receipts, and compiled agent proofs remain pending.
