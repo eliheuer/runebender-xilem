@@ -7,7 +7,7 @@ use norad::{Contour, ContourPoint, Font, Glyph, Name, PointType};
 use runebender::document::canonical_metadata::KerningParticipant;
 use runebender::document::font_memory::designspace_from_str;
 use runebender::document::model::glyph_metadata::OpenTypeGlyphCategory;
-use runebender::document::project::{DocumentEditOutcome, Master, Project};
+use runebender::document::project::{DocumentEditOutcome, Project, SourceInput};
 use runebender::document::variable::SourceId;
 use runebender::text::shape::ShapingFont;
 
@@ -49,7 +49,7 @@ fn project() -> Project {
             .entry(Name::new("A").unwrap())
             .or_default()
             .insert(Name::new("V").unwrap(), if bold { -150.0 } else { -50.0 });
-        Ok(Master::from_font(font, name.into()))
+        Ok(SourceInput::from_font(font, name.into()))
     })
     .unwrap()
 }
@@ -107,7 +107,7 @@ fn canonical_kerning_metadata_drives_unsaved_compilation_and_invalidation() {
             Some(value)
         );
         assert_eq!(
-            project.source_snapshot(source).unwrap().kerning["A"]["V"],
+            project.encode_ufo_source(source).unwrap().kerning["A"]["V"],
             value
         );
     }
@@ -139,7 +139,7 @@ fn compiler_snapshot_reads_canonical_source_glyph_metadata() {
             plist::Value::String("mark".into()),
         )])),
     );
-    let mut project = Project::from_source(Master::from_font(font, "Metadata.ufo".into()));
+    let mut project = Project::from_source(SourceInput::from_font(font, "Metadata.ufo".into()));
 
     let metadata = project
         .document_source_glyph_metadata(SourceId(0), "A")
@@ -238,7 +238,7 @@ fn compiler_snapshot_drops_cleared_canonical_font_info() {
         None,
     ));
     font.default_layer_mut().insert_glyph(glyph);
-    let mut project = Project::from_source(Master::from_font(font, "Clearing.ufo".into()));
+    let mut project = Project::from_source(SourceInput::from_font(font, "Clearing.ufo".into()));
 
     let before = project.babelfont_snapshot().unwrap();
     assert!(!before.names.copyright.is_empty());

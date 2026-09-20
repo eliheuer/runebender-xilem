@@ -1,6 +1,8 @@
 # Babelfont editor/application migration lane
 
-Status: **ACTIVE — application ownership and canonical transaction integration in progress**.
+Status: **COMPLETE — application cutover integrated and independently validated**.
+This document retains the historical lane checkpoints.
+The current result is recorded in [the final migration proof](babelfont-migration-final-proof.md).
 
 This lane owns M06 application work under `src/application/`, focused application tests and this progress record.
 The integration lane retains the canonical Project implementation, shared module wiring and central migration documents.
@@ -307,8 +309,8 @@ git diff --check
 - Place Image installs bytes through a stable-source Project operation and attaches the image through the layer draft; it no longer mutates `FontModel::font_mut().images`.
 - Overview metaball conversion now commits guarded layer transactions and replays Project-owned layer history instead of calling `FontModel::replace_glyph` or recording `Master.history` snapshots.
 - No production application caller materializes or reconciles a whole glyph; compatibility projection helpers remain test-only while M13 removes the bridge itself.
-- Production application code no longer calls `FontModel::master_mut` or `font_mut`; the two accessors are confined to stale-state and persistence fixtures.
-- Direct source-projection mutation remains in Save As retargeting; that caller remains M06/M13 work rather than a completion claim.
+- `FontModel::master_mut` and `font_mut` are deleted; stale-state fixtures publish canonical transactions.
+- Production metrics-formula, Unicode and Save As writes now use canonical Project operations; no production application caller mutates a source projection.
 - Pen, Rectangle, Ellipse and Knife Pointer Cancel paths now have real widget-event coverage.
 
 ## Canonical Session storage and history cutover
@@ -585,7 +587,7 @@ Application `DocumentLayer` labels now carry their expected canonical history de
 The live-document proposal path records the same stable installed addresses.
 
 Production `undo_open_glyph`, overview undo, proposal workflows and overview advance no longer call legacy `Master` history.
-Production `FontModel::master_mut` and `font_mut` accessors are now test-only.
+Production `FontModel::master_mut` and `font_mut` callers were removed in this slice; the accessors are now deleted.
 
 Executed evidence:
 
@@ -658,6 +660,33 @@ The focused regression covers canonical cross-source edit, Undo/Redo, rename int
 The complete binary suite passed 173 tests with four documented model or external-font tests ignored.
 Warning-denied native workspace/all-target Clippy, the release WASM build, warning-denied browser Clippy, formatting and diff checks passed.
 
+## Canonical application history and revision slice
+
+Implementation commit: `Track application history canonically`.
+Resolve its exact ID with `git log --format=%H --grep='^Track application history canonically$' -1`.
+Affected paths: `src/application/actions.rs`, editor commands, inspector, session, local-AI and Nodes tools, `src/application/font_model.rs`, architecture and migration records.
+
+Undo and Redo enablement, metadata ordering and session publication now query the active canonical layer and Project-owned history depth.
+`DocumentLayer` entries use their exact post-commit layer depth for Undo and the preceding depth for Redo, keeping rename and outline replay ordered on the same canonical stack.
+Local-AI and Nodes stale-result guards hash canonical default layers under stable source identity rather than reading the active UFO projection.
+`FontModel::master`, `font`, `master_mut` and `font_mut` are deleted.
+Application fixtures now use canonical transactions for stale-state edits and detached source snapshots only for format-boundary assertions.
+
+Executed evidence:
+
+```sh
+cargo test --workspace --locked history -- --test-threads=1
+cargo test --workspace --locked revision -- --test-threads=1
+cargo test --locked --bin runebender -- --test-threads=1
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The focused history and revision regressions passed.
+The complete application suite passed 176 tests with four documented model or external-font tests ignored.
+Warning-denied native workspace/all-target Clippy passed with the existing `block v0.1.6` future-incompatibility notice.
+
 ## Next action
 
-Replace the remaining Save As `edit_sources` caller once the reviewed persistence dependency chain is available on this branch, then consume the reviewed test-only compatibility-bridge removal during M13.
+Rewrite the remaining compatibility fixtures against canonical transactions, then delete the Master shell, mutable guards, legacy histories and source-history parking code during M13.

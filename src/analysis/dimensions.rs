@@ -16,8 +16,6 @@ use crate::document::LayerView;
 use crate::document::project::Project;
 use crate::document::variable::SourceId;
 use crate::outline::glyph_paths;
-use crate::outline::path::Path;
-use crate::outline::path::hyper_model::Contour as WContour;
 
 /// The glyphs a Dimensions panel reads, in the order it lists them.
 pub const REFERENCE_GLYPHS: &[&str] = &["H", "O", "n", "o", "t", "v"];
@@ -69,49 +67,11 @@ pub fn stem_and_bar_from_layer(layer: LayerView<'_>) -> (Option<i64>, Option<i64
     )
 }
 
-/// The narrowest stem and the narrowest bar of a glyph, in font
-/// units, rounded. `None` for either when the glyph has no contour or
-/// no span of that kind through ink.
-///
-/// This UFO-boundary wrapper remains while application callers migrate to
-/// [`stem_and_bar_from_layer`].
-pub fn stem_and_bar(font: &norad::Font, name: &str) -> (Option<i64>, Option<i64>) {
-    let Some(glyph) = font.get_glyph(name) else {
-        return (None, None);
-    };
-    if glyph.contours.is_empty() {
-        return (None, None);
-    }
-    let paths: Vec<Path> = glyph
-        .contours
-        .iter()
-        .map(|c| Path::from_contour(&WContour::from_norad(c)))
-        .collect();
-    let filled = glyph_paths::glyph_to_bezpath(glyph, font);
-    let black = |m: &measure::Measurement| {
-        let mid = kurbo::Point::new((m.a.x + m.b.x) / 2.0, (m.a.y + m.b.y) / 2.0);
-        filled.contains(mid)
-    };
-    let measurements = measure::glyph_measurements(&paths);
-    let narrowest = |kind: MeasureKind| {
-        measurements
-            .iter()
-            .filter(|m| m.kind == kind)
-            .filter(|m| black(m))
-            .map(|m| m.length)
-            .min()
-    };
-    (
-        narrowest(MeasureKind::Horizontal),
-        narrowest(MeasureKind::Vertical),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
 
-    use crate::document::project::{Master, Project};
+    use crate::document::project::{Project, SourceInput};
     use crate::document::variable::SourceId;
 
     use super::*;
@@ -139,11 +99,7 @@ mod tests {
         let mut font = norad::Font::new();
         font.default_layer_mut()
             .insert_glyph(rect("I", 96.0, 700.0));
-        let (stem, bar) = stem_and_bar(&font, "I");
-        assert_eq!(stem, Some(96));
-        assert_eq!(bar, Some(700));
-
-        let project = Project::from_source(Master::from_font(font, PathBuf::from("Test.ufo")));
+        let project = Project::from_source(SourceInput::from_font(font, PathBuf::from("Test.ufo")));
         assert_eq!(
             stem_and_bar_project(&project, SourceId(0), "I"),
             (Some(96), Some(700))
@@ -160,10 +116,8 @@ mod tests {
         let mut font = norad::Font::new();
         font.default_layer_mut()
             .insert_glyph(norad::Glyph::new("space"));
-        assert_eq!(stem_and_bar(&font, "space"), (None, None));
-        assert_eq!(stem_and_bar(&font, "nothere"), (None, None));
-
-        let project = Project::from_source(Master::from_font(font, PathBuf::from("Empty.ufo")));
+        let project =
+            Project::from_source(SourceInput::from_font(font, PathBuf::from("Empty.ufo")));
         assert_eq!(
             stem_and_bar_project(&project, SourceId(0), "space"),
             (None, None)

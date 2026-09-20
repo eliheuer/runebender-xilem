@@ -29,7 +29,7 @@ src/
 ├── lib.rs                 font-engine public map
 ├── main.rs                executable composition root
 ├── analysis/              read and measure font data
-├── document/              projects, masters, history, workflows
+├── document/              projects, sources, history, workflows
 ├── formats/               source formats and persistent metadata
 ├── outline/               reusable geometry and outline operations
 ├── text/                  shaping, joining, features, text layout
@@ -83,7 +83,7 @@ second set of module names to keep in sync.
 | Change a panel | `application/view/panels/` | matching editor or document module |
 | Change reusable control styling | `application/view/recipes.rs` | `application/view/design.rs`, `theme.rs` |
 | Add a file format | `formats/` | dispatch in `document/project.rs` |
-| Change variable-font ownership or source edits | `document/project.rs`, `document/variable.rs` | `document/source.rs` compatibility projections |
+| Change variable-font ownership or source edits | `document/project.rs`, `document/variable.rs` | `document/ufo_codec.rs`, `document/source_format.rs` |
 | Change axis conversion or interpolation | `document/axis.rs`, `document/var_model.rs`, `document/interpolation.rs` | `formats/designspace.rs` |
 | Add a headless command | `application/cli.rs` | operation in the matching library domain |
 | Change native or browser hosting | `application/platform/`, `application/launch.rs`, `application/browser.rs` | none |
@@ -108,7 +108,7 @@ New read-only callers use `document_glyph`, `document_layer`, `document_source` 
 `outline::glyph_paths::ordinary_layer_contours_to_bezpath` converts canonical contour views directly for geometry consumers that do not need components or hyperbezier solving.
 `outline::glyph_paths::ordinary_layer_to_bezpath` preserves canonical contour/component order, applies exact component transforms and reports missing references or cycles through a caller-supplied layer resolver.
 `outline::segment_ops` enumerates and hit-tests ordinary canonical segments with stable source identities, including the control pairs that define implied quadratic endpoints.
-`analysis::measure` accepts canonical ordinary layers directly for live measurements and side-bearing geometry while compatibility callers finish migrating.
+`analysis::measure` accepts canonical ordinary layers directly for live measurements and side-bearing geometry.
 `analysis::curve::ordinary_cubics_from_layer` supplies canonical ordinary contours to continuity and curvature analysis without a UFO glyph.
 New mutations use `edit_document_layer` and its owned `LayerEditDraft`; a failed or unchanged draft is discarded, while a committed draft advances the canonical revision once.
 Semantic glyph-mark edits set or clear the label and typed public color together; the theme maps its palette label to that typed color before opening the document transaction.
@@ -116,9 +116,10 @@ Layer drafts address points by stable `PointId` for individual movement, snapped
 Persistent point drags capture stable origins for selected points, carried handles and smooth-coupled handles before the first snapped event.
 They also shift contour points and anchors together for left-sidebearing edits while exact advance changes remain explicit metric operations.
 Direct line-to-cubic conversion inserts newly identified canonical controls and sets every accepted geometric-line endpoint to cubic while retaining endpoint identity and metadata, including on wraparound closing segments.
-Direct topology operations create pen, rectangle and ellipse contours with stable identities before any UFO projection is refreshed.
+Direct topology operations create pen, rectangle and ellipse contours with stable identities in canonical layer drafts.
 Trace and SVG format boundaries append or replace only their explicit contour payloads through validated layer drafts, assigning fresh document identities without reconciling a whole glyph.
-Imported contours are validated as a complete serializable glyph candidate before commit, including topology and identifier uniqueness, and replacement retains the existing contour/component paint slots when their counts permit it.
+Imported contours are decoded at the format boundary and validated for topology and identifier uniqueness against the destination layer before commit.
+Replacement retains the existing contour/component paint slots when their counts permit it.
 The hyperbezier pen creates, appends and closes typed canonical hyper contours directly, retaining stable on-curve identities and a fresh UFO compatibility marker.
 Direct segment subdivision supports stored-endpoint lines, quadratics and cubics, preserving existing control identities and metadata while assigning fresh identities to inserted topology and rejecting nonfinite computed geometry before mutation.
 Quadratic subdivision represents stored and implied endpoints explicitly; it validates that implied pairs still belong to a quadratic chain and materializes a midpoint before moving either defining control.
@@ -145,10 +146,10 @@ Source image-resource insertion uses a stable-`SourceId` Project operation that 
 `document_snapshot` clones Babelfont glyph geometry, exact extensions, typed source metadata and stable source order without cloning UFO templates or Master projections.
 Interpolation compatibility diagnostics compare canonical contour and point topology under stable source identities rather than reading Master projections.
 `document_source_glyph_entries` derives sorted grid names, Unicode, advances, semantic marks and paint paths directly from canonical default layers; unresolved components retain their intrinsic contours in the grid.
-`CanonicalLayerSnapshot` captures one opaque addressed layer with the same geometry and extensions; guarded restore compares the complete live state before replacing it, advances the revision once and refreshes the compatibility projection without recording legacy history.
-Multi-source glyph metadata uses staged layer drafts and one batch publication; Unicode replacement validates the complete source set before mutation, advances the revision once and refreshes every changed projection.
-`CanonicalSourceMetadataSnapshot` captures feature text, groups and exact kerning for the complete stable source set; guarded whole-snapshot restore ignores display reorder, rejects stale or changed source sets and refreshes all affected projections in one revision.
-Auxiliary-layer copy and removal mutate canonical Babelfont layers and exact extensions first, then refresh only the affected compatibility projection.
+`CanonicalLayerSnapshot` captures one opaque addressed layer with the same geometry and extensions; guarded restore compares the complete live state before replacing it and advances the revision once.
+Multi-source glyph metadata uses staged layer drafts and one batch publication; Unicode replacement validates the complete source set before mutation and advances the revision once.
+`CanonicalSourceMetadataSnapshot` captures feature text, groups and exact kerning for the complete stable source set; guarded whole-snapshot restore ignores display reorder, rejects stale or changed source sets and publishes all affected canonical values in one revision.
+Auxiliary-layer copy and removal mutate canonical Babelfont layers and exact extensions directly.
 Background send, swap and clear stage a complete canonical source snapshot and record guarded source-history transactions for both standalone UFO and Designspace documents.
 Send copies contours and exact width into the conventional background while omitting unrelated glyph metadata; swap exchanges contours, retains the foreground width and writes that width to the background, matching the editor command's established behavior.
 Review proposals use those auxiliary layers under stable source identities; revision-checked batches stage canonical drafts before publication, and guarded installation records Project-owned foreground history.
@@ -160,20 +161,18 @@ The GLIF SHA and external UFO proposal format remain explicit transient codec bo
 `document/filesystem.rs` loads complete UFO and Designspace source sets before construction and stages every save artifact before replacing live destinations.
 The native file watcher resolves nested feature includes through Project and fingerprints those dependencies with the UFO and Designspace roots so a changed external include blocks overwrite.
 Headless source information, SVG proof and proposal commands open one explicit Project source, read canonical layers and metadata, and save proposal mutations through Project persistence.
-Transient experiment proof and Designbot adapters accept detached source-font values directly and do not construct an editable Master wrapper.
+Experiment proof and Designbot adapters consume typed canonical proof data and do not construct source-font editing wrappers.
 
-`document::source::Master` is a compatibility UFO projection with source-local history and transitional paint caches.
-Project exposes immutable projections through `sources()` and scoped mutations through `edit_source`, `edit_sources`, and `active_font_mut`.
-Dropping an edit guard reconciles additions, removals, geometry and metadata into canonical glyph storage before the next Project operation.
-Use `edit_layer` and `undo_layer` for a specific glyph layer without switching the active editor source.
-Default-layer edits share the existing editor history, while auxiliary layers have independent histories.
-Do not introduce another mutable source-font accessor.
+Project has no editable `Master`, mutable source-font guard or persistent Norad glyph projection.
+Layer edits, source metadata changes, structural transactions, proposals, experiments and undo all operate on the canonical document under stable source and layer identities.
+Default and auxiliary layers use Project-owned history without switching the active editor source.
+Application undo ordering and stale-task checks use stable canonical layer addresses, Project-owned history depths and canonical glyph revisions.
+Format-boundary tests may materialize detached UFO values, but those values never become live editor state.
 
 Project save materializes UFOs from canonical Babelfont geometry and glyph-free source-format data, preserving font info, libs, layer order, features, kerning, groups, images and data.
 `document::source_format::SourceFormatData` retains glyph-free UFO layer structure, residual font metadata and opaque image/data resources without storing another complete font document.
-Compatibility projections still duplicate derived glyph payloads for remaining Norad algorithms.
-They are not separate editable documents.
-Native reload, live edits, proposals, experiments and browser edits cross the same scoped mutation boundary.
+`document::ufo_codec` constructs detached Norad values only while loading, saving or serving an explicit serialization boundary.
+Native reload, live edits, proposals, experiments and browser edits use the same canonical operations.
 
 `document::axis` wraps pinned Babelfont coordinate conversion without exposing its types.
 `document::var_model` wraps the fontdrasil variation backend used by Babelfont, retaining f64 values with rounding disabled.
@@ -189,7 +188,7 @@ The browser currently compiles synchronously and downloads exported bytes throug
 Application source controls live in `application/editor/sources.rs`; views dispatch commands and never perform font mutations themselves.
 
 The [dependency and format decision](docs/variable-project-decision.md) records the upstream precision blocker, exact references, preservation policy and supported boundaries.
-The [migration checklist](docs/babelfont-migration-checklist.md) tracks removal of the remaining Norad editing model while retaining source-format preservation.
+The [migration checklist](docs/babelfont-migration-checklist.md) records the completed editing-model cutover and the separate final proof gate.
 The [source-format allowlist](docs/source-format-allowlist.md) assigns every supported UFO and Designspace field family to canonical, layer-preservation, source-format or filesystem ownership and records the explicit rejection boundary.
 
 ## Adding a tool

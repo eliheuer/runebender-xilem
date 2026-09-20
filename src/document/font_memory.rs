@@ -36,7 +36,7 @@ pub struct UfoFiles {
 /// Canonical imported project plus the host's glyph-to-file save bookkeeping.
 #[derive(Debug)]
 pub struct UfoProjectFiles {
-    /// Canonical single-source project; its compatibility Master is derived after import.
+    /// Canonical single-source project decoded at the UFO boundary.
     pub project: crate::document::project::Project,
     /// Glyph name to path relative to the UFO root, exactly as declared by `contents.plist`.
     pub glif_paths: HashMap<String, String>,
@@ -170,11 +170,7 @@ pub fn project_from_ufo_files<'a>(
 ) -> Result<UfoProjectFiles, String> {
     let decoded = ufo_from_files(files)?;
     let glif_paths = decoded.glif_paths;
-    let project = crate::document::project::Project::from_ufo_boundary(
-        source_path,
-        &decoded.font,
-        glif_paths.clone(),
-    )?;
+    let project = crate::document::project::Project::from_ufo_boundary(source_path, &decoded.font)?;
     Ok(UfoProjectFiles {
         project,
         glif_paths,
@@ -223,7 +219,7 @@ pub fn project_from_embedded_glif_json(
         }
         layer.insert_glyph(glyph);
     }
-    crate::document::project::Project::from_ufo_boundary(source_path, &font, HashMap::new())
+    crate::document::project::Project::from_ufo_boundary(source_path, &font)
 }
 
 fn validate_file_inventory<'a>(
@@ -420,7 +416,7 @@ mod tests {
                 .as_deref(),
             Some("MemTest")
         );
-        let snapshot = project.source_snapshot(source).unwrap();
+        let snapshot = project.encode_ufo_source(source).unwrap();
         assert_eq!(
             snapshot.meta.creator.as_deref(),
             Some("org.linebender.runebender.tests")
@@ -429,7 +425,7 @@ mod tests {
             snapshot.lib["com.linebender.test"].as_string(),
             Some("preserved")
         );
-        assert!(!project.sources()[0].dirty);
+        assert!(!project.is_modified());
     }
 
     #[test]
@@ -462,7 +458,7 @@ mod tests {
         let a = project.document_layer("A", &layer).unwrap();
         assert_eq!(a.width(), 716.0);
         assert_eq!(a.codepoints().collect::<Vec<_>>(), ['A']);
-        assert!(!project.sources()[0].dirty);
+        assert!(!project.is_modified());
     }
 
     #[test]

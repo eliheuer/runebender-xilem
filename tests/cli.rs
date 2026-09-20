@@ -10,8 +10,6 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use runebender::document::proposal;
-
 fn fixture() -> PathBuf {
     let dir = match std::env::var_os("RUNEBENDER_TEST_FONTS") {
         Some(dir) => PathBuf::from(dir),
@@ -132,7 +130,7 @@ fn proposals_list_install_and_discard_through_the_binary() {
     // A tool wrote a proposal: H moved right, O with a contour gone.
     let mut font = norad::Font::load(&ufo).expect("loads");
     let mut h = font.get_glyph("H").expect("H").clone();
-    let h_revision = runebender::document::edit_batch::glyph_revision(&h).expect("H revision");
+    let h_revision = runebender::formats::ufo::glyph_revision(&h).expect("H revision");
     let width_before = h.width;
     for c in &mut h.contours {
         for p in &mut c.points {
@@ -141,11 +139,12 @@ fn proposals_list_install_and_discard_through_the_binary() {
     }
     h.width += 40.0;
     let mut o = font.get_glyph("O").expect("O").clone();
-    let o_revision = runebender::document::edit_batch::glyph_revision(&o).expect("O revision");
+    let o_revision = runebender::formats::ufo::glyph_revision(&o).expect("O revision");
     o.contours.pop();
     runebender::formats::lib_keys::write_proposal_base(&mut h, &h_revision, "binary test");
     runebender::formats::lib_keys::write_proposal_base(&mut o, &o_revision, "binary test");
-    proposal::write(&mut font, "bolden", [h, o]).expect("written");
+    runebender::formats::proposal_ufo::write_proposal_layer(&mut font, "bolden", [h, o])
+        .expect("written");
     font.save(&ufo).expect("saved");
 
     let (code, out) = run(&["proposal", "list", path]);
@@ -213,7 +212,8 @@ fn propose_runs_the_tool_and_reports_what_it_left() {
     }
     let mut font = norad::Font::load(&ufo).expect("loads");
     let h = font.get_glyph("H").expect("H").clone();
-    proposal::write(&mut font, "bolden", [h]).expect("written");
+    runebender::formats::proposal_ufo::write_proposal_layer(&mut font, "bolden", [h])
+        .expect("written");
     font.save(&ufo).expect("saved");
 
     let (code, out) = run(&[

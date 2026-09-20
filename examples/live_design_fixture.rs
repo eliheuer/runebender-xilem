@@ -8,19 +8,26 @@
 fn main() {
     use runebender::document::{live, live_socket::Server, project::Project};
     let mut project = Project::new_font("synthetic-not-saved.ufo".into());
-    let mut source = project.active_font_mut();
-    source.add_glyph("image_probe", 600.0).unwrap();
-    let glyph = source.font.get_glyph_mut("image_probe").unwrap();
-    glyph.contours.push(norad::Contour::new(
-        [(50.0, 0.0), (300.0, 700.0), (550.0, 0.0)]
-            .into_iter()
-            .map(|(x, y)| norad::ContourPoint::new(x, y, norad::PointType::Line, false, None, None))
-            .collect(),
-        None,
-    ));
-    drop(source);
+    project
+        .add_document_glyph("image_probe", 600.0, None)
+        .unwrap();
+    let source = project.source_id(0).unwrap();
+    let layer = project.document_source(source).unwrap().default_layer();
+    project
+        .edit_document_layer("image_probe", &layer, |draft| {
+            let (contour, _) = draft.start_contour(kurbo::Point::new(50.0, 0.0))?;
+            draft.append_contour_segment(contour, None, kurbo::Point::new(300.0, 700.0), false)?;
+            draft.append_contour_segment(contour, None, kurbo::Point::new(550.0, 0.0), false)?;
+            draft.close_contour(contour, None)?;
+            Ok(())
+        })
+        .unwrap();
     if let Some(path) = std::env::args().nth(1) {
-        project.sources()[0].font.save(path).unwrap();
+        project
+            .encode_ufo_source(source)
+            .unwrap()
+            .save(path)
+            .unwrap();
         return;
     }
     let server = Server::start().unwrap();

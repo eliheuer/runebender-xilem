@@ -28,9 +28,9 @@ impl Workspace {
     pub(crate) fn command_add_component(&mut self) {
         let base = self.component_base_buf.trim().to_string();
         let glyph = self.session.glyph_name.clone();
-        let Some(glyph_index) = self.font.index_of(&glyph) else {
+        if self.font.index_of(&glyph).is_none() {
             return;
-        };
+        }
         let Some(address) = self.font.active_layer_address(&glyph) else {
             self.note = "The active glyph layer is unavailable".into();
             return;
@@ -46,7 +46,6 @@ impl Workspace {
             self.note = format!("Cannot add component {base}");
             return;
         }
-        let undo_depth = self.font.master().undo_depth(glyph_index);
         let Ok(mut transaction) = self.font.project.begin_document_layer_transaction(&address)
         else {
             self.note = "The active glyph layer changed before adding the component".into();
@@ -71,11 +70,11 @@ impl Workspace {
             glyph,
             address: address.clone(),
             label: "component add".into(),
+            component_selection: (self.session.selected_component, Some(component_id)),
             layer_history_depth: self.font.project.document_layer_history_depth(
                 &address,
                 runebender::document::history::HistoryDirection::Undo,
             ),
-            undo_depth,
         });
         self.metadata_redo.clear();
         if self.reload_canonical_layer(&address) {
@@ -95,14 +94,13 @@ impl Workspace {
             return;
         };
         let glyph = self.session.glyph_name.clone();
-        let Some(glyph_index) = self.font.index_of(&glyph) else {
+        if self.font.index_of(&glyph).is_none() {
             return;
-        };
+        }
         let Some(address) = self.font.active_layer_address(&glyph) else {
             self.note = "The active glyph layer is unavailable".into();
             return;
         };
-        let undo_depth = self.font.master().undo_depth(glyph_index);
         let Ok(mut transaction) = self.font.project.begin_document_layer_transaction(&address)
         else {
             self.note = "The active glyph layer changed before component alignment".into();
@@ -153,11 +151,11 @@ impl Workspace {
             glyph,
             address: address.clone(),
             label: "component alignment".into(),
+            component_selection: (Some(component_id), Some(component_id)),
             layer_history_depth: self.font.project.document_layer_history_depth(
                 &address,
                 runebender::document::history::HistoryDirection::Undo,
             ),
-            undo_depth,
         });
         self.metadata_redo.clear();
         let _ = self.reload_canonical_layer(&address);
@@ -259,7 +257,6 @@ impl Workspace {
             self.note = "The active glyph layer is unavailable".into();
             return;
         };
-        let undo_depth = self.font.master().undo_depth(index);
         let outcome = match self
             .font
             .project
@@ -279,11 +276,14 @@ impl Workspace {
                 glyph: name.clone(),
                 address: address.clone(),
                 label: "reinterpolate".into(),
+                component_selection: (
+                    self.session.selected_component,
+                    self.session.selected_component,
+                ),
                 layer_history_depth: self.font.project.document_layer_history_depth(
                     &address,
                     runebender::document::history::HistoryDirection::Undo,
                 ),
-                undo_depth,
             });
             self.metadata_redo.clear();
             self.font.rebuild_cache();
@@ -475,14 +475,9 @@ impl Workspace {
             } else {
                 continue;
             };
-            let Some(glyph) = self.font.font().get_glyph(&entry.name) else {
-                continue;
-            };
-            let outline =
-                runebender::outline::glyph_paths::glyph_to_bezpath(glyph, self.font.font());
             for left in [true, false] {
                 if (left && joins_left) || (!left && joins_right) {
-                    match joining_band(&outline, entry.advance, left, 2.0) {
+                    match joining_band(&entry.outline, entry.advance, left, 2.0) {
                         Some((lo, hi)) => bands.push((index, lo, hi)),
                         None => broken.push(index),
                     }
@@ -578,7 +573,6 @@ impl Workspace {
             return;
         };
         let active_source = self.font.project.source_id(self.font.active());
-        let undo_depth = self.font.master().undo_depth(index);
         let addresses = self
             .font
             .project
@@ -625,11 +619,14 @@ impl Workspace {
                     glyph: name.clone(),
                     address: address.clone(),
                     label: "bake masks".into(),
+                    component_selection: (
+                        self.session.selected_component,
+                        self.session.selected_component,
+                    ),
                     layer_history_depth: self.font.project.document_layer_history_depth(
                         address,
                         runebender::document::history::HistoryDirection::Undo,
                     ),
-                    undo_depth,
                 });
                 self.metadata_redo.clear();
             }
@@ -660,13 +657,9 @@ impl Workspace {
         let Some(entry) = self.font.glyphs.get(index) else {
             return;
         };
-        let Some(glyph) = self.font.font().get_glyph(&entry.name) else {
-            return;
-        };
-        let path = runebender::outline::glyph_paths::glyph_to_bezpath(glyph, self.font.font());
         let svg = runebender::formats::svg::glyph_svg(
-            &path,
-            glyph.width,
+            &entry.outline,
+            entry.advance,
             self.font.ascender(),
             self.font.descender(),
         );
@@ -756,8 +749,8 @@ impl Workspace {
             });
         match traced {
             Ok(glyph) => {
-                let count = glyph.contours.len();
-                self.apply_op(move |session| session.replace_imported_contours(&glyph.contours));
+                let count = glyph.len();
+                self.apply_op(move |session| session.replace_imported_contours(glyph));
                 self.note = format!("Traced {count} contour(s)");
             }
             Err(error) => self.note = format!("Trace: {error}"),
@@ -789,7 +782,7 @@ impl Workspace {
         match contours {
             Ok(contours) => {
                 let count = contours.len();
-                self.apply_op(move |session| session.append_imported_contours(&contours));
+                self.apply_op(move |session| session.append_imported_contours(contours));
                 self.note = format!("Imported {count} SVG contour(s)");
             }
             Err(error) => self.note = format!("SVG import: {error}"),
@@ -830,17 +823,10 @@ impl Workspace {
             .unwrap_or_else(|| "image.png".into());
         let scale =
             ((self.font.ascender() - self.font.descender()) / f64::from(height).max(1.0)).max(1e-6);
-        let placed = match norad::Image::new(
+        let placed = match runebender::document::LayerImage::new(
             std::path::PathBuf::from(&file_name),
             None,
-            norad::AffineTransform {
-                x_scale: scale,
-                xy_scale: 0.0,
-                yx_scale: 0.0,
-                y_scale: scale,
-                x_offset: 0.0,
-                y_offset: self.font.descender(),
-            },
+            kurbo::Affine::new([scale, 0.0, 0.0, scale, 0.0, self.font.descender()]),
         ) {
             Ok(image) => image,
             Err(error) => {
@@ -1279,14 +1265,13 @@ impl Workspace {
             return;
         }
         let glyph = self.session.glyph_name.clone();
-        let Some(glyph_index) = self.font.index_of(&glyph) else {
+        if self.font.index_of(&glyph).is_none() {
             return;
-        };
+        }
         let Some(address) = self.font.active_layer_address(&glyph) else {
             self.note = "The active glyph layer is unavailable".into();
             return;
         };
-        let undo_depth = self.font.master().undo_depth(glyph_index);
         let Ok(mut transaction) = self.font.project.begin_document_layer_transaction(&address)
         else {
             self.note = "The active glyph layer changed before pasting".into();
@@ -1308,11 +1293,14 @@ impl Workspace {
             glyph,
             address: address.clone(),
             label: "paste contours".into(),
+            component_selection: (
+                self.session.selected_component,
+                self.session.selected_component,
+            ),
             layer_history_depth: self.font.project.document_layer_history_depth(
                 &address,
                 runebender::document::history::HistoryDirection::Undo,
             ),
-            undo_depth,
         });
         self.metadata_redo.clear();
         if self.reload_canonical_layer(&address)
@@ -1375,13 +1363,15 @@ impl Workspace {
             return;
         }
         let name = self.session.glyph_name.clone();
-        let Some(index) = self.font.index_of(&name) else {
+        if self.font.index_of(&name).is_none() {
             return;
-        };
+        }
         let Some(address) = self.font.active_layer_address(&name) else {
             return;
         };
-        let undo_depth = self.font.master().undo_depth(index);
+        let undo_depth = self
+            .font
+            .history_depth(&name, runebender::document::history::HistoryDirection::Undo);
         let before = self.font.project.document_snapshot();
         match self
             .font
@@ -1418,9 +1408,9 @@ impl Workspace {
             return;
         }
         let name = self.session.glyph_name.clone();
-        let Some(index) = self.font.index_of(&name) else {
+        if self.font.index_of(&name).is_none() {
             return;
-        };
+        }
         let Some(address) = self.font.active_layer_address(&name) else {
             return;
         };
@@ -1434,7 +1424,9 @@ impl Workspace {
             self.note = "no background to swap".into();
             return;
         }
-        let undo_depth = self.font.master().undo_depth(index);
+        let undo_depth = self
+            .font
+            .history_depth(&name, runebender::document::history::HistoryDirection::Undo);
         let before = self.font.project.document_snapshot();
         match self
             .font
@@ -1474,13 +1466,15 @@ impl Workspace {
             return;
         }
         let name = self.session.glyph_name.clone();
-        let Some(index) = self.font.index_of(&name) else {
+        if self.font.index_of(&name).is_none() {
             return;
-        };
+        }
         let Some(source) = self.font.project.source_id(self.font.active()) else {
             return;
         };
-        let undo_depth = self.font.master().undo_depth(index);
+        let undo_depth = self
+            .font
+            .history_depth(&name, runebender::document::history::HistoryDirection::Undo);
         let before = self.font.project.document_snapshot();
         match self.font.project.clear_document_background(&name, source) {
             Ok(true) => {}
@@ -1577,12 +1571,10 @@ mod tests {
             app.command_expand_stroke();
         }
         assert!(!app.modified);
-        assert_eq!(app.font.master().undo_depth(index), 0);
         app.stroke_buf = "20".into();
         app.command_expand_stroke();
         assert_ne!(projected_glyph(&app.session).contours, original);
         assert_eq!(app.session.advance(), 500.0);
-        assert_eq!(app.font.master().undo_depth(index), 0);
         assert_eq!(app.metadata_undo.len(), 1);
         app.undo_active_edit(false);
         assert_eq!(projected_glyph(&app.session).contours, original);
@@ -1704,11 +1696,11 @@ mod tests {
         assert_eq!(workspace.metadata_undo.len(), 1, "a no-op adds no history");
 
         let replacement = rectangle("A", 200.0, 300.0).contours;
-        workspace.apply_op(move |session| session.replace_imported_contours(&replacement));
+        let replacement = runebender::formats::ufo::decode_contours(&replacement).unwrap();
+        workspace.apply_op(move |session| session.replace_imported_contours(replacement));
         assert_eq!(workspace.metadata_undo.len(), 2);
         workspace.swap_background();
         assert_eq!(workspace.metadata_undo.len(), 3);
-        assert_eq!(workspace.font.master().undo_depth(index), 0);
         let foreground_x = workspace
             .font
             .project
@@ -1832,8 +1824,6 @@ mod tests {
             .collect::<std::collections::HashSet<_>>();
         assert_eq!(workspace.session.selection, duplicate_ids);
         assert_eq!(workspace.metadata_undo.len(), 2);
-        assert_eq!(workspace.font.master().undo_depth(index), 0);
-
         workspace.undo_active_edit(false);
         assert_eq!(projected_glyph(&workspace.session).contours.len(), 2);
         workspace.undo_active_edit(true);
@@ -1895,8 +1885,6 @@ mod tests {
         assert_eq!(glyph.contours[1].points.len(), 3);
         assert_ne!(glyph.contours[1].points[0].typ, norad::PointType::Move);
         assert_eq!(workspace.metadata_undo.len(), 4);
-        assert_eq!(workspace.font.master().undo_depth(index), 0);
-
         std::fs::remove_dir_all(path).expect("the fixture is removed");
     }
 
@@ -1950,7 +1938,6 @@ mod tests {
             80.0
         );
         assert_eq!(workspace.metadata_undo.len(), 1);
-        assert_eq!(workspace.font.master().undo_depth(index), 0);
         workspace.undo_active_edit(false);
         assert_eq!(
             projected_glyph(&workspace.session).contours[0].points[0].x,
@@ -1989,7 +1976,6 @@ mod tests {
             .remove_document_glyph("A")
             .expect("the canonical glyph is removed before the stale edit commits");
         let undo_steps = workspace.metadata_undo.len();
-        let legacy_steps = workspace.font.master().undo_depth(index);
         assert!(!workspace.modified);
 
         let outcome = workspace.sync_session_from(&mut stale);
@@ -1999,10 +1985,9 @@ mod tests {
             SessionSyncOutcome::Rejected
         );
         assert_eq!(workspace.metadata_undo.len(), undo_steps);
-        assert_eq!(workspace.font.master().undo_depth(index), legacy_steps);
         assert!(!workspace.modified);
         assert!(workspace.font.project.document_glyph("A").is_none());
-        assert!(workspace.font.font().get_glyph("A").is_none());
+        assert!(workspace.font.font_snapshot().get_glyph("A").is_none());
         assert!(workspace.note.contains("could not be reloaded"));
 
         std::fs::remove_dir_all(path).expect("the fixture is removed");
@@ -2042,9 +2027,11 @@ mod tests {
         assert_eq!(workspace.selected_glyph_text(), "hn");
         workspace.command_update_metrics();
         let h = workspace.font.index_of("h").expect("h remains present");
-        assert_eq!(workspace.font.master().ink_bounds(h).unwrap().x0, 60.0);
-        assert_eq!(workspace.font.font().get_glyph("h").unwrap().width, 510.0);
-        assert_eq!(workspace.font.master().undo_depth(h), 0);
+        assert_eq!(workspace.font.glyphs[h].ink.x0, 60.0);
+        assert_eq!(
+            workspace.font.font_snapshot().get_glyph("h").unwrap().width,
+            510.0
+        );
         let address = workspace.font.active_layer_address("h").unwrap();
         assert_eq!(
             workspace.font.project.document_layer_history_depth(

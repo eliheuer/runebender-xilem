@@ -120,7 +120,12 @@ impl Entry {
             A::ExportFont => app.export_job.is_none(),
             A::Undo => match app.mode {
                 Mode::Editor(index) => {
-                    app.font.master().can_undo(index) || app.can_metadata_history_step(false)
+                    app.font.glyphs.get(index).is_some_and(|glyph| {
+                        app.font.can_replay_history(
+                            &glyph.name,
+                            runebender::document::history::HistoryDirection::Undo,
+                        )
+                    }) || app.can_metadata_history_step(false)
                 }
                 Mode::Overview => {
                     !app.overview_undo.is_empty() || app.can_metadata_history_step(false)
@@ -129,7 +134,12 @@ impl Entry {
             },
             A::Redo => match app.mode {
                 Mode::Editor(index) => {
-                    app.font.master().can_redo(index) || app.can_metadata_history_step(true)
+                    app.font.glyphs.get(index).is_some_and(|glyph| {
+                        app.font.can_replay_history(
+                            &glyph.name,
+                            runebender::document::history::HistoryDirection::Redo,
+                        )
+                    }) || app.can_metadata_history_step(true)
                 }
                 Mode::Overview => {
                     !app.overview_redo.is_empty() || app.can_metadata_history_step(true)

@@ -5,11 +5,26 @@
 
 use norad::{Contour, ContourPoint, Font, Glyph, Name, PointType};
 use runebender::document::DocumentEditError;
+use runebender::document::canonical_metadata::KerningParticipant;
 use runebender::document::font_memory::designspace_from_str;
-use runebender::document::project::{DocumentEditOutcome, Master, Project};
+use runebender::document::project::{DocumentEditOutcome, Project, SourceInput};
 use runebender::document::variable::{LayerId, SourceId};
 use runebender::text::shape::ShapingFont;
 use skrifa::raw::TableProvider as _;
+
+fn edit_width(project: &mut Project, source: SourceId, glyph: &str, width: f64) {
+    let layer = project.document_source(source).unwrap().default_layer();
+    assert!(
+        matches!(
+            project.edit_document_layer(glyph, &layer, |draft| {
+                draft.set_width(width)?;
+                Ok(())
+            }),
+            Ok(DocumentEditOutcome::Changed { .. })
+        ),
+        "fixture layer edit must change the document"
+    );
+}
 
 fn designspace() -> norad::designspace::DesignSpaceDocument {
     designspace_from_str(r#"<designspace format="5.0">
@@ -55,7 +70,7 @@ fn project_from_designspace(doc: norad::designspace::DesignSpaceDocument) -> Pro
             .entry(Name::new("A").unwrap())
             .or_default()
             .insert(Name::new("V").unwrap(), if bold { -150.0 } else { -50.0 });
-        Ok(Master::from_font(font, name.into()))
+        Ok(SourceInput::from_font(font, name.into()))
     })
     .unwrap()
 }
@@ -92,14 +107,7 @@ fn unsaved_variable_document_compiles_outlines_advances_kerning_and_ligatures() 
         assert_eq!(ligature.len(), 1);
         assert_eq!(shaping.glyph_name(ligature[0].glyph_id), Some("AV"));
     }
-    project
-        .edit_source(SourceId(1))
-        .unwrap()
-        .font
-        .default_layer_mut()
-        .get_glyph_mut("A")
-        .unwrap()
-        .width = 1000.0;
+    edit_width(&mut project, SourceId(1), "A", 1000.0);
     let edited = project.compile().unwrap();
     let shaped = ShapingFont::from_bytes((*edited.bytes).clone())
         .unwrap()
@@ -116,23 +124,23 @@ fn unsaved_variable_document_compiles_outlines_advances_kerning_and_ligatures() 
 #[test]
 fn compiler_quantizes_exact_editable_metrics_only_in_its_snapshot() {
     let mut project = project();
-    {
-        let mut source = project.edit_source(SourceId(0)).unwrap();
-        source
-            .font
-            .default_layer_mut()
-            .get_glyph_mut("A")
-            .unwrap()
-            .width = 500.6;
-        *source
-            .font
-            .kerning
-            .get_mut(&Name::new("A").unwrap())
-            .unwrap()
-            .get_mut(&Name::new("V").unwrap())
-            .unwrap() = -50.5;
-    }
-    let exact = project.source_snapshot(SourceId(0)).unwrap();
+    edit_width(&mut project, SourceId(0), "A", 500.6);
+    let mut metadata = project.document_font_metadata(SourceId(0)).unwrap().clone();
+    metadata
+        .set_kerning_pair(
+            KerningParticipant::glyph("A").unwrap(),
+            KerningParticipant::glyph("V").unwrap(),
+            Some(-50.5),
+        )
+        .unwrap();
+    assert!(matches!(
+        project.edit_document_source_metadata(SourceId(0), |draft| {
+            draft.set_font_metadata(metadata);
+            Ok(())
+        }),
+        Ok(DocumentEditOutcome::Changed { .. })
+    ));
+    let exact = project.encode_ufo_source(SourceId(0)).unwrap();
     assert_eq!(
         exact.get_glyph("A").unwrap().width,
         500.6,
@@ -154,7 +162,7 @@ fn compiler_quantizes_exact_editable_metrics_only_in_its_snapshot() {
         shaped[0].x_advance, 450.0,
         "compiled advance and kerning must use rounded OpenType values"
     );
-    let still_exact = project.source_snapshot(SourceId(0)).unwrap();
+    let still_exact = project.encode_ufo_source(SourceId(0)).unwrap();
     assert_eq!(
         still_exact.get_glyph("A").unwrap().width,
         500.6,
@@ -235,8 +243,8 @@ fn text_buffer_applies_variable_kerning_once_and_reuses_compilation_across_locat
         "slider-only location changes must reuse immutable compiled inputs"
     );
     let mut buffer = TextBuffer::new();
-    buffer.set_glyph_inventory(TextGlyphInventory::from_font(&project.sources()[0].font));
-    buffer.set_kerning_model(TextKerningModel::from_font(&project.sources()[0].font));
+    buffer.set_glyph_inventory(TextGlyphInventory::from_project(&project, SourceId(0)).unwrap());
+    buffer.set_kerning_model(TextKerningModel::from_project(&project, SourceId(0)).unwrap());
     buffer.set_feature_overrides(vec![("liga".into(), false)]);
     buffer.set_compiled_font(Some(compiled.bytes.clone()), vec![1.0]);
     buffer.insert_character('A');
@@ -282,7 +290,6 @@ fn designspace_rules_are_present_in_the_compiled_variable_shaper() {
     project.master_names.clear();
     project.instances.clear();
     project.brace.clear();
-    project.ds_doc.as_mut().unwrap().rules.rules.clear();
     let compiled = project.compile().unwrap();
     for (location, name) in [(0.0, "A"), (1.0, "V")] {
         let shaping = ShapingFont::from_bytes((*compiled.bytes).clone())
@@ -417,12 +424,7 @@ fn canonical_source_metadata_transaction_is_atomic_and_invalidates_compile() {
         "canonical feature text was not committed"
     );
     assert_eq!(
-        project.sources()[0].font.features,
-        feature_text,
-        "compatibility projection was not refreshed"
-    );
-    assert_eq!(
-        project.source_snapshot(source).unwrap().features,
+        project.encode_ufo_source(source).unwrap().features,
         feature_text,
         "format projection missed canonical feature text"
     );
@@ -527,21 +529,26 @@ fn source_structure_history_invalidates_compiled_preview() {
 #[test]
 fn shared_feature_edits_and_variable_drafts_do_not_depend_on_selected_master() {
     let mut project = project();
-    let other_features = project.sources()[1].font.features.clone();
+    let default_source = SourceId(0);
+    let other_source = SourceId(1);
+    let other_features = project
+        .document_feature_text(other_source)
+        .unwrap()
+        .to_owned();
     project.active = 1;
     let draft =
         "conditionset Heavy { wght 650.25 900; } Heavy; variation rvrn Heavy { sub A by V; } rvrn;";
     project.check_features(draft).unwrap();
     assert_eq!(
-        project.sources()[0].font.features,
-        other_features,
+        project.document_feature_text(default_source),
+        Some(other_features.as_str()),
         "checking must not apply a draft"
     );
     assert!(project.set_feature_text(draft.into()));
-    assert_eq!(project.document_feature_text(SourceId(0)), Some(draft));
+    assert_eq!(project.document_feature_text(default_source), Some(draft));
     assert_eq!(
-        project.sources()[1].font.features,
-        other_features,
+        project.document_feature_text(other_source),
+        Some(other_features.as_str()),
         "other UFO feature files are preserved"
     );
     let compiled = project.compile().unwrap();
@@ -555,25 +562,31 @@ fn shared_feature_edits_and_variable_drafts_do_not_depend_on_selected_master() {
 #[test]
 fn mark_positioning_tracks_live_anchors_in_both_masters() {
     let mut project = project();
-    for (index, source) in project.edit_sources().iter_mut().enumerate() {
-        let base = source.font.default_layer_mut().get_glyph_mut("A").unwrap();
-        base.anchors.push(norad::Anchor::new(
-            250.0 + index as f64 * 150.0,
-            700.0 + index as f64 * 200.0,
-            Some(Name::new("top").unwrap()),
-            None,
-            None,
+    project
+        .add_document_glyph("acutecomb", 0.0, Some(0x301))
+        .unwrap();
+    let layers = project
+        .document_sources()
+        .map(|source| source.default_layer())
+        .collect::<Vec<_>>();
+    for (index, layer) in layers.into_iter().enumerate() {
+        assert!(matches!(
+            project.edit_document_layer("A", &layer, |draft| {
+                draft.add_anchor(
+                    "top".into(),
+                    kurbo::Point::new(250.0 + index as f64 * 150.0, 700.0 + index as f64 * 200.0),
+                )?;
+                Ok(())
+            }),
+            Ok(DocumentEditOutcome::Changed { .. })
         ));
-        let mut mark = Glyph::new("acutecomb");
-        mark.codepoints.insert('\u{301}');
-        mark.anchors.push(norad::Anchor::new(
-            100.0,
-            0.0,
-            Some(Name::new("_top").unwrap()),
-            None,
-            None,
+        assert!(matches!(
+            project.edit_document_layer("acutecomb", &layer, |draft| {
+                draft.add_anchor("_top".into(), kurbo::Point::new(100.0, 0.0))?;
+                Ok(())
+            }),
+            Ok(DocumentEditOutcome::Changed { .. })
         ));
-        source.font.default_layer_mut().insert_glyph(mark);
     }
     let compiled = project.compile().unwrap();
     for (location, y) in [(0.0, 700.0), (0.5, 800.0), (1.0, 900.0)] {
@@ -592,14 +605,7 @@ fn background_preview_coalesces_edits_and_never_publishes_a_stale_revision() {
     let mut project = project();
     assert!(project.request_preview().unwrap().is_none());
     for width in [850.0, 900.0, 1050.0] {
-        project
-            .edit_source(SourceId(1))
-            .unwrap()
-            .font
-            .default_layer_mut()
-            .get_glyph_mut("A")
-            .unwrap()
-            .width = width;
+        edit_width(&mut project, SourceId(1), "A", width);
         assert!(project.request_preview().unwrap().is_none());
     }
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);

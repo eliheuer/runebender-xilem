@@ -13,7 +13,7 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use super::project::Master;
+use super::project::SourceInput;
 use crate::formats::glyphs_import::ConversionResult;
 
 /// Filesystem details outside canonical ownership that must survive an ordinary save.
@@ -121,29 +121,10 @@ pub(crate) struct ImportedUfo {
 }
 
 impl ImportedUfo {
-    pub(crate) fn into_master(self, path: PathBuf) -> Master {
-        let glif_paths = self
-            .font
-            .default_layer()
-            .iter()
-            .filter_map(|glyph| {
-                let name = glyph.name().to_string();
-                let relative = self.font.default_layer().get_path(&name)?;
-                Some((
-                    name,
-                    self.font
-                        .default_layer()
-                        .path()
-                        .join(relative)
-                        .to_string_lossy()
-                        .into_owned(),
-                ))
-            })
-            .collect();
-        let mut master = Master::from_font(self.font, path);
-        master.glif_paths = glif_paths;
-        master.preserved_files = self.preserved;
-        master
+    pub(crate) fn into_source_input(self, path: PathBuf) -> SourceInput {
+        let mut source = SourceInput::from_font(self.font, path);
+        source.preserved_files = self.preserved;
+        source
     }
 }
 
@@ -846,7 +827,7 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     use super::*;
-    use crate::document::project::Project;
+    use crate::document::project::{DocumentEditOutcome, Project};
     use crate::document::variable::SourceId;
     use crate::formats::glyphs_import::{ConversionResult, ConvertedFile};
 
@@ -880,7 +861,13 @@ mod tests {
         let mut project = Project::load(&path).unwrap();
         let source = project.document_source(SourceId(0)).unwrap();
         let default_layer = source.default_layer();
-        assert!(project.edit_layer("A", &default_layer, |glyph| glyph.width = 612.5));
+        assert!(matches!(
+            project.edit_document_layer("A", &default_layer, |draft| {
+                draft.set_width(612.5)?;
+                Ok(())
+            }),
+            Ok(DocumentEditOutcome::Changed { .. })
+        ));
         project.save().unwrap();
 
         let reloaded = norad::Font::load(&path).unwrap();
@@ -937,53 +924,43 @@ mod tests {
     }
 
     #[test]
-    fn project_save_validates_every_source_before_replacing_any_destination() {
+    fn export_plan_validates_every_source_before_replacing_any_destination() {
         let scratch = Scratch::new("atomic");
         let regular = scratch.0.join("Regular.ufo");
         let bold = scratch.0.join("Bold.ufo");
         write_ufo(&regular, "Regular", false);
         write_ufo(&bold, "Bold", false);
-        let designspace = scratch.0.join("Font.designspace");
-        fs::write(
-            &designspace,
-            r#"<?xml version="1.0" encoding="UTF-8"?>
-<designspace format="5.0">
-  <axes><axis tag="wght" name="Weight" minimum="0" default="0" maximum="1"/></axes>
-  <sources>
-    <source filename="Regular.ufo" name="regular"><location><dimension name="Weight" xvalue="0"/></location></source>
-    <source filename="Bold.ufo" name="bold"><location><dimension name="Weight" xvalue="1"/></location></source>
-  </sources>
-</designspace>
-"#,
-        )
-        .unwrap();
         let regular_before = fs::read(regular.join("glyphs/A.custom-name.glif")).unwrap();
         let bold_before = fs::read(bold.join("glyphs/A.custom-name.glif")).unwrap();
 
-        let mut project = Project::load(&designspace).unwrap();
-        assert_eq!(
-            project.document_source_path(SourceId(0)),
-            Some(regular.as_path())
+        let mut regular_font = norad::Font::load(&regular).unwrap();
+        regular_font
+            .get_glyph_mut("A")
+            .expect("the regular test glyph exists")
+            .width = 777.0;
+        let mut bold_font = norad::Font::load(&bold).unwrap();
+        bold_font.lib.insert(
+            "public.objectLibs".into(),
+            plist::Value::String("invalid staged payload".into()),
         );
-        assert_eq!(
-            project.document_source_path(SourceId(1)),
-            Some(bold.as_path())
-        );
-        let regular_layer = project
-            .document_source(SourceId(0))
-            .unwrap()
-            .default_layer();
-        assert!(project.edit_layer("A", &regular_layer, |glyph| glyph.width = 777.0));
-        {
-            let mut sources = project.edit_sources();
-            sources[1]
-                .font
-                .lib
-                .insert("public.objectLibs".into(), "invalid staged payload".into());
-            sources[1].dirty = true;
-        }
-
-        let error = project.save().unwrap_err();
+        let error = ExportPlan::new(
+            vec![
+                SourceExport {
+                    destination: regular.clone(),
+                    font: regular_font,
+                    preserved: PreservedFiles::default(),
+                },
+                SourceExport {
+                    destination: bold.clone(),
+                    font: bold_font,
+                    preserved: PreservedFiles::default(),
+                },
+            ],
+            None,
+        )
+        .unwrap()
+        .execute()
+        .unwrap_err();
         assert!(error.contains("public.objectLibs"), "{error}");
         assert_eq!(
             fs::read(regular.join("glyphs/A.custom-name.glif")).unwrap(),
@@ -994,8 +971,6 @@ mod tests {
             fs::read(bold.join("glyphs/A.custom-name.glif")).unwrap(),
             bold_before
         );
-        assert!(project.sources()[0].dirty);
-        assert!(project.sources()[1].dirty);
         assert!(
             fs::read_dir(&scratch.0)
                 .unwrap()

@@ -5,9 +5,11 @@
 
 use kurbo::{Affine, BezPath, PathEl};
 
+use crate::document::experiments::Experiment;
 use crate::document::project::Project;
 use crate::document::variable::{GlyphLayerAddress, LayerId, SourceId};
-use crate::outline::glyph_ops::bezpath_to_contour;
+use crate::formats::ufo::bezpath_to_contour;
+#[cfg(test)]
 use crate::outline::glyph_paths;
 
 /// A standalone SVG document for one glyph.
@@ -40,6 +42,15 @@ pub fn glyph_svg(path: &BezPath, advance: f64, ascender: f64, descender: f64) ->
 /// drawing. Fills, strokes, groups, and transforms are ignored:
 /// this is the Illustrator-outline paste, not a renderer.
 pub fn svg_to_contours(
+    svg_text: &str,
+    ascender: f64,
+    descender: f64,
+) -> Result<crate::document::ImportedContours, String> {
+    let contours = svg_to_ufo_contours(svg_text, ascender, descender)?;
+    crate::formats::ufo::decode_contours(&contours)
+}
+
+fn svg_to_ufo_contours(
     svg_text: &str,
     ascender: f64,
     descender: f64,
@@ -111,6 +122,7 @@ pub struct ProofSheet {
 /// vertical metrics ruled in each cell. `layer` names a layer to draw
 /// from; None draws the foreground. Errors name a glyph that is not
 /// there.
+#[cfg(test)]
 pub fn proof_sheet(
     font: &norad::Font,
     layer: Option<&str>,
@@ -328,6 +340,105 @@ pub fn proof_sheet_project(
     })
 }
 
+/// Render a proof sheet directly from one canonical experiment snapshot.
+pub fn proof_sheet_experiment(
+    project: &Project,
+    experiment: &Experiment,
+    layer: Option<&str>,
+    names: &[String],
+    columns: usize,
+) -> Result<ProofSheet, String> {
+    if names.is_empty() {
+        return Err("no glyph to draw".into());
+    }
+    if let Some(layer) = layer
+        && !experiment
+            .layer_drafts()
+            .any(|(address, _)| address.layer.name == layer)
+    {
+        return Err(format!("no layer named {layer}"));
+    }
+    let info = project
+        .document_font_info(experiment.root)
+        .ok_or("proof source has no canonical font information")?;
+    let resolved = info.metrics.resolved();
+    let columns = columns.clamp(1, names.len());
+    let cell_w = resolved.units_per_em * 1.2;
+    let cell_h = resolved.units_per_em * 1.4;
+    let rows = names.len().div_ceil(columns);
+    let mut svg = String::new();
+    svg.push_str(&format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" \
+         viewBox=\"0 0 {} {}\">\n<rect width=\"100%\" height=\"100%\" fill=\"white\"/>\n",
+        (cell_w * columns as f64 / 4.0).round(),
+        (cell_h * rows as f64 / 4.0).round(),
+        cell_w * columns as f64,
+        cell_h * rows as f64
+    ));
+    let mut proof_metrics = Vec::new();
+    for (index, name) in names.iter().enumerate() {
+        let (selected, view) = experiment
+            .selected_layer(name, layer)
+            .or_else(|| experiment.selected_layer(name, None))
+            .ok_or_else(|| format!("no glyph named {name}"))?;
+        let path = experiment
+            .layer_path(name, &selected)
+            .map_err(|error| error.to_string())?;
+        let column = (index % columns) as f64;
+        let row = (index / columns) as f64;
+        let x0 = column * cell_w + resolved.units_per_em * 0.1;
+        let baseline = row * cell_h + resolved.units_per_em * 1.05;
+        let label = name
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;");
+        svg.push_str(&format!(
+            "<text x=\"{x0}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"40\">{label}</text>\n",
+            row * cell_h + 60.0
+        ));
+        let line = |y: f64, color: &str| {
+            format!(
+                "<line x1=\"{x0:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" \
+                 stroke=\"{color}\" stroke-width=\"2\"/>\n",
+                baseline - y,
+                x0 + view.width(),
+                baseline - y
+            )
+        };
+        svg.push_str(&line(0.0, "#999"));
+        svg.push_str(&line(resolved.ascender, "#ccc"));
+        svg.push_str(&line(resolved.descender, "#ccc"));
+        if let Some(x_height) = info.metrics.x_height {
+            svg.push_str(&line(x_height, "#bbb"));
+        }
+        if let Some(cap_height) = info.metrics.cap_height {
+            svg.push_str(&line(cap_height, "#bbb"));
+        }
+        svg.push_str(&format!(
+            "<path transform=\"translate({x0:.1} {baseline:.1}) scale(1 -1)\" d=\"{}\" fill=\"black\"/>\n",
+            path.to_svg()
+        ));
+        use kurbo::Shape as _;
+        let bounds = path.bounding_box();
+        let drawn = !path.is_empty();
+        proof_metrics.push(serde_json::json!({
+            "glyph": name,
+            "advance": view.width(),
+            "lsb": if drawn { Some(bounds.x0.round()) } else { None },
+            "rsb": if drawn { Some((view.width() - bounds.x1).round()) } else { None },
+            "bounds": if drawn { Some([bounds.x0, bounds.y0, bounds.x1, bounds.y1]) } else { None },
+            "points": view.contours().map(|contour| contour.points().count()).sum::<usize>(),
+            "contours": view.contours().count(),
+            "components": view.components().count(),
+        }));
+    }
+    svg.push_str("</svg>\n");
+    Ok(ProofSheet {
+        svg,
+        metrics: proof_metrics,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -352,7 +463,7 @@ mod tests {
         let svg = r#"<svg xmlns="x" viewBox="0 0 10 20">
             <g><path fill="red" d="M0,0 L10,0 L10,20 L0,20 Z"/></g>
         </svg>"#;
-        let contours = svg_to_contours(svg, 800.0, -200.0).expect("parses");
+        let contours = svg_to_ufo_contours(svg, 800.0, -200.0).expect("parses");
         assert_eq!(contours.len(), 1);
         let ys: Vec<f64> = contours[0].points.iter().map(|p| p.y).collect();
         let xs: Vec<f64> = contours[0].points.iter().map(|p| p.x).collect();
@@ -367,7 +478,7 @@ mod tests {
         assert!((max_x - 500.0).abs() < 1.0, "aspect kept: {max_x}");
         // Curves survive.
         let curvy = r#"<path d="M0 0 C 10 0 20 10 20 20 L 0 20 Z"/>"#;
-        let c = svg_to_contours(curvy, 800.0, -200.0).expect("parses curves");
+        let c = svg_to_ufo_contours(curvy, 800.0, -200.0).expect("parses curves");
         assert!(
             c[0].points
                 .iter()

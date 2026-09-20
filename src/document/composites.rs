@@ -12,8 +12,11 @@
 //! whose anchors just moved.
 
 use kurbo::{Point, Vec2};
+
+#[cfg(test)]
 use norad::{Component, Font, Glyph};
 
+#[cfg(test)]
 use super::model::glyph_metadata::ComponentAlignment;
 use super::{ComponentId, DocumentEditError, LayerEditDraft, LayerView};
 
@@ -34,6 +37,7 @@ pub struct AlignInput {
 ///
 /// The check reads the Glyphs alignment lib key. Returns true when
 /// the key marks the component as not aligned.
+#[cfg(test)]
 pub fn component_alignment_disabled(component: &Component) -> bool {
     let mut lib = component.lib().cloned().unwrap_or_default();
     ComponentAlignment::take_from_lib(&mut lib).is_disabled()
@@ -44,6 +48,7 @@ pub fn component_alignment_disabled(component: &Component) -> bool {
 /// Cutting loose writes the Glyphs key and leaves the component
 /// where it sits. Locking removes the key; the caller realigns
 /// afterwards to snap it home.
+#[cfg(test)]
 pub fn set_component_alignment_disabled(component: &mut Component, disabled: bool) {
     let mut lib = component.lib().cloned().unwrap_or_default();
     let mut alignment = ComponentAlignment::take_from_lib(&mut lib);
@@ -246,6 +251,7 @@ pub fn document_composites_using<'a>(
         .collect()
 }
 
+#[cfg(test)]
 fn base_anchors(font: &Font, base: &str) -> Vec<(String, Point)> {
     font.get_glyph(base)
         .map(|glyph| {
@@ -260,6 +266,7 @@ fn base_anchors(font: &Font, base: &str) -> Vec<(String, Point)> {
 
 /// The alignment inputs for a glyph's components, resolved against
 /// the font.
+#[cfg(test)]
 pub fn align_inputs(font: &Font, glyph: &Glyph) -> Vec<AlignInput> {
     glyph
         .components
@@ -277,6 +284,7 @@ pub fn align_inputs(font: &Font, glyph: &Glyph) -> Vec<AlignInput> {
 /// `seed_own_anchors` is true for the glyph open in an editor, where
 /// its own anchors are offered to the components, and false for the
 /// file-level pass. Returns true when any component moved.
+#[cfg(test)]
 pub fn realign_glyph(font: &Font, glyph: &mut Glyph, seed_own_anchors: bool) -> bool {
     if glyph.components.is_empty() {
         return false;
@@ -306,6 +314,7 @@ pub fn realign_glyph(font: &Font, glyph: &mut Glyph, seed_own_anchors: bool) -> 
 }
 
 /// The names of every glyph that places `base` as a component.
+#[cfg(test)]
 pub fn composites_using(font: &Font, base: &str) -> Vec<String> {
     font.iter_layers()
         .next()
@@ -326,7 +335,7 @@ mod tests {
     use super::*;
     use norad::{AffineTransform, Anchor, Name};
 
-    use crate::document::project::{Master, Project};
+    use crate::document::project::{Project, SourceInput};
     use crate::document::variable::{GlyphLayerAddress, SourceId};
 
     fn glyph_with_anchor(name: &str, anchor: &str, x: f64, y: f64) -> Glyph {
@@ -409,7 +418,7 @@ mod tests {
         mark.transform.xy_scale = 0.125;
         mark.transform.yx_scale = -0.25;
         mark.transform.y_scale = 0.875;
-        let project = Project::from_source(Master::from_font(
+        let project = Project::from_source(SourceInput::from_font(
             font,
             PathBuf::from("CanonicalAlignment.ufo"),
         ));
@@ -459,7 +468,7 @@ mod tests {
             None,
         ));
         font.default_layer_mut().insert_glyph(inherited);
-        let project = Project::from_source(Master::from_font(
+        let project = Project::from_source(SourceInput::from_font(
             font,
             PathBuf::from("CanonicalAnchors.ufo"),
         ));
@@ -478,7 +487,7 @@ mod tests {
     fn canonical_alignment_rejects_nonfinite_results_before_mutation() {
         let mut font = mark_font();
         font.default_layer_mut().get_glyph_mut("A").unwrap().anchors[0].x = f64::NAN;
-        let project = Project::from_source(Master::from_font(
+        let project = Project::from_source(SourceInput::from_font(
             font,
             PathBuf::from("InvalidCanonicalAlignment.ufo"),
         ));

@@ -234,6 +234,7 @@ impl Default for Workspace {
 /// Whether a norad contour is a hyperbezier.
 ///
 /// The identifier convention is shared by all Runebender editors.
+#[cfg(test)]
 pub fn norad_contour_is_hyper(contour: &norad::Contour) -> bool {
     contour
         .identifier()
@@ -247,6 +248,7 @@ impl Contour {
     /// A hyperbezier contour, marked by an identifier containing
     /// "hyper", maps curve and move points to smooth hyper points
     /// and line points to hyper corners.
+    #[cfg(test)]
     pub fn from_norad(contour: &norad::Contour) -> Self {
         let hyper = norad_contour_is_hyper(contour);
         Self {
@@ -275,6 +277,7 @@ impl Contour {
 
     /// Convert back to a norad contour, setting the hyperbezier
     /// identifier when the contour carries hyper points.
+    #[cfg(test)]
     pub fn to_norad(&self) -> norad::Contour {
         let hyper = self
             .points

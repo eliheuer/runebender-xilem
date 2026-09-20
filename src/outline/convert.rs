@@ -8,6 +8,7 @@
 /// Each offcurve+qcurve pair (P0, C, P1) becomes the identical
 /// cubic with controls at P0 + 2/3(C-P0) and P1 + 2/3(C-P1). The
 /// conversion is lossless.
+#[cfg(test)]
 pub fn quads_to_cubics(glyph: &mut norad::Glyph) -> bool {
     use norad::PointType;
     let mut changed = false;
@@ -83,6 +84,7 @@ pub fn quads_to_cubics(glyph: &mut norad::Glyph) -> bool {
 /// replace the cubic. This is the reverse of `quads_to_cubics`, and
 /// it is lossy by nature: the same trade every cubic-to-TrueType
 /// compiler makes.
+#[cfg(test)]
 pub fn cubics_to_quads(glyph: &mut norad::Glyph, tolerance: f64) -> bool {
     use kurbo::{CubicBez, ParamCurve as _, Point};
     use norad::PointType;

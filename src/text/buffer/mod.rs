@@ -242,6 +242,7 @@ impl TextGlyphInventory {
     /// the web host builds the same thing as JSON). Outlines stay
     /// empty: native hosts draw from their live paths, and shaping
     /// never looks at outlines.
+    #[cfg(test)]
     pub fn from_font(font: &norad::Font) -> Self {
         let mut unicode = HashMap::new();
         let mut widths = HashMap::new();
@@ -310,6 +311,7 @@ impl TextKerningModel {
 
     /// Build the kerning model from a norad font's groups and
     /// kerning.plist (native hosts; the web host sends JSON).
+    #[cfg(test)]
     pub fn from_font(font: &norad::Font) -> Self {
         let mut groups = HashMap::new();
         let mut left_groups = HashMap::new();

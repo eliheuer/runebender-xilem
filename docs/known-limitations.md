@@ -1,7 +1,8 @@
 # Known limitations
 
 Runebender is experimental. This file states what the automated evidence does
-and does not establish as of 2026-09-15.
+and does not establish.
+The [2026-09-19 migration proof](babelfont-migration-final-proof.md) records the latest migration-specific checks.
 
 ## Native platforms
 
@@ -72,19 +73,20 @@ that Runebender's maintainers have audited every third-party crate.
 
 ## Variable project and format adapters
 
-The Project owns glyph-local layers, but existing Norad tools still use guarded full-source projections and paint caches.
-This duplicates some data and reconciles changes at the end of each scoped edit.
-Feature text, groups and exact fractional kerning have canonical ownership per source; other font-wide metadata remains in UFO preservation templates.
+The Project owns glyph-local layers and source metadata without a persistent Norad source or glyph mirror.
+Norad remains inside explicit UFO, Designspace and proposal codecs, while source-format records preserve glyph-free metadata and opaque resources.
+Feature text, groups, exact fractional kerning and supported font information have canonical ownership per source.
 Source authoring works inside existing continuous axes; importing another existing UFO, creating axes and extending their bounds still need UI workflows.
-Removal and reordering are guarded while live experiment branches retain source-index references.
+Experiment branches retain stable source identities; applying one after its root source is removed fails explicitly.
 
-Babelfont owns geometry, with exact advances, affine coefficients, fractional kerning and UFO-only metadata retained by the preserving adapter.
+Babelfont owns geometry, with exact advances, affine coefficients, fractional kerning and UFO-only metadata retained by stable preservation records.
 Its axis conversion and fontdrasil variation backend are used through private adapters with editable-value rounding disabled.
 Rust Babelfont JSON is explicitly unsupported; Python directory packages have a separate checked import path that saves to new UFO/Designspace files.
 
-Unsupported Designspace extensions, discrete axes, cross-axis mappings, anisotropic coordinates and layer-only UFO sources fail explicitly.
+Unsupported Designspace extensions, discrete axes, cross-axis mappings, anisotropic coordinates and layer-only UFOs without a full source fail explicitly.
 Interpolation needs a default glyph layer, compatible contours/components/anchors and finite coordinates.
-Auxiliary layers are preserved and individually editable; they do not automatically participate in interpolation.
+Auxiliary layers are preserved and individually editable through canonical operations; they do not automatically participate in interpolation.
+The Layers panel offers name-based copy/remove controls; listing and selecting arbitrary auxiliary layers for direct canvas editing remains UI work.
 Glyph metadata and guides are retained from the default source rather than interpolated.
 Live preview/export compiles the whole font; Counterpunch's subset-compilation optimization is not implemented.
 Desktop compilation runs in a background worker, while the browser currently compiles synchronously.

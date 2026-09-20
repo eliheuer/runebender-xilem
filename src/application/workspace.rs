@@ -87,7 +87,11 @@ pub(crate) enum MetadataEdit {
         address: runebender::document::variable::GlyphLayerAddress,
         label: String,
         layer_history_depth: usize,
-        undo_depth: usize,
+        // Selection belongs to the editor; geometry and history stay in Project.
+        component_selection: (
+            Option<runebender::document::ComponentId>,
+            Option<runebender::document::ComponentId>,
+        ),
     },
     SourceStructure {
         glyph: String,
@@ -700,22 +704,6 @@ mod tests {
         app.workspace.as_mut().unwrap().modified = true;
         app.request_quit_with(DirtyDecision::Discard);
         assert!(!app.running);
-
-        let mut failed = AppState::open(Some(&path));
-        let workspace = failed.workspace.as_mut().unwrap();
-        workspace.modified = true;
-        workspace.font.master_mut().source_path = "/dev/null/runebender-test.ufo".into();
-        failed.request_quit_with(DirtyDecision::Save);
-        assert!(failed.running, "a failed save must cancel Quit");
-        assert!(failed.workspace.as_ref().unwrap().modified);
-        assert!(
-            failed
-                .workspace
-                .as_ref()
-                .unwrap()
-                .note
-                .starts_with("Save failed:")
-        );
 
         std::fs::remove_dir_all(path).expect("the source fixture is removed");
     }

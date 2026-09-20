@@ -45,6 +45,7 @@ pub(crate) struct Metrics {
 }
 
 impl Metrics {
+    #[cfg(test)]
     pub(crate) fn of(font: &norad::Font) -> Self {
         let info = &font.font_info;
         let upm = info.units_per_em.map(|u| u.as_f64()).unwrap_or(1000.0);
@@ -172,9 +173,7 @@ struct PenPt {
 impl Session {
     /// Build an inactive session with metrics from the canonical active source.
     pub(crate) fn inactive_from_model(font: &FontModel) -> Self {
-        let mut session = Self::inactive(font.font());
-        session.metrics = Metrics::of_canonical(font.font_info());
-        session
+        Self::inactive_with_metrics(Metrics::of_canonical(font.font_info()))
     }
 
     /// Build an editor session with metrics from the canonical active source.
@@ -182,12 +181,7 @@ impl Session {
         Self::new_from_project(&font.project, name, Metrics::of_canonical(font.font_info()))
     }
 
-    /// Makes the inactive session held while the overview has no glyph to open.
-    ///
-    /// The editor only reads this session in [`Mode::Editor`]. Keeping an
-    /// inert session here avoids making every editor-facing view optional when
-    /// a valid UFO has no glyphs yet; opening the first glyph replaces it.
-    pub(crate) fn inactive(font: &norad::Font) -> Self {
+    fn inactive_with_metrics(metrics: Metrics) -> Self {
         Self {
             glyph_name: String::new(),
             metaball_preview: BezPath::new(),
@@ -203,7 +197,7 @@ impl Session {
             active_metric_drag: None,
             active_metaball_drag: None,
             metaballs: metaballs::MetaballSelection::default(),
-            metrics: Metrics::of(font),
+            metrics,
             selection: HashSet::new(),
             viewport: ViewPort::new(),
             fitted: false,
@@ -220,7 +214,7 @@ impl Session {
     #[cfg(test)]
     pub(crate) fn new(font: &norad::Font, name: &str) -> Option<Self> {
         let project = runebender::document::project::Project::from_source(
-            runebender::document::project::Master::from_font(
+            runebender::document::project::SourceInput::from_font(
                 font.clone(),
                 std::path::PathBuf::from("memory.ufo"),
             ),
@@ -501,7 +495,7 @@ impl Session {
             .metaballs()
     }
 
-    pub(crate) fn set_image(&mut self, image: Option<norad::Image>) -> bool {
+    pub(crate) fn set_image(&mut self, image: Option<runebender::document::LayerImage>) -> bool {
         self.stage_canonical_edit("set image", move |draft| Ok(draft.set_image(image)))
     }
 
@@ -1870,8 +1864,11 @@ impl Session {
     }
 
     /// Replace every contour decoded at an explicit import boundary.
-    pub(crate) fn replace_imported_contours(&mut self, contours: &[norad::Contour]) -> bool {
-        let changed = self.stage_canonical_edit("replace imported contours", |draft| {
+    pub(crate) fn replace_imported_contours(
+        &mut self,
+        contours: runebender::document::ImportedContours,
+    ) -> bool {
+        let changed = self.stage_canonical_edit("replace imported contours", move |draft| {
             draft.replace_imported_contours(contours)
         });
         if changed {
@@ -1881,7 +1878,10 @@ impl Session {
     }
 
     /// Append contours decoded at an explicit import boundary, selecting their fresh points.
-    pub(crate) fn append_imported_contours(&mut self, contours: &[norad::Contour]) -> bool {
+    pub(crate) fn append_imported_contours(
+        &mut self,
+        contours: runebender::document::ImportedContours,
+    ) -> bool {
         if contours.is_empty() {
             return false;
         }
@@ -2228,11 +2228,6 @@ impl Workspace {
             } else {
                 Ok(false)
             };
-            let undo_depth = self
-                .font
-                .index_of(&name)
-                .map(|index| self.font.master().undo_depth(index))
-                .unwrap_or_default();
             let commit = alignment.map_err(|error| error.to_string()).and_then(|_| {
                 self.font
                     .project
@@ -2242,15 +2237,19 @@ impl Workspace {
             match commit {
                 Ok(runebender::document::project::DocumentEditOutcome::Changed { .. }) => {
                     outcome = SessionSyncOutcome::Changed;
+                    let layer_history_depth = self.font.project.document_layer_history_depth(
+                        &address,
+                        runebender::document::history::HistoryDirection::Undo,
+                    );
                     self.metadata_undo.push(MetadataEdit::DocumentLayer {
                         glyph: name.clone(),
                         address: address.clone(),
                         label: label.into(),
-                        layer_history_depth: self.font.project.document_layer_history_depth(
-                            &address,
-                            runebender::document::history::HistoryDirection::Undo,
+                        layer_history_depth,
+                        component_selection: (
+                            self.session.selected_component,
+                            session.selected_component,
                         ),
-                        undo_depth,
                     });
                     self.metadata_redo.clear();
                     if !session.reload_from_project(&self.font.project, &address) {
@@ -2683,7 +2682,8 @@ mod tests {
     fn imported_contours_append_and_select_fresh_points() {
         let mut session = two_squares();
         let copied = session.contours_for_copy();
-        assert!(session.append_imported_contours(&copied));
+        let decoded = runebender::formats::ufo::decode_contours(&copied).unwrap();
+        assert!(session.append_imported_contours(decoded));
         assert_eq!(
             session.pending_canonical_label,
             Some("append imported contours")
@@ -2704,21 +2704,24 @@ mod tests {
             .insert(replacement.point_id_at(0, 0).expect("first point"));
         let mut imported = copied[..1].to_vec();
         imported[0].points[0].x = -40.0;
-        assert!(replacement.replace_imported_contours(&imported));
+        let expected = imported.clone();
+        let imported = runebender::formats::ufo::decode_contours(&imported).unwrap();
+        assert!(replacement.replace_imported_contours(imported));
         assert_eq!(
             replacement.pending_canonical_label,
             Some("replace imported contours")
         );
         assert!(replacement.selection.is_empty());
         let projected = projected_glyph(&replacement);
-        assert_eq!(projected.contours, imported);
+        assert_eq!(projected.contours, expected);
         assert_eq!(projected.width, 0.0);
     }
 
     #[test]
     fn importing_no_contours_changes_nothing() {
         let mut session = two_squares();
-        assert!(!session.append_imported_contours(&[]));
+        let empty = runebender::formats::ufo::decode_contours(&[]).unwrap();
+        assert!(!session.append_imported_contours(empty));
         assert_eq!(projected_glyph(&session).contours.len(), 2);
     }
 
@@ -2865,7 +2868,6 @@ mod tests {
         assert_eq!(glyph.contours[0].points.len(), 7);
         assert_ne!(glyph.contours[0].points[0].typ, norad::PointType::Move);
         assert_eq!(workspace.metadata_undo.len(), 4);
-        assert_eq!(workspace.font.master().undo_depth(0), 0);
 
         std::fs::remove_dir_all(path).expect("the fixture is removed");
     }
@@ -2927,7 +2929,7 @@ mod tests {
     #[test]
     fn decompose_undo_rebuilds_nested_transformed_component_preview() {
         use masonry::kurbo::Shape as _;
-        use runebender::document::project::Master;
+        use runebender::document::project::SourceInput;
 
         let mut font = norad::Font::new();
         let mut base = norad::Glyph::new("base");
@@ -2968,10 +2970,9 @@ mod tests {
             None,
         ));
         font.default_layer_mut().insert_glyph(composite);
-        let mut project = runebender::document::project::Project::from_source(Master::from_font(
-            font,
-            std::path::PathBuf::new(),
-        ));
+        let mut project = runebender::document::project::Project::from_source(
+            SourceInput::from_font(font, std::path::PathBuf::new()),
+        );
         let source = project.document_sources().next().unwrap();
         let address = runebender::document::variable::GlyphLayerAddress {
             glyph: "composite".into(),
@@ -2980,7 +2981,7 @@ mod tests {
         let mut session = Session::new_from_project(
             &project,
             "composite",
-            Metrics::of(&project.active_font().font),
+            Metrics::of_canonical(project.document_font_info(source.id()).unwrap()),
         )
         .expect("composite exists");
         let before_bounds = session.components.bounding_box();

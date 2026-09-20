@@ -4,10 +4,7 @@
 //! Structured glyph inspection shared by disk and live editor tools.
 
 use crate::document::project::Project;
-use crate::document::proposal;
 use crate::document::variable::{GlyphLayerAddress, LayerId, SourceId};
-use crate::outline::glyph_paths;
-use norad::Font;
 use serde_json::json;
 
 /// Return geometry, metrics and the stable GLIF revision from one canonical document layer.
@@ -45,6 +42,31 @@ pub fn read_project_glyph(
         Ok(path) => path,
         Err(error) => return json!({"ok": false, "error": error.to_string()}),
     };
+    read_canonical_layer(name, &selected.name, glyph, path)
+}
+
+/// Return geometry and metrics from one isolated canonical experiment layer.
+pub fn read_experiment_glyph(
+    experiment: &crate::document::experiments::Experiment,
+    name: &str,
+    layer: Option<&str>,
+) -> serde_json::Value {
+    let Some((selected, glyph)) = experiment.selected_layer(name, layer) else {
+        return json!({"ok": false, "error": format!("no glyph named {name}")});
+    };
+    let path = match experiment.layer_path(name, &selected) {
+        Ok(path) => path,
+        Err(error) => return json!({"ok": false, "error": error.to_string()}),
+    };
+    read_canonical_layer(name, &selected.name, glyph, path)
+}
+
+fn read_canonical_layer(
+    name: &str,
+    layer_name: &str,
+    glyph: crate::document::LayerView<'_>,
+    path: kurbo::BezPath,
+) -> serde_json::Value {
     let drawn = !path.is_empty();
     let bounds = {
         use kurbo::Shape as _;
@@ -54,7 +76,7 @@ pub fn read_project_glyph(
     json!({
         "ok": true,
         "glyph": name,
-        "layer": selected.name,
+        "layer": layer_name,
         "revision": crate::document::edit_batch::canonical_glyph_revision(glyph).ok(),
         "advance": glyph.width(),
         "lsb": if drawn { Some(bounds.x0.round()) } else { None },
@@ -83,73 +105,6 @@ pub fn read_project_glyph(
             let position = anchor.position();
             json!({"name": anchor.name(), "x": position.x, "y": position.y})
         }).collect::<Vec<_>>(),
-    })
-}
-
-/// Returns geometry, metrics and an edit revision from the supplied in-memory font.
-/// An unknown glyph or layer returns an object with `ok: false`.
-pub fn read_glyph(font: &Font, name: &str, layer: Option<&str>) -> serde_json::Value {
-    let selected = match layer {
-        Some(name) => match font.layers.get(name) {
-            Some(layer) => layer,
-            None => return json!({"ok": false, "error": format!("no layer named {name}")}),
-        },
-        None => font.default_layer(),
-    };
-    let Some(glyph) = selected.get_glyph(name) else {
-        return json!({ "ok": false, "error": format!("no glyph named {name}") });
-    };
-    let contours: Vec<serde_json::Value> = glyph
-        .contours
-        .iter()
-        .map(|c| {
-            json!(
-                c.points
-                    .iter()
-                    .map(|p| json!({
-                        "x": p.x, "y": p.y,
-                        "type": format!("{:?}", p.typ).to_lowercase(),
-                        "smooth": p.smooth,
-                    }))
-                    .collect::<Vec<_>>()
-            )
-        })
-        .collect();
-    // The numbers a question is usually about come first, computed
-    // the way `proof` computes them, so one tool answers width and
-    // spacing without a second call.
-    let preview = match layer
-        .map(|name| proposal::preview_font(font, name))
-        .transpose()
-    {
-        Ok(preview) => preview,
-        Err(e) => return json!({"ok": false, "error": e}),
-    };
-    let path = glyph_paths::glyph_to_bezpath(glyph, preview.as_ref().unwrap_or(font));
-    let drawn = !path.is_empty();
-    let bounds = {
-        use kurbo::Shape as _;
-        path.bounding_box()
-    };
-    let joins = join_rows(crate::analysis::curve::cubics_from_norad(glyph));
-    json!({
-        "ok": true,
-        "glyph": name,
-        "layer": selected.name(),
-        "revision": crate::document::edit_batch::glyph_revision(glyph).ok(),
-        "advance": glyph.width,
-        "lsb": if drawn { Some(bounds.x0.round()) } else { None },
-        "rsb": if drawn { Some((glyph.width - bounds.x1).round()) } else { None },
-        "bounds": if drawn { Some([bounds.x0, bounds.y0, bounds.x1, bounds.y1]) } else { None },
-        "points": glyph.contours.iter().map(|c| c.points.len()).sum::<usize>(),
-        "contour_count": glyph.contours.len(),
-        "unicodes": glyph.codepoints.iter().map(|c| format!("U+{:04X}", c as u32)).collect::<Vec<_>>(),
-        "contours": contours,
-        "joins": joins,
-        "join_notes": "Direct contours only; components excluded. Contour indices count nonempty contours. Curvature is signed inverse font units. Degenerate tangents are null; no G2 guarantee or optical quality score is inferred.",
-        "components": glyph.components.iter().map(|c| c.base.to_string()).collect::<Vec<_>>(),
-        "component_transforms": glyph.components.iter().map(|c| json!({"base": c.base, "transform": [c.transform.x_scale, c.transform.xy_scale, c.transform.yx_scale, c.transform.y_scale, c.transform.x_offset, c.transform.y_offset]})).collect::<Vec<_>>(),
-        "anchors": glyph.anchors.iter().map(|a| json!({ "name": a.name.as_ref().map(|n| n.to_string()), "x": a.x, "y": a.y })).collect::<Vec<_>>(),
     })
 }
 
@@ -189,11 +144,11 @@ mod tests {
     use std::path::PathBuf;
 
     use norad::{
-        AffineTransform, Anchor, Component, Contour, ContourPoint, Glyph, Name, PointType,
+        AffineTransform, Anchor, Component, Contour, ContourPoint, Font, Glyph, Name, PointType,
     };
 
     use super::*;
-    use crate::document::project::Master;
+    use crate::document::project::SourceInput;
 
     #[test]
     fn canonical_glyph_inspection_matches_the_ufo_boundary_contract() {
@@ -231,16 +186,31 @@ mod tests {
             None,
         ));
         font.default_layer_mut().insert_glyph(glyph);
-        let expected = read_glyph(&font, "A", None);
-        let project = Project::from_source(Master::from_font(
+        let project = Project::from_source(SourceInput::from_font(
             font,
             PathBuf::from("CanonicalInspect.ufo"),
         ));
         let actual = read_project_glyph(&project, SourceId(0), "A", None);
+        assert_eq!(actual["ok"], true, "{actual:#}");
+        assert_eq!(actual["glyph"], "A");
+        assert_eq!(actual["layer"], "public.default");
+        assert_eq!(actual["advance"], 640.0);
+        assert_eq!(actual["lsb"], 21.0);
+        assert_eq!(actual["rsb"], 495.0);
+        assert_eq!(actual["bounds"], json!([20.5, 45.25, 145.5, 207.75]));
+        assert_eq!(actual["points"], 0);
+        assert_eq!(actual["contour_count"], 0);
+        assert_eq!(actual["unicodes"], json!(["U+0041"]));
+        assert_eq!(actual["components"], json!(["base"]));
         assert_eq!(
-            actual, expected,
-            "canonical inspection changed its JSON contract"
+            actual["component_transforms"],
+            json!([{"base":"base","transform":[1.25,0.125,-0.25,0.75,13.0,29.0]}])
         );
+        assert_eq!(
+            actual["anchors"],
+            json!([{"name":"top","x":320.0,"y":700.0}])
+        );
+        assert!(actual["revision"].as_str().is_some());
         assert_eq!(
             read_project_glyph(&project, SourceId(0), "A", Some("missing")),
             json!({"ok": false, "error": "no layer named missing"}),

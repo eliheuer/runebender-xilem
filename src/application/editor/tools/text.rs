@@ -223,10 +223,14 @@ impl TextState {
             glyph.codepoints.insert(codepoint);
             font.default_layer_mut().insert_glyph(glyph);
         }
+        let project = runebender::document::project::Project::from_source(
+            runebender::document::project::SourceInput::from_font(font, "text-test.ufo".into()),
+        );
+        let source = project.source_id(0).unwrap();
         Self::new(&TextInputs {
             context_id: (0, 0),
-            inventory: TextGlyphInventory::from_font(&font),
-            kerning: TextKerningModel::from_font(&font),
+            inventory: TextGlyphInventory::from_project(&project, source).unwrap(),
+            kerning: TextKerningModel::from_project(&project, source).unwrap(),
             outlines: Arc::new(Vec::new()),
             compiled: None,
             normalized: Vec::new(),
@@ -541,9 +545,13 @@ mod tests {
         other.width = 500.0;
         other.codepoints.insert('A');
         font.default_layer_mut().insert_glyph(other);
+        let project = runebender::document::project::Project::from_source(
+            runebender::document::project::SourceInput::from_font(font, "text-test.ufo".into()),
+        );
+        let source = project.source_id(0).unwrap();
         let mut inputs = TextInputs {
             context_id: (0, 0),
-            inventory: TextGlyphInventory::from_font(&font),
+            inventory: TextGlyphInventory::from_project(&project, source).unwrap(),
             kerning: TextKerningModel::default(),
             outlines: Arc::new(Vec::new()),
             compiled: None,
@@ -705,10 +713,21 @@ mod tests {
             .expect("the beh remains visible")
             .advance_width;
         let beh_index = font.index_of(&beh_name).expect("the shaped beh is indexed");
-        font.font_mut()
-            .get_glyph_mut(&beh_name)
-            .expect("the shaped beh remains in the live master")
-            .width += 17.0;
+        let address = font
+            .active_layer_address(&beh_name)
+            .expect("the shaped beh remains in the canonical source");
+        let mut transaction = font
+            .project
+            .begin_document_layer_transaction(&address)
+            .expect("the shaped beh remains editable");
+        let width = transaction.draft().view().width() + 17.0;
+        transaction
+            .draft_mut()
+            .set_width(width)
+            .expect("the finite width is valid");
+        font.project
+            .commit_document_layer_transaction(transaction)
+            .expect("the test edit commits");
         font.refresh_entry(beh_index);
         state.refresh(&TextInputs::new(&font));
         assert_eq!(

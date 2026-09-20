@@ -81,10 +81,7 @@ impl Workspace {
                 .clone(),
             Mode::Nodes => return None,
         };
-        let undo_depth = self
-            .font
-            .index_of(&glyph)
-            .map_or(0, |index| self.font.master().undo_depth(index));
+        let undo_depth = self.font.history_depth(&glyph, HistoryDirection::Undo);
         Some((
             glyph,
             undo_depth,
@@ -317,23 +314,16 @@ impl Workspace {
         let Some(before) = self.font.glyph_codepoints(name) else {
             return;
         };
-        let Some(glyph) = self.font.font().get_glyph(name) else {
+        let Ok(codepoints) =
+            runebender::document::model::glyph_metadata::parse_codepoints(self.unicode_buf.trim())
+        else {
             return;
         };
-        let mut parsed = glyph.clone();
-        if !runebender::document::font_ops::set_glyph_unicode(&mut parsed, self.unicode_buf.trim())
-        {
-            return;
-        }
-        let codepoints: Vec<char> = parsed.codepoints.iter().collect();
         let after = vec![codepoints; before.len()];
         if before == after {
             return;
         }
-        let undo_depth = self
-            .font
-            .index_of(name)
-            .map_or(0, |index| self.font.master().undo_depth(index));
+        let undo_depth = self.font.history_depth(name, HistoryDirection::Undo);
         if self.apply_unicode_snapshot(name, &after) {
             self.metadata_undo.push(MetadataEdit::Unicode {
                 source_ids: (0..self.font.master_count())
@@ -392,10 +382,7 @@ impl Workspace {
         if new.is_empty() || new == old {
             return;
         }
-        let undo_depth = self
-            .font
-            .index_of(old)
-            .map_or(0, |index| self.font.master().undo_depth(index));
+        let undo_depth = self.font.history_depth(old, HistoryDirection::Undo);
         if self.rename_without_history(old, new) {
             self.metadata_undo.push(MetadataEdit::Rename {
                 before: old.into(),
@@ -460,12 +447,21 @@ impl Workspace {
             | MetadataEdit::SourceMetadata {
                 glyph, undo_depth, ..
             }
-            | MetadataEdit::DocumentLayer {
-                glyph, undo_depth, ..
-            }
             | MetadataEdit::SourceStructure {
                 glyph, undo_depth, ..
             } => (glyph, *undo_depth),
+            MetadataEdit::DocumentLayer {
+                glyph,
+                layer_history_depth,
+                ..
+            } => (
+                glyph,
+                if redo {
+                    layer_history_depth.saturating_sub(1)
+                } else {
+                    *layer_history_depth
+                },
+            ),
         };
         let current_name = match self.mode {
             Mode::Editor(_) => Some(self.session.glyph_name.as_str()),
@@ -478,10 +474,10 @@ impl Workspace {
         if current_name != Some(expected.as_str()) {
             return false;
         }
-        let Some(index) = self.font.index_of(expected) else {
+        if self.font.index_of(expected).is_none() {
             return false;
-        };
-        let depth = self.font.master().undo_depth(index);
+        }
+        let depth = self.font.history_depth(expected, HistoryDirection::Undo);
         if depth != undo_depth {
             // A lower depth means an older glyph edit must redo first; a
             // higher depth means a later edit must undo first.
@@ -541,6 +537,7 @@ impl Workspace {
                 address,
                 label,
                 layer_history_depth,
+                component_selection,
                 ..
             } => {
                 let expected_depth = if redo {
@@ -571,6 +568,21 @@ impl Workspace {
                 if !self.reload_canonical_layer(address) {
                     return false;
                 }
+                let selected = if redo {
+                    component_selection.1
+                } else {
+                    component_selection.0
+                };
+                let session = Arc::make_mut(&mut self.session);
+                session.selected_component = None;
+                if let Some(component) = selected {
+                    let _ = session.select_component_id(component);
+                }
+                if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+                    tab.session = self.session.clone();
+                }
+                self.selected_points = self.session.selection.len();
+                self.refresh_coord_bufs();
                 format!("{} {label}", if redo { "Redid" } else { "Undid" })
             }
             MetadataEdit::SourceStructure {
@@ -638,12 +650,21 @@ impl Workspace {
             | MetadataEdit::SourceMetadata {
                 glyph, undo_depth, ..
             }
-            | MetadataEdit::DocumentLayer {
-                glyph, undo_depth, ..
-            }
             | MetadataEdit::SourceStructure {
                 glyph, undo_depth, ..
             } => (glyph, *undo_depth),
+            MetadataEdit::DocumentLayer {
+                glyph,
+                layer_history_depth,
+                ..
+            } => (
+                glyph,
+                if redo {
+                    layer_history_depth.saturating_sub(1)
+                } else {
+                    *layer_history_depth
+                },
+            ),
         };
         let current_name = match self.mode {
             Mode::Editor(_) => Some(self.session.glyph_name.as_str()),
@@ -704,10 +725,8 @@ impl Workspace {
             && document_layer_available
             && source_structure_available
             && current_name == Some(expected.as_str())
-            && self
-                .font
-                .index_of(expected)
-                .is_some_and(|index| self.font.master().undo_depth(index) == undo_depth)
+            && self.font.index_of(expected).is_some()
+            && self.font.history_depth(expected, HistoryDirection::Undo) == undo_depth
     }
 
     fn reorder_source_snapshot<T: Clone>(
@@ -1101,12 +1120,7 @@ impl Workspace {
     pub(crate) fn revert_features(&mut self) {
         self.features_buf = self.font.feature_text().to_owned();
         self.features_edited = false;
-        self.modified = self
-            .font
-            .project
-            .sources()
-            .iter()
-            .any(|master| master.dirty);
+        self.modified = self.font.project.is_modified();
         self.features_status = Some("Reverted feature draft".into());
     }
 
@@ -1224,8 +1238,6 @@ mod size_tests {
         assert_eq!(app.font.glyphs[a].mark.as_deref(), Some("blue"));
         assert_eq!(app.font.glyphs[b].mark.as_deref(), Some("blue"));
         assert!(app.cells[a].mark.is_some() && app.cells[b].mark.is_some());
-        assert_eq!(app.font.master().undo_depth(a), 0);
-        assert_eq!(app.font.master().undo_depth(b), 0);
         assert_eq!(
             Some(app.overview_undo[0].source),
             app.font.project.source_id(app.font.active())
@@ -1391,8 +1403,7 @@ mod size_tests {
                 .document_source_metadata_history_depth(HistoryDirection::Undo),
             1
         );
-        assert!(app.font.master().dirty);
-        assert!(app.font.master().kerning_dirty);
+        assert!(app.modified);
         app.undo_active_edit(false);
         assert_eq!(app.font.kern_group("A", true), "");
         assert_eq!(
@@ -1421,7 +1432,10 @@ mod size_tests {
         app.kern_value_buf = "NaN".into();
         app.set_kern_pair_from_bufs();
         assert_eq!(app.note, "kerning value must be finite");
-        assert_eq!(app.font.font().kerning["public.kern1.A"]["V"], -80.0);
+        assert_eq!(
+            app.font.font_metadata().raw_kerning()["public.kern1.A"]["V"],
+            -80.0
+        );
         assert_eq!(app.metadata_undo.len(), history_len);
 
         assert!(app.save());
@@ -1434,20 +1448,25 @@ mod size_tests {
 
         let mut reopened = Workspace::open(&path).expect("reopen saved test font");
         assert_eq!(reopened.font.kern_group("A", true), "public.kern1.A");
-        assert_eq!(reopened.font.font().kerning["public.kern1.A"]["V"], -80.0);
+        assert_eq!(
+            reopened.font.font_metadata().raw_kerning()["public.kern1.A"]["V"],
+            -80.0
+        );
         let state = TextState::new(&TextInputs::new(&reopened.font).with_text("AV"));
         assert_eq!(state.buffer.layout(state.line_height).items[1].x, 420.0);
 
         reopened.delete_kern_pair("public.kern1.A", "V");
         assert!(reopened.modified);
-        assert!(reopened.font.master().kerning_dirty);
         reopened.undo_active_edit(false);
-        assert_eq!(reopened.font.font().kerning["public.kern1.A"]["V"], -80.0);
+        assert_eq!(
+            reopened.font.font_metadata().raw_kerning()["public.kern1.A"]["V"],
+            -80.0
+        );
         reopened.undo_active_edit(true);
-        assert!(reopened.font.font().kerning.is_empty());
+        assert!(reopened.font.font_metadata().raw_kerning().is_empty());
         assert!(reopened.save());
         let reopened = Workspace::open(&path).expect("reopen after pair deletion");
-        assert!(reopened.font.font().kerning.is_empty());
+        assert!(reopened.font.font_metadata().raw_kerning().is_empty());
         std::fs::remove_dir_all(path).expect("remove disposable font");
     }
 
@@ -1469,7 +1488,6 @@ mod size_tests {
                 .is_some_and(|status| status.starts_with("Checked, but does not compile:"))
         );
         assert!(!app.modified);
-        assert!(!app.font.master().dirty);
         std::fs::remove_dir_all(path).expect("remove disposable font");
     }
 
@@ -1502,21 +1520,21 @@ mod size_tests {
         app.generate_features();
         let generated = app.features_buf.clone();
         assert!(generated.contains("feature mark"));
-        assert!(app.font.font().features.is_empty());
+        assert!(app.font.feature_text().is_empty());
         assert!(app.features_edited);
         assert!(!app.save(), "an unapplied draft cannot be silently skipped");
         app.apply_features();
-        assert_eq!(app.font.font().features, generated);
+        assert_eq!(app.font.feature_text(), generated);
         assert!(!app.features_edited);
         app.undo_active_edit(false);
-        assert!(app.font.font().features.is_empty());
+        assert!(app.font.feature_text().is_empty());
         assert!(app.features_buf.is_empty());
         app.undo_active_edit(true);
-        assert_eq!(app.font.font().features, generated);
+        assert_eq!(app.font.feature_text(), generated);
         assert_eq!(app.features_buf, generated);
         assert!(app.save());
         let reopened = Workspace::open(&path).expect("reopen generated features");
-        assert_eq!(reopened.font.font().features, generated);
+        assert_eq!(reopened.font.feature_text(), generated);
         assert_eq!(reopened.features_buf, generated);
         std::fs::remove_dir_all(path).expect("remove disposable font");
     }
@@ -1534,12 +1552,10 @@ mod size_tests {
         app.edit_features("feature liga { sub A A by A; } liga;\n".into());
         assert!(app.features_edited);
         assert!(app.modified);
-        assert!(!app.font.master().dirty);
         app.revert_features();
         assert_eq!(app.features_buf, "languagesystem DFLT dflt;\n");
         assert!(!app.features_edited);
         assert!(!app.modified);
-        assert!(!app.font.master().dirty);
         std::fs::remove_dir_all(path).expect("remove disposable font");
     }
 
@@ -1568,7 +1584,6 @@ mod size_tests {
         session.end_anchor_drag();
         app.sync_session_from(&mut session);
         app.session = Arc::new(session);
-        assert_eq!(app.font.master().undo_depth(0), 0);
         assert_eq!(app.metadata_undo.len(), 1);
         app.undo_open_glyph(false);
         assert_eq!(
@@ -1592,8 +1607,22 @@ mod size_tests {
         assert_eq!(app.session.anchor_points().len(), 1);
         assert!(app.save());
         let reopened = Workspace::open(&path).expect("reopen saved anchor");
-        let anchor = &reopened.font.font().get_glyph("beh-ar").unwrap().anchors[0];
-        assert_eq!((anchor.x, anchor.y), (360.0, 580.0));
+        let source = reopened.font.project.source_id(0).unwrap();
+        let layer = reopened
+            .font
+            .project
+            .document_source(source)
+            .unwrap()
+            .default_layer();
+        let anchor = reopened
+            .font
+            .project
+            .document_layer("beh-ar", &layer)
+            .unwrap()
+            .anchors()
+            .next()
+            .unwrap();
+        assert_eq!((anchor.position().x, anchor.position().y), (360.0, 580.0));
         std::fs::remove_dir_all(path).expect("remove disposable font");
     }
 }

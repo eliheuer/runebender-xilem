@@ -11,7 +11,7 @@ use runebender::document::history::{
     CanonicalHistory, DocumentHistory, HistoryDirection, HistoryReplayError, HistoryReplayOutcome,
     SourceMetadataHistory,
 };
-use runebender::document::project::{Master, Project};
+use runebender::document::project::{DocumentEditOutcome, Project, SourceInput};
 use runebender::document::variable::{GlyphLayerAddress, LayerId, SourceId};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -82,7 +82,7 @@ fn project_fixture() -> (Project, GlyphLayerAddress) {
     let mut auxiliary_b = Glyph::new("B");
     auxiliary_b.width = 725.0;
     auxiliary.insert_glyph(auxiliary_b);
-    let project = Project::from_source(Master::from_font(
+    let project = Project::from_source(SourceInput::from_font(
         font,
         PathBuf::from("canonical-history-fixture.ufo"),
     ));
@@ -96,21 +96,14 @@ fn project_fixture() -> (Project, GlyphLayerAddress) {
     (project, address)
 }
 
-fn rename_project_glyph(project: &mut Project, source: SourceId, old: &str, new: &str) {
-    let mut font = project
-        .edit_source(source)
-        .expect("the fixture source exists")
-        .into_font();
-    let default_layer = font.default_layer().name().to_string();
+fn rename_project_glyph(project: &mut Project, _source: SourceId, old: &str, new: &str) {
     assert!(
-        runebender::document::font_ops::rename_glyph(&mut font, old, new),
-        "fixture default-layer rename failed"
+        matches!(
+            project.rename_document_glyph(old, new),
+            Ok(DocumentEditOutcome::Changed { .. })
+        ),
+        "fixture glyph rename must change the document"
     );
-    for layer in font.layers.iter_mut() {
-        if layer.name().as_str() != default_layer && layer.get_glyph(old).is_some() {
-            layer.rename_glyph(old, new, false).unwrap();
-        }
-    }
 }
 
 fn rename_project_fixture() -> (Project, GlyphLayerAddress) {
@@ -128,7 +121,7 @@ fn rename_project_fixture() -> (Project, GlyphLayerAddress) {
         .new_layer("background")
         .unwrap()
         .insert_glyph(auxiliary);
-    let project = Project::from_source(Master::from_font(
+    let project = Project::from_source(SourceInput::from_font(
         font,
         PathBuf::from("canonical-history-rename-fixture.ufo"),
     ));
@@ -395,24 +388,32 @@ fn source_restore_with_the_same_identity_keeps_an_older_layer_undo_valid() {
 fn project_history_restores_exact_geometry_metadata_and_extensions() {
     let (mut project, address) = project_fixture();
     let before_projection = project
-        .glyph_layer(&address.glyph, &address.layer)
+        .encode_ufo_layer(&address.glyph, &address.layer)
         .expect("fixture layer exists");
     let before = DocumentHistory::capture(&project, &address).unwrap();
     let mut history = DocumentHistory::default();
 
-    // Metadata draft operations land in M07. Use the transitional mutation boundary
-    // here only to prove that canonical history captures and restores those values.
-    assert!(project.edit_layer(&address.glyph, &address.layer, |glyph| {
-        glyph.width = 600.875;
-        glyph.height = 1_025.5;
-        glyph.note = Some("after note".into());
-        glyph.lib.insert(
-            "vendor.private".into(),
-            plist::Value::String("after extension".into()),
-        );
-        glyph.contours[0].points[1].x = 123.75;
-        glyph.contours[0].points[1].y = -45.5;
-    }));
+    assert!(matches!(
+        project.edit_document_layer(&address.glyph, &address.layer, |draft| {
+            draft.set_width(600.875)?;
+            draft.set_height(1_025.5)?;
+            draft.set_note(Some("after note".into()));
+            draft.set_lib_value(
+                "vendor.private".into(),
+                plist::Value::String("after extension".into()),
+            );
+            let point = draft
+                .view()
+                .contours()
+                .next()
+                .and_then(|contour| contour.points().nth(1))
+                .expect("the fixture point remains present")
+                .id();
+            draft.set_point_position(point, kurbo::Point::new(123.75, -45.5))?;
+            Ok(())
+        }),
+        Ok(DocumentEditOutcome::Changed { .. })
+    ));
     assert!(
         history
             .record_completed(&project, &address, before.clone())
@@ -420,7 +421,7 @@ fn project_history_restores_exact_geometry_metadata_and_extensions() {
     );
     let after = DocumentHistory::capture(&project, &address).unwrap();
     let after_projection = project
-        .glyph_layer(&address.glyph, &address.layer)
+        .encode_ufo_layer(&address.glyph, &address.layer)
         .expect("edited layer exists");
     assert_ne!(after, before);
 
@@ -432,7 +433,7 @@ fn project_history_restores_exact_geometry_metadata_and_extensions() {
     assert_eq!(project.document_revision(), revision.wrapping_add(1));
     assert_eq!(DocumentHistory::capture(&project, &address), Ok(before));
     assert_eq!(
-        project.glyph_layer(&address.glyph, &address.layer),
+        project.encode_ufo_layer(&address.glyph, &address.layer),
         Some(before_projection)
     );
 
@@ -444,7 +445,7 @@ fn project_history_restores_exact_geometry_metadata_and_extensions() {
     assert_eq!(project.document_revision(), revision.wrapping_add(1));
     assert_eq!(DocumentHistory::capture(&project, &address), Ok(after));
     assert_eq!(
-        project.glyph_layer(&address.glyph, &address.layer),
+        project.encode_ufo_layer(&address.glyph, &address.layer),
         Some(after_projection)
     );
 }

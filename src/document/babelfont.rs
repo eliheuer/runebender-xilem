@@ -108,16 +108,111 @@ impl ObjectMetadata {
     }
 }
 
+/// One source image reference attached to a canonical glyph layer.
+///
+/// Image bytes remain source resources. This value owns only the UFO filename, optional RGBA
+/// tint and exact affine placement without exposing a source-format model to editor state.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LayerImage {
+    file_name: std::path::PathBuf,
+    color: Option<[f64; 4]>,
+    transform: kurbo::Affine,
+}
+
+impl LayerImage {
+    /// Create a validated layer-image reference.
+    pub fn new(
+        file_name: std::path::PathBuf,
+        color: Option<[f64; 4]>,
+        transform: kurbo::Affine,
+    ) -> Result<Self, DocumentEditError> {
+        if file_name.as_os_str().is_empty()
+            || file_name.is_absolute()
+            || file_name
+                .parent()
+                .is_some_and(|parent| !parent.as_os_str().is_empty())
+            || !transform.as_coeffs().iter().all(|value| value.is_finite())
+            || color.is_some_and(|channels| {
+                !channels
+                    .iter()
+                    .all(|value| value.is_finite() && (0.0..=1.0).contains(value))
+            })
+        {
+            return Err(DocumentEditError::InvalidLayerMetadata);
+        }
+        Ok(Self {
+            file_name,
+            color,
+            transform,
+        })
+    }
+
+    /// Base filename of the source image resource.
+    pub fn file_name(&self) -> &std::path::Path {
+        &self.file_name
+    }
+
+    /// Optional RGBA tint with channels in `0..=1`.
+    pub fn color(&self) -> Option<[f64; 4]> {
+        self.color
+    }
+
+    /// Exact image placement in font coordinates.
+    pub fn transform(&self) -> kurbo::Affine {
+        self.transform
+    }
+
+    fn from_ufo(image: &norad::Image) -> Self {
+        let color = image.color.map(|color| {
+            let (red, green, blue, alpha) = color.channels();
+            [red, green, blue, alpha]
+        });
+        Self {
+            file_name: image.file_name().to_owned(),
+            color,
+            transform: kurbo::Affine::new([
+                image.transform.x_scale,
+                image.transform.xy_scale,
+                image.transform.yx_scale,
+                image.transform.y_scale,
+                image.transform.x_offset,
+                image.transform.y_offset,
+            ]),
+        }
+    }
+
+    fn to_ufo(&self) -> norad::Image {
+        let [x_scale, xy_scale, yx_scale, y_scale, x_offset, y_offset] = self.transform.as_coeffs();
+        let color = self.color.map(|[red, green, blue, alpha]| {
+            norad::Color::new(red, green, blue, alpha)
+                .expect("canonical image colors are validated")
+        });
+        norad::Image::new(
+            self.file_name.clone(),
+            color,
+            norad::AffineTransform {
+                x_scale,
+                xy_scale,
+                yx_scale,
+                y_scale,
+                x_offset,
+                y_offset,
+            },
+        )
+        .expect("canonical image filenames are validated")
+    }
+}
+
 /// Exact UFO values and object metadata that Babelfont cannot represent faithfully.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct LayerPreservation {
     name: String,
     width: f64,
     height: f64,
-    codepoints: norad::Codepoints,
+    codepoints: Vec<char>,
     note: Option<String>,
     guidelines: Vec<norad::Guideline>,
-    image: Option<norad::Image>,
+    image: Option<LayerImage>,
     lib: plist::Dictionary,
     mark_color: Option<plist::Value>,
     left_metrics_key: Option<plist::Value>,
@@ -198,6 +293,104 @@ pub struct QuadraticSegmentInsertion {
 pub struct CopiedContour {
     path: babelfont::Path,
     preserved: PreservedContour,
+}
+
+/// Canonical contours decoded once at an explicit source-format boundary.
+///
+/// This opaque payload contains Babelfont paths plus exact object metadata. It contains no UFO
+/// object and can be installed into a layer without a source-format round trip.
+#[derive(Clone, Debug)]
+pub struct ImportedContours {
+    contours: Vec<CopiedContour>,
+}
+
+impl ImportedContours {
+    /// Number of decoded contours.
+    pub fn len(&self) -> usize {
+        self.contours.len()
+    }
+
+    /// Whether the boundary payload contains no contours.
+    pub fn is_empty(&self) -> bool {
+        self.contours.is_empty()
+    }
+
+    pub(crate) fn from_ufo(contours: &[norad::Contour]) -> Result<Self, DocumentEditError> {
+        validate_ufo_contours(contours)?;
+        let (shapes, preserved, _) = decode_imported_contours(contours)?;
+        let contours = shapes
+            .into_iter()
+            .zip(preserved)
+            .map(|(shape, preserved)| {
+                let Shape::Path(path) = shape else {
+                    unreachable!("the UFO contour decoder creates only paths")
+                };
+                CopiedContour { path, preserved }
+            })
+            .collect();
+        Ok(Self { contours })
+    }
+
+    fn matches_layer(&self, layer: &Layer, preserved: &LayerPreservation) -> bool {
+        let current = layer.paths().collect::<Vec<_>>();
+        current.len() == self.contours.len()
+            && current
+                .into_iter()
+                .zip(&self.contours)
+                .all(|(path, imported)| {
+                    let Some(current_preserved) = preserved
+                        .contours
+                        .iter()
+                        .find(|candidate| read_id(&path.format_specific) == Some(candidate.id.0))
+                    else {
+                        return false;
+                    };
+                    path.closed == imported.path.closed
+                        && path.nodes.len() == imported.path.nodes.len()
+                        && path.nodes.iter().zip(&imported.path.nodes).all(|(a, b)| {
+                            a.x == b.x
+                                && a.y == b.y
+                                && a.nodetype == b.nodetype
+                                && a.smooth == b.smooth
+                        })
+                        && current_preserved.hyper == imported.preserved.hyper
+                        && current_preserved.metadata == imported.preserved.metadata
+                        && current_preserved.points.len() == imported.preserved.points.len()
+                        && current_preserved
+                            .points
+                            .iter()
+                            .zip(&imported.preserved.points)
+                            .all(|(a, b)| a.name == b.name && a.metadata == b.metadata)
+                })
+    }
+
+    fn into_fresh_parts(self) -> (Vec<Shape>, Vec<PreservedContour>, PastedContours) {
+        let mut shapes = Vec::with_capacity(self.contours.len());
+        let mut preserved = Vec::with_capacity(self.contours.len());
+        let mut inserted = PastedContours::default();
+        for contour in self.contours {
+            debug_assert_eq!(
+                contour.path.nodes.len(),
+                contour.preserved.points.len(),
+                "imported contour geometry and preservation records stay aligned"
+            );
+            let mut path = contour.path;
+            let mut contour_preserved = contour.preserved;
+            let contour_id = ContourId::next();
+            write_id(&mut path.format_specific, contour_id.0);
+            contour_preserved.id = contour_id;
+            inserted.contours.push(contour_id);
+            for (node, point) in path.nodes.iter_mut().zip(&mut contour_preserved.points) {
+                let point_id = PointId::next();
+                write_id(&mut node.format_specific, point_id.0);
+                point.id = point_id;
+                inserted.points.push(point_id);
+            }
+            shapes.push(Shape::Path(path));
+            preserved.push(contour_preserved);
+        }
+        (shapes, preserved, inserted)
+    }
 }
 
 /// Opaque owned state of one canonical glyph layer.
@@ -310,8 +503,8 @@ impl<'a> LayerView<'a> {
         Self { layer, preserved }
     }
 
-    pub(crate) fn project(self) -> norad::Glyph {
-        project_layer(self.layer, self.preserved)
+    pub(super) fn codec_parts(self) -> (&'a Layer, &'a LayerPreservation) {
+        (self.layer, self.preserved)
     }
 
     /// The exact horizontal advance from the document extension.
@@ -335,7 +528,7 @@ impl<'a> LayerView<'a> {
     }
 
     /// Optional source image attached to this glyph layer.
-    pub fn image(self) -> Option<&'a norad::Image> {
+    pub fn image(self) -> Option<&'a LayerImage> {
         self.preserved.image.as_ref()
     }
 
@@ -413,7 +606,7 @@ impl<'a> LayerView<'a> {
 
     /// Unicode scalar values attached to this glyph layer.
     pub fn codepoints(self) -> impl Iterator<Item = char> + 'a {
-        self.preserved.codepoints.iter()
+        self.preserved.codepoints.iter().copied()
     }
 
     /// Canonical contours in storage order.
@@ -795,11 +988,43 @@ impl LayerEditDraft {
 
     /// Replace the Unicode scalar values, retaining order and removing later duplicates.
     pub fn set_codepoints(&mut self, codepoints: impl IntoIterator<Item = char>) -> bool {
-        let codepoints = norad::Codepoints::new(codepoints);
+        let mut codepoints = codepoints.into_iter().collect::<Vec<_>>();
+        let mut seen = HashSet::new();
+        codepoints.retain(|codepoint| seen.insert(*codepoint));
         if self.preserved.codepoints == codepoints {
             return false;
         }
         self.preserved.codepoints = codepoints;
+        true
+    }
+
+    /// Replace the optional source glyph note.
+    pub fn set_note(&mut self, note: Option<String>) -> bool {
+        if self.preserved.note == note {
+            return false;
+        }
+        self.preserved.note = note;
+        true
+    }
+
+    /// Insert or replace one exact source glyph library value.
+    pub fn set_lib_value(&mut self, key: String, value: plist::Value) -> bool {
+        if self.preserved.lib.get(&key) == Some(&value) {
+            return false;
+        }
+        self.preserved.lib.insert(key, value);
+        true
+    }
+
+    /// Remove every contour while retaining components, anchors and layer metadata.
+    pub fn clear_contours(&mut self) -> bool {
+        if self.preserved.contours.is_empty() {
+            return false;
+        }
+        self.layer
+            .shapes
+            .retain(|shape| !matches!(shape, Shape::Path(_)));
+        self.preserved.contours.clear();
         true
     }
 
@@ -1279,19 +1504,19 @@ impl LayerEditDraft {
         Ok(result)
     }
 
-    /// Append contours decoded at an explicit UFO boundary with fresh stable identities.
+    /// Append contours decoded at an explicit source-format boundary.
     ///
-    /// Source names, identifiers and object libraries are retained exactly.
-    /// The complete input is validated before the draft changes.
+    /// Source names, identifiers and object libraries are retained exactly. The complete payload
+    /// is validated before the draft changes.
     pub fn append_imported_contours(
         &mut self,
-        contours: &[norad::Contour],
+        imported: ImportedContours,
     ) -> Result<PastedContours, DocumentEditError> {
-        self.validate_imported_contours(contours, true)?;
-        let (shapes, preserved, result) = decode_imported_contours(contours)?;
+        self.validate_imported_contours(&imported, true)?;
+        let (shapes, preserved, inserted) = imported.into_fresh_parts();
         self.layer.shapes.extend(shapes);
         self.preserved.contours.extend(preserved);
-        Ok(result)
+        Ok(inserted)
     }
 
     /// Replace only the contours from an explicit UFO boundary.
@@ -1300,13 +1525,13 @@ impl LayerEditDraft {
     /// An exact contour no-op retains the existing stable identities.
     pub fn replace_imported_contours(
         &mut self,
-        contours: &[norad::Contour],
+        imported: ImportedContours,
     ) -> Result<bool, DocumentEditError> {
-        if project_contours(&self.layer, &self.preserved) == contours {
+        if imported.matches_layer(&self.layer, &self.preserved) {
             return Ok(false);
         }
-        self.validate_imported_contours(contours, false)?;
-        let (shapes, preserved, _) = decode_imported_contours(contours)?;
+        self.validate_imported_contours(&imported, false)?;
+        let (shapes, preserved, _) = imported.into_fresh_parts();
         replace_path_shapes_preserving_slots(&mut self.layer.shapes, shapes);
         self.preserved.contours = preserved;
         Ok(true)
@@ -1314,38 +1539,55 @@ impl LayerEditDraft {
 
     fn validate_imported_contours(
         &self,
-        contours: &[norad::Contour],
+        imported: &ImportedContours,
         append: bool,
     ) -> Result<(), DocumentEditError> {
-        ensure_finite(
-            &contours
-                .iter()
-                .flat_map(|contour| &contour.points)
-                .flat_map(|point| [point.x, point.y])
-                .collect::<Vec<_>>(),
-        )?;
-        for contour in contours {
-            if contour.lib().is_some() && contour.identifier().is_none()
-                || contour
-                    .points
-                    .iter()
-                    .any(|point| point.lib().is_some() && point.identifier().is_none())
+        let mut identifiers = HashSet::new();
+        for guideline in &self.preserved.guidelines {
+            if guideline
+                .identifier()
+                .is_some_and(|identifier| !identifiers.insert(identifier.as_ref().to_owned()))
             {
                 return Err(DocumentEditError::InvalidLayerMetadata);
             }
         }
-        let mut candidate = project_layer(&self.layer, &self.preserved);
+        let mut insert = |metadata: &ObjectMetadata| {
+            metadata
+                .identifier
+                .as_ref()
+                .is_none_or(|identifier| identifiers.insert(identifier.as_ref().to_owned()))
+        };
         if append {
-            candidate.contours.extend_from_slice(contours);
-        } else {
-            candidate.contours = contours.to_vec();
+            for contour in &self.preserved.contours {
+                if !insert(&contour.metadata)
+                    || contour.points.iter().any(|point| !insert(&point.metadata))
+                {
+                    return Err(DocumentEditError::InvalidLayerMetadata);
+                }
+            }
         }
-        let encoded = candidate
-            .encode_xml()
-            .map_err(|_| DocumentEditError::InvalidLayerMetadata)?;
-        norad::Glyph::parse_raw(&encoded)
-            .map(|_| ())
-            .map_err(|_| DocumentEditError::InvalidLayerMetadata)
+        for component in &self.preserved.components {
+            if !insert(&component.metadata) {
+                return Err(DocumentEditError::InvalidLayerMetadata);
+            }
+        }
+        for anchor in &self.preserved.anchors {
+            if !insert(&anchor.metadata) {
+                return Err(DocumentEditError::InvalidLayerMetadata);
+            }
+        }
+        for contour in &imported.contours {
+            if !insert(&contour.preserved.metadata)
+                || contour
+                    .preserved
+                    .points
+                    .iter()
+                    .any(|point| !insert(&point.metadata))
+            {
+                return Err(DocumentEditError::InvalidLayerMetadata);
+            }
+        }
+        Ok(())
     }
 
     /// Duplicate every contour containing a selected point by `offset`.
@@ -3835,6 +4077,33 @@ impl LayerEditDraft {
         Ok(point_ids)
     }
 
+    /// Replace one component's referenced glyph by stable identity.
+    pub fn set_component_reference(
+        &mut self,
+        id: ComponentId,
+        reference: &str,
+    ) -> Result<bool, DocumentEditError> {
+        norad::Name::new(reference).map_err(|_| DocumentEditError::InvalidLayerMetadata)?;
+        let component = self
+            .layer
+            .shapes
+            .iter_mut()
+            .find_map(|shape| match shape {
+                Shape::Component(component)
+                    if read_id(&component.format_specific) == Some(id.0) =>
+                {
+                    Some(component)
+                }
+                Shape::Path(_) | Shape::Component(_) => None,
+            })
+            .ok_or(DocumentEditError::MissingComponent(id))?;
+        if component.reference.as_str() == reference {
+            return Ok(false);
+        }
+        component.reference = reference.into();
+        Ok(true)
+    }
+
     /// Set one component's exact affine transform by stable identity.
     ///
     /// Returns whether the value changed.
@@ -4078,7 +4347,7 @@ impl LayerEditDraft {
     }
 
     /// Set or remove the source image attached to this layer.
-    pub fn set_image(&mut self, image: Option<norad::Image>) -> bool {
+    pub fn set_image(&mut self, image: Option<LayerImage>) -> bool {
         if self.preserved.image == image {
             return false;
         }
@@ -4489,12 +4758,39 @@ fn decode_imported_contours(
         shapes.push(Shape::Path(path));
         preserved.push(PreservedContour {
             id: contour_id,
-            hyper: crate::outline::path::hyper_model::norad_contour_is_hyper(contour),
+            hyper: ufo_contour_is_hyper(contour),
             metadata: ObjectMetadata::new(contour.identifier(), contour.lib()),
             points,
         });
     }
     Ok((shapes, preserved, result))
+}
+
+fn validate_ufo_contours(contours: &[norad::Contour]) -> Result<(), DocumentEditError> {
+    ensure_finite(
+        &contours
+            .iter()
+            .flat_map(|contour| &contour.points)
+            .flat_map(|point| [point.x, point.y])
+            .collect::<Vec<_>>(),
+    )?;
+    if contours.iter().any(|contour| {
+        contour.lib().is_some() && contour.identifier().is_none()
+            || contour
+                .points
+                .iter()
+                .any(|point| point.lib().is_some() && point.identifier().is_none())
+    }) {
+        return Err(DocumentEditError::InvalidLayerMetadata);
+    }
+    let mut glyph = norad::Glyph::new("boundary");
+    glyph.contours = contours.to_vec();
+    let encoded = glyph
+        .encode_xml()
+        .map_err(|_| DocumentEditError::InvalidLayerMetadata)?;
+    norad::Glyph::parse_raw(&encoded)
+        .map(|_| ())
+        .map_err(|_| DocumentEditError::InvalidLayerMetadata)
 }
 
 fn replace_path_shapes_preserving_slots(shapes: &mut Vec<Shape>, replacements: Vec<Shape>) {
@@ -4711,6 +5007,16 @@ fn fresh_hyper_identifier() -> norad::Identifier {
     norad::Identifier::new(&identifier).expect("generated hyperbezier identifier is valid")
 }
 
+fn fresh_object_identifier() -> norad::Identifier {
+    norad::Identifier::from_uuidv4()
+}
+
+fn ufo_contour_is_hyper(contour: &norad::Contour) -> bool {
+    contour
+        .identifier()
+        .is_some_and(|identifier| identifier.as_ref().contains("hyper"))
+}
+
 #[expect(
     clippy::cast_possible_truncation,
     reason = "the UFO projection retains the exact advance"
@@ -4770,7 +5076,7 @@ pub(super) fn layer_from_ufo(
         layer.shapes.push(Shape::Path(path));
         contours.push(PreservedContour {
             id: contour_id,
-            hyper: crate::outline::path::hyper_model::norad_contour_is_hyper(contour),
+            hyper: ufo_contour_is_hyper(contour),
             metadata: ObjectMetadata::new(contour.identifier(), contour.lib()),
             points,
         });
@@ -4846,10 +5152,10 @@ pub(super) fn layer_from_ufo(
             name: glyph.name().to_string(),
             width: glyph.width,
             height: glyph.height,
-            codepoints: glyph.codepoints.clone(),
+            codepoints: glyph.codepoints.iter().collect(),
             note: glyph.note.clone(),
             guidelines: glyph.guidelines.clone(),
-            image: glyph.image.clone(),
+            image: glyph.image.as_ref().map(LayerImage::from_ufo),
             lib,
             mark_color,
             left_metrics_key,
@@ -4943,7 +5249,7 @@ pub(super) fn copy_contours_only(
     layer.shapes.retain(|shape| matches!(shape, Shape::Path(_)));
     layer.anchors.clear();
     preserved.height = 0.0;
-    preserved.codepoints = norad::Codepoints::default();
+    preserved.codepoints.clear();
     preserved.note = None;
     preserved.guidelines.clear();
     preserved.image = None;
@@ -4960,205 +5266,6 @@ pub(super) fn copy_contours_only(
     preserved.components.clear();
     preserved.anchors.clear();
     (layer, preserved)
-}
-
-pub(super) fn reconcile_layer_from_ufo(
-    glyph: &norad::Glyph,
-    id: &LayerId,
-    default: bool,
-    previous_layer: &Layer,
-    previous: &LayerPreservation,
-) -> (Layer, LayerPreservation) {
-    let old = project_layer(previous_layer, previous);
-    let (mut layer, mut preservation) = layer_from_ufo(glyph, id, default);
-    let imported_component_order = preservation
-        .components
-        .iter()
-        .map(|component| component.id)
-        .collect::<Vec<_>>();
-    let imported_smart_component_values =
-        preservation.smart_component_values.as_ref().map(|values| {
-            values
-                .to_plist(&imported_component_order)
-                .expect("freshly imported smart-component values retain their components")
-        });
-
-    let mut used_contours = vec![false; old.contours.len()];
-    for (index, (contour, path)) in glyph
-        .contours
-        .iter()
-        .zip(layer.shapes.iter_mut().filter_map(|shape| match shape {
-            Shape::Path(path) => Some(path),
-            Shape::Component(_) => None,
-        }))
-        .enumerate()
-    {
-        let old_index = match_index(&old.contours, &used_contours, |candidate| {
-            contour.identifier().is_some() && contour.identifier() == candidate.identifier()
-        })
-        .or_else(|| {
-            match_index(&old.contours, &used_contours, |candidate| {
-                contour == candidate
-            })
-        })
-        .or_else(|| {
-            match_index(&old.contours, &used_contours, |candidate| {
-                contour_signature_matches(contour, candidate)
-            })
-        });
-        let Some(old_index) = old_index else {
-            continue;
-        };
-        used_contours[old_index] = true;
-        let old_preserved = &previous.contours[old_index];
-        let new_preserved = &mut preservation.contours[index];
-        new_preserved.id = old_preserved.id;
-        write_id(&mut path.format_specific, old_preserved.id.0);
-
-        let mut used_points = vec![false; old.contours[old_index].points.len()];
-        for (point_index, (point, node)) in contour.points.iter().zip(&mut path.nodes).enumerate() {
-            let old_point =
-                match_index(&old.contours[old_index].points, &used_points, |candidate| {
-                    point.identifier().is_some() && point.identifier() == candidate.identifier()
-                })
-                .or_else(|| {
-                    match_index(&old.contours[old_index].points, &used_points, |candidate| {
-                        point == candidate
-                    })
-                })
-                .or_else(|| {
-                    match_index(&old.contours[old_index].points, &used_points, |candidate| {
-                        point_metadata_matches(point, candidate)
-                    })
-                });
-            let Some(old_point) = old_point else {
-                continue;
-            };
-            used_points[old_point] = true;
-            let id = old_preserved.points[old_point].id;
-            preservation.contours[index].points[point_index].id = id;
-            write_id(&mut node.format_specific, id.0);
-        }
-    }
-
-    let mut used_components = vec![false; old.components.len()];
-    for (index, (component, shape)) in glyph
-        .components
-        .iter()
-        .zip(layer.shapes.iter_mut().filter_map(|shape| match shape {
-            Shape::Component(component) => Some(component),
-            Shape::Path(_) => None,
-        }))
-        .enumerate()
-    {
-        let old_index = match_index(&old.components, &used_components, |candidate| {
-            component.identifier().is_some() && component.identifier() == candidate.identifier()
-        })
-        .or_else(|| {
-            match_index(&old.components, &used_components, |candidate| {
-                component == candidate
-            })
-        })
-        .or_else(|| {
-            match_index(&old.components, &used_components, |candidate| {
-                component_metadata_matches(component, candidate)
-            })
-        });
-        let Some(old_index) = old_index else {
-            continue;
-        };
-        used_components[old_index] = true;
-        let id = previous.components[old_index].id;
-        preservation.components[index].id = id;
-        write_id(&mut shape.format_specific, id.0);
-    }
-    if let Some(values) = imported_smart_component_values {
-        let reconciled_order = preservation
-            .components
-            .iter()
-            .map(|component| component.id)
-            .collect::<Vec<_>>();
-        preservation.smart_component_values = Some(
-            SmartComponentValues::from_plist(&values, &reconciled_order)
-                .expect("reconciled smart-component values bind to reconciled components"),
-        );
-    }
-
-    let mut used_anchors = vec![false; old.anchors.len()];
-    for (index, (anchor, projected)) in glyph.anchors.iter().zip(&mut layer.anchors).enumerate() {
-        let old_index = match_index(&old.anchors, &used_anchors, |candidate| {
-            anchor.identifier().is_some() && anchor.identifier() == candidate.identifier()
-        })
-        .or_else(|| match_index(&old.anchors, &used_anchors, |candidate| anchor == candidate))
-        .or_else(|| {
-            match_index(&old.anchors, &used_anchors, |candidate| {
-                anchor_metadata_matches(anchor, candidate)
-            })
-        });
-        let Some(old_index) = old_index else {
-            continue;
-        };
-        used_anchors[old_index] = true;
-        let id = previous.anchors[old_index].id;
-        preservation.anchors[index].id = id;
-        write_id(&mut projected.format_specific, id.0);
-    }
-
-    (layer, preservation)
-}
-
-fn match_index<T>(items: &[T], used: &[bool], predicate: impl Fn(&T) -> bool) -> Option<usize> {
-    let mut matches = items
-        .iter()
-        .enumerate()
-        .filter(|(index, item)| !used[*index] && predicate(item))
-        .map(|(index, _)| index);
-    let first = matches.next()?;
-    matches.next().is_none().then_some(first)
-}
-
-fn contour_signature_matches(a: &norad::Contour, b: &norad::Contour) -> bool {
-    let object_metadata = a.identifier().is_some() || a.lib().is_some();
-    let point_metadata = a
-        .points
-        .iter()
-        .any(|point| point.identifier().is_some() || point.lib().is_some() || point.name.is_some());
-    (object_metadata || point_metadata)
-        && a.identifier() == b.identifier()
-        && a.lib() == b.lib()
-        && a.points.len() == b.points.len()
-        && a.points.iter().all(|a| {
-            b.points
-                .iter()
-                .filter(|b| {
-                    a.identifier() == b.identifier()
-                        && a.lib() == b.lib()
-                        && a.name == b.name
-                        && a.typ == b.typ
-                })
-                .count()
-                == 1
-        })
-}
-
-fn point_metadata_matches(a: &norad::ContourPoint, b: &norad::ContourPoint) -> bool {
-    (a.identifier().is_some() || a.lib().is_some() || a.name.is_some())
-        && a.identifier() == b.identifier()
-        && a.lib() == b.lib()
-        && a.name == b.name
-        && a.typ == b.typ
-}
-
-fn component_metadata_matches(a: &norad::Component, b: &norad::Component) -> bool {
-    a.identifier() == b.identifier() && a.lib() == b.lib() && a.base == b.base
-}
-
-fn anchor_metadata_matches(a: &norad::Anchor, b: &norad::Anchor) -> bool {
-    (a.identifier().is_some() || a.lib().is_some() || a.name.is_some() || a.color.is_some())
-        && a.identifier() == b.identifier()
-        && a.lib() == b.lib()
-        && a.name == b.name
-        && a.color == b.color
 }
 
 fn affine(t: norad::AffineTransform) -> kurbo::Affine {
@@ -5222,10 +5329,10 @@ pub(super) fn project_layer(layer: &Layer, preserved: &LayerPreservation) -> nor
     let mut glyph = norad::Glyph::new(&preserved.name);
     glyph.width = preserved.width;
     glyph.height = preserved.height;
-    glyph.codepoints.clone_from(&preserved.codepoints);
+    glyph.codepoints = norad::Codepoints::new(preserved.codepoints.iter().copied());
     glyph.note.clone_from(&preserved.note);
     glyph.guidelines.clone_from(&preserved.guidelines);
-    glyph.image.clone_from(&preserved.image);
+    glyph.image = preserved.image.as_ref().map(LayerImage::to_ufo);
     glyph.lib.clone_from(&preserved.lib);
     for (key, value) in [
         (MARK_COLOR_KEY, &preserved.mark_color),
@@ -5651,20 +5758,7 @@ mod tests {
             .clone();
         assert_eq!(second.components[0].identifier(), Some(&identifier));
 
-        let (reconciled_layer, reconciled_preserved) =
-            reconcile_layer_from_ufo(&first, &layer_id, true, &layer, &preserved);
-        assert_eq!(
-            LayerView::new(&reconciled_layer, &reconciled_preserved)
-                .components()
-                .next()
-                .unwrap()
-                .id(),
-            component
-        );
-        assert_eq!(reconciled_layer, layer);
-        assert_eq!(reconciled_preserved, preserved);
-
-        let mut enabled = LayerEditDraft::new(reconciled_layer, reconciled_preserved);
+        let mut enabled = LayerEditDraft::new(layer, preserved);
         assert!(
             enabled
                 .set_component_alignment_disabled(component, false)
@@ -5673,104 +5767,5 @@ mod tests {
         let (enabled_layer, enabled_preserved) = enabled.into_parts();
         let enabled = project_layer(&enabled_layer, &enabled_preserved);
         assert_eq!(enabled.components[0].identifier(), Some(&identifier));
-    }
-
-    #[test]
-    fn reconciliation_retains_identity_across_legacy_edits_and_reorder() {
-        let mut glyph = norad::Glyph::new("A");
-        glyph.contours.push(norad::Contour::new(
-            vec![
-                norad::ContourPoint::new(
-                    10.0,
-                    20.0,
-                    norad::PointType::Line,
-                    false,
-                    Some(norad::Name::new("first").unwrap()),
-                    Some(identifier("point.first")),
-                ),
-                norad::ContourPoint::new(
-                    30.0,
-                    40.0,
-                    norad::PointType::Line,
-                    false,
-                    Some(norad::Name::new("second").unwrap()),
-                    Some(identifier("point.second")),
-                ),
-            ],
-            Some(identifier("contour.original")),
-        ));
-        for (name, x) in [("base.first", 10.0), ("base.second", 20.0)] {
-            glyph.components.push(norad::Component::new(
-                norad::Name::new(name).unwrap(),
-                norad::AffineTransform {
-                    x_offset: x,
-                    ..norad::AffineTransform::default()
-                },
-                Some(identifier(name)),
-            ));
-        }
-        for (name, x) in [("top", 10.0), ("bottom", 20.0)] {
-            glyph.anchors.push(norad::Anchor::new(
-                x,
-                100.0,
-                Some(norad::Name::new(name).unwrap()),
-                None,
-                Some(identifier(name)),
-            ));
-        }
-        let id = LayerId {
-            source: super::super::variable::SourceId(0),
-            name: "public.default".into(),
-        };
-        let (layer, preservation) = layer_from_ufo(&glyph, &id, true);
-        let old_point_ids: Vec<_> = layer
-            .paths()
-            .next()
-            .unwrap()
-            .nodes
-            .iter()
-            .map(|node| read_id(&node.format_specific).unwrap())
-            .collect();
-        let old_component_ids: Vec<_> = layer
-            .components()
-            .map(|component| read_id(&component.format_specific).unwrap())
-            .collect();
-        let old_anchor_ids: Vec<_> = layer
-            .anchors
-            .iter()
-            .map(|anchor| read_id(&anchor.format_specific).unwrap())
-            .collect();
-
-        let mut edited = project_layer(&layer, &preservation);
-        edited.contours[0].points.swap(0, 1);
-        edited.contours[0].points[0].x = 333.0;
-        edited.components.swap(0, 1);
-        edited.components[0].transform.x_offset = 222.0;
-        edited.anchors.swap(0, 1);
-        edited.anchors[0].x = 111.0;
-
-        let (reconciled, preservation) =
-            reconcile_layer_from_ufo(&edited, &id, true, &layer, &preservation);
-        let point_ids: Vec<_> = reconciled
-            .paths()
-            .next()
-            .unwrap()
-            .nodes
-            .iter()
-            .map(|node| read_id(&node.format_specific).unwrap())
-            .collect();
-        let component_ids: Vec<_> = reconciled
-            .components()
-            .map(|component| read_id(&component.format_specific).unwrap())
-            .collect();
-        let anchor_ids: Vec<_> = reconciled
-            .anchors
-            .iter()
-            .map(|anchor| read_id(&anchor.format_specific).unwrap())
-            .collect();
-        assert_eq!(point_ids, [old_point_ids[1], old_point_ids[0]]);
-        assert_eq!(component_ids, [old_component_ids[1], old_component_ids[0]]);
-        assert_eq!(anchor_ids, [old_anchor_ids[1], old_anchor_ids[0]]);
-        assert_eq!(project_layer(&reconciled, &preservation), edited);
     }
 }

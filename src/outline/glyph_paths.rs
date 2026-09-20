@@ -9,11 +9,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use kurbo::{Affine, BezPath, Point};
+#[cfg(test)]
 use norad::{Contour, ContourPoint, Font, Glyph, PointType};
 
+use crate::document::model::smart_components::SmartComponentAxes;
+#[cfg(test)]
 use crate::document::model::smart_components::{
     SMART_COMPONENT_AXES_KEY, SMART_COMPONENT_POLE_KEY, SMART_COMPONENT_VALUES_KEY,
-    SmartComponentAxes, SmartComponentPole, SmartComponentValues,
+    SmartComponentPole, SmartComponentValues,
 };
 use crate::document::{ComponentView, ContourView, LayerPointType, LayerShapeView, LayerView};
 
@@ -75,6 +78,7 @@ pub fn point_key(x: f64, y: f64) -> (i64, i64) {
 ///
 /// Component transforms apply in full. A missing base glyph
 /// contributes nothing.
+#[cfg(test)]
 pub fn glyph_to_bezpath(glyph: &Glyph, font: &Font) -> BezPath {
     let mut path = BezPath::new();
     for contour in &glyph.contours {
@@ -88,6 +92,7 @@ pub fn glyph_to_bezpath(glyph: &Glyph, font: &Font) -> BezPath {
 }
 
 /// Only the glyph's own contours (no components).
+#[cfg(test)]
 pub fn contours_to_bezpath(glyph: &Glyph) -> BezPath {
     let mut path = BezPath::new();
     for contour in &glyph.contours {
@@ -211,6 +216,7 @@ pub fn ordinary_component_to_bezpath<'a>(
 }
 
 /// One contour as a `BezPath`.
+#[cfg(test)]
 pub fn contour_to_bezpath(contour: &Contour) -> BezPath {
     let mut path = BezPath::new();
     append_contour(&mut path, contour);
@@ -218,6 +224,7 @@ pub fn contour_to_bezpath(contour: &Contour) -> BezPath {
 }
 
 /// Only the glyph's components, recursively resolved.
+#[cfg(test)]
 pub fn components_to_bezpath(glyph: &Glyph, font: &Font) -> BezPath {
     let mut path = BezPath::new();
     append_components(&mut path, glyph, font, Affine::IDENTITY, 0);
@@ -229,6 +236,7 @@ pub fn components_to_bezpath(glyph: &Glyph, font: &Font) -> BezPath {
 type Pole = (BTreeSet<String>, Vec<(f64, f64)>);
 
 /// The affine of a norad component transform.
+#[cfg(test)]
 pub fn component_affine(t: &norad::AffineTransform) -> Affine {
     Affine::new([
         t.x_scale, t.xy_scale, t.yx_scale, t.y_scale, t.x_offset, t.y_offset,
@@ -250,6 +258,7 @@ pub fn component_affine(t: &norad::AffineTransform) -> Affine {
 ///
 /// Only point-compatible layers take part. Anything else falls
 /// back to the default outline.
+#[cfg(test)]
 fn smart_contours(
     base: &Glyph,
     font: &Font,
@@ -457,6 +466,7 @@ fn canonical_smart_contours(
     Some(contours)
 }
 
+#[cfg(test)]
 fn append_components(
     path: &mut BezPath,
     glyph: &Glyph,
@@ -526,6 +536,7 @@ fn append_components(
     }
 }
 
+#[cfg(test)]
 fn pt(p: &ContourPoint) -> Point {
     Point::new(p.x, p.y)
 }
@@ -757,6 +768,7 @@ fn path_element_is_finite(element: &kurbo::PathEl) -> bool {
     }
 }
 
+#[cfg(test)]
 fn append_contour(path: &mut BezPath, contour: &Contour) {
     let points = &contour.points;
     if points.is_empty() {
@@ -878,7 +890,7 @@ mod canonical_render_tests {
     use super::*;
     use crate::document::model::glyph_metadata::{Metaball, MetaballGroup, Metaballs};
     use crate::document::project::Project;
-    use crate::document::source::Master;
+    use crate::document::source::SourceInput;
     use crate::document::variable::{GlyphLayerAddress, LayerId, SourceId};
     use crate::formats::metaballs::write_metaballs;
     use kurbo::Shape;
@@ -1025,7 +1037,7 @@ mod canonical_render_tests {
         ));
         let expected = glyph_to_bezpath(&user, &font);
         font.default_layer_mut().insert_glyph(user);
-        let project = Project::from_source(Master::from_font(font, "Hyper.ufo".into()));
+        let project = Project::from_source(SourceInput::from_font(font, "Hyper.ufo".into()));
         let id = project
             .document_source(SourceId(0))
             .expect("default source")
@@ -1074,7 +1086,7 @@ mod canonical_render_tests {
             font.default_layer_mut().insert_glyph(glyph);
         }
         let expected = glyph_to_bezpath(font.get_glyph("top").unwrap(), &font);
-        let project = Project::from_source(Master::from_font(font, "Affine.ufo".into()));
+        let project = Project::from_source(SourceInput::from_font(font, "Affine.ufo".into()));
         let layer = project
             .document_source(SourceId(0))
             .unwrap()
@@ -1111,7 +1123,7 @@ mod canonical_render_tests {
         ));
         proposal.insert_glyph(top.clone());
         let expected = glyph_to_bezpath(&top, &font);
-        let project = Project::from_source(Master::from_font(font, "Overlay.ufo".into()));
+        let project = Project::from_source(SourceInput::from_font(font, "Overlay.ufo".into()));
         let selected = LayerId {
             source: SourceId(0),
             name: "com.runebender.proposal.test".into(),
@@ -1144,7 +1156,7 @@ mod canonical_render_tests {
         font.default_layer_mut()
             .insert_glyph(rectangle("base", 80.0, 50.0));
         font.default_layer_mut().insert_glyph(top);
-        let project = Project::from_source(Master::from_font(font, "NonFinite.ufo".into()));
+        let project = Project::from_source(SourceInput::from_font(font, "NonFinite.ufo".into()));
         let layer = project
             .document_source(SourceId(0))
             .unwrap()
@@ -1213,7 +1225,7 @@ mod canonical_render_tests {
         }
         let direct_expected = glyph_to_bezpath(font.get_glyph("blob").unwrap(), &font);
         let nested_expected = glyph_to_bezpath(font.get_glyph("top").unwrap(), &font);
-        let project = Project::from_source(Master::from_font(font, "Metaballs.ufo".into()));
+        let project = Project::from_source(SourceInput::from_font(font, "Metaballs.ufo".into()));
         let layer = project
             .document_source(SourceId(0))
             .unwrap()
@@ -1270,7 +1282,7 @@ mod canonical_render_tests {
             .unwrap()
             .insert_glyph(wide);
         let expected = glyph_to_bezpath(&user, &font);
-        let project = Project::from_source(Master::from_font(font, "SmartOne.ufo".into()));
+        let project = Project::from_source(SourceInput::from_font(font, "SmartOne.ufo".into()));
         let layer = LayerId {
             source: SourceId(0),
             name: "proposal.smart".into(),
@@ -1317,7 +1329,7 @@ mod canonical_render_tests {
         );
         font.default_layer_mut().insert_glyph(user);
         let expected = glyph_to_bezpath(font.get_glyph("boxdemo").unwrap(), &font);
-        let project = Project::from_source(Master::from_font(font, "SmartTwo.ufo".into()));
+        let project = Project::from_source(SourceInput::from_font(font, "SmartTwo.ufo".into()));
         let layer = project
             .document_source(SourceId(0))
             .unwrap()
@@ -1357,7 +1369,7 @@ mod canonical_render_tests {
             }
             font.default_layer_mut().insert_glyph(glyph);
         }
-        let project = Project::from_source(Master::from_font(font, "SmartDepth.ufo".into()));
+        let project = Project::from_source(SourceInput::from_font(font, "SmartDepth.ufo".into()));
         let layer = project
             .document_source(SourceId(0))
             .unwrap()
@@ -1381,7 +1393,7 @@ mod canonical_render_tests {
             .push(component("top", AffineTransform::default()));
         let mut font = Font::default();
         font.default_layer_mut().insert_glyph(top);
-        let project = Project::from_source(Master::from_font(font, "Cycle.ufo".into()));
+        let project = Project::from_source(SourceInput::from_font(font, "Cycle.ufo".into()));
         let layer = project
             .document_source(SourceId(0))
             .unwrap()

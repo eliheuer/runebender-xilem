@@ -1,5 +1,8 @@
 # Babelfont compatibility retirement map
 
+Status: **COMPLETE**; the historical audit below describes the retirement work, not current outstanding tasks.
+See [the final proof](babelfont-migration-final-proof.md) and [current boundary inventory](babelfont-migration-inventory.md).
+
 This M13 audit is anchored to integration commit `1f99ed0225cccd1933e6787c1bbb89590b027e7d`.
 Line numbers below describe that commit and are not intended to float with later application work.
 The audit covers production callers of `Master`, legacy glyph history, mutable source guards, long-lived UFO templates and the temporary canonical transaction bridge.
@@ -76,7 +79,9 @@ The `edit_sources` occurrences in `application/platform/host.rs`, `document/live
 
 Current integration update: local-AI proposal adoption, preview, list, installation, discard, Cmd+Z and dedicated Undo Install use canonical Project APIs and addressed layer history.
 `Master::install_proposal` and `Master::discard_proposal` are deleted; the standalone UFO helpers remain only for the explicit external contract and fixtures.
-Canonical `Project::document_glyph_codepoints` and `set_document_glyph_codepoints` now supply the Unicode read and atomic all-source write boundary; the application caller is the remaining cutover step before its mutable-source dependency can be removed.
+Canonical `Project::document_glyph_codepoints` and `set_document_glyph_codepoints` supply the Unicode read and atomic all-source write boundary, and the application caller is cut over.
+Application action enablement, mixed metadata ordering, session publication and overview commands now use addressed Project history exclusively.
+The legacy-history rows above are retained as the anchored audit record, but none remains a production application caller in the current integration tree.
 
 ## Long-lived source templates and projections
 
@@ -114,6 +119,11 @@ Canonical replacements already exist: `document_source`, `document_sources`, `do
 Project compatibility detail no longer joins this list: it compares canonical layer topology directly, and the unused `feature_source` Master accessor is deleted.
 `document_source_glyph_entries` now supplies the sorted paint-ready payload used by `FontModel::rebuild_cache` and `refresh_entry`, and FontModel owns the derived O(1) name index.
 The remaining `FontModel::master` and `font` reads no longer include application grid-cache construction.
+FontModel source paths, source counts, writability, compatibility gating and export counts now use canonical source views and source-glyph metadata rather than Master fields.
+Editor joining checks, SVG export, source-layer authoring, Unicode parsing, kerning/groups, related glyphs and overview points no longer read the active UFO projection.
+Local-AI and Nodes revision capture now hashes canonical default layers under stable source identities.
+Session construction reads canonical font information, and production `FontModel::master` and `FontModel::font` callers are gone.
+The read and mutable accessors themselves are deleted; application fixtures use canonical transactions and detached source snapshots.
 
 The remaining non-application consumers are:
 

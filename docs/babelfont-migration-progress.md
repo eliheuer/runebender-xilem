@@ -1,13 +1,22 @@
 # Babelfont migration progress
 
-Status: **IN PROGRESS — M00–M03 complete; M04 and later cutovers active**.
+Status: **COMPLETE — independent M14 final proof passed**.
 The definition of complete and milestone dependencies remain in [the checklist](babelfont-migration-checklist.md).
 Canonical queries, layer and source-metadata edits, snapshots and auxiliary-layer structure now operate on Babelfont plus typed extensions.
-The remaining migration milestones still own ordinary topology tools, history replacement, application callers, broader metadata, interpolation, compilation, experiments and removal of compatibility state.
+The editing-model cutover and independent validation are complete.
+See [the final proof](babelfont-migration-final-proof.md) for tested implementation `5bb0ccc`, 807 executed tests, browser checks, preservation, visual evidence and performance measurements.
 
-## Continuation checkout
+## Final validation checkout
 
-The active integration continuation is `/Users/eli/.codex/worktrees/f236/runebender-xilem` on branch `codex/babelfont-integration`.
+The worker handed off clean M13 commit `6401eeef99aa2ea51771827d34e6cc84e93f3538` from `codex/babelfont-integration-rescue` and stopped implementation.
+Independent validation runs in a fresh clone at `/private/tmp/runebender-final-migration-20260919/candidate`.
+Its first complete native test run found that canonical history restored added components without restoring their selection.
+The final-validation branch records component selection alongside the application's history references and extends duplicate/delete undo/redo coverage.
+Geometry and its history remain owned by Project.
+
+## Historical integration checkpoints
+
+The former integration continuation was `/Users/eli/.codex/worktrees/f236/runebender-xilem` on branch `codex/babelfont-integration`.
 It started from clean commit `3f209776d35dbc7e88e35facb3a48e9f7edd68e0` and does not modify or replace the earlier continuation below.
 The earlier worktree and its branch remain preserved for review.
 
@@ -18,7 +27,7 @@ The earlier worktree and its branch remain preserved for review.
 - The first implementation run started clean; main and the originating task's branch were not changed.
 - The checklist contains 15 milestones and 76 acceptance steps.
 
-### Active integration checkpoint
+### Earlier integration checkpoint
 
 The current integration series owns canonical Designspace structure, guarded Designspace source transactions, direct font-information and source-comparison reads, direct curve conversion and handle cleanup, typed component alignment, typed glyph-layer metadata and canonical proposal/version state.
 It also preserves auxiliary history across source restore and invalidates metric-dependent application state when metadata history replays.
@@ -358,7 +367,7 @@ The next dependency-ready milestone is M02, beginning with direct document-facin
 
 ## M02 — Add direct document queries and transactional mutations
 
-Status: active.
+Status: complete.
 
 ### Canonical read views substep
 
@@ -595,7 +604,7 @@ The unchanged `block v0.1.6` future-incompatibility notice remains a dependency 
 
 ## M03 — Migrate geometry queries and ordinary point operations
 
-Status: active.
+Status: complete.
 
 ### Canonical contour path conversion substep
 
@@ -2675,3 +2684,95 @@ Malformed component references retain the glyph's intrinsic contours, matching t
 
 The six FontModel tests, two canonical-entry parity regressions and warning-denied binary Clippy passed.
 Formatting and whitespace checks passed.
+
+### Canonical application source summaries
+
+Evidence commit: `Read application source summaries canonically` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Read application source summaries canonically$' -1`.
+
+FontModel source paths, source count, writability checks, active-source switching bounds, incompatible-source gating and export participation now read `SourceView` plus canonical glyph metadata.
+These summary operations no longer inspect the compatibility Master collection or active UFO font.
+
+The six FontModel tests and warning-denied binary Clippy passed, together with formatting and whitespace checks.
+
+### Canonical editor command and panel reads
+
+Evidence commit: `Read editor surfaces canonically` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Read editor surfaces canonically$' -1`.
+
+Joining checks and SVG export reuse canonical paint entries.
+Source-layer authoring resolves the default layer through `SourceView`, Unicode input uses the typed canonical parser, and the kerning, groups, related-glyph and overview-point panels read canonical metadata or addressed layer views.
+The obsolete `feature_source` integration-test assertions now query canonical feature text while retaining the source-snapshot persistence check.
+
+Focused metrics-formula and Unicode history regressions, strict all-target Clippy, formatting and whitespace checks passed.
+
+## M13 — Remove compatibility state and enforce the architecture
+
+Status: complete.
+Evidence commits: `cdd7c59`, `04798c5`, `9eca38c`, `13877e6`, `f682610` and `Enforce the canonical editing boundary`.
+Resolve the final candidate with `git log --format=%H --grep='^Enforce the canonical editing boundary$' -1`.
+
+Project no longer stores editable `Master` values, persistent Norad source or glyph projections, mutable source guards or source-local legacy histories.
+Application, live, Nodes, proposal, experimental-version, proof, inventory and SVG paths consume canonical Project operations or typed presentation values.
+Legacy Norad outline algorithms remain available only to cfg-test parity fixtures; production geometry edits operate on canonical layer drafts.
+
+The external proposal layer remains a UFO wire contract.
+`formats::proposal_ufo` now loads through `SourceInput`, applies a revision-checked canonical proposal transaction, encodes only the auxiliary proposal layer and publishes it without rewriting foreground GLIF bytes.
+Imported contour payloads allocate fresh canonical identities every time they are installed while retaining checked exact UFO identifiers and object libraries.
+
+`tests/norad_boundary_allowlist.rs` parses the production AST and confines Norad to reviewed persistence, source-format and import/export modules.
+The mixed `document/babelfont.rs` module is item-allowlisted rather than exempted, so its live layer-edit surface remains inspected.
+A second AST pass rejects the retired mutable accessors, projection readers, reconciliation functions and round-trip editing entrypoints by identifier.
+Gate regressions prove that only exact `cfg(test)` items are excluded: `cfg(not(test))`, mixed cfg expressions and production code following a test module remain visible.
+
+Executed focused evidence:
+
+```sh
+CARGO_TARGET_DIR=/private/tmp/runebender-c903-target \
+  cargo test --offline --test norad_boundary_allowlist --locked -- --nocapture
+
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources \
+  CARGO_TARGET_DIR=/private/tmp/runebender-c903-target \
+  cargo test --offline --test variable_project --locked -- --test-threads=1
+
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources \
+  CARGO_TARGET_DIR=/private/tmp/runebender-c903-target \
+  cargo test --offline --test cli --locked -- --test-threads=1
+
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources \
+  CARGO_TARGET_DIR=/private/tmp/runebender-c903-target \
+  cargo test --offline --lib --locked outline:: -- --test-threads=1
+
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources \
+  CARGO_TARGET_DIR=/private/tmp/runebender-c903-target \
+  cargo test --offline --lib --locked document::proposal:: -- --test-threads=1
+
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources \
+  CARGO_TARGET_DIR=/private/tmp/runebender-c903-target \
+  cargo test --offline --lib --locked document::edit_batch:: -- --test-threads=1
+
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources \
+  CARGO_TARGET_DIR=/private/tmp/runebender-c903-target \
+  cargo test --offline --test source_format_allowlist --locked -- --test-threads=1
+
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources \
+  CARGO_TARGET_DIR=/private/tmp/runebender-c903-target \
+  cargo test --offline --workspace --all-targets --no-run --locked
+
+CARGO_TARGET_DIR=/private/tmp/runebender-c903-target \
+  cargo clippy --offline --workspace --all-targets --locked -- -D warnings
+
+cargo fmt --all --check
+git diff --check
+```
+
+The architecture gate passed 4 tests.
+The canonical variable-project suite passed 77 tests with zero failures or ignores.
+The CLI suite passed 17 tests, including the byte-preserving exact-proposal regression.
+The outline compatibility oracles passed 93 tests, proposal and edit-batch units passed 8 and 12 tests, and the source-format allowlist passed its complete preservation regression.
+The all-target workspace build, warning-denied all-target Clippy, formatting and whitespace checks passed.
+An initial outline invocation omitted `RUNEBENDER_TEST_FONTS` and failed during fixture lookup before the affected test body; the corrected command above passed all 93 selected tests.
+The Rust commands emitted the unchanged future-incompatibility notice for dependency `block v0.1.6`.
+
+The candidate is intentionally held without a full native/browser run while code is moving.
+M14 owns the independent full native, browser, visual, preservation, performance and clean-checkout proof on the stable commit.

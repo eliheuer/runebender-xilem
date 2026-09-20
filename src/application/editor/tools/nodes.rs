@@ -405,7 +405,7 @@ impl Workspace {
         let master = self.font.master_names().get(self.font.active()).cloned();
         let device = self.nodes.device.clone();
         let glyphs = self.node_glyphs();
-        let foreground_revisions = match foreground_revisions(self.font.font(), &glyphs) {
+        let foreground_revisions = match foreground_revisions(&self.font, &glyphs) {
             Ok(revisions) => revisions,
             Err(error) => {
                 self.note = format!("Cannot capture node target: {error}");
@@ -550,7 +550,7 @@ impl Workspace {
         let current = self.document_id == job.document_id
             && self.font.source() == job.master_path
             && self.session.glyph_name == job.active_glyph
-            && foreground_is_current(self.font.font(), &job.foreground_revisions, job.all_glyphs);
+            && foreground_is_current(&self.font, &job.foreground_revisions, job.all_glyphs);
         if installed && current {
             self.reload_from_disk();
         }
@@ -763,7 +763,7 @@ mod tests {
             master_path: font_path,
             document_id: workspace.document_id,
             active_glyph: workspace.session.glyph_name.clone(),
-            foreground_revisions: foreground_revisions(workspace.font.font(), &[])
+            foreground_revisions: foreground_revisions(&workspace.font, &[])
                 .expect("the empty foreground can be revised"),
             all_glyphs: true,
             ..NodeJob::default()
@@ -868,7 +868,12 @@ mod tests {
         font.default_layer_mut().insert_glyph(original.clone());
         let mut proposed = original.clone();
         proposed.width = 620.0;
-        proposal::write(&mut font, "bolden", vec![proposed]).expect("the proposal is valid");
+        runebender::formats::proposal_ufo::write_proposal_layer(
+            &mut font,
+            "bolden",
+            vec![proposed],
+        )
+        .expect("the proposal is valid");
         font.save(&path).expect("the proposal fixture saves");
         let mut workspace = Workspace::open(&path).expect("the fixture opens");
         assert!(workspace.node_glyphs().is_empty());
@@ -879,7 +884,7 @@ mod tests {
             master_path: path.clone(),
             document_id: workspace.document_id,
             active_glyph: workspace.session.glyph_name.clone(),
-            foreground_revisions: foreground_revisions(workspace.font.font(), &target_names)
+            foreground_revisions: foreground_revisions(&workspace.font, &target_names)
                 .expect("the foreground revision is captured"),
             ..NodeJob::default()
         };
@@ -904,7 +909,10 @@ mod tests {
 
         workspace.nodes_finished(&job, &report);
 
-        assert_eq!(workspace.font.font().get_glyph("A"), Some(&original));
+        assert_eq!(
+            workspace.font.font_snapshot().get_glyph("A"),
+            Some(&original)
+        );
         assert_eq!(workspace.ai.proposals.len(), 1);
         assert_eq!(
             workspace.ai.preview_task.as_deref(),
@@ -943,16 +951,25 @@ mod tests {
             master_path: path.clone(),
             document_id: workspace.document_id,
             active_glyph: workspace.session.glyph_name.clone(),
-            foreground_revisions: foreground_revisions(workspace.font.font(), &target_names)
+            foreground_revisions: foreground_revisions(&workspace.font, &target_names)
                 .expect("the foreground revision is captured"),
             ..NodeJob::default()
         };
+        let address = workspace.font.active_layer_address("A").unwrap();
+        let mut transaction = workspace
+            .font
+            .project
+            .begin_document_layer_transaction(&address)
+            .unwrap();
+        transaction
+            .draft_mut()
+            .set_width(540.0)
+            .expect("the finite width is valid");
         workspace
             .font
-            .font_mut()
-            .get_glyph_mut("A")
-            .expect("A remains loaded")
-            .width = 540.0;
+            .project
+            .commit_document_layer_transaction(transaction)
+            .unwrap();
         let report = RunReport {
             ok: true,
             nodes: vec![nodes_run::NodeResult {
@@ -968,7 +985,10 @@ mod tests {
 
         workspace.nodes_finished(&job, &report);
 
-        assert_eq!(workspace.font.font().get_glyph("A").unwrap().width, 540.0);
+        assert_eq!(
+            workspace.font.font_snapshot().get_glyph("A").unwrap().width,
+            540.0
+        );
         assert_eq!(
             workspace.note,
             "Node result is stale after a document, master, glyph, or revision change"
@@ -1030,7 +1050,7 @@ mod tests {
         assert_eq!(workspace.node_glyphs(), vec!["R", "S"]);
         let original = workspace
             .font
-            .font()
+            .font_snapshot()
             .get_glyph("R")
             .expect("the Regular master contains R")
             .clone();
@@ -1078,7 +1098,7 @@ mod tests {
 
         assert!(workspace.nodes.job.is_none(), "the bounded graph finishes");
         assert_eq!(
-            workspace.font.font().get_glyph("R"),
+            workspace.font.font_snapshot().get_glyph("R"),
             Some(&original),
             "the proposal-only graph must not change the foreground"
         );
@@ -1110,9 +1130,15 @@ mod tests {
             Some(RowState::Done(_, Some(summary))) if summary.contains("model")
         ));
         workspace.install_proposal("bolden", Some(vec!["R".into()]));
-        assert_ne!(workspace.font.font().get_glyph("R"), Some(&original));
+        assert_ne!(
+            workspace.font.font_snapshot().get_glyph("R"),
+            Some(&original)
+        );
         workspace.undo_install();
-        assert_eq!(workspace.font.font().get_glyph("R"), Some(&original));
+        assert_eq!(
+            workspace.font.font_snapshot().get_glyph("R"),
+            Some(&original)
+        );
 
         std::fs::remove_dir_all(root).expect("the disposable node fixture is removed");
     }

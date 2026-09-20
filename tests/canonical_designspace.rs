@@ -14,7 +14,7 @@ use runebender::document::model::designspace::{
     CanonicalDesignspace, CanonicalLocation, SourceDescriptor, SourceOrderEntry,
     SparseSourceDescriptor,
 };
-use runebender::document::project::{Master, Project};
+use runebender::document::project::{Project, SourceInput};
 use runebender::document::var_model::Location;
 use runebender::document::variable::{LayerId, SourceId};
 
@@ -379,7 +379,7 @@ fn project_owns_the_canonical_designspace_and_snapshots_it() {
         if filename == "Regular.ufo" {
             font.layers.new_layer("{650,110}").unwrap();
         }
-        Ok(Master::from_font(font, PathBuf::from(filename)))
+        Ok(SourceInput::from_font(font, PathBuf::from(filename)))
     })
     .unwrap();
 
@@ -398,7 +398,6 @@ fn project_owns_the_canonical_designspace_and_snapshots_it() {
     project.axes.clear();
     project.master_locations.clear();
     project.instances.clear();
-    project.ds_doc = None;
     project.location = [("Width".into(), 0.5)].into();
     assert_eq!(project.rule_substitute("A").as_deref(), Some("A.alt"));
     project.refresh_instances_from_doc();

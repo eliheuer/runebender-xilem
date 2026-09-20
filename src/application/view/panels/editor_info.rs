@@ -189,7 +189,7 @@ pub(crate) fn kerning_section(app: &Workspace) -> impl WidgetView<Workspace> + u
     let filter = app.kern_filter_buf.trim().to_lowercase();
     let mut pairs: Vec<(String, String, f64)> = Vec::new();
     let mut hidden = 0_usize;
-    for (first, seconds) in app.font.font().kerning.iter() {
+    for (first, seconds) in app.font.font_metadata().raw_kerning() {
         for (second, value) in seconds.iter() {
             if !filter.is_empty()
                 && !first.as_str().to_lowercase().contains(&filter)
@@ -201,7 +201,7 @@ pub(crate) fn kerning_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                 hidden += 1;
                 continue;
             }
-            pairs.push((first.to_string(), second.to_string(), *value));
+            pairs.push((first.clone(), second.clone(), *value));
         }
     }
     let total = pairs.len() + hidden;
@@ -348,7 +348,7 @@ pub(crate) fn groups_section(app: &Workspace) -> impl WidgetView<Workspace> + us
     let pal = &app.palette;
     let mut rows: Vec<_> = Vec::new();
     let mut shown = 0_usize;
-    for (full, members) in app.font.font().groups.iter() {
+    for (full, members) in app.font.font_metadata().groups() {
         let name = full.as_str();
         let (side, short) = if let Some(s) = name.strip_prefix("public.kern1.") {
             ("L", s)
@@ -602,11 +602,16 @@ pub(crate) fn related_section(app: &Workspace) -> impl WidgetView<Workspace> + u
     let name = app.session.glyph_name.clone();
     let stem = name.split('.').next().unwrap_or(&name).to_string();
     let mut groups: Vec<(&'static str, Vec<String>)> = Vec::new();
-    let components: Vec<String> = app
-        .font
-        .font()
-        .get_glyph(name.as_str())
-        .map(|g| g.components.iter().map(|c| c.base.to_string()).collect())
+    let active_layer = app.font.active_layer_address(&name);
+    let components: Vec<String> = active_layer
+        .as_ref()
+        .and_then(|address| app.font.project.document_layer(&name, &address.layer))
+        .map(|layer| {
+            layer
+                .components()
+                .map(|component| component.reference().to_owned())
+                .collect()
+        })
         .unwrap_or_default();
     if !components.is_empty() {
         groups.push(("Components", components));
@@ -627,10 +632,16 @@ pub(crate) fn related_section(app: &Workspace) -> impl WidgetView<Workspace> + u
         .glyphs
         .iter()
         .filter(|g| {
-            app.font
-                .font()
-                .get_glyph(g.name.as_str())
-                .is_some_and(|n| n.components.iter().any(|c| c.base.as_str() == name))
+            active_layer.as_ref().is_some_and(|address| {
+                app.font
+                    .project
+                    .document_layer(&g.name, &address.layer)
+                    .is_some_and(|layer| {
+                        layer
+                            .components()
+                            .any(|component| component.reference() == name)
+                    })
+            })
         })
         .map(|g| g.name.clone())
         .take(24)

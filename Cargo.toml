@@ -168,6 +168,7 @@ muda = { version = "0.19", optional = true }
 # Still the right tool for widget tests, where a fixed font and no system
 # fonts is exactly what you want. Just not for screenshots of the application.
 masonry_testing = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a" }
+syn = { version = "2.0.119", features = ["full", "visit"] }
 
 [profile.release]
 lto = "thin"

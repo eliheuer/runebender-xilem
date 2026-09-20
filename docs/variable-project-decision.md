@@ -59,16 +59,14 @@ The selected dependency is upstream Babelfont at the exact revision above, with 
 The direct fontc dependency is pinned to 1.0.0 with default features disabled, matching Babelfont's fontir/fontbe family.
 Enabling it required the compatible ICU 2.1 normalizer, properties and segmenter versions in both lockfiles; Parley accepts that range.
 The added compiler graph passes the RustSec advisory check; this is dependency selection and advisory review, not a claim of a full third-party source audit.
-`document::variable` owns Babelfont glyph geometry and a preserving Norad projection for metadata, exact advances and exact affine coefficients.
-`document::babelfont` reconciles geometry through that boundary without narrowing the saved UFO values.
-Source-wide feature text, groups and exact fractional kerning have canonical ownership by stable source identity; other source metadata remains in preservation templates while its migration is incomplete.
-This is not yet a complete migration of every editing algorithm and metadata field to Babelfont APIs.
-The [migration checklist](babelfont-migration-checklist.md) defines the remaining work, its order and the evidence required to call that migration complete.
+`document::variable` owns Babelfont glyph geometry plus stable exact-value and object-metadata extensions.
+`document::babelfont` provides canonical layer views and transactions without exposing Norad through public editing APIs.
+Source-wide font information, feature text, groups and exact fractional kerning have canonical ownership by stable source identity.
+`SourceFormatData` retains only glyph-free serialization data and opaque source resources.
+The [migration checklist](babelfont-migration-checklist.md) and [final proof](babelfont-migration-final-proof.md) record the completed editing-model cutover and its independent acceptance evidence.
 
-Existing Norad editing algorithms use scoped source guards.
-Guards reconcile edits into Babelfont before another Project operation can run.
-Save materializes the canonical geometry into the preserving UFO payload.
-The compatibility projections cost memory and a comparison pass per scoped edit.
+Norad remains the UFO and Designspace codec at explicit import, export and proposal boundaries.
+Save materializes detached UFO values from canonical geometry and preservation records without storing or reconciling a live source-font mirror.
 `SourceId`, `LayerId`, `VariableGlyph` and `GlyphSource` separate stable identity, source order and interpolation participation.
 
 The compiler snapshot includes all live masters and intermediate layers, axes, instances, features, anchors, groups and kerning.
@@ -88,7 +86,7 @@ Creating a full source at an intermediate location preserves the former sparse l
 Removing a source changes the Designspace and retains its on-disk UFO.
 Glyph auxiliary layers can be copied or removed independently.
 Structural undo refuses to overwrite later content edits; those edits must be undone first.
-Source removal and reordering are guarded while live experiment branches retain source-index references.
+Experiment branches retain stable source identities; applying one after its root source is removed fails explicitly.
 
 Interpolation checks contour segmentation and point types, component base order, matching anchors, finite values and distinct locations.
 It varies horizontal/vertical advances, contours, anchors and component affine coefficients.
@@ -128,10 +126,10 @@ The Babelfont importer tests open a multi-source package, save and reopen its ne
 Existing CLI, shaping, live-document, source switching, save-as, reload, metadata and undo tests remain part of the full native gate.
 The browser quality matrix checks actual dragging, undo/redo, text input, themes and idle rendering against the shared Project code.
 
-## Baseline inventory
+## Historical baseline inventory
 
-`src/document/project.rs` combines Master UFO ownership, paint caches, undo, loaders, Designspace metadata and interpolation in one module.
-65 source files mention Norad; application `FontModel::font_mut`, direct `Project::masters`, live edits, experiments, and save/reload expose the main mutation routes.
+At the recorded baseline, `src/document/project.rs` combined Master UFO ownership, paint caches, undo, loaders, Designspace metadata and interpolation in one module.
+At that baseline, 65 source files mentioned Norad, and application `FontModel::font_mut`, direct `Project::masters`, live edits, experiments, and save/reload exposed the main mutation routes.
 The original interpolation blends advance and contour points only, compares flattened lengths, and takes components/anchors from the active master.
 The original Designspace loader ignores axis maps, deduplicates full sources by filename, and silently omits layer sources with no full source in the same file.
 The original `formats::babelfont_import` only reads Python NFSF directory packages, rejects axes/instances/multiple masters/additional layers, and drops guides/hints/production names/application metadata.

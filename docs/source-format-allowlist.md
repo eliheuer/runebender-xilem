@@ -1,6 +1,6 @@
 # UFO and Designspace preservation allowlist
 
-Status: **enforced M12 boundary contract**.
+Status: **enforced M12/M13 boundary contract**.
 This inventory describes the source-format fields accepted by the filesystem UFO/Designspace adapter and assigns each field family one authoritative owner.
 Anything not listed here must either remain opaque under the listed boundary payload or fail before Project construction.
 It must never disappear during load, canonical edit, save, Save As or reopen.
@@ -9,8 +9,8 @@ It must never disappear during load, canonical edit, save, Save As or reopen.
 
 - **Canonical** means the live document owns the editable value and export reconstructs its UFO or Designspace representation.
 - **Layer preservation** means the value is attached to a stable glyph-layer or object identity because Babelfont cannot represent it faithfully.
-- **SourceFormatData target** means the value is source-wide format data required for lossless serialization but is not editable canonical state.
-  `VariableData.templates` temporarily carries this subset as a glyph-free Norad value until M13 replaces it with a Norad-free `SourceFormatData` record.
+- **SourceFormatData** means the value is source-wide format data required for lossless serialization but is not editable canonical state.
+  The record is glyph-free and does not retain a complete Norad font.
 - **Filesystem preservation** means raw bytes or exact paths outside Norad's supported object model.
 
 ## UFO allowlist
@@ -18,22 +18,22 @@ It must never disappear during load, canonical edit, save, Save As or reopen.
 | UFO field family | Current authoritative owner | Export rule |
 |---|---|---|
 | Source destination and dirty/save status | Project source shell | Save and Save As publish only to checked destinations; source removal never deletes the UFO. |
-| `metainfo.plist`: creator, format version and minor version | SourceFormatData target | Preserve the decoded values exactly. |
+| `metainfo.plist`: creator, format version and minor version | SourceFormatData | Preserve the decoded values exactly. |
 | `fontinfo.plist`: family/style, copyright/trademark, designer/manufacturer/license/description/version/unique/sample/PostScript/typographic/WWS names | Canonical `CanonicalFontInfo::names` | Clear from the preservation payload and reconstruct from the canonical value. |
 | `fontinfo.plist`: units per em, ascender, descender, x-height, cap height and italic angle | Canonical `CanonicalFontInfo::metrics` | Retain exact `f64` values and reject nonfinite values or negative units per em. |
 | `fontinfo.plist`: supported hhea and OS/2 metrics, head flags, embedding and selection flags, weight/width class, vendor ID, note and major/minor version | Canonical `CanonicalFontInfo` OpenType fields | Clear from the preservation payload and reconstruct from the canonical value. |
-| Every other field represented by Norad 0.18.4 `FontInfo` | SourceFormatData target | Preserve the typed value unchanged; representative unowned name and PostScript fields are exercised by the allowlist regression. |
+| Every other field represented by Norad 0.18.4 `FontInfo` | SourceFormatData | Preserve the typed value unchanged; representative unowned name and PostScript fields are exercised by the allowlist regression. |
 | `features.fea` | Canonical per-source metadata | Preserve exact text; Save As also relocates recursively resolved relative include files. |
 | `groups.plist` and `kerning.plist` | Canonical per-source metadata | Preserve all valid groups, member order, typed pair spelling and exact finite `f64` values. |
-| `lib.plist` entries for `public.skipExportGlyphs` and `public.openTypeCategories` that name loaded glyphs | Canonical per-source glyph metadata for semantics; SourceFormatData target for source ordering | Canonical values control edits; the boundary payload temporarily retains the complete dictionaries so a no-op round trip preserves list order and unknown-name entries. M13 must replace this with residual entries plus an ordering skeleton rather than discard source spelling. |
-| Entries in those two standard dictionaries that do not name a loaded glyph, plus every other font-lib key | SourceFormatData target | Preserve exact plist values and merge canonical entries without overwriting residual entries. |
-| Layer order, layer names, glyph-directory paths, layer color and layer lib | SourceFormatData target, addressed by canonical `LayerId` | Preserve order and exact persistence paths while canonical source/layer structure owns editable association. |
+| `lib.plist` entries for `public.skipExportGlyphs` and `public.openTypeCategories` that name loaded glyphs | Canonical per-source glyph metadata for semantics; SourceFormatData for source ordering | Canonical values control edits; the glyph-free boundary record preserves list order, source spelling and unknown-name entries. |
+| Entries in those two standard dictionaries that do not name a loaded glyph, plus every other font-lib key | SourceFormatData | Preserve exact plist values and merge canonical entries without overwriting residual entries. |
+| Layer order, layer names, glyph-directory paths, layer color and layer lib | SourceFormatData, addressed by canonical `LayerId` | Preserve order and exact persistence paths while canonical source/layer structure owns editable association. |
 | Glyph name and layer membership | Canonical Project glyph/source structure | Structural operations update stable identities and rebuild the corresponding GLIF set. |
 | Contours, point coordinates/types/smooth state, components, anchors and their paint order | Canonical Babelfont geometry | Export from canonical geometry without a persistent UFO glyph owner. |
 | Horizontal and vertical advances, Unicode order, note, guidelines, image placement and residual glyph lib | Layer preservation | Retain exact values beside the stable layer identity and merge known keys only at export. |
 | Contour, point, component, anchor and guideline identifiers, names, colors, transforms and object libs | Layer preservation keyed by stable object identity | Reorder moves metadata with identity; replacement retains metadata only through an explicit mapping. |
 | Mark color, metrics formulas, composition recipe, metaballs, smart-component values and poles, HOI intermediates, editable hyperbezier kind and mask encoding | Typed or validated layer preservation | Decode known keys once, retain their exact supported source representation and write each key once at export. |
-| `images/` and `data/` resource names and bytes | SourceFormatData target | Preserve exact relative names and bytes; image placement is a separate layer value. |
+| `images/` and `data/` resource names and bytes | SourceFormatData | Preserve exact relative names and bytes; image placement is a separate layer value. |
 | Exact `contents.plist` GLIF filenames | Filesystem preservation | Restore validated relative paths after staging and verify the staged font reloads with them. |
 | Regular files outside Norad-managed UFO files, `images/` and `data/` | Filesystem preservation | Copy bytes unchanged into the staged UFO. |
 

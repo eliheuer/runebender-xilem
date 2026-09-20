@@ -9,9 +9,11 @@ pub use super::canonical_metadata::{
     CanonicalFontMetadata, CanonicalMetadataError, KerningParticipant, KerningSide,
 };
 
+#[cfg(test)]
 use norad::{Font, Glyph, PointType};
 
 /// Decode the UFO boundary maps into one exact canonical value.
+#[cfg(test)]
 pub fn canonical_metadata_from_ufo(
     font: &Font,
 ) -> Result<CanonicalFontMetadata, CanonicalMetadataError> {
@@ -41,6 +43,7 @@ pub fn canonical_metadata_from_ufo(
 }
 
 /// Encode one canonical value into UFO boundary maps atomically.
+#[cfg(test)]
 pub fn write_canonical_metadata_to_ufo(
     font: &mut Font,
     metadata: &CanonicalFontMetadata,
@@ -81,6 +84,7 @@ pub fn write_canonical_metadata_to_ufo(
 /// Kerning between two glyphs, resolving group fallbacks in UFO
 /// precedence order: glyph-glyph, glyph-group, group-glyph,
 /// group-group.
+#[cfg(test)]
 pub fn kern_value(font: &Font, left: &str, right: &str) -> f64 {
     let lookup =
         |a: &str, b: &str| -> Option<f64> { font.kerning.get(a).and_then(|m| m.get(b)).copied() };
@@ -97,6 +101,7 @@ pub fn kern_value(font: &Font, left: &str, right: &str) -> f64 {
 }
 
 /// Set a glyph-to-glyph kern pair, the exception level.
+#[cfg(test)]
 pub fn set_kern_pair(font: &mut Font, left: &str, right: &str, value: f64) {
     let (Ok(l), Ok(r)) = (norad::Name::new(left), norad::Name::new(right)) else {
         return;
@@ -108,6 +113,7 @@ pub fn set_kern_pair(font: &mut Font, left: &str, right: &str, value: f64) {
 ///
 /// Group names carry the `public.kern1.` prefix on the first side
 /// and `public.kern2.` on the second.
+#[cfg(test)]
 pub fn kern_group(font: &Font, glyph: &str, first_side: bool) -> Option<norad::Name> {
     let prefix = if first_side {
         "public.kern1."
@@ -128,6 +134,7 @@ pub fn kern_group(font: &Font, glyph: &str, first_side: bool) -> Option<norad::N
 /// Groups live in `groups.plist`. `group` is the bare name: `"A"`
 /// becomes `public.kern1.A`. An empty name removes the membership.
 /// Returns true when anything changed.
+#[cfg(test)]
 pub fn set_kern_group(font: &mut Font, glyph: &str, first_side: bool, group: &str) -> bool {
     let prefix = if first_side {
         "public.kern1."
@@ -181,6 +188,7 @@ pub fn set_kern_group(font: &mut Font, glyph: &str, first_side: bool, group: &st
 /// Parsed characters replace every codepoint the glyph had.
 /// An empty string clears them all.
 /// Returns false when any token does not parse.
+#[cfg(test)]
 pub fn set_glyph_unicode(glyph: &mut Glyph, unicode: &str) -> bool {
     let Ok(codepoints) = super::model::glyph_metadata::parse_codepoints(unicode) else {
         return false;
@@ -192,6 +200,7 @@ pub fn set_glyph_unicode(glyph: &mut Glyph, unicode: &str) -> bool {
 /// Rename a glyph and every reference to it: components in other
 /// glyphs, kerning group memberships, and direct kerning pair keys.
 /// Refuses when the new name is taken or invalid.
+#[cfg(test)]
 pub fn rename_glyph(font: &mut Font, old: &str, new: &str) -> bool {
     let new = new.trim();
     if new.is_empty() || new == old {
@@ -247,6 +256,7 @@ pub fn rename_glyph(font: &mut Font, old: &str, new: &str) -> bool {
 
 /// Structural signature used for interpolation compatibility: per
 /// contour, the ordered list of point types.
+#[cfg(test)]
 pub fn glyph_signature(glyph: &Glyph) -> Vec<Vec<PointType>> {
     glyph
         .contours

@@ -9,7 +9,7 @@
 //! `$RUNEBENDER_TEST_FONTS`, or in `../virtua-grotesk/sources` next
 //! to this checkout. CI checks that repository out alongside.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// The fixture directory. Panics with the expected location when the
 /// fonts are not there, so a missing checkout reads as such and not
@@ -34,19 +34,4 @@ pub(crate) fn regular_ufo() -> PathBuf {
 
 pub(crate) fn designspace() -> PathBuf {
     dir().join("VirtuaGrotesk.designspace")
-}
-
-/// Copy a UFO (a directory tree) so a test can edit and save it.
-pub(crate) fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(dst)?;
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let target = dst.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
-            copy_dir(&entry.path(), &target)?;
-        } else {
-            std::fs::copy(entry.path(), &target)?;
-        }
-    }
-    Ok(())
 }

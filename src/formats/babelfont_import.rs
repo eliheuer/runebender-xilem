@@ -670,13 +670,21 @@ mod tests {
         std::fs::create_dir(&occupied).unwrap();
         std::fs::write(occupied.join("sentinel"), "keep").unwrap();
         let mut project = Project::load(&package).unwrap();
-        let master = &mut project.edit_sources()[0];
-        assert!(master.dirty);
-        assert!(!master.source_path.exists());
-        master.font.get_glyph_mut("A").unwrap().width = 701.0;
-        master.save().unwrap();
+        let source = project.source_id(0).unwrap();
+        let source_path = project.document_source_path(source).unwrap().to_owned();
+        assert_eq!(project.document_source_is_modified(source), Some(true));
+        assert!(!source_path.exists());
+        let layer = project.document_source(source).unwrap().default_layer();
+        assert!(matches!(
+            project.edit_document_layer("A", &layer, |draft| {
+                draft.set_width(701.0)?;
+                Ok(())
+            }),
+            Ok(crate::document::project::DocumentEditOutcome::Changed { .. })
+        ));
+        project.save().unwrap();
         assert_eq!(
-            Font::load(&master.source_path)
+            Font::load(&source_path)
                 .unwrap()
                 .get_glyph("A")
                 .unwrap()
@@ -738,11 +746,11 @@ mod tests {
         }
         originals.insert(info_path.clone(), std::fs::read(info_path).unwrap());
         let mut project = Project::load(&package).unwrap();
-        assert_eq!(project.sources().len(), 2);
+        assert_eq!(project.document_sources().count(), 2);
         assert_eq!(project.instances[0].1["Weight"], 0.5);
         assert_eq!(
             project
-                .try_interpolated_at("A", &[("Weight".into(), 0.5)].into())
+                .try_encode_interpolated_ufo_at("A", &[("Weight".into(), 0.5)].into())
                 .unwrap()
                 .width,
             731.123_456_789
@@ -753,7 +761,7 @@ mod tests {
         };
         assert_eq!(
             super::super::lib_keys::read_babelfont_layer(
-                &project.glyph_layer("A", &layer).unwrap()
+                &project.encode_ufo_layer("A", &layer).unwrap()
             ),
             Some(("M1", Some("A-M1"), true))
         );
@@ -761,11 +769,11 @@ mod tests {
         assert!(!destination.exists());
         project.save().unwrap();
         let reloaded = Project::load(&destination).unwrap();
-        assert_eq!(reloaded.sources().len(), 2);
+        assert_eq!(reloaded.document_sources().count(), 2);
         assert_eq!(reloaded.variable_glyph("A").unwrap().layer_ids().count(), 4);
         assert_eq!(
             reloaded
-                .try_interpolated_at("A", &[("Weight".into(), 0.5)].into())
+                .try_encode_interpolated_ufo_at("A", &[("Weight".into(), 0.5)].into())
                 .unwrap()
                 .width,
             731.123_456_789

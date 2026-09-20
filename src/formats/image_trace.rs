@@ -7,7 +7,7 @@
 //! Same crate, same defaults, so a trace here is byte-identical to
 //! the web editor, the CLI, and the blog demo. This adapter takes
 //! plain arguments, where the web one takes host JSON, and returns
-//! a parsed norad glyph ready to merge into the font.
+//! canonical contours ready to install into a document layer.
 
 /// Where the traced outline lands in the em.
 #[derive(Clone, Copy, Debug)]
@@ -43,7 +43,10 @@ impl Default for TraceConfig {
 /// Uses img2bez's `wild` profile, which auto-detects clean renders
 /// vs soft scans, with library defaults. This is what the web
 /// editor's Autotrace runs.
-pub fn trace_image(image_bytes: &[u8], config: &TraceConfig) -> Result<norad::Glyph, String> {
+pub fn trace_image(
+    image_bytes: &[u8],
+    config: &TraceConfig,
+) -> Result<crate::document::ImportedContours, String> {
     if image_bytes.is_empty() {
         return Err("image bytes are empty".to_string());
     }
@@ -59,8 +62,9 @@ pub fn trace_image(image_bytes: &[u8], config: &TraceConfig) -> Result<norad::Gl
 
     let glyph = img2bez::trace_glyph(image_bytes, "traced", &[], &opts, &metrics)
         .map_err(|e| format!("img2bez trace failed: {e}"))?;
-    norad::Glyph::parse_raw(glyph.to_glif().as_bytes())
-        .map_err(|e| format!("parse traced glif: {e}"))
+    let glyph = norad::Glyph::parse_raw(glyph.to_glif().as_bytes())
+        .map_err(|e| format!("parse traced glif: {e}"))?;
+    crate::formats::ufo::decode_contours(&glyph.contours)
 }
 
 #[cfg(test)]
@@ -86,7 +90,7 @@ mod tests {
     #[test]
     fn traces_a_square_into_contours() {
         let glyph = trace_image(&square_png(), &TraceConfig::default()).expect("trace succeeds");
-        assert!(!glyph.contours.is_empty());
+        assert!(!glyph.is_empty());
     }
 
     #[test]

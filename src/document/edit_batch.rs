@@ -5,9 +5,11 @@
 
 use std::collections::HashSet;
 
-use norad::{Font, Glyph};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest as _, Sha256};
+
+use crate::formats::ufo::{glyph_from_layer, glyph_revision};
+#[cfg(test)]
+use norad::{Font, Glyph};
 
 use crate::document::babelfont::{LayerEditDraft, LayerPointType, LayerView};
 use crate::document::project::Project;
@@ -18,14 +20,7 @@ use crate::document::variable::{LayerId, SourceId};
 ///
 /// The UFO value is a transient compatibility codec result, never editable document state.
 pub fn canonical_glyph_revision(layer: LayerView<'_>) -> Result<String, String> {
-    glyph_revision(&layer.project())
-}
-
-/// Opaque SHA-256 revision of a glyph's canonical GLIF, including its metadata.
-/// Returns an error if the glyph cannot be serialized. Re-read after a core upgrade.
-pub fn glyph_revision(glyph: &Glyph) -> Result<String, String> {
-    let bytes = glyph.encode_xml().map_err(|e| e.to_string())?;
-    Ok(format!("glif-sha256:{:x}", Sha256::digest(bytes)))
+    glyph_revision(&glyph_from_layer(layer))
 }
 
 /// A batch starts from the foreground and writes a new, uniquely named proposal.
@@ -117,7 +112,7 @@ fn finite(values: &[f64]) -> Result<(), String> {
     }
 }
 
-pub(super) fn validate_batch(batch: &EditBatch) -> Result<(), String> {
+pub(crate) fn validate_batch(batch: &EditBatch) -> Result<(), String> {
     if batch.task.is_empty()
         || !batch
             .task
@@ -159,9 +154,9 @@ fn replace_outline_canonically(
     contours: &[crate::outline::drawing::DrawingContour],
     clear_components: bool,
 ) -> Result<(), String> {
-    let contours = crate::outline::drawing::contours(contours)?;
+    let contours = crate::formats::ufo::decode_drawing_contours(contours)?;
     draft
-        .replace_imported_contours(&contours)
+        .replace_imported_contours(contours)
         .map_err(|error| error.to_string())?;
     if clear_components {
         let components = draft
@@ -338,13 +333,14 @@ pub(super) fn proposal_draft(
     Ok(draft)
 }
 
+#[cfg(test)]
 fn apply(glyph: &mut Glyph, operation: &Operation) -> Result<(), String> {
     match operation {
         Operation::SetOutline {
             contours,
             clear_components,
         } => {
-            glyph.contours = crate::outline::drawing::contours(contours)?;
+            glyph.contours = crate::formats::ufo::drawing_contours(contours)?;
             if *clear_components {
                 glyph.components.clear();
             }
@@ -438,6 +434,7 @@ fn apply(glyph: &mut Glyph, operation: &Operation) -> Result<(), String> {
 /// Validate every edit on private glyph copies, then create a proposal layer.
 /// Errors leave `font` unchanged. Never edits the foreground or saves files.
 /// Existing proposal tasks, duplicate glyphs, stale revisions, and empty edits fail.
+#[cfg(test)]
 pub fn propose(font: &mut Font, batch: &EditBatch) -> Result<ProposalSummary, String> {
     validate_batch(batch)?;
     if font
@@ -534,6 +531,7 @@ pub fn propose_project(
 /// `layercontents.plist`. Rechecks glyph revisions and the layer index before publication.
 /// Other applications do not participate in this writer's lock: callers must coordinate
 /// external saves. The revision checks do not provide a cross-process filesystem transaction.
+#[cfg(test)]
 pub fn save_proposal(
     source: &std::path::Path,
     batch: &EditBatch,
@@ -921,21 +919,39 @@ mod tests {
         let layer = project.document_source(source).unwrap().default_layer();
         let original = project.document_layer("A", &layer).unwrap().width();
         let mut external = Font::new();
-        let snapshot = project.source_snapshot(source).unwrap();
+        let snapshot = project.encode_ufo_source(source).unwrap();
         let mut proposed = snapshot.get_glyph("A").unwrap().clone();
         proposed.width = original + 90.0;
         proposal::write(&mut external, "external", [proposed]).unwrap();
+        let external = Project::from_source(crate::document::project::SourceInput::from_font(
+            external,
+            PathBuf::from("external.ufo"),
+        ));
+        let external_source = external.source_id(0).unwrap();
 
         let before_invalid = project.document_revision();
         assert!(
-            proposal::adopt_external_project(&mut project, source, &external, "bad task")
-                .unwrap_err()
-                .to_string()
-                .contains("task must contain")
+            proposal::adopt_external_project(
+                &mut project,
+                source,
+                &external,
+                external_source,
+                "bad task",
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("task must contain")
         );
         assert_eq!(project.document_revision(), before_invalid);
 
-        proposal::adopt_external_project(&mut project, source, &external, "external").unwrap();
+        proposal::adopt_external_project(
+            &mut project,
+            source,
+            &external,
+            external_source,
+            "external",
+        )
+        .unwrap();
         let before = project.document_revision();
         let installed = proposal::install_project(&mut project, source, "external", None, true)
             .unwrap()
@@ -1126,7 +1142,7 @@ mod tests {
             None,
         ));
         font.default_layer_mut().insert_glyph(glyph);
-        let mut project = Project::from_source(crate::document::project::Master::from_font(
+        let mut project = Project::from_source(crate::document::project::SourceInput::from_font(
             font,
             PathBuf::from("IdentityProposal.ufo"),
         ));
@@ -1184,7 +1200,7 @@ mod tests {
                 .position(),
             kurbo::Point::new(12.0, 3.0)
         );
-        let projected = project.source_snapshot(source).unwrap();
+        let projected = project.encode_ufo_source(source).unwrap();
         let projected = projected.get_glyph("A").unwrap();
         assert_eq!(projected.note.as_deref(), Some("retain note"));
         assert_eq!(

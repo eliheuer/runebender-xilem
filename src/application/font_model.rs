@@ -13,10 +13,8 @@ use kurbo::{BezPath, Rect};
 use runebender::analysis::category::GlyphCategory;
 use runebender::document::canonical_metadata::{CanonicalFontMetadata, KerningSide};
 use runebender::document::model::font_info::CanonicalFontInfo;
-use runebender::document::project::{CanonicalGlyphEntry, DocumentEditOutcome, Master, Project};
+use runebender::document::project::{CanonicalGlyphEntry, DocumentEditOutcome, Project};
 use runebender::document::proposal;
-#[cfg(test)]
-use runebender::document::variable::{SourceEdit, SourceFontEdit};
 use runebender::outline::glyph_paths;
 
 pub(crate) use runebender::document::axis::Axis;
@@ -123,6 +121,30 @@ impl FontModel {
         })
     }
 
+    /// Project-owned history depth for one active-source glyph layer.
+    pub(crate) fn history_depth(
+        &self,
+        glyph: &str,
+        direction: runebender::document::history::HistoryDirection,
+    ) -> usize {
+        self.active_layer_address(glyph).map_or(0, |address| {
+            self.project
+                .document_layer_history_depth(&address, direction)
+        })
+    }
+
+    /// Whether Project-owned history can replay one active-source glyph layer.
+    pub(crate) fn can_replay_history(
+        &self,
+        glyph: &str,
+        direction: runebender::document::history::HistoryDirection,
+    ) -> bool {
+        self.active_layer_address(glyph).is_some_and(|address| {
+            self.project
+                .can_replay_document_layer_history(&address, direction)
+        })
+    }
+
     pub(crate) fn preview_font(
         &self,
     ) -> Result<Option<Arc<runebender::document::compile::CompiledFont>>, String> {
@@ -189,30 +211,21 @@ impl FontModel {
         self.glyphs[index] = GlyphEntry::from_core(&entry);
     }
 
-    // ---- the active master ----
-
-    pub(crate) fn master(&self) -> &Master {
-        self.project.active_font()
-    }
-
+    /// Materialize the active source only for assertions at the UFO boundary.
     #[cfg(test)]
-    pub(crate) fn master_mut(&mut self) -> SourceEdit<'_> {
-        self.project.active_font_mut()
-    }
-
-    /// The active master's font, to read.
-    pub(crate) fn font(&self) -> &norad::Font {
-        &self.master().font
-    }
-
-    /// Test-only access to the active source projection for stale-state fixtures.
-    #[cfg(test)]
-    pub(crate) fn font_mut(&mut self) -> SourceFontEdit<'_> {
-        self.master_mut().into_font()
+    pub(crate) fn font_snapshot(&self) -> norad::Font {
+        self.project
+            .source_id(self.active())
+            .and_then(|source| self.project.encode_ufo_source(source))
+            .expect("the active source remains materializable")
     }
 
     pub(crate) fn source(&self) -> &FsPath {
-        &self.master().source_path
+        self.project
+            .source_id(self.active())
+            .and_then(|source| self.project.document_source(source))
+            .expect("the active source remains in the document")
+            .path()
     }
 
     /// The source that defines the whole document: the designspace when this
@@ -227,9 +240,8 @@ impl FontModel {
     /// Whether every master source is writable according to its filesystem mode.
     pub(crate) fn is_writable(&self) -> bool {
         self.project
-            .sources()
-            .iter()
-            .all(|master| save_target_is_writable(&master.source_path))
+            .document_sources()
+            .all(|source| save_target_is_writable(source.path()))
     }
 
     pub(crate) fn active(&self) -> usize {
@@ -266,16 +278,15 @@ impl FontModel {
 
     pub(crate) fn master_paths(&self) -> Vec<PathBuf> {
         self.project
-            .sources()
-            .iter()
-            .map(|m| m.source_path.clone())
+            .document_sources()
+            .map(|source| source.path().to_owned())
             .collect()
     }
 
     /// Switch the active master. Each master keeps its own edits, so
     /// nothing is flushed; the cache is rebuilt for the new one.
     pub(crate) fn set_active(&mut self, index: usize) {
-        if index >= self.project.sources().len() || index == self.project.active {
+        if index >= self.project.document_sources().count() || index == self.project.active {
             return;
         }
         self.project.active = index;
@@ -409,7 +420,7 @@ impl FontModel {
 
     /// How many masters the family has.
     pub(crate) fn master_count(&self) -> usize {
-        self.project.sources().len()
+        self.project.document_sources().count()
     }
 
     /// Short display names for the masters: the common family prefix is
@@ -455,15 +466,15 @@ impl FontModel {
         which: &std::collections::HashSet<usize>,
     ) -> Vec<BezPath> {
         self.project
-            .sources()
-            .iter()
+            .document_sources()
             .enumerate()
-            .filter(|(i, _)| which.contains(i) && *i != self.project.active)
-            .filter_map(|(_, master)| {
-                master
-                    .font
-                    .get_glyph(glyph_name)
-                    .map(|g| glyph_paths::glyph_to_bezpath(g, &master.font))
+            .filter(|(index, _)| which.contains(index) && *index != self.project.active)
+            .filter_map(|(_, source)| {
+                self.project
+                    .document_source_glyph_entry(source.id(), glyph_name)
+                    .ok()
+                    .flatten()
+                    .map(|glyph| glyph.outline().as_ref().clone())
             })
             .collect()
     }
@@ -553,21 +564,23 @@ impl FontModel {
     /// A glyph is skipped when its lib says so, which is how both Glyphs
     /// and the UFO spec record it. The filter list shows the resulting count.
     pub(crate) fn exporting_count(&self) -> usize {
-        let font = self.font();
+        let source = self
+            .project
+            .source_id(self.active())
+            .expect("the active source has a stable identity");
         self.glyphs
             .iter()
             .filter(|entry| {
-                font.get_glyph(&entry.name)
-                    .and_then(|glyph| glyph.lib.get("public.skipExport"))
-                    .and_then(|value| value.as_boolean())
-                    != Some(true)
+                self.project
+                    .document_source_glyph_metadata(source, &entry.name)
+                    .is_none_or(|metadata| metadata.exported())
             })
             .count()
     }
 
     /// How many glyphs the masters disagree about, by the engine's check.
     pub(crate) fn incompatible_count(&self) -> usize {
-        if self.project.sources().len() < 2 {
+        if self.project.document_sources().count() < 2 {
             return 0;
         }
         self.glyphs
@@ -726,6 +739,7 @@ fn save_target_is_writable(target: &FsPath) -> bool {
 mod tests {
     use super::*;
     use runebender::document::canonical_metadata::KerningParticipant;
+    use runebender::document::project::SourceInput;
 
     fn two_master_model() -> (PathBuf, FontModel) {
         let dir = std::env::temp_dir().join(format!(
@@ -782,20 +796,17 @@ mod tests {
 
         let copy = model.duplicate_glyph("A").expect("A duplicates");
         assert_eq!(copy, "A.001");
-        for (master, width) in model.project.sources().iter().zip([500.0, 620.0]) {
-            let glyph = master.font.get_glyph(&copy).expect("the copy exists");
-            assert_eq!(glyph.width, width);
-            assert_eq!(glyph.contours.len(), 1);
-            assert!(glyph.codepoints.is_empty());
+        for (source, width) in model.project.document_sources().zip([500.0, 620.0]) {
+            let glyph = model
+                .project
+                .document_layer(&copy, &source.default_layer())
+                .expect("the copy exists");
+            assert_eq!(glyph.width(), width);
+            assert_eq!(glyph.contours().count(), 1);
+            assert_eq!(glyph.codepoints().count(), 0);
         }
         assert!(model.remove_glyph(&copy));
-        assert!(
-            model
-                .project
-                .sources()
-                .iter()
-                .all(|master| master.font.get_glyph(&copy).is_none())
-        );
+        assert!(model.project.document_glyph(&copy).is_none());
 
         std::fs::remove_dir_all(dir).expect("the fixture is removed");
     }
@@ -909,16 +920,16 @@ mod tests {
 
     #[test]
     fn save_targets_require_a_writable_directory() {
-        let (dir, mut model) = two_master_model();
-        assert!(model.is_writable());
-
-        model.master_mut().source_path = dir.join("New.ufo");
+        let (dir, model) = two_master_model();
         assert!(model.is_writable());
 
         let file = dir.join("not-a-directory");
         std::fs::write(&file, "fixture").expect("the ordinary file is created");
-        model.master_mut().source_path = file.join("New.ufo");
-        assert!(!model.is_writable());
+        let invalid = FontModel::from_project(Project::from_source(SourceInput::from_font(
+            norad::Font::new(),
+            file.join("New.ufo"),
+        )));
+        assert!(!invalid.is_writable());
 
         std::fs::remove_dir_all(dir).expect("the fixture is removed");
     }

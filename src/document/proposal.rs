@@ -20,14 +20,17 @@
 //! same points, in the same order, so a source stays interpolable
 //! with its siblings. [`compatible_layers`] checks that promise for canonical
 //! layers, and [`install_project`] refuses a glyph that breaks it when the caller
-//! asks for the check. [`compatible`] retains the standalone UFO contract.
+//! asks for the check. Standalone UFO serialization retains the same external layer contract in
+//! the explicit format adapter.
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt;
 
+#[cfg(test)]
 use norad::{Font, Glyph, Layer};
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
 use crate::document::font_ops::glyph_signature;
 use crate::document::project::{DocumentChange, DocumentEditOutcome, Project};
 use crate::document::variable::{GlyphLayerAddress, LayerId, SourceId};
@@ -146,6 +149,7 @@ pub struct Installed {
 }
 
 /// Whether a proposed glyph keeps the foreground's point structure.
+#[cfg(test)]
 pub fn compatible(foreground: &Glyph, proposed: &Glyph) -> bool {
     glyph_signature(foreground) == glyph_signature(proposed)
 }
@@ -550,7 +554,8 @@ pub fn discard_project(
 pub fn adopt_external_project(
     project: &mut Project,
     source: SourceId,
-    external: &Font,
+    external: &Project,
+    external_source: SourceId,
     task: &str,
 ) -> Result<ProposalSummary, ProposalError> {
     validate_task(task)?;
@@ -559,13 +564,18 @@ pub fn adopt_external_project(
             "proposal task already exists; use a new task name",
         ));
     }
-    let source_layer =
-        external
-            .layers
-            .get(&layer_name(task))
-            .ok_or_else(|| ProposalError::NoProposal {
-                task: task.to_owned(),
-            })?;
+    let source_layer = LayerId {
+        source: external_source,
+        name: layer_name(task),
+    };
+    if !external
+        .document_source_layer_names(external_source)
+        .is_some_and(|layers| layers.iter().any(|name| name == &source_layer.name))
+    {
+        return Err(ProposalError::NoProposal {
+            task: task.to_owned(),
+        });
+    }
     let foreground = project
         .document_source(source)
         .ok_or_else(|| project_error("unknown source"))?
@@ -573,15 +583,22 @@ pub fn adopt_external_project(
     let target = proposal_layer(source, task);
     let mut seen = HashSet::new();
     let mut staged = Vec::new();
-    for glyph in source_layer.iter() {
-        let name = glyph.name().to_string();
+    for name in external.glyph_names() {
+        let Some(snapshot) = external.capture_document_layer(&GlyphLayerAddress {
+            glyph: name.to_owned(),
+            layer: source_layer.clone(),
+        }) else {
+            continue;
+        };
+        let name = name.to_owned();
         if !seen.insert(name.clone()) || project.document_layer(&name, &foreground).is_none() {
             return Err(ProposalError::NoSuchGlyph {
                 task: task.to_owned(),
                 glyph: name,
             });
         }
-        let (layer, preserved) = super::babelfont::layer_from_ufo(glyph, &target, false);
+        let (layer, preserved) = snapshot.into_parts();
+        let (layer, preserved) = super::babelfont::copy_layer(&layer, &preserved, &target);
         staged.push((name, LayerEditDraft::new(layer, preserved)));
     }
     if staged.is_empty() {
@@ -606,6 +623,7 @@ pub fn adopt_external_project(
 /// Clone a font with the named layer overlaid on the foreground for proof rendering.
 /// Components resolve against the same overlaid glyphs; missing layer glyphs fall back
 /// to foreground. Returns an error for an unknown layer and never changes the source.
+#[cfg(test)]
 pub fn preview_font(font: &Font, layer: &str) -> Result<Font, String> {
     let proposed = font
         .layers
@@ -619,11 +637,13 @@ pub fn preview_font(font: &Font, layer: &str) -> Result<Font, String> {
 }
 
 /// Contour and point counts, for a message.
+#[cfg(test)]
 fn describe(glyph: &Glyph) -> String {
     let points: usize = glyph.contours.iter().map(|c| c.points.len()).sum();
     format!("{}c · {}pt", glyph.contours.len(), points)
 }
 
+#[cfg(test)]
 fn summarize(font: &Font, layer: &Layer) -> Option<ProposalSummary> {
     let task = task_of_layer(layer.name())?.to_string();
     let mut summary = ProposalSummary {
@@ -654,6 +674,7 @@ fn summarize(font: &Font, layer: &Layer) -> Option<ProposalSummary> {
 }
 
 /// Every proposal in the font, in layer order.
+#[cfg(test)]
 pub fn list(font: &Font) -> Vec<ProposalSummary> {
     font.iter_layers()
         .filter_map(|layer| summarize(font, layer))
@@ -661,6 +682,7 @@ pub fn list(font: &Font) -> Vec<ProposalSummary> {
 }
 
 /// The proposal for one task.
+#[cfg(test)]
 pub fn find(font: &Font, task: &str) -> Result<ProposalSummary, ProposalError> {
     font.layers
         .get(&layer_name(task))
@@ -673,6 +695,7 @@ pub fn find(font: &Font, task: &str) -> Result<ProposalSummary, ProposalError> {
 /// Writes glyphs into the task's proposal layer, replacing any glyph
 /// of the same name already proposed. This is what a tool calls, or
 /// what it imitates with its own UFO writer.
+#[cfg(test)]
 pub fn write(
     font: &mut Font,
     task: &str,
@@ -703,6 +726,7 @@ pub fn write(
 ///
 /// This standalone-UFO install remains the external format-contract helper.
 /// Live documents use [`install_project`] and Project-owned history.
+#[cfg(test)]
 pub fn install(
     font: &mut Font,
     task: &str,
@@ -731,7 +755,7 @@ pub fn install(
         if let Some(base) = crate::formats::lib_keys::read_proposal_base(&proposed) {
             let current = font
                 .get_glyph(name.as_str())
-                .and_then(|g| crate::document::edit_batch::glyph_revision(g).ok());
+                .and_then(|glyph| crate::formats::ufo::glyph_revision(glyph).ok());
             if current.as_deref() != Some(base) {
                 skipped.push((
                     name.clone(),
@@ -768,6 +792,7 @@ pub fn install(
 }
 
 /// Removes the task's proposal layer. Returns how many glyphs it held.
+#[cfg(test)]
 pub fn discard(font: &mut Font, task: &str) -> Result<usize, ProposalError> {
     font.layers
         .remove(&layer_name(task))
@@ -778,6 +803,7 @@ pub fn discard(font: &mut Font, task: &str) -> Result<usize, ProposalError> {
 }
 
 /// Copies what a proposal carries onto a foreground glyph.
+#[cfg(test)]
 pub(crate) fn apply(foreground: &mut Glyph, proposed: &Glyph) {
     foreground.contours = proposed.contours.clone();
     foreground.components = proposed.components.clone();
@@ -793,7 +819,7 @@ mod tests {
     use norad::{Anchor, Contour, ContourPoint, Name, PointType};
 
     use crate::document::history::HistoryDirection;
-    use crate::document::project::{Master, Project};
+    use crate::document::project::{Project, SourceInput};
     use crate::document::variable::GlyphLayerAddress;
 
     fn glyph(name: &str, points: &[(f64, f64)], width: f64) -> Glyph {
@@ -843,7 +869,7 @@ mod tests {
             target.note = Some(format!("retain {name}"));
             font.default_layer_mut().insert_glyph(target);
         }
-        let project = Project::from_source(Master::from_font(
+        let project = Project::from_source(SourceInput::from_font(
             font,
             PathBuf::from("CompositionProposal.ufo"),
         ));
@@ -1010,7 +1036,7 @@ mod tests {
         );
         assert_eq!(
             project
-                .source_snapshot(source)
+                .encode_ufo_source(source)
                 .unwrap()
                 .get_glyph("Aacute")
                 .unwrap()

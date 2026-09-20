@@ -4,7 +4,7 @@
 //! Everything that changes a shape.
 //!
 //! Point and segment edits, the knife, primitives, cleanup, effects,
-//! curve conversion, emboldening, and the norad-to-kurbo path builder.
+//! curve conversion, emboldening, and canonical-to-kurbo path builders.
 //! The segment maths (cubic, quadratic, hyperbezier) is in `path`.
 
 pub mod cleanup;
@@ -13,6 +13,7 @@ pub mod convert;
 pub mod drawing;
 pub mod effects;
 pub mod embolden;
+#[cfg(test)]
 pub mod glyph_ops;
 pub mod glyph_paths;
 pub mod knife;

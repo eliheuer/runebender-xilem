@@ -23,6 +23,7 @@ use runebender::document::proposal::{self, ProposalSummary};
 use runebender::document::variable::GlyphLayerAddress;
 
 use crate::application::editor::session::Session;
+use crate::application::font_model::FontModel;
 use crate::application::view::canvas::grid::cells_of;
 use crate::application::workspace::{Mode, Workspace};
 
@@ -159,33 +160,44 @@ pub(crate) struct AiProgress;
 /// Capture canonical foreground revisions for named glyphs, or the whole
 /// default layer when `names` is empty.
 pub(crate) fn foreground_revisions(
-    font: &norad::Font,
+    font: &FontModel,
     names: &[String],
 ) -> Result<BTreeMap<String, String>, String> {
-    let glyphs: Vec<_> = if names.is_empty() {
-        font.default_layer().iter().collect()
+    let source = font
+        .project
+        .source_id(font.active())
+        .ok_or_else(|| "active source no longer exists".to_owned())?;
+    let layer = font
+        .project
+        .document_source(source)
+        .ok_or_else(|| "active source no longer exists".to_owned())?
+        .default_layer();
+    let names: Vec<_> = if names.is_empty() {
+        font.project
+            .glyph_names()
+            .filter(|name| font.project.document_layer(name, &layer).is_some())
+            .map(str::to_owned)
+            .collect()
     } else {
-        names
-            .iter()
-            .map(|name| {
-                font.get_glyph(name)
-                    .ok_or_else(|| format!("{name}: foreground glyph no longer exists"))
-            })
-            .collect::<Result<_, _>>()?
+        names.to_vec()
     };
-    glyphs
+    names
         .into_iter()
-        .map(|glyph| {
+        .map(|name| {
+            let glyph = font
+                .project
+                .document_layer(&name, &layer)
+                .ok_or_else(|| format!("{name}: foreground glyph no longer exists"))?;
             Ok((
-                glyph.name().to_string(),
-                runebender::document::edit_batch::glyph_revision(glyph)?,
+                name,
+                runebender::document::edit_batch::canonical_glyph_revision(glyph)?,
             ))
         })
         .collect()
 }
 
 pub(crate) fn foreground_is_current(
-    font: &norad::Font,
+    font: &FontModel,
     expected: &BTreeMap<String, String>,
     all_glyphs: bool,
 ) -> bool {
@@ -401,7 +413,12 @@ impl Workspace {
         task: &str,
         source: &Path,
     ) -> Result<ProposalSummary, String> {
-        let on_disk = norad::Font::load(source).map_err(|e| e.to_string())?;
+        let on_disk = runebender::document::project::Project::load(source)?;
+        let on_disk_source = on_disk
+            .document_sources()
+            .next()
+            .ok_or("the proposal source has no font source")?
+            .id();
         let source = self
             .font
             .project
@@ -411,9 +428,14 @@ impl Workspace {
             proposal::discard_project(&mut self.font.project, source, task)
                 .map_err(|error| error.to_string())?;
         }
-        let summary =
-            proposal::adopt_external_project(&mut self.font.project, source, &on_disk, task)
-                .map_err(|error| error.to_string())?;
+        let summary = proposal::adopt_external_project(
+            &mut self.font.project,
+            source,
+            &on_disk,
+            on_disk_source,
+            task,
+        )
+        .map_err(|error| error.to_string())?;
         self.modified = true;
         Ok(summary)
     }
@@ -580,7 +602,7 @@ impl Workspace {
         let strength = self.ai.strength;
         let device = self.nodes.device.clone();
         let target_names: Vec<_> = glyph_name.iter().cloned().collect();
-        let foreground_revisions = match foreground_revisions(self.font.font(), &target_names) {
+        let foreground_revisions = match foreground_revisions(&self.font, &target_names) {
             Ok(revisions) => revisions,
             Err(error) => {
                 self.note = format!("Cannot capture model target: {error}");
@@ -667,7 +689,7 @@ impl Workspace {
             || self.font.source() != job.master_path
             || self.font.source() != job.source
             || self.session.glyph_name != job.active_glyph
-            || !foreground_is_current(self.font.font(), &job.foreground_revisions, job.all_glyphs)
+            || !foreground_is_current(&self.font, &job.foreground_revisions, job.all_glyphs)
         {
             self.note =
                 "font-ml result is stale after a document, master, glyph, or revision change"
@@ -821,15 +843,19 @@ mod tests {
         let mut proposed = original.clone();
         proposed.width = 620.0;
         proposed.contours[0].points[1].x += 20.0;
-        let revision = runebender::document::edit_batch::glyph_revision(&original)
+        let revision = runebender::formats::ufo::glyph_revision(&original)
             .expect("the foreground revision is available");
         runebender::formats::lib_keys::write_proposal_base(
             &mut proposed,
             &revision,
             "test canonical proposal install",
         );
-        proposal::write(&mut font, "bolden", vec![proposed.clone()])
-            .expect("the proposal is valid");
+        runebender::formats::proposal_ufo::write_proposal_layer(
+            &mut font,
+            "bolden",
+            vec![proposed.clone()],
+        )
+        .expect("the proposal is valid");
         font.save(&path).expect("the proposal fixture saves");
 
         let mut workspace = Workspace::open(&path).expect("the fixture opens");
@@ -841,7 +867,7 @@ mod tests {
             document_id: workspace.document_id,
             glyph: Some("A".into()),
             active_glyph: workspace.session.glyph_name.clone(),
-            foreground_revisions: foreground_revisions(workspace.font.font(), &target_names)
+            foreground_revisions: foreground_revisions(&workspace.font, &target_names)
                 .expect("the foreground revision is captured"),
             ..AiJob::default()
         };
@@ -850,7 +876,10 @@ mod tests {
             &serde_json::json!({"moved": 1, "points": 1, "advance_delta": 120}),
         );
 
-        assert_eq!(workspace.font.font().get_glyph("A"), Some(&original));
+        assert_eq!(
+            workspace.font.font_snapshot().get_glyph("A"),
+            Some(&original)
+        );
         assert!(workspace.ai.installed_order.is_empty());
         assert_eq!(workspace.ai.proposals.len(), 1);
         assert_eq!(workspace.ai.preview_task.as_deref(), Some("bolden"));
@@ -874,10 +903,12 @@ mod tests {
         installed
             .lib
             .remove(runebender::formats::lib_keys::PROPOSAL_BASE_KEY);
-        assert_eq!(workspace.font.font().get_glyph("A"), Some(&installed));
+        assert_eq!(
+            workspace.font.font_snapshot().get_glyph("A"),
+            Some(&installed)
+        );
         assert!(workspace.ai.preview_task.is_none());
         let address = workspace.font.active_layer_address("A").unwrap();
-        assert_eq!(workspace.font.master().undo_depth(0), 0);
         assert_eq!(
             workspace
                 .font
@@ -886,11 +917,20 @@ mod tests {
             1
         );
         workspace.undo_open_glyph(false);
-        assert_eq!(workspace.font.font().get_glyph("A"), Some(&original));
+        assert_eq!(
+            workspace.font.font_snapshot().get_glyph("A"),
+            Some(&original)
+        );
         workspace.undo_open_glyph(true);
-        assert_eq!(workspace.font.font().get_glyph("A"), Some(&installed));
+        assert_eq!(
+            workspace.font.font_snapshot().get_glyph("A"),
+            Some(&installed)
+        );
         workspace.undo_install();
-        assert_eq!(workspace.font.font().get_glyph("A"), Some(&original));
+        assert_eq!(
+            workspace.font.font_snapshot().get_glyph("A"),
+            Some(&original)
+        );
 
         std::fs::remove_dir_all(path).expect("the fixture is removed");
     }
@@ -954,7 +994,6 @@ mod tests {
         workspace.undo_open_glyph(false);
         assert_eq!(workspace.session.advance(), 500.0);
         assert!(workspace.metadata_undo.is_empty());
-        assert_eq!(workspace.font.master().undo_depth(0), 0);
 
         std::fs::remove_dir_all(path).expect("the fixture is removed");
     }
@@ -975,7 +1014,12 @@ mod tests {
         font.default_layer_mut().insert_glyph(original);
         let mut proposed = norad::Glyph::new("A");
         proposed.width = 620.0;
-        proposal::write(&mut font, "bolden", vec![proposed]).expect("the proposal is valid");
+        runebender::formats::proposal_ufo::write_proposal_layer(
+            &mut font,
+            "bolden",
+            vec![proposed],
+        )
+        .expect("the proposal is valid");
         font.save(&path).expect("the fixture saves");
 
         let mut workspace = Workspace::open(&path).expect("the fixture opens");
@@ -988,20 +1032,32 @@ mod tests {
             document_id: workspace.document_id,
             glyph: Some("A".into()),
             active_glyph: workspace.session.glyph_name.clone(),
-            foreground_revisions: foreground_revisions(workspace.font.font(), &target_names)
+            foreground_revisions: foreground_revisions(&workspace.font, &target_names)
                 .expect("the foreground revision is captured"),
             ..AiJob::default()
         };
+        let address = workspace.font.active_layer_address("A").unwrap();
+        let mut transaction = workspace
+            .font
+            .project
+            .begin_document_layer_transaction(&address)
+            .unwrap();
+        transaction
+            .draft_mut()
+            .set_width(540.0)
+            .expect("the finite width is valid");
         workspace
             .font
-            .font_mut()
-            .get_glyph_mut("A")
-            .expect("A remains loaded")
-            .width = 540.0;
+            .project
+            .commit_document_layer_transaction(transaction)
+            .unwrap();
 
         workspace.task_finished(&job, &serde_json::json!({}));
 
-        assert_eq!(workspace.font.font().get_glyph("A").unwrap().width, 540.0);
+        assert_eq!(
+            workspace.font.font_snapshot().get_glyph("A").unwrap().width,
+            540.0
+        );
         assert_eq!(
             workspace.note,
             "font-ml result is stale after a document, master, glyph, or revision change"
@@ -1037,7 +1093,7 @@ mod tests {
             document_id: workspace.document_id,
             glyph: Some("A".into()),
             active_glyph: workspace.session.glyph_name.clone(),
-            foreground_revisions: foreground_revisions(workspace.font.font(), &target_names)
+            foreground_revisions: foreground_revisions(&workspace.font, &target_names)
                 .expect("the foreground revision is captured"),
             ..AiJob::default()
         };
@@ -1058,13 +1114,19 @@ mod tests {
         let mut font = norad::Font::new();
         font.default_layer_mut()
             .insert_glyph(norad::Glyph::new("A"));
-        let expected = foreground_revisions(&font, &[]).expect("the layer can be revised");
+        let mut model =
+            FontModel::from_project(runebender::document::project::Project::from_source(
+                runebender::document::project::SourceInput::from_font(
+                    font,
+                    PathBuf::from("Revision.ufo"),
+                ),
+            ));
+        let expected = foreground_revisions(&model, &[]).expect("the layer can be revised");
 
-        font.default_layer_mut()
-            .insert_glyph(norad::Glyph::new("B"));
+        assert!(model.add_glyph("B", 500.0, None));
 
-        assert!(!foreground_is_current(&font, &expected, true));
-        assert!(foreground_is_current(&font, &expected, false));
+        assert!(!foreground_is_current(&model, &expected, true));
+        assert!(foreground_is_current(&model, &expected, false));
     }
 
     #[cfg(unix)]
@@ -1138,7 +1200,7 @@ mod tests {
         assert!(
             workspace
                 .font
-                .font()
+                .font_snapshot()
                 .layers
                 .iter()
                 .all(|layer| { !layer.name().as_str().starts_with(proposal::LAYER_PREFIX) })
@@ -1263,7 +1325,11 @@ mod tests {
 
         workspace.install_proposal("bolden", Some(vec!["R".into()]));
         assert_eq!(
-            workspace.font.font().get_glyph("R").expect("installed R"),
+            workspace
+                .font
+                .font_snapshot()
+                .get_glyph("R")
+                .expect("installed R"),
             &proposed
         );
         assert_eq!(workspace.ai.installed_order.len(), 1);
@@ -1271,7 +1337,11 @@ mod tests {
 
         workspace.undo_install();
         assert_eq!(
-            workspace.font.font().get_glyph("R").expect("restored R"),
+            workspace
+                .font
+                .font_snapshot()
+                .get_glyph("R")
+                .expect("restored R"),
             &original
         );
         assert!(workspace.ai.installed_order.is_empty());

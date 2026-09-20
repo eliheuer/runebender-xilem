@@ -3,7 +3,7 @@
 
 //! Project assembly around already canonical source documents.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 use super::*;
 
@@ -17,17 +17,16 @@ impl Project {
     ) -> Result<Self, String> {
         let specification = crate::document::new_font::specification(family, style, weight_class)?;
         let variable = VariableData::from_new_font(specification)?;
-        Self::from_canonical_single_source(variable, path, true, HashMap::new())
+        Self::from_canonical_single_source(variable, path, true)
     }
 
     /// Finish an explicit UFO import boundary after its transient decoder has been validated.
     pub(in crate::document) fn from_ufo_boundary(
         path: PathBuf,
         font: &norad::Font,
-        glif_paths: HashMap<String, String>,
     ) -> Result<Self, String> {
-        let variable = VariableData::from_ufo_boundary(font)?;
-        Self::from_canonical_single_source(variable, path, false, glif_paths)
+        let variable = super::super::ufo_codec::decode_source(font)?;
+        Self::from_canonical_single_source(variable, path, false)
     }
 
     /// Finish an imported single-source document whose first save must create a new UFO.
@@ -35,8 +34,8 @@ impl Project {
         path: PathBuf,
         font: &norad::Font,
     ) -> Result<Self, String> {
-        let variable = VariableData::from_ufo_boundary(font)?;
-        Self::from_canonical_single_source(variable, path, true, HashMap::new())
+        let variable = super::super::ufo_codec::decode_source(font)?;
+        Self::from_canonical_single_source(variable, path, true)
     }
 
     /// Decode imported Designspace sources into canonical ownership before projections exist.
@@ -71,25 +70,22 @@ impl Project {
         if filenames.len() != source_map.len() {
             return Err("imported sources do not match Designspace sources".into());
         }
-        let variable = VariableData::from_ufo_boundaries(
+        let variable = super::super::ufo_codec::decode_sources(
             filenames
                 .iter()
                 .map(|filename| &source_map.get(filename).expect("checked source").0),
         )?;
-        let mut masters = BTreeMap::new();
-        for (index, filename) in filenames.into_iter().enumerate() {
-            let (_, path) = source_map.remove(&filename).expect("checked source");
-            let font = variable
-                .source_font(SourceId(index))
-                .ok_or_else(|| format!("missing canonical source {filename}"))?;
-            let mut master = Master::from_font(font, path);
-            master.dirty = true;
-            masters.insert(filename, master);
+        let mut inputs = BTreeMap::new();
+        for filename in filenames {
+            let (font, path) = source_map.remove(&filename).expect("checked source");
+            let mut input = SourceInput::from_font(font, path);
+            input.dirty = true;
+            inputs.insert(filename, input);
         }
         Self::from_designspace_with_variable(
             document,
             |filename| {
-                masters
+                inputs
                     .remove(filename)
                     .ok_or("missing imported source".into())
             },
@@ -101,22 +97,16 @@ impl Project {
         variable: VariableData,
         path: PathBuf,
         dirty: bool,
-        glif_paths: HashMap<String, String>,
     ) -> Result<Self, String> {
         let source = SourceId(0);
-        let font = variable
-            .source_font(source)
-            .ok_or("canonical source has no persistence projection")?;
         let name: Arc<str> = variable
             .font_info(source)
             .and_then(|info| info.names.style_name.clone())
             .unwrap_or_else(|| "Regular".into())
             .into();
-        let mut master = Master::from_font(font, path);
-        master.dirty = dirty;
-        master.glif_paths = glif_paths;
+        let state = SourceState::new(path, dirty);
         let mut project = Self {
-            masters: vec![master],
+            sources: vec![state],
             variable,
             source_history: sources::SourceHistory::default(),
             document_history: super::super::history::DocumentHistory::default(),
@@ -130,7 +120,6 @@ impl Project {
             compat: HashMap::new(),
             export_source: None,
             instances: Vec::new(),
-            ds_doc: None,
             ds_dirty: false,
             brace: Vec::new(),
             experiments: super::super::experiments::Experiments::default(),
@@ -182,7 +171,7 @@ mod tests {
         let names = project.glyph_names().collect::<Vec<_>>();
         assert_eq!(names.len(), 324);
         assert_eq!(names.first(), Some(&".notdef"));
-        assert!(project.sources()[0].dirty);
+        assert_eq!(project.document_source_is_modified(source), Some(true));
         assert_eq!(
             project.document_layer("space", &layer).unwrap().width(),
             260.0
@@ -274,7 +263,7 @@ mod tests {
             project.document_source_path(source),
             Some(destination.as_path())
         );
-        assert!(project.sources()[0].dirty);
+        assert_eq!(project.document_source_is_modified(source), Some(true));
         assert!(project.document_source(source).is_some());
         assert_eq!(std::fs::read(occupied.join("sentinel")).unwrap(), b"keep");
         assert!(!destination.exists());
@@ -324,8 +313,12 @@ mod tests {
             source: bold_source,
             name: "public.default".into(),
         };
-        assert_eq!(project.sources().len(), 2);
-        assert!(project.sources().iter().all(|source| source.dirty));
+        assert_eq!(project.document_sources().count(), 2);
+        assert!(
+            project
+                .document_sources()
+                .all(|source| project.document_source_is_modified(source.id()) == Some(true))
+        );
         assert_eq!(
             project.document_source_path(bold_source),
             Some(Path::new("Import/Bold.ufo"))

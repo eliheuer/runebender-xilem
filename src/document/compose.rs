@@ -23,12 +23,15 @@
 use std::collections::HashMap;
 
 use kurbo::{Point, Vec2};
+#[cfg(test)]
 use norad::{AffineTransform, Anchor, Component, Font, Glyph, Name};
 use serde::{Deserialize, Serialize};
 
 use crate::document::composites::{AlignInput, realign_component_offsets};
 use crate::document::project::Project;
-use crate::document::proposal::{self, ProposalSummary};
+#[cfg(test)]
+use crate::document::proposal;
+use crate::document::proposal::ProposalSummary;
 use crate::document::variable::SourceId;
 use crate::document::{DocumentEditError, LayerView};
 
@@ -146,6 +149,7 @@ const SPACING_FALLBACK: &[(u32, u32)] = &[
 
 /// Glyph names by codepoint, over the foreground. The first glyph
 /// that carries a codepoint wins.
+#[cfg(test)]
 fn by_codepoint(font: &Font) -> HashMap<u32, String> {
     let mut map = HashMap::new();
     for glyph in font.default_layer().iter() {
@@ -187,11 +191,13 @@ fn recipe_from_codepoint(map: &HashMap<u32, String>, cp: char) -> Option<Recipe>
 }
 
 /// The recipe for a glyph, from whichever source has one.
+#[cfg(test)]
 pub fn recipe_for(font: &Font, glyph: &Glyph) -> Option<Recipe> {
     let map = by_codepoint(font);
     recipe_with_map(font, &map, glyph)
 }
 
+#[cfg(test)]
 fn recipe_with_map(font: &Font, map: &HashMap<u32, String>, glyph: &Glyph) -> Option<Recipe> {
     let name = glyph.name().to_string();
     // 1. Unicode.
@@ -236,6 +242,7 @@ fn recipe_with_map(font: &Font, map: &HashMap<u32, String>, glyph: &Glyph) -> Op
     None
 }
 
+#[cfg(test)]
 fn anchors_of(glyph: &Glyph) -> Vec<(String, Point)> {
     glyph
         .anchors
@@ -252,6 +259,7 @@ type Placement = (Vec<(String, Vec2)>, Vec<(String, Point)>);
 /// anchor onto the nearest `name` anchor offered so far (the base's,
 /// or an earlier mark's, which is how marks stack). Returns the
 /// placed components and the anchors the result offers on.
+#[cfg(test)]
 fn place(font: &Font, recipe: &Recipe) -> Result<Placement, String> {
     let base = font
         .get_glyph(recipe.base.as_str())
@@ -328,11 +336,13 @@ fn place(font: &Font, recipe: &Recipe) -> Result<Placement, String> {
 }
 
 /// Derives one glyph. Err names the reason it cannot be.
+#[cfg(test)]
 pub fn derive(font: &Font, name: &str) -> Result<(Glyph, Derived), String> {
     let map = by_codepoint(font);
     derive_with_map(font, &map, name)
 }
 
+#[cfg(test)]
 fn derive_with_map(
     font: &Font,
     map: &HashMap<u32, String>,
@@ -397,6 +407,7 @@ fn derive_with_map(
 }
 
 /// Every glyph in the foreground that has a recipe.
+#[cfg(test)]
 pub fn composable(font: &Font) -> Vec<String> {
     let map = by_codepoint(font);
     font.default_layer()
@@ -408,6 +419,7 @@ pub fn composable(font: &Font) -> Vec<String> {
 
 /// Every composable glyph whose recipe uses `glyph` as its base or
 /// one of its marks: what has to re-derive when `glyph` changes.
+#[cfg(test)]
 pub fn dependents(font: &Font, glyph: &str) -> Vec<String> {
     let map = by_codepoint(font);
     font.default_layer()
@@ -424,6 +436,7 @@ pub fn dependents(font: &Font, glyph: &str) -> Vec<String> {
 /// `write`, puts the ones that differ from the foreground into the
 /// proposal layer. Glyphs already current are reported and not
 /// proposed.
+#[cfg(test)]
 pub fn compose(font: &mut Font, names: Option<&[String]>, write: bool) -> Report {
     let wanted: Vec<String> = match names {
         Some(list) => list.to_vec(),
@@ -655,7 +668,7 @@ fn derive_document_with_map(
 ///
 /// `explicit_recipe` supplies the already decoded `com.runebender.compose` value for a glyph.
 /// The returned payloads are immutable and must be installed through a guarded Project proposal
-/// transaction; this function never mutates the document or compatibility projections.
+/// transaction; this function never mutates the document.
 pub fn plan_document<'a, 'recipe>(
     layers: impl IntoIterator<Item = LayerView<'a>>,
     names: Option<&[String]>,
@@ -765,7 +778,7 @@ mod tests {
 
     use super::*;
 
-    use crate::document::project::{Master, Project};
+    use crate::document::project::{Project, SourceInput};
     use crate::document::variable::SourceId;
 
     fn anchor(name: &str, x: f64, y: f64) -> Anchor {
@@ -827,7 +840,7 @@ mod tests {
     fn canonical_plan_matches_the_legacy_derived_payload() {
         let font = latin();
         let (glyph, expected) = derive(&font, "Aacute").unwrap();
-        let project = Project::from_source(Master::from_font(
+        let project = Project::from_source(SourceInput::from_font(
             font,
             PathBuf::from("CanonicalCompose.ufo"),
         ));
@@ -885,7 +898,7 @@ mod tests {
         let (_, expected) = derive(&font, "Aacute").unwrap();
         assert_eq!(expected.recipe.base, "A");
         assert_eq!(expected.advance, 700.0);
-        let project = Project::from_source(Master::from_font(
+        let project = Project::from_source(SourceInput::from_font(
             font,
             PathBuf::from("DuplicateUnicodeCompose.ufo"),
         ));
@@ -916,7 +929,7 @@ mod tests {
             .unwrap()
             .lib
             .insert(LIB_KEY.into(), plist::Value::Integer(7.into()));
-        let project = Project::from_source(Master::from_font(
+        let project = Project::from_source(SourceInput::from_font(
             font,
             PathBuf::from("InvalidCanonicalCompose.ufo"),
         ));
@@ -998,7 +1011,7 @@ mod tests {
 
         let mut recipes = HashMap::new();
         recipes.insert("Aacute.alt", "A + acute");
-        let project = Project::from_source(Master::from_font(
+        let project = Project::from_source(SourceInput::from_font(
             font,
             PathBuf::from("CanonicalExplicitCompose.ufo"),
         ));

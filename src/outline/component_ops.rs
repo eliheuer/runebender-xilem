@@ -4,6 +4,7 @@
 //! Components inside a glyph: resolving them to contours, hit testing,
 //! moving, adding, duplicating, deleting, and decomposing one.
 
+#[cfg(test)]
 use norad::{Contour, Font, Glyph};
 
 use crate::outline::glyph_paths;
@@ -144,6 +145,7 @@ pub fn resolved_document_components<'a>(
 
 /// Contours of a glyph's components, recursively resolved and
 /// rounded to integer units.
+#[cfg(test)]
 pub fn resolved_component_contours(font: &Font, glyph: &Glyph) -> Vec<Contour> {
     fn collect(
         font: &Font,
@@ -178,6 +180,7 @@ pub fn resolved_component_contours(font: &Font, glyph: &Glyph) -> Vec<Contour> {
 }
 
 /// The topmost component whose resolved outline contains the point.
+#[cfg(test)]
 pub fn component_at(font: &Font, glyph: &Glyph, pt: kurbo::Point) -> Option<usize> {
     use kurbo::Shape as _;
     for (i, component) in glyph.components.iter().enumerate().rev() {
@@ -194,6 +197,7 @@ pub fn component_at(font: &Font, glyph: &Glyph, pt: kurbo::Point) -> Option<usiz
 }
 
 /// Move a component by adjusting its transform offset.
+#[cfg(test)]
 pub fn translate_component(glyph: &mut Glyph, index: usize, dx: f64, dy: f64) -> bool {
     let Some(component) = glyph.components.get_mut(index) else {
         return false;
@@ -204,6 +208,7 @@ pub fn translate_component(glyph: &mut Glyph, index: usize, dx: f64, dy: f64) ->
 }
 
 /// Remove a component.
+#[cfg(test)]
 pub fn delete_component(glyph: &mut Glyph, index: usize) -> bool {
     if index >= glyph.components.len() {
         return false;
@@ -216,6 +221,7 @@ pub fn delete_component(glyph: &mut Glyph, index: usize) -> bool {
 ///
 /// The outline is point-exact with what `resolved_component_contours`
 /// produces, so decomposing one component matches decomposing all.
+#[cfg(test)]
 pub fn decompose_single_component(font: &Font, glyph: &mut Glyph, index: usize) -> bool {
     let Some(component) = glyph.components.get(index) else {
         return false;
@@ -238,6 +244,7 @@ pub fn decompose_single_component(font: &Font, glyph: &mut Glyph, index: usize) 
 /// The placement is anchor-locked: a mark lands on its anchor
 /// rather than at the origin. This is `addComponent` in the web
 /// editor.
+#[cfg(test)]
 pub fn add_component(font: &Font, glyph: &mut Glyph, base: &str) -> bool {
     if base.is_empty() || base == glyph.name().as_str() {
         return false;
@@ -257,6 +264,7 @@ pub fn add_component(font: &Font, glyph: &mut Glyph, base: &str) -> bool {
 }
 
 /// Duplicate a component, offset by (20, 20). Returns the new index.
+#[cfg(test)]
 pub fn duplicate_component(glyph: &mut Glyph, index: usize) -> Option<usize> {
     let source = glyph.components.get(index)?;
     let mut transform = source.transform;
@@ -272,7 +280,7 @@ mod canonical_tests {
     use super::*;
     use crate::document::model::glyph_metadata::{Metaball, MetaballGroup, Metaballs};
     use crate::document::project::Project;
-    use crate::document::source::Master;
+    use crate::document::source::SourceInput;
     use crate::document::variable::{GlyphLayerAddress, SourceId};
     use crate::formats::metaballs::write_metaballs;
     use norad::{AffineTransform, Component, Name};
@@ -314,7 +322,8 @@ mod canonical_tests {
         let mut font = Font::default();
         font.default_layer_mut().insert_glyph(blob);
         font.default_layer_mut().insert_glyph(user);
-        let project = Project::from_source(Master::from_font(font, "MetaballComponent.ufo".into()));
+        let project =
+            Project::from_source(SourceInput::from_font(font, "MetaballComponent.ufo".into()));
         let layer = project
             .document_source(SourceId(0))
             .unwrap()

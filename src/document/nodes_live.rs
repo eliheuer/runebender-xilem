@@ -245,17 +245,6 @@ pub fn discard(project: &mut Project, name: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Save a captured version to a new UFO directory. Existing destinations are refused;
-/// the live root and its save path are unchanged. A failed write may leave a partial directory.
-pub fn save_new(font: &norad::Font, path: &std::path::Path) -> Result<(), String> {
-    if path.extension().and_then(|e| e.to_str()) != Some("ufo") {
-        return Err("Choose a new .ufo directory".into());
-    }
-    std::fs::create_dir(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    font.save(path)
-        .map_err(|e| format!("{}: {e}", path.display()))
-}
-
 /// Add existing or MCP-created session versions to a live graph, preserving all
 /// existing node positions and connections. Disk-only graphs are left unchanged.
 /// Returns the number of imported versions.
@@ -311,19 +300,28 @@ pub fn import_versions(graph: &mut NodeGraph, project: &Project) -> usize {
 #[cfg(test)]
 mod tests {
     use super::super::font_memory::designspace_from_str;
-    use super::super::project::Master;
+    use super::super::project::SourceInput;
     use super::*;
+
+    fn save_new(font: &norad::Font, path: &std::path::Path) -> Result<(), String> {
+        if path.extension().and_then(|extension| extension.to_str()) != Some("ufo") {
+            return Err("Choose a new .ufo directory".into());
+        }
+        std::fs::create_dir(path).map_err(|error| format!("{}: {error}", path.display()))?;
+        font.save(path)
+            .map_err(|error| format!("{}: {error}", path.display()))
+    }
 
     fn two_source_project() -> Project {
         let font = Project::new_font("synthetic.ufo".into())
-            .source_snapshot(SourceId(0))
+            .encode_ufo_source(SourceId(0))
             .unwrap();
         let document = designspace_from_str(
             r#"<designspace format="5.0"><axes><axis name="Weight" tag="wght" minimum="0" default="0" maximum="1"/></axes><sources><source filename="first.ufo"><location><dimension name="Weight" xvalue="0"/></location></source><source filename="second.ufo"><location><dimension name="Weight" xvalue="1"/></location></source></sources></designspace>"#,
         )
         .unwrap();
         Project::from_designspace(document, |path| {
-            Ok(Master::from_font(font.clone(), path.into()))
+            Ok(SourceInput::from_font(font.clone(), path.into()))
         })
         .unwrap()
     }
@@ -377,7 +375,7 @@ mod tests {
         )
         .unwrap();
         let font = p.experiments.versions[version.branch.as_ref().unwrap()]
-            .source_snapshot(&p)
+            .encode_ufo_source(&p)
             .unwrap();
         let dir =
             std::env::temp_dir().join(format!("runebender-node-export-{}.ufo", std::process::id()));

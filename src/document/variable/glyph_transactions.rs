@@ -281,22 +281,16 @@ fn validate_new_glyph(
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use norad::{Font, Glyph};
 
-    use super::super::*;
-
     #[test]
-    fn imported_identity_is_stable_across_snapshots_and_source_updates() {
+    fn imported_identity_is_stable_across_snapshots() {
         let mut font = Font::new();
         font.default_layer_mut().insert_glyph(Glyph::new("A"));
-        let source = Master::from_font(font.clone(), PathBuf::from("Regular.ufo"));
-        let mut data = VariableData::from_sources(&[source]);
+        let data = crate::document::ufo_codec::decode_source(&font).unwrap();
         let id = data.glyph_view("A").unwrap().id();
 
         assert_eq!(data.snapshot().glyphs["A"].id, id);
-        assert!(!data.update_source(SourceId(0), &font));
         assert_eq!(data.glyph_view("A").unwrap().id(), id);
     }
 
@@ -305,8 +299,7 @@ mod tests {
         let mut font = Font::new();
         font.default_layer_mut().insert_glyph(Glyph::new("A"));
         font.default_layer_mut().insert_glyph(Glyph::new("B"));
-        let source = Master::from_font(font, PathBuf::from("Regular.ufo"));
-        let data = VariableData::from_sources(&[source]);
+        let data = crate::document::ufo_codec::decode_source(&font).unwrap();
 
         assert_ne!(
             data.glyph_view("A").unwrap().id(),

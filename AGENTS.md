@@ -18,8 +18,9 @@ A font path starts the Xilem editor; a subcommand runs headlessly before window 
 Modules under `src/analysis`, `src/document`, `src/formats`, `src/outline`, `src/text`, and `src/ui` contain reusable font and toolkit-independent editor behavior.
 
 The in-memory document is `document::project::Project`, which owns variable glyphs and source metadata.
-Exact UFO glyph payloads remain in its private glyph-local store; `norad::Font` values are guarded compatibility projections and persistence adapters.
-Use Project layer operations or scoped source guards for mutations, and Project save for open documents.
+Exact UFO-only values remain in private glyph-layer preservation records.
+Norad values exist only inside explicit import, export, proposal and serialization adapters.
+Use Project layer and source operations for mutations, and Project save for open documents.
 Babelfont and fontdrasil types stay behind the document adapters.
 Keep application state and platform work out of the font-engine modules.
 Keep font mutations, analysis, formats, shaping, interpolation, selection, and undo in those modules when they can be shared.
