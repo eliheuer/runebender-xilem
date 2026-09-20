@@ -115,6 +115,7 @@ Project compatibility detail no longer joins this list: it compares canonical la
 `document_source_glyph_entries` now supplies the sorted paint-ready payload used by `FontModel::rebuild_cache` and `refresh_entry`, and FontModel owns the derived O(1) name index.
 The remaining `FontModel::master` and `font` reads no longer include application grid-cache construction.
 FontModel source paths, source counts, writability, compatibility gating and export counts now use canonical source views and source-glyph metadata rather than Master fields.
+Editor joining checks, SVG export, source-layer authoring, Unicode parsing, kerning/groups, related glyphs and overview points no longer read the active UFO projection.
 
 The remaining non-application consumers are:
 

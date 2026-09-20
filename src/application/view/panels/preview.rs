@@ -144,7 +144,26 @@ pub(crate) fn glyph_preview(app: &Workspace) -> impl WidgetView<Workspace> + use
     use masonry::kurbo::{Affine, Circle, Line, Point, Rect, Shape, Size, Stroke};
     let data = app.selected.and_then(|i| {
         let entry = app.font.glyphs.get(i)?;
-        let contours = app.font.font().get_glyph(&entry.name)?.contours.clone();
+        let address = app.font.active_layer_address(&entry.name)?;
+        let contours = app
+            .font
+            .project
+            .document_layer(&entry.name, &address.layer)?
+            .contours()
+            .map(|contour| {
+                contour
+                    .points()
+                    .map(|point| {
+                        (
+                            point.position().x,
+                            point.position().y,
+                            point.point_type(),
+                            point.is_smooth(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
         Some((entry.outline.clone(), contours))
     });
     let pal = app.palette.clone();
@@ -171,17 +190,17 @@ pub(crate) fn glyph_preview(app: &Workspace) -> impl WidgetView<Workspace> + use
             p.stroke(&(t * (**outline).clone()), &stroke, pal.role("pathStroke"))
                 .draw();
             for contour in contours {
-                let n = contour.points.len();
-                for (i, point) in contour.points.iter().enumerate() {
-                    if point.typ != norad::PointType::OffCurve {
+                let n = contour.len();
+                for (i, (x, y, point_type, _)) in contour.iter().enumerate() {
+                    if *point_type != runebender::document::LayerPointType::OffCurve {
                         continue;
                     }
-                    let off = t * Point::new(point.x, point.y);
+                    let off = t * Point::new(*x, *y);
                     for j in [(i + n - 1) % n, (i + 1) % n] {
-                        let on = &contour.points[j];
-                        if on.typ != norad::PointType::OffCurve {
+                        let (on_x, on_y, on_type, _) = contour[j];
+                        if on_type != runebender::document::LayerPointType::OffCurve {
                             p.stroke(
-                                Line::new(off, t * Point::new(on.x, on.y)),
+                                Line::new(off, t * Point::new(on_x, on_y)),
                                 &stroke,
                                 pal.role("pointOffcurve").with_alpha(0.7),
                             )
@@ -189,12 +208,12 @@ pub(crate) fn glyph_preview(app: &Workspace) -> impl WidgetView<Workspace> + use
                         }
                     }
                 }
-                for point in &contour.points {
-                    let at = t * Point::new(point.x, point.y);
-                    let off = point.typ == norad::PointType::OffCurve;
+                for (x, y, point_type, smooth) in contour {
+                    let at = t * Point::new(*x, *y);
+                    let off = *point_type == runebender::document::LayerPointType::OffCurve;
                     let hue = pal.role(if off {
                         "pointOffcurve"
-                    } else if point.smooth {
+                    } else if *smooth {
                         "pointSmooth"
                     } else {
                         "pointCorner"
@@ -205,7 +224,7 @@ pub(crate) fn glyph_preview(app: &Workspace) -> impl WidgetView<Workspace> + use
                         (pal.canvas, hue)
                     };
                     let radius = ControlSize::Dot.px() * 0.4;
-                    if off || point.smooth {
+                    if off || *smooth {
                         let shape = Circle::new(at, radius);
                         p.fill(shape, fill).draw();
                         p.stroke(shape, &stroke, border).draw();

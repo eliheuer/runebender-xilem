@@ -3003,7 +3003,7 @@ mod tests {
             .iter()
             .position(|g| g.name.as_ref() == "n")
             .unwrap();
-        let rect = kurbo::Rect::new(0.0, 0.0, 50.0, 50.0);
+        let rect = Rect::new(0.0, 0.0, 50.0, 50.0);
         project.edit_sources()[0].add_shape_contour(idx, rect, false);
         project.recheck_compat("n");
         assert_eq!(project.compat.get("n"), Some(&false));

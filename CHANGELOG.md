@@ -45,6 +45,7 @@ No release has been published yet.
 - Read interpolation compatibility diagnostics from canonical source layers instead of Master projections.
 - Moved application grid-cache rebuilds and constant-time glyph lookup onto canonical paint-ready entries.
 - Read application source paths, counts, writability and export participation from canonical source views and metadata.
+- Read editor joining checks, SVG export, source-layer commands, Unicode parsing, kerning/groups, related glyphs and overview points from canonical caches and views.
 - Python Babelfont package imports now construct canonical single- and multi-source documents before deriving temporary UFO compatibility projections.
 - Built interpolated sources as atomic canonical document transactions, preserving exact metadata and undo while assigning fresh object identities to the new source.
 - Moved Designspace structure, font information, component alignment, mark color, metrics keys and formulas, metaball payloads, and HOI intermediate points into typed canonical document storage with guarded edits and UFO boundary projection.

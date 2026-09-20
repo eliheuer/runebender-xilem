@@ -317,15 +317,11 @@ impl Workspace {
         let Some(before) = self.font.glyph_codepoints(name) else {
             return;
         };
-        let Some(glyph) = self.font.font().get_glyph(name) else {
+        let Ok(codepoints) =
+            runebender::document::model::glyph_metadata::parse_codepoints(self.unicode_buf.trim())
+        else {
             return;
         };
-        let mut parsed = glyph.clone();
-        if !runebender::document::font_ops::set_glyph_unicode(&mut parsed, self.unicode_buf.trim())
-        {
-            return;
-        }
-        let codepoints: Vec<char> = parsed.codepoints.iter().collect();
         let after = vec![codepoints; before.len()];
         if before == after {
             return;

@@ -475,14 +475,9 @@ impl Workspace {
             } else {
                 continue;
             };
-            let Some(glyph) = self.font.font().get_glyph(&entry.name) else {
-                continue;
-            };
-            let outline =
-                runebender::outline::glyph_paths::glyph_to_bezpath(glyph, self.font.font());
             for left in [true, false] {
                 if (left && joins_left) || (!left && joins_right) {
-                    match joining_band(&outline, entry.advance, left, 2.0) {
+                    match joining_band(&entry.outline, entry.advance, left, 2.0) {
                         Some((lo, hi)) => bands.push((index, lo, hi)),
                         None => broken.push(index),
                     }
@@ -660,13 +655,9 @@ impl Workspace {
         let Some(entry) = self.font.glyphs.get(index) else {
             return;
         };
-        let Some(glyph) = self.font.font().get_glyph(&entry.name) else {
-            return;
-        };
-        let path = runebender::outline::glyph_paths::glyph_to_bezpath(glyph, self.font.font());
         let svg = runebender::formats::svg::glyph_svg(
-            &path,
-            glyph.width,
+            &entry.outline,
+            entry.advance,
             self.font.ascender(),
             self.font.descender(),
         );

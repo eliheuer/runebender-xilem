@@ -74,7 +74,13 @@ impl Workspace {
             "layer-add" => {
                 let from = LayerId {
                     source: id,
-                    name: self.font.font().default_layer().name().to_string(),
+                    name: self
+                        .font
+                        .project
+                        .document_source(id)
+                        .expect("active source remains in the document")
+                        .default_layer()
+                        .name,
                 };
                 self.font
                     .project

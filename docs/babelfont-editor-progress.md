@@ -308,7 +308,7 @@ git diff --check
 - Overview metaball conversion now commits guarded layer transactions and replays Project-owned layer history instead of calling `FontModel::replace_glyph` or recording `Master.history` snapshots.
 - No production application caller materializes or reconciles a whole glyph; compatibility projection helpers remain test-only while M13 removes the bridge itself.
 - Production application code no longer calls `FontModel::master_mut` or `font_mut`; the two accessors are confined to stale-state and persistence fixtures.
-- Direct source-projection mutation remains in Save As retargeting; that caller remains M06/M13 work rather than a completion claim.
+- Production metrics-formula, Unicode and Save As writes now use canonical Project operations; no production application caller mutates a source projection.
 - Pen, Rectangle, Ellipse and Knife Pointer Cancel paths now have real widget-event coverage.
 
 ## Canonical Session storage and history cutover
@@ -660,4 +660,4 @@ Warning-denied native workspace/all-target Clippy, the release WASM build, warni
 
 ## Next action
 
-Replace the remaining Save As `edit_sources` caller once the reviewed persistence dependency chain is available on this branch, then consume the reviewed test-only compatibility-bridge removal during M13.
+Remove the remaining production read-only `FontModel::font` and legacy-history callers, then delete the compatibility Master shell and mutable guards during M13.

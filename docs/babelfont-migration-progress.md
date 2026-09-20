@@ -2685,3 +2685,14 @@ FontModel source paths, source count, writability checks, active-source switchin
 These summary operations no longer inspect the compatibility Master collection or active UFO font.
 
 The six FontModel tests and warning-denied binary Clippy passed, together with formatting and whitespace checks.
+
+### Canonical editor command and panel reads
+
+Evidence commit: `Read editor surfaces canonically` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Read editor surfaces canonically$' -1`.
+
+Joining checks and SVG export reuse canonical paint entries.
+Source-layer authoring resolves the default layer through `SourceView`, Unicode input uses the typed canonical parser, and the kerning, groups, related-glyph and overview-point panels read canonical metadata or addressed layer views.
+The obsolete `feature_source` integration-test assertions now query canonical feature text while retaining the source-snapshot persistence check.
+
+Focused metrics-formula and Unicode history regressions, strict all-target Clippy, formatting and whitespace checks passed.
