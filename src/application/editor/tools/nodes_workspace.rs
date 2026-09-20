@@ -53,13 +53,26 @@ impl Workspace {
             .project
             .source_id(self.font.active())
             .ok_or("active source is unavailable")?;
+        let source_location = self
+            .font
+            .project
+            .document_source(source)
+            .ok_or("selected source is unavailable")?
+            .location();
+        let normalized_location: Vec<f64> = self
+            .font
+            .project
+            .axes
+            .iter()
+            .map(|axis| source_location.get(&axis.name).copied().unwrap_or(0.0))
+            .collect();
         let mut graph = nodes_live::comparison_starter(source);
         for node in &mut graph.nodes {
             if node.type_name == "live.proof" {
                 node.values
                     .get_mut("recipe")
                     .expect("starter proof has recipe")["normalized_location"] =
-                    serde_json::json!(vec![0.0; self.font.project.axes.len()]);
+                    serde_json::json!(normalized_location);
             }
         }
         let session = GraphSession::new(

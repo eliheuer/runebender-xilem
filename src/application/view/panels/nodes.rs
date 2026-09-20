@@ -33,7 +33,6 @@ use crate::application::editor::tools::nodes_execution::LiveGraphPhase;
 use crate::application::platform::nodes_proofs::NodeProofInspection;
 #[cfg(unix)]
 use runebender::document::agent::ToolCall;
-#[cfg(unix)]
 use runebender::document::nodes::Registry;
 #[cfg(unix)]
 use runebender::document::nodes_session::{
@@ -43,7 +42,7 @@ use runebender::document::nodes_session::{
 
 struct CanvasProjection {
     graph: Arc<runebender::document::nodes::NodeGraph>,
-    registry: Arc<runebender::document::nodes::Registry>,
+    registry: Arc<Registry>,
     rows: Arc<std::collections::BTreeMap<u32, crate::application::editor::tools::nodes::RowState>>,
     content: Arc<NodeContentMap>,
     problems: Vec<String>,

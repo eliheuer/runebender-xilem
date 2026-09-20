@@ -1281,6 +1281,10 @@ mod tests {
         assert!(rendered.iter().any(|byte| *byte != 0));
 
         harness.mouse_click_on(editor_id, Some(PointerButton::Primary));
+        assert!(matches!(
+            harness.pop_action::<NodesEvent>(),
+            Some((NodesEvent::Selected(Some(3)), _))
+        ));
         harness.process_text_event(TextEvent::Ime(Ime::Commit("#".into())));
         assert!(matches!(
             harness.pop_action::<TextAction>(),

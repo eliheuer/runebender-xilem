@@ -690,7 +690,7 @@ mod tests {
                 text: "print('specimen')\n".into(),
                 content_hash: "script-1".into(),
                 state: ContentState::Current,
-                size: [(LIVE_W - PAD * 2.0) as f32, CODE_H as f32],
+                size: [240.0, 112.0],
             }),
         );
         let boxes = layout_with_content(&graph, &registry, &content);
@@ -733,7 +733,7 @@ mod tests {
             image: None,
             previous_image: Some(image.clone()),
             state: ContentState::Running,
-            size: [(LIVE_W - PAD * 2.0) as f32, IMAGE_H as f32],
+            size: [240.0, 144.0],
         };
         assert_eq!(content.previous_image, Some(image));
         assert_eq!(content.state, ContentState::Running);
