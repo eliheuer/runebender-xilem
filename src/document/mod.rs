@@ -27,6 +27,7 @@ pub use variable::{CanonicalSourceMetadataSnapshot, CanonicalSourceStructureSnap
 pub mod canonical_metadata;
 pub mod compile;
 mod compile_metadata;
+pub mod compiled_proof;
 pub mod compose;
 pub mod composites;
 pub mod edit_batch;
