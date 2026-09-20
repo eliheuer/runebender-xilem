@@ -1459,7 +1459,11 @@ mod tests {
             modifiers,
             ..KeyboardEvent::default()
         }));
-        assert!(harness.pop_action::<TextAction>().is_none());
+        let Some((TextAction::Changed(undone), source)) = harness.pop_action::<TextAction>() else {
+            panic!("local Undo did not emit the restored code");
+        };
+        assert!(!undone.contains("# second"));
+        assert_eq!(source, second_editor);
     }
 
     #[test]

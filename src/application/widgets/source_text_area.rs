@@ -1,13 +1,14 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! A multiline source editor which keeps unsupported text history keys local.
+//! A multiline source editor with bounded local text history.
 //!
 //! The pinned Masonry text area treats modified `z` and `y` keys as ordinary text.
-//! This leaf owns the upstream text area value directly, filters those two shortcuts first, and
+//! This leaf owns the upstream text area value directly, handles those two shortcuts first, and
 //! delegates all other editing, IME, selection, accessibility, layout, and painting behavior.
 
 use std::any::TypeId;
+use std::collections::VecDeque;
 use std::marker::PhantomData;
 
 use masonry::accesskit::{Node, Role};
@@ -29,6 +30,9 @@ use xilem::{Color, Pod, ViewCtx};
 use crate::application::view::design::TextSize;
 
 type Callback<State, Action> = Box<dyn Fn(&mut State, String) -> Action + Send + Sync + 'static>;
+
+const MAX_HISTORY_STEPS: usize = 64;
+const MAX_HISTORY_BYTES: usize = 1024 * 1024;
 
 /// Build a multiline, monospace editor for code or structured parameters.
 pub(crate) fn source_text_area<F, State, Action>(
@@ -137,6 +141,7 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
 pub(crate) struct SourceTextArea {
     inner: TextArea<true>,
     text_size: f32,
+    history: TextHistory,
 }
 
 impl SourceTextArea {
@@ -146,6 +151,7 @@ impl SourceTextArea {
         Self {
             inner: Self::text_area(contents, text_size),
             text_size,
+            history: TextHistory::default(),
         }
     }
 
@@ -174,6 +180,7 @@ impl SourceTextArea {
     pub(crate) fn replace_external_content(this: &mut WidgetMut<'_, Self>, contents: &str) {
         if this.widget.inner.text() != contents {
             this.widget.inner = Self::text_area(contents, this.widget.text_size);
+            this.widget.history.clear();
             this.ctx.request_layout();
             this.ctx.request_render();
         }
@@ -187,6 +194,102 @@ impl SourceTextArea {
             this.widget.text_size = text_size;
             this.ctx.request_layout();
             this.ctx.request_render();
+        }
+    }
+
+    fn contents(&self) -> String {
+        self.inner.text().into_iter().collect()
+    }
+
+    fn restore_history(&mut self, ctx: &mut EventCtx<'_>, action: TextHistoryAction) {
+        let current = self.contents();
+        let replacement = match action {
+            TextHistoryAction::Undo => self.history.undo(current),
+            TextHistoryAction::Redo => self.history.redo(current),
+        };
+        let Some(replacement) = replacement else {
+            return;
+        };
+        self.inner = Self::text_area(&replacement, self.text_size);
+        ctx.submit_action::<TextAction>(TextAction::Changed(replacement));
+        ctx.request_layout();
+        ctx.request_render();
+    }
+}
+
+#[derive(Clone, Copy)]
+enum TextHistoryAction {
+    Undo,
+    Redo,
+}
+
+#[derive(Default)]
+struct TextHistory {
+    undo: VecDeque<String>,
+    redo: VecDeque<String>,
+    bytes: usize,
+}
+
+impl TextHistory {
+    fn clear(&mut self) {
+        self.undo.clear();
+        self.redo.clear();
+        self.bytes = 0;
+    }
+
+    fn record_edit(&mut self, previous: String) {
+        self.clear_redo();
+        self.push_undo(previous);
+    }
+
+    fn undo(&mut self, current: String) -> Option<String> {
+        let replacement = self.undo.pop_back()?;
+        self.bytes = self.bytes.saturating_sub(replacement.len());
+        self.push_redo(current);
+        Some(replacement)
+    }
+
+    fn redo(&mut self, current: String) -> Option<String> {
+        let replacement = self.redo.pop_back()?;
+        self.bytes = self.bytes.saturating_sub(replacement.len());
+        self.push_undo(current);
+        Some(replacement)
+    }
+
+    fn clear_redo(&mut self) {
+        self.bytes = self
+            .bytes
+            .saturating_sub(self.redo.iter().map(String::len).sum::<usize>());
+        self.redo.clear();
+    }
+
+    fn push_undo(&mut self, value: String) {
+        Self::push(&mut self.undo, &mut self.bytes, value);
+        self.trim();
+    }
+
+    fn push_redo(&mut self, value: String) {
+        Self::push(&mut self.redo, &mut self.bytes, value);
+        self.trim();
+    }
+
+    fn push(stack: &mut VecDeque<String>, bytes: &mut usize, value: String) {
+        if value.len() <= MAX_HISTORY_BYTES {
+            *bytes = bytes.saturating_add(value.len());
+            stack.push_back(value);
+        }
+    }
+
+    fn trim(&mut self) {
+        while self.undo.len() + self.redo.len() > MAX_HISTORY_STEPS
+            || self.bytes > MAX_HISTORY_BYTES
+        {
+            let dropped = self.undo.pop_front().or_else(|| self.redo.pop_front());
+            let Some(dropped) = dropped else {
+                self.bytes = 0;
+                return;
+            };
+            self.bytes = self.bytes.saturating_sub(dropped.len());
         }
     }
 }
@@ -211,12 +314,17 @@ impl Widget for SourceTextArea {
     ) {
         if let TextEvent::Keyboard(key) = event
             && key.state == KeyState::Down
-            && blocks_text_history_key(&key.key, key.modifiers)
+            && let Some(action) = text_history_action(&key.key, key.modifiers)
         {
+            self.restore_history(ctx, action);
             ctx.set_handled();
             return;
         }
+        let before = self.contents();
         self.inner.on_text_event(ctx, props, event);
+        if self.inner.text() != &before {
+            self.history.record_edit(before);
+        }
     }
 
     fn on_access_event(
@@ -307,19 +415,28 @@ impl Widget for SourceTextArea {
     }
 }
 
-fn blocks_text_history_key(key: &Key, modifiers: Modifiers) -> bool {
+fn text_history_action(key: &Key, modifiers: Modifiers) -> Option<TextHistoryAction> {
     let action_mod = if cfg!(target_os = "macos") {
         modifiers.meta()
     } else {
         modifiers.ctrl()
     };
-    action_mod
-        && matches!(
-            key,
-            Key::Character(character)
-                if character.as_str().eq_ignore_ascii_case("z")
-                    || character.as_str().eq_ignore_ascii_case("y")
-        )
+    if !action_mod {
+        return None;
+    }
+    match key {
+        Key::Character(character) if character.as_str().eq_ignore_ascii_case("y") => {
+            Some(TextHistoryAction::Redo)
+        }
+        Key::Character(character) if character.as_str().eq_ignore_ascii_case("z") => {
+            Some(if modifiers.shift() {
+                TextHistoryAction::Redo
+            } else {
+                TextHistoryAction::Undo
+            })
+        }
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -342,8 +459,8 @@ mod tests {
     }
 
     #[test]
-    fn focused_source_area_blocks_history_keys_and_accepts_typing() {
-        let area = SourceTextArea::new("a").prepare();
+    fn focused_source_area_has_local_bounded_history_without_font_actions() {
+        let area = SourceTextArea::new("").prepare();
         let area_id = area.id();
         let host = ShortcutHost::new(area)
             .prepare()
@@ -360,14 +477,54 @@ mod tests {
             },
             true,
         );
-        for character in ["z", "Y"] {
-            harness.process_text_event(key(Key::Character(character.into()), modifiers));
-            assert!(harness.pop_action_erased().is_none());
+        for character in ["a", "b"] {
+            harness.process_text_event(key(Key::Character(character.into()), Modifiers::empty()));
+            let _ = harness
+                .pop_action::<TextAction>()
+                .expect("typing changed text");
         }
 
-        harness.process_text_event(key(Key::Character("b".into()), Modifiers::empty()));
-        let changed = harness.pop_action::<TextAction>().map(|(action, _)| action);
-        assert!(matches!(changed, Some(TextAction::Changed(text)) if text.contains('b')));
+        harness.process_text_event(key(Key::Character("z".into()), modifiers));
+        assert_eq!(
+            harness.pop_action::<TextAction>().map(|(action, _)| action),
+            Some(TextAction::Changed("a".into()))
+        );
+        harness.process_text_event(key(Key::Character("y".into()), modifiers));
+        assert_eq!(
+            harness.pop_action::<TextAction>().map(|(action, _)| action),
+            Some(TextAction::Changed("ab".into()))
+        );
+
+        harness.process_text_event(key(Key::Character("z".into()), modifiers));
+        let _ = harness
+            .pop_action::<TextAction>()
+            .expect("undo changed text");
+        harness.process_text_event(key(Key::Character("c".into()), Modifiers::empty()));
+        let _ = harness
+            .pop_action::<TextAction>()
+            .expect("branch changed text");
+        harness.process_text_event(key(Key::Character("y".into()), modifiers));
+        assert!(harness.pop_action_erased().is_none(), "branch cleared redo");
+
+        harness.edit_root_widget(|mut root| {
+            let mut area = ShortcutHost::child_mut(&mut root).downcast::<SourceTextArea>();
+            SourceTextArea::replace_external_content(&mut area, "external");
+        });
+        harness.process_text_event(key(Key::Character("z".into()), modifiers));
+        assert!(
+            harness.pop_action_erased().is_none(),
+            "external replacement cleared local history"
+        );
         assert!(harness.pop_action::<AppAction>().is_none());
+    }
+
+    #[test]
+    fn history_never_exceeds_step_or_byte_limits() {
+        let mut history = TextHistory::default();
+        for index in 0..(MAX_HISTORY_STEPS * 2) {
+            history.record_edit(format!("{index}:{}", "x".repeat(20_000)));
+        }
+        assert!(history.undo.len() + history.redo.len() <= MAX_HISTORY_STEPS);
+        assert!(history.bytes <= MAX_HISTORY_BYTES);
     }
 }
