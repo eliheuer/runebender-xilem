@@ -23,7 +23,11 @@ fn main() {
         })
         .unwrap();
     if let Some(path) = std::env::args().nth(1) {
-        project.source_snapshot(source).unwrap().save(path).unwrap();
+        project
+            .encode_ufo_source(source)
+            .unwrap()
+            .save(path)
+            .unwrap();
         return;
     }
     let server = Server::start().unwrap();

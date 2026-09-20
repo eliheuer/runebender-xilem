@@ -57,20 +57,19 @@ impl Project {
         } = plan;
         export.execute()?;
 
-        for (source, target) in self.masters.iter_mut().zip(source_targets) {
+        for (source, target) in self.sources.iter_mut().zip(source_targets) {
             source.source_path = target;
             source.dirty = false;
             source.modified_glyphs.clear();
             source.kerning_dirty = false;
         }
-        if let Some((target, document, canonical)) = designspace {
+        if let Some((target, _document, canonical)) = designspace {
             self.variable.install_designspace(canonical);
-            self.ds_doc = Some(document);
             self.export_source = Some(target);
             self.ds_dirty = false;
         } else {
             self.export_source = self
-                .masters
+                .sources
                 .first()
                 .map(|source| source.source_path.clone());
         }
@@ -89,7 +88,7 @@ impl SaveAsPlan {
         }
         let directory_key = super::super::filesystem::destination_key(directory)?;
         let source_targets = project
-            .masters
+            .sources
             .iter()
             .map(|source| {
                 source
@@ -102,7 +101,7 @@ impl SaveAsPlan {
         let designspace = plan_designspace(project, directory, &source_targets)?;
         let files = plan_feature_includes(project, &source_targets, &directory_key)?;
         let sources = project
-            .masters
+            .sources
             .iter()
             .zip(&source_targets)
             .enumerate()
@@ -111,7 +110,7 @@ impl SaveAsPlan {
                 Ok(super::super::filesystem::SourceExport {
                     destination: destination.clone(),
                     font: project
-                        .source_snapshot(id)
+                        .encode_ufo_source(id)
                         .ok_or("missing canonical source data")?,
                     preserved: source.preserved_files.clone(),
                 })
@@ -187,7 +186,7 @@ fn plan_feature_includes(
             continue;
         }
         let source_root =
-            super::super::filesystem::destination_key(&project.masters[index].source_path)?;
+            super::super::filesystem::destination_key(&project.sources[index].source_path)?;
         for dependency in feature_dependencies(&source_root, text)? {
             if dependency.starts_with(&source_root) {
                 continue;
@@ -439,7 +438,7 @@ mod tests {
         );
         assert_eq!(std::fs::read(&designspace).unwrap(), original);
         let reopened = Project::load(&target).unwrap();
-        assert_eq!(reopened.sources().len(), 2);
+        assert_eq!(reopened.document_sources().count(), 2);
         reopened.compile().unwrap();
     }
 
@@ -486,9 +485,8 @@ mod tests {
         document.save(&designspace).unwrap();
         let mut project = Project::load(&designspace).unwrap();
         let original_paths = project
-            .sources()
-            .iter()
-            .map(|source| source.source_path.clone())
+            .document_sources()
+            .map(|source| source.path().to_owned())
             .collect::<Vec<_>>();
         let copy = scratch.0.join("copy");
         std::fs::create_dir(&copy).unwrap();
@@ -498,9 +496,8 @@ mod tests {
         assert!(error.contains("feature includes collide"), "{error}");
         assert_eq!(
             project
-                .sources()
-                .iter()
-                .map(|source| source.source_path.clone())
+                .document_sources()
+                .map(|source| source.path().to_owned())
                 .collect::<Vec<_>>(),
             original_paths
         );

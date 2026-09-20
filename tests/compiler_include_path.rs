@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use norad::{Font, Glyph};
 use runebender::document::font_memory::designspace_from_str;
-use runebender::document::project::{Master, Project};
+use runebender::document::project::{Project, SourceInput};
 
 static NEXT_FIXTURE: AtomicUsize = AtomicUsize::new(0);
 
@@ -62,7 +62,7 @@ fn fixture() -> Fixture {
     )
     .unwrap();
     let project = Project::from_designspace(document, |filename| {
-        Master::load(&root.join(filename)).map_err(|error| error.to_string())
+        SourceInput::load(&root.join(filename)).map_err(|error| error.to_string())
     })
     .unwrap();
     Fixture { project, root }

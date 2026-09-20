@@ -53,7 +53,7 @@ impl SourceFrame {
         }
         if project.document_designspace().is_none()
             && (expected.canonical.source_ids() != self.canonical.source_ids()
-                || project.masters.len() != self.canonical.source_ids().len())
+                || project.sources.len() != self.canonical.source_ids().len())
         {
             return Err("standalone source history changed source identities".into());
         }
@@ -70,16 +70,6 @@ impl SourceFrame {
                 previous_ids, project.variable.source_ids,
                 "a standalone source-history frame retains its source identities"
             );
-            for (master, source) in project
-                .masters
-                .iter_mut()
-                .zip(project.variable.source_ids.iter().copied())
-            {
-                master.font = project
-                    .variable
-                    .source_font(source)
-                    .ok_or_else(|| format!("missing canonical source {}", source.0))?;
-            }
             project.active = self
                 .active
                 .and_then(|active| {
@@ -104,7 +94,7 @@ impl SourceFrame {
                     .ok_or_else(|| format!("missing structural descriptor for source {}", id.0))
             })
             .collect::<Result<Vec<_>, String>>()?;
-        let previous_masters = std::mem::take(&mut project.masters);
+        let previous_sources = std::mem::take(&mut project.sources);
         project.master_names = sources
             .iter()
             .map(|source| source.display_name().into())
@@ -113,7 +103,6 @@ impl SourceFrame {
             .iter()
             .map(|source| source.location.to_normalized(designspace.axes()))
             .collect::<Result<_, _>>()?;
-        project.ds_doc = Some(designspace.to_norad()?);
         project.brace = designspace
             .source_order()
             .iter()
@@ -145,7 +134,7 @@ impl SourceFrame {
             .active
             .and_then(|active| source_ids.iter().position(|source| *source == active))
             .unwrap_or(0);
-        project.rebuild_source_projections(&sources, previous_ids, previous_masters)?;
+        project.rebuild_source_states(&sources, previous_ids, previous_sources)?;
         project.refresh_instances_from_doc();
         project.finish_source_restore();
         Ok(())
@@ -159,7 +148,6 @@ pub(super) struct SourceHistory {
 
 impl Project {
     fn finish_source_change(&mut self) {
-        self.variable.synchronize(&self.masters);
         self.finish_source_restore();
     }
 
@@ -167,24 +155,23 @@ impl Project {
         self.model = (!self.axes.is_empty()).then(|| {
             VariationModel::new(&self.master_locations).expect("source locations were validated")
         });
-        self.ds_dirty = self.ds_doc.is_some();
-        for master in &mut self.masters {
-            master.dirty = true;
-            master.refresh_from_font();
+        self.ds_dirty = self.document_designspace().is_some();
+        for source in &mut self.sources {
+            source.dirty = true;
         }
         self.snap_location_to_master(self.active);
         self.compute_compat();
     }
 
-    fn rebuild_source_projections(
+    fn rebuild_source_states(
         &mut self,
         descriptors: &[&SourceDescriptor],
         previous_ids: Vec<SourceId>,
-        previous_masters: Vec<Master>,
+        previous_sources: Vec<SourceState>,
     ) -> Result<(), String> {
         let mut previous = previous_ids
             .into_iter()
-            .zip(previous_masters)
+            .zip(previous_sources)
             .collect::<BTreeMap<_, _>>();
         let source_directory = self
             .export_source
@@ -195,7 +182,7 @@ impl Project {
                 previous
                     .values()
                     .next()
-                    .and_then(|master| master.source_path.parent())
+                    .and_then(|source| source.source_path.parent())
                     .map(Path::to_path_buf)
             });
         let rebuilt = self
@@ -208,10 +195,6 @@ impl Project {
                     .iter()
                     .find(|descriptor| descriptor.id() == id)
                     .ok_or_else(|| format!("missing structural descriptor for source {}", id.0))?;
-                let font = self
-                    .variable
-                    .source_font(id)
-                    .ok_or_else(|| format!("missing canonical source {}", id.0))?;
                 let old = previous.remove(&id);
                 let path = old.as_ref().map_or_else(
                     || {
@@ -220,21 +203,19 @@ impl Project {
                             |directory| directory.join(&descriptor.filename),
                         )
                     },
-                    |master| master.source_path.clone(),
+                    |source| source.source_path.clone(),
                 );
-                let mut rebuilt = Master::from_font(font, path);
+                let mut rebuilt = SourceState::new(path, true);
                 if let Some(mut old) = old {
                     rebuilt.modified_glyphs = std::mem::take(&mut old.modified_glyphs);
                     rebuilt.glif_paths = std::mem::take(&mut old.glif_paths);
                     rebuilt.preserved_files = std::mem::take(&mut old.preserved_files);
                     rebuilt.kerning_dirty = old.kerning_dirty;
-                    rebuilt.revision = old.revision.wrapping_add(1);
                 }
-                rebuilt.dirty = true;
                 Ok(rebuilt)
             })
             .collect::<Result<_, String>>()?;
-        self.masters = rebuilt;
+        self.sources = rebuilt;
         Ok(())
     }
 
@@ -410,7 +391,7 @@ impl Project {
             .export_source
             .as_deref()
             .and_then(Path::parent)
-            .or_else(|| self.masters[0].source_path.parent())
+            .or_else(|| self.sources[0].source_path.parent())
             .unwrap_or(Path::new("."));
         let destination = directory.join(filename);
         if destination.exists() {
@@ -474,7 +455,6 @@ impl Project {
             draft.remove_sparse_at_normalized_location(&location)?;
             draft.insert_source(descriptor, display_index)
         })?;
-        let designspace_projection = replacement.to_norad()?;
         let before = SourceFrame::capture(self);
         let mut canonical = before.canonical.clone();
         canonical.add_interpolated_source(
@@ -489,17 +469,12 @@ impl Project {
         self.variable
             .restore_source_structure_if_current(&before.canonical, canonical)
             .map_err(|_| "canonical source structure changed while adding a source")?;
-        let font = self
-            .variable
-            .source_font(id)
-            .expect("the committed canonical source must remain projectable");
-        self.ds_doc = Some(designspace_projection);
         self.ds_dirty = true;
         self.brace.retain(|source| source.location != location);
-        self.masters.push(Master::from_font(font, destination));
+        self.sources.push(SourceState::new(destination, true));
         self.master_names.push(name.into());
         self.master_locations.push(location);
-        self.active = self.masters.len() - 1;
+        self.active = self.sources.len() - 1;
         self.record_canonical_source_change(before);
         Ok(id)
     }
@@ -508,7 +483,7 @@ impl Project {
     /// Its on-disk UFO is retained; Undo restores the in-memory source.
     pub fn remove_source(&mut self, id: SourceId) -> Result<(), String> {
         let index = self.source_index(id).ok_or("unknown source")?;
-        if self.masters.len() == 1
+        if self.sources.len() == 1
             || self
                 .master_locations
                 .get(index)
@@ -525,12 +500,13 @@ impl Project {
             Ok(())
         })?;
         let before = SourceFrame::capture(self);
-        let removed_id = self.variable.source_ids.remove(index);
-        if let Err(error) = self.install_source_designspace_edit(&designspace, replacement) {
-            self.variable.source_ids.insert(index, removed_id);
-            return Err(error);
-        }
-        self.masters.remove(index);
+        let mut canonical = before.canonical.clone();
+        canonical.remove_source(id, replacement)?;
+        self.variable
+            .restore_source_structure_if_current(&before.canonical, canonical)
+            .map_err(|_| "canonical source structure changed while removing a source")?;
+        self.ds_dirty = true;
+        self.sources.remove(index);
         self.master_names.remove(index);
         self.master_locations.remove(index);
         self.brace.retain_mut(|source| {
@@ -556,7 +532,7 @@ impl Project {
     /// Move a source to a display position without changing any source identity.
     pub fn move_source(&mut self, id: SourceId, to: usize) -> Result<bool, String> {
         let from = self.source_index(id).ok_or("unknown source")?;
-        if to >= self.masters.len() {
+        if to >= self.sources.len() {
             return Err("source position is outside the source list".into());
         }
         if from == to {
@@ -571,7 +547,7 @@ impl Project {
             Ok(())
         })?;
         let before = SourceFrame::capture(self);
-        let mut order: Vec<_> = (0..self.masters.len()).collect();
+        let mut order: Vec<_> = (0..self.sources.len()).collect();
         let previous = order.remove(from);
         order.insert(to, previous);
         let moved_id = self.variable.source_ids.remove(from);
@@ -591,8 +567,8 @@ impl Project {
                 .position(|index| *index == source.master)
                 .expect("permutation");
         }
-        let master = self.masters.remove(from);
-        self.masters.insert(to, master);
+        let source = self.sources.remove(from);
+        self.sources.insert(to, source);
         let name = self.master_names.remove(from);
         self.master_names.insert(to, name);
         let location = self.master_locations.remove(from);
@@ -636,7 +612,6 @@ impl Project {
         self.install_source_designspace_edit(&designspace, replacement)?;
         self.master_names[index] = name.into();
         self.master_locations[index] = location;
-        self.masters[index].font.font_info.style_name = Some(name.into());
         self.record_source_change(before);
         Ok(())
     }
@@ -800,12 +775,8 @@ impl Project {
         let index = self
             .source_index(address.layer.source)
             .ok_or("background source disappeared")?;
-        self.masters[index].font = self
-            .variable
-            .source_font(address.layer.source)
-            .ok_or("committed background source is not projectable")?;
-        self.masters[index].dirty = true;
-        self.masters[index]
+        self.sources[index].dirty = true;
+        self.sources[index]
             .modified_glyphs
             .insert(address.glyph.clone());
         self.record_canonical_source_change(before);
@@ -827,35 +798,17 @@ impl Project {
             source: from.source,
             name: name.into(),
         };
-        if self.document_layer(glyph, &target_id).is_some()
-            || self.masters[index]
-                .font
-                .layers
-                .get(name)
-                .is_some_and(|layer| layer.contains_glyph(glyph))
-        {
+        if self.document_layer(glyph, &target_id).is_some() {
             return Err("the glyph already has that layer".into());
         }
         let before = SourceFrame::capture(self);
-        self.masters[index]
-            .font
-            .layers
-            .get_or_create_layer(name)
-            .map_err(|error| error.to_string())?;
+        self.variable.ensure_layer_container(&target_id)?;
         assert!(
             self.variable.copy_layer(glyph, from, &target_id),
             "validated source layer must remain copyable"
         );
-        let payload = self
-            .variable
-            .project_layer(glyph, &target_id)
-            .expect("copied layer must be projectable");
-        self.masters[index]
-            .font
-            .layers
-            .get_mut(name)
-            .expect("created compatibility layer")
-            .insert_glyph(payload);
+        self.sources[index].dirty = true;
+        self.sources[index].modified_glyphs.insert(glyph.to_owned());
         self.record_source_change(before);
         Ok(target_id)
     }
@@ -878,13 +831,8 @@ impl Project {
         if !self.variable.remove_layer(glyph, &layer) {
             return Ok(false);
         }
-        self.masters[index]
-            .font
-            .default_layer_mut()
-            .remove_glyph(glyph);
-        self.masters[index].dirty = true;
-        self.masters[index].modified_glyphs.insert(glyph.to_owned());
-        self.masters[index].refresh_from_font();
+        self.sources[index].dirty = true;
+        self.sources[index].modified_glyphs.insert(glyph.to_owned());
         self.record_source_change(before);
         Ok(true)
     }
@@ -892,10 +840,10 @@ impl Project {
     /// Remove one auxiliary glyph layer, retaining the layer and other glyphs.
     pub fn remove_glyph_layer(&mut self, glyph: &str, id: &LayerId) -> Result<(), String> {
         let index = self.source_index(id.source).ok_or("unknown source")?;
-        if self.masters[index].font.default_layer().name().as_str() == id.name {
+        if self.variable.default_layer_name(id.source) == Some(id.name.as_str()) {
             return Err("remove the source to remove a default layer".into());
         }
-        if self.glyph_layer(glyph, id).is_none() {
+        if self.document_layer(glyph, id).is_none() {
             return Err("missing glyph layer".into());
         }
         let before = SourceFrame::capture(self);
@@ -903,12 +851,8 @@ impl Project {
             self.variable.remove_layer(glyph, id),
             "validated canonical layer must remain removable"
         );
-        self.masters[index]
-            .font
-            .layers
-            .get_mut(&id.name)
-            .expect("validated layer")
-            .remove_glyph(glyph);
+        self.sources[index].dirty = true;
+        self.sources[index].modified_glyphs.insert(glyph.to_owned());
         self.record_source_change(before);
         Ok(())
     }
@@ -918,24 +862,20 @@ impl Project {
     /// A default layer or a layer that still contains any glyph is rejected without mutation.
     pub fn remove_empty_auxiliary_layer(&mut self, id: &LayerId) -> Result<bool, String> {
         let index = self.source_index(id.source).ok_or("unknown source")?;
-        if self.masters[index].font.default_layer().name().as_str() == id.name {
+        if self.variable.default_layer_name(id.source) == Some(id.name.as_str()) {
             return Err("the default layer cannot be removed".into());
         }
-        let Some(layer) = self.masters[index].font.layers.get(&id.name) else {
+        if !self.variable.source_contains_layer(id) {
             return Ok(false);
-        };
-        if !layer.is_empty() || self.variable.has_layer(id) {
+        }
+        if self.variable.has_layer(id) {
             return Err("the auxiliary layer still contains glyphs".into());
         }
         let before = SourceFrame::capture(self);
         if !self.variable.remove_empty_layer_container(id) {
             return Err("canonical auxiliary layer container is inconsistent".into());
         }
-        let removed = self.masters[index].font.layers.remove(&id.name).is_some();
-        debug_assert!(
-            removed,
-            "validated compatibility layer container must remain removable"
-        );
+        self.sources[index].dirty = true;
         self.record_source_change(before);
         Ok(true)
     }

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use norad::{Component, Font, Glyph, Name};
 use runebender::document::history::HistoryDirection;
-use runebender::document::project::{DocumentEditOutcome, Master, Project};
+use runebender::document::project::{DocumentEditOutcome, Project, SourceInput};
 use runebender::document::variable::{GlyphLayerAddress, SourceId};
 
 const ALIGNMENT_KEY: &str = "com.glyphsapp.component.alignment";
@@ -30,7 +30,7 @@ fn fixture() -> (Project, GlyphLayerAddress) {
     ]));
     composite.components.push(component);
     font.default_layer_mut().insert_glyph(composite);
-    let project = Project::from_source(Master::from_font(
+    let project = Project::from_source(SourceInput::from_font(
         font,
         PathBuf::from("ComponentAlignment.ufo"),
     ));
@@ -75,7 +75,7 @@ fn alignment_edits_are_typed_exact_and_undoable() {
             .unwrap(),
         DocumentEditOutcome::Unchanged { revision }
     );
-    let exact = project.source_snapshot(SourceId(0)).unwrap();
+    let exact = project.encode_ufo_source(SourceId(0)).unwrap();
     let lib = exact.get_glyph("composite").unwrap().components[0]
         .lib()
         .unwrap();
@@ -96,7 +96,7 @@ fn alignment_edits_are_typed_exact_and_undoable() {
     };
     assert!(change.metadata_changed());
     assert!(!change.geometry_changed());
-    let edited = project.source_snapshot(SourceId(0)).unwrap();
+    let edited = project.encode_ufo_source(SourceId(0)).unwrap();
     let lib = edited.get_glyph("composite").unwrap().components[0]
         .lib()
         .unwrap();
@@ -109,7 +109,7 @@ fn alignment_edits_are_typed_exact_and_undoable() {
     project
         .replay_document_layer_history(&address, HistoryDirection::Undo)
         .unwrap();
-    let restored = project.source_snapshot(SourceId(0)).unwrap();
+    let restored = project.encode_ufo_source(SourceId(0)).unwrap();
     assert_eq!(
         restored.get_glyph("composite").unwrap().components[0]
             .lib()

@@ -420,7 +420,7 @@ mod tests {
                 .as_deref(),
             Some("MemTest")
         );
-        let snapshot = project.source_snapshot(source).unwrap();
+        let snapshot = project.encode_ufo_source(source).unwrap();
         assert_eq!(
             snapshot.meta.creator.as_deref(),
             Some("org.linebender.runebender.tests")
@@ -429,7 +429,7 @@ mod tests {
             snapshot.lib["com.linebender.test"].as_string(),
             Some("preserved")
         );
-        assert!(!project.sources()[0].dirty);
+        assert!(!project.is_modified());
     }
 
     #[test]
@@ -462,7 +462,7 @@ mod tests {
         let a = project.document_layer("A", &layer).unwrap();
         assert_eq!(a.width(), 716.0);
         assert_eq!(a.codepoints().collect::<Vec<_>>(), ['A']);
-        assert!(!project.sources()[0].dirty);
+        assert!(!project.is_modified());
     }
 
     #[test]

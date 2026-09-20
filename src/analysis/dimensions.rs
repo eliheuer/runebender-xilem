@@ -111,7 +111,7 @@ pub fn stem_and_bar(font: &norad::Font, name: &str) -> (Option<i64>, Option<i64>
 mod tests {
     use std::path::PathBuf;
 
-    use crate::document::project::{Master, Project};
+    use crate::document::project::{Project, SourceInput};
     use crate::document::variable::SourceId;
 
     use super::*;
@@ -143,7 +143,7 @@ mod tests {
         assert_eq!(stem, Some(96));
         assert_eq!(bar, Some(700));
 
-        let project = Project::from_source(Master::from_font(font, PathBuf::from("Test.ufo")));
+        let project = Project::from_source(SourceInput::from_font(font, PathBuf::from("Test.ufo")));
         assert_eq!(
             stem_and_bar_project(&project, SourceId(0), "I"),
             (Some(96), Some(700))
@@ -163,7 +163,8 @@ mod tests {
         assert_eq!(stem_and_bar(&font, "space"), (None, None));
         assert_eq!(stem_and_bar(&font, "nothere"), (None, None));
 
-        let project = Project::from_source(Master::from_font(font, PathBuf::from("Empty.ufo")));
+        let project =
+            Project::from_source(SourceInput::from_font(font, PathBuf::from("Empty.ufo")));
         assert_eq!(
             stem_and_bar_project(&project, SourceId(0), "space"),
             (None, None)

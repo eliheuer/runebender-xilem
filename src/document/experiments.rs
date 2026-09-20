@@ -209,9 +209,9 @@ impl Experiment {
     ///
     /// The returned font is transient. Canonical layer drafts and metadata remain the version's
     /// only persistent editing state.
-    pub fn source_snapshot(&self, project: &Project) -> Result<norad::Font, String> {
+    pub fn encode_ufo_source(&self, project: &Project) -> Result<norad::Font, String> {
         let mut font = project
-            .source_snapshot(self.root)
+            .encode_ufo_source(self.root)
             .ok_or("the experiment's source is no longer loaded")?;
         for (address, draft) in &self.working.layers {
             let layer = font
@@ -748,18 +748,18 @@ fn compatible_snapshots(first: &CanonicalLayerSnapshot, second: &CanonicalLayerS
 mod tests {
     use super::*;
     use crate::document::history::HistoryDirection;
-    use crate::document::project::{DocumentHistoryReplayOutcome, Master};
+    use crate::document::project::{DocumentHistoryReplayOutcome, SourceInput};
 
     fn two_source_project() -> Project {
         let font = Project::new_font("synthetic.ufo".into())
-            .source_snapshot(SourceId(0))
+            .encode_ufo_source(SourceId(0))
             .unwrap();
         let document = crate::document::font_memory::designspace_from_str(
             r#"<designspace format="5.0"><axes><axis name="Weight" tag="wght" minimum="0" default="0" maximum="1"/></axes><sources><source filename="first.ufo"><location><dimension name="Weight" xvalue="0"/></location></source><source filename="second.ufo"><location><dimension name="Weight" xvalue="1"/></location></source></sources></designspace>"#,
         )
         .unwrap();
         Project::from_designspace(document, |path| {
-            Ok(Master::from_font(font.clone(), path.into()))
+            Ok(SourceInput::from_font(font.clone(), path.into()))
         })
         .unwrap()
     }

@@ -134,7 +134,7 @@ fn glyph_layer_controls(app: &Workspace) -> Box<xilem::AnyWidgetView<Workspace>>
 /// separate from reference-layer controls: GPUI presents master switching as
 /// a plain list, while underlays belong to the editor's Layers section.
 pub(crate) fn masters_section(app: &Workspace) -> Option<impl WidgetView<Workspace> + use<>> {
-    app.font.project.ds_doc.as_ref()?;
+    app.font.project.document_designspace()?;
     let pal = &app.palette;
     let rows: Vec<_> = app
         .font

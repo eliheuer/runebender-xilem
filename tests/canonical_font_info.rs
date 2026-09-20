@@ -11,8 +11,8 @@ use runebender::document::model::font_info::{
     CanonicalFontInfo, CanonicalFontInfoError, OpenTypeWidthClass, clear_canonical_font_info_fields,
 };
 use runebender::document::project::{
-    DocumentEditOutcome, DocumentHistoryReplayOutcome, DocumentSourceMetadataHistoryError, Master,
-    Project,
+    DocumentEditOutcome, DocumentHistoryReplayOutcome, DocumentSourceMetadataHistoryError, Project,
+    SourceInput,
 };
 use runebender::document::variable::SourceId;
 
@@ -187,7 +187,7 @@ fn project_owns_font_info_and_preserves_unowned_fields_through_save() {
     let original = CanonicalFontInfo::from_ufo(&source.font_info).unwrap();
     assert_eq!(project.document_font_info(source_id), Some(&original));
     assert_eq!(
-        project.source_snapshot(source_id).unwrap().font_info,
+        project.encode_ufo_source(source_id).unwrap().font_info,
         source.font_info
     );
 
@@ -218,7 +218,7 @@ fn project_owns_font_info_and_preserves_unowned_fields_through_save() {
     let mut expected = source.font_info.clone();
     edited.write_to_ufo(&mut expected).unwrap();
     assert_eq!(
-        project.source_snapshot(source_id).unwrap().font_info,
+        project.encode_ufo_source(source_id).unwrap().font_info,
         expected
     );
     assert_eq!(
@@ -244,7 +244,7 @@ fn project_owns_font_info_and_preserves_unowned_fields_through_save() {
     let reloaded = Project::load(&path).unwrap();
     assert_eq!(reloaded.document_font_info(source_id), Some(&edited));
     assert_eq!(
-        reloaded.source_snapshot(source_id).unwrap().font_info,
+        reloaded.encode_ufo_source(source_id).unwrap().font_info,
         expected
     );
 }
@@ -253,13 +253,13 @@ fn project_owns_font_info_and_preserves_unowned_fields_through_save() {
 fn project_rejects_invalid_font_info_without_changing_canonical_or_projected_state() {
     let mut source = norad::Font::new();
     source.font_info = populated_font_info();
-    let mut project = Project::from_source(Master::from_font(
+    let mut project = Project::from_source(SourceInput::from_font(
         source,
         PathBuf::from("InvalidFontInfo.ufo"),
     ));
     let source_id = SourceId(0);
     let canonical = project.document_font_info(source_id).unwrap().clone();
-    let projection = project.source_snapshot(source_id).unwrap();
+    let projection = project.encode_ufo_source(source_id).unwrap();
     let document = project.document_snapshot();
     let revision = project.document_revision();
 
@@ -276,7 +276,7 @@ fn project_rejects_invalid_font_info_without_changing_canonical_or_projected_sta
             Err(runebender::document::DocumentEditError::InvalidFontInfo)
         );
         assert_eq!(project.document_font_info(source_id), Some(&canonical));
-        assert_eq!(project.source_snapshot(source_id).unwrap(), projection);
+        assert_eq!(project.encode_ufo_source(source_id).unwrap(), projection);
         assert_eq!(project.document_snapshot(), document);
         assert_eq!(project.document_revision(), revision);
     }
@@ -284,7 +284,7 @@ fn project_rejects_invalid_font_info_without_changing_canonical_or_projected_sta
 
 #[test]
 fn metric_metadata_restore_and_history_report_precise_invalidation() {
-    let mut project = Project::from_source(Master::from_font(
+    let mut project = Project::from_source(SourceInput::from_font(
         norad::Font::new(),
         PathBuf::from("MetricHistory.ufo"),
     ));

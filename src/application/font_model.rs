@@ -216,7 +216,7 @@ impl FontModel {
     pub(crate) fn font_snapshot(&self) -> norad::Font {
         self.project
             .source_id(self.active())
-            .and_then(|source| self.project.source_snapshot(source))
+            .and_then(|source| self.project.encode_ufo_source(source))
             .expect("the active source remains materializable")
     }
 
@@ -466,15 +466,15 @@ impl FontModel {
         which: &std::collections::HashSet<usize>,
     ) -> Vec<BezPath> {
         self.project
-            .sources()
-            .iter()
+            .document_sources()
             .enumerate()
-            .filter(|(i, _)| which.contains(i) && *i != self.project.active)
-            .filter_map(|(_, master)| {
-                master
-                    .font
-                    .get_glyph(glyph_name)
-                    .map(|g| glyph_paths::glyph_to_bezpath(g, &master.font))
+            .filter(|(index, _)| which.contains(index) && *index != self.project.active)
+            .filter_map(|(_, source)| {
+                self.project
+                    .document_source_glyph_entry(source.id(), glyph_name)
+                    .ok()
+                    .flatten()
+                    .map(|glyph| glyph.outline().as_ref().clone())
             })
             .collect()
     }
@@ -739,7 +739,7 @@ fn save_target_is_writable(target: &FsPath) -> bool {
 mod tests {
     use super::*;
     use runebender::document::canonical_metadata::KerningParticipant;
-    use runebender::document::project::Master;
+    use runebender::document::project::SourceInput;
 
     fn two_master_model() -> (PathBuf, FontModel) {
         let dir = std::env::temp_dir().join(format!(
@@ -796,20 +796,17 @@ mod tests {
 
         let copy = model.duplicate_glyph("A").expect("A duplicates");
         assert_eq!(copy, "A.001");
-        for (master, width) in model.project.sources().iter().zip([500.0, 620.0]) {
-            let glyph = master.font.get_glyph(&copy).expect("the copy exists");
-            assert_eq!(glyph.width, width);
-            assert_eq!(glyph.contours.len(), 1);
-            assert!(glyph.codepoints.is_empty());
+        for (source, width) in model.project.document_sources().zip([500.0, 620.0]) {
+            let glyph = model
+                .project
+                .document_layer(&copy, &source.default_layer())
+                .expect("the copy exists");
+            assert_eq!(glyph.width(), width);
+            assert_eq!(glyph.contours().count(), 1);
+            assert_eq!(glyph.codepoints().count(), 0);
         }
         assert!(model.remove_glyph(&copy));
-        assert!(
-            model
-                .project
-                .sources()
-                .iter()
-                .all(|master| master.font.get_glyph(&copy).is_none())
-        );
+        assert!(model.project.document_glyph(&copy).is_none());
 
         std::fs::remove_dir_all(dir).expect("the fixture is removed");
     }
@@ -928,7 +925,7 @@ mod tests {
 
         let file = dir.join("not-a-directory");
         std::fs::write(&file, "fixture").expect("the ordinary file is created");
-        let invalid = FontModel::from_project(Project::from_source(Master::from_font(
+        let invalid = FontModel::from_project(Project::from_source(SourceInput::from_font(
             norad::Font::new(),
             file.join("New.ufo"),
         )));

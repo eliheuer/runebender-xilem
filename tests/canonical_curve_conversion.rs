@@ -11,7 +11,7 @@ use kurbo::ParamCurve as _;
 use norad::{Anchor, Component, Contour, ContourPoint, Font, Glyph, Name, PointType};
 use runebender::document::history::HistoryDirection;
 use runebender::document::project::{
-    DocumentEditOutcome, DocumentHistoryReplayOutcome, Master, Project,
+    DocumentEditOutcome, DocumentHistoryReplayOutcome, Project, SourceInput,
 };
 use runebender::document::variable::{GlyphLayerAddress, LayerId, SourceId};
 use runebender::document::{DocumentEditError, LayerPointType};
@@ -66,7 +66,7 @@ fn contour(points: Vec<ContourPoint>, label: &str) -> Contour {
 }
 
 fn project_from_font(font: Font, path: &Path) -> Project {
-    Project::from_source(Master::from_font(font, path.to_owned()))
+    Project::from_source(SourceInput::from_font(font, path.to_owned()))
 }
 
 fn default_layer(project: &Project) -> LayerId {
@@ -206,7 +206,7 @@ fn quadratic_to_cubic_is_exact_preserving_undoable_and_persistent() {
     let layer = default_layer(&project);
     let address = address("quadratics", &layer);
     let before_paths = ordinary_paths(&project, "quadratics", &layer);
-    let before_projection = project.glyph_layer("quadratics", &layer).unwrap();
+    let before_projection = project.encode_ufo_layer("quadratics", &layer).unwrap();
     let before_layer = project.document_layer("quadratics", &layer).unwrap();
     let contour_ids: Vec<_> = before_layer
         .contours()
@@ -269,7 +269,7 @@ fn quadratic_to_cubic_is_exact_preserving_undoable_and_persistent() {
     let after_paths = ordinary_paths(&project, "quadratics", &layer);
     assert_paths_equal(&before_paths, &after_paths, 1e-9);
 
-    let after_projection = project.glyph_layer("quadratics", &layer).unwrap();
+    let after_projection = project.encode_ufo_layer("quadratics", &layer).unwrap();
     assert_eq!(after_projection.width, before_projection.width);
     assert_eq!(after_projection.height, before_projection.height);
     assert_eq!(after_projection.note, before_projection.note);
@@ -307,7 +307,7 @@ fn quadratic_to_cubic_is_exact_preserving_undoable_and_persistent() {
         DocumentHistoryReplayOutcome::Changed { .. }
     ));
     assert_eq!(
-        project.glyph_layer("quadratics", &layer),
+        project.encode_ufo_layer("quadratics", &layer),
         Some(before_projection)
     );
     assert!(matches!(
@@ -317,7 +317,7 @@ fn quadratic_to_cubic_is_exact_preserving_undoable_and_persistent() {
         DocumentHistoryReplayOutcome::Changed { .. }
     ));
     assert_eq!(
-        project.glyph_layer("quadratics", &layer),
+        project.encode_ufo_layer("quadratics", &layer),
         Some(after_projection.clone())
     );
 
@@ -325,7 +325,7 @@ fn quadratic_to_cubic_is_exact_preserving_undoable_and_persistent() {
     let reloaded = Project::load(&source_path).unwrap();
     let reloaded_layer = default_layer(&reloaded);
     assert_eq!(
-        reloaded.glyph_layer("quadratics", &reloaded_layer),
+        reloaded.encode_ufo_layer("quadratics", &reloaded_layer),
         Some(after_projection)
     );
 }
@@ -479,7 +479,7 @@ fn hyper_conversion_targets_stable_selections_and_preserves_source_metadata() {
     font.default_layer_mut().insert_glyph(glyph);
     let mut project = project_from_font(font, &source_path);
     let layer = default_layer(&project);
-    let before_projection = project.glyph_layer("hyper", &layer).unwrap();
+    let before_projection = project.encode_ufo_layer("hyper", &layer).unwrap();
     let before = project.document_layer("hyper", &layer).unwrap();
     let contours: Vec<_> = before.contours().collect();
     let open_id = contours[0].id();
@@ -527,7 +527,7 @@ fn hyper_conversion_targets_stable_selections_and_preserves_source_metadata() {
     assert!(contours[1].is_closed());
     let converted_closed_ids: HashSet<_> = contours[1].points().map(|point| point.id()).collect();
     assert!(closed_ids.is_subset(&converted_closed_ids));
-    let projected = project.glyph_layer("hyper", &layer).unwrap();
+    let projected = project.encode_ufo_layer("hyper", &layer).unwrap();
     assert_eq!(projected.width, before_projection.width);
     assert_eq!(projected.note, before_projection.note);
     for index in 0..2 {

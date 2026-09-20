@@ -1104,12 +1104,7 @@ impl Workspace {
     pub(crate) fn revert_features(&mut self) {
         self.features_buf = self.font.feature_text().to_owned();
         self.features_edited = false;
-        self.modified = self
-            .font
-            .project
-            .sources()
-            .iter()
-            .any(|master| master.dirty);
+        self.modified = self.font.project.is_modified();
         self.features_status = Some("Reverted feature draft".into());
     }
 

@@ -1097,7 +1097,7 @@ mod tests {
             .insert_glyph(norad::Glyph::new("A"));
         let mut model =
             FontModel::from_project(runebender::document::project::Project::from_source(
-                runebender::document::project::Master::from_font(
+                runebender::document::project::SourceInput::from_font(
                     font,
                     PathBuf::from("Revision.ufo"),
                 ),

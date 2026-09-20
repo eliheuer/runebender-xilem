@@ -118,6 +118,64 @@ pub(in crate::document) fn interpolated_source_layer(
 }
 
 impl CanonicalSourceStructureSnapshot {
+    /// Remove one full source and every canonical layer and metadata record it owns.
+    pub(in crate::document) fn remove_source(
+        &mut self,
+        source: SourceId,
+        designspace: CanonicalDesignspace,
+    ) -> Result<(), String> {
+        let index = self
+            .source_ids
+            .iter()
+            .position(|candidate| *candidate == source)
+            .ok_or("source identity is absent")?;
+        let expected_order = self
+            .source_ids
+            .iter()
+            .copied()
+            .filter(|candidate| *candidate != source)
+            .collect::<Vec<_>>();
+        if designspace.full_source_order().collect::<Vec<_>>() != expected_order {
+            return Err("removed source order does not match the canonical Designspace".into());
+        }
+        self.source_ids.remove(index);
+        self.source_formats
+            .remove(&source)
+            .ok_or("source format data is absent")?;
+        self.source_metadata
+            .remove(&source)
+            .ok_or("source metadata is absent")?;
+
+        let names = self.glyphs.keys().cloned().collect::<Vec<_>>();
+        for name in names {
+            let glyph = self.glyphs.get_mut(&name).expect("collected glyph remains");
+            let removed_keys = glyph
+                .layers
+                .keys()
+                .filter(|layer| layer.source == source)
+                .map(super::super::babelfont::layer_key)
+                .collect::<Vec<_>>();
+            glyph.layers.retain(|layer, _| layer.source != source);
+            glyph.source_metadata.remove(&source);
+            let geometry = self
+                .glyph_geometry
+                .get_mut(&name)
+                .expect("preserved glyph retains canonical geometry");
+            geometry.layers.retain(|layer| {
+                layer
+                    .id
+                    .as_ref()
+                    .is_none_or(|id| !removed_keys.iter().any(|key| key == id))
+            });
+            if glyph.layers.is_empty() {
+                self.glyphs.remove(&name);
+                self.glyph_geometry.0.retain(|glyph| glyph.name != name);
+            }
+        }
+        self.designspace = Some(designspace);
+        Ok(())
+    }
+
     /// Add one completely staged source to an owned structural replacement.
     pub(in crate::document) fn add_interpolated_source(
         &mut self,

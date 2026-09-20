@@ -11,7 +11,7 @@ use runebender::document::history::{
     CanonicalHistory, DocumentHistory, HistoryDirection, HistoryReplayError, HistoryReplayOutcome,
     SourceMetadataHistory,
 };
-use runebender::document::project::{DocumentEditOutcome, Master, Project};
+use runebender::document::project::{DocumentEditOutcome, Project, SourceInput};
 use runebender::document::variable::{GlyphLayerAddress, LayerId, SourceId};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -82,7 +82,7 @@ fn project_fixture() -> (Project, GlyphLayerAddress) {
     let mut auxiliary_b = Glyph::new("B");
     auxiliary_b.width = 725.0;
     auxiliary.insert_glyph(auxiliary_b);
-    let project = Project::from_source(Master::from_font(
+    let project = Project::from_source(SourceInput::from_font(
         font,
         PathBuf::from("canonical-history-fixture.ufo"),
     ));
@@ -97,10 +97,13 @@ fn project_fixture() -> (Project, GlyphLayerAddress) {
 }
 
 fn rename_project_glyph(project: &mut Project, _source: SourceId, old: &str, new: &str) {
-    assert!(matches!(
-        project.rename_document_glyph(old, new),
-        Ok(DocumentEditOutcome::Changed { .. })
-    ));
+    assert!(
+        matches!(
+            project.rename_document_glyph(old, new),
+            Ok(DocumentEditOutcome::Changed { .. })
+        ),
+        "fixture glyph rename must change the document"
+    );
 }
 
 fn rename_project_fixture() -> (Project, GlyphLayerAddress) {
@@ -118,7 +121,7 @@ fn rename_project_fixture() -> (Project, GlyphLayerAddress) {
         .new_layer("background")
         .unwrap()
         .insert_glyph(auxiliary);
-    let project = Project::from_source(Master::from_font(
+    let project = Project::from_source(SourceInput::from_font(
         font,
         PathBuf::from("canonical-history-rename-fixture.ufo"),
     ));
@@ -385,7 +388,7 @@ fn source_restore_with_the_same_identity_keeps_an_older_layer_undo_valid() {
 fn project_history_restores_exact_geometry_metadata_and_extensions() {
     let (mut project, address) = project_fixture();
     let before_projection = project
-        .glyph_layer(&address.glyph, &address.layer)
+        .encode_ufo_layer(&address.glyph, &address.layer)
         .expect("fixture layer exists");
     let before = DocumentHistory::capture(&project, &address).unwrap();
     let mut history = DocumentHistory::default();
@@ -418,7 +421,7 @@ fn project_history_restores_exact_geometry_metadata_and_extensions() {
     );
     let after = DocumentHistory::capture(&project, &address).unwrap();
     let after_projection = project
-        .glyph_layer(&address.glyph, &address.layer)
+        .encode_ufo_layer(&address.glyph, &address.layer)
         .expect("edited layer exists");
     assert_ne!(after, before);
 
@@ -430,7 +433,7 @@ fn project_history_restores_exact_geometry_metadata_and_extensions() {
     assert_eq!(project.document_revision(), revision.wrapping_add(1));
     assert_eq!(DocumentHistory::capture(&project, &address), Ok(before));
     assert_eq!(
-        project.glyph_layer(&address.glyph, &address.layer),
+        project.encode_ufo_layer(&address.glyph, &address.layer),
         Some(before_projection)
     );
 
@@ -442,7 +445,7 @@ fn project_history_restores_exact_geometry_metadata_and_extensions() {
     assert_eq!(project.document_revision(), revision.wrapping_add(1));
     assert_eq!(DocumentHistory::capture(&project, &address), Ok(after));
     assert_eq!(
-        project.glyph_layer(&address.glyph, &address.layer),
+        project.encode_ufo_layer(&address.glyph, &address.layer),
         Some(after_projection)
     );
 }

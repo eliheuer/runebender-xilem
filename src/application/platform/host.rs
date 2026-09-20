@@ -73,7 +73,7 @@ impl Workspace {
     }
 
     pub(crate) fn from_model(font: FontModel) -> Result<Self, String> {
-        let modified = font.project.ds_dirty || font.project.sources().iter().any(|m| m.dirty);
+        let modified = font.project.is_modified();
         let source_roots = source_roots(&font);
         let source_fingerprint = source_fingerprint(&source_roots);
         let features_buf = font.feature_text().to_owned();
@@ -618,7 +618,7 @@ mod tests {
             .join("tests/fixtures/babelfont/Basic.babelfont");
         let workspace = Workspace::open(&path).expect("the Babelfont fixture opens");
         assert!(workspace.modified, "an imported copy needs to be saved");
-        assert!(workspace.font.project.sources()[0].dirty);
+        assert!(workspace.font.project.is_modified());
         assert!(!path.with_extension("ufo").exists());
     }
 
@@ -920,9 +920,14 @@ mod tests {
         let original_fonts: Vec<norad::Font> = workspace
             .font
             .project
-            .sources()
-            .iter()
-            .map(|master| master.font.clone())
+            .document_sources()
+            .map(|source| {
+                workspace
+                    .font
+                    .project
+                    .encode_ufo_source(source.id())
+                    .unwrap()
+            })
             .collect();
 
         let index = workspace.font.index_of("R").expect("Virtua contains R");
@@ -985,7 +990,8 @@ mod tests {
         assert_eq!(reopened_r.anchors.len(), original_anchor_count + 1);
 
         for (master_index, original) in original_fonts.into_iter().enumerate() {
-            let mut normalized = reopened.font.project.sources()[master_index].font.clone();
+            let source = reopened.font.project.source_id(master_index).unwrap();
+            let mut normalized = reopened.font.project.encode_ufo_source(source).unwrap();
             if master_index == 0 {
                 let original_r = original
                     .get_glyph("R")
@@ -1398,23 +1404,15 @@ mod tests {
 
         workspace.back_to_overview();
         workspace.overview_set_unicode("0041".into());
-        assert!(workspace.font.project.sources().iter().all(|master| {
-            master
-                .font
-                .get_glyph("beh.test")
-                .expect("renamed glyph exists")
-                .codepoints
-                .contains('A')
-        }));
+        assert_eq!(
+            workspace.font.project.document_glyph_codepoints("beh.test"),
+            Some(vec![vec!['A']; 2])
+        );
         workspace.undo_active_edit(false);
-        assert!(workspace.font.project.sources().iter().all(|master| {
-            master
-                .font
-                .get_glyph("beh.test")
-                .expect("renamed glyph exists")
-                .codepoints
-                .contains('\u{0628}')
-        }));
+        assert_eq!(
+            workspace.font.project.document_glyph_codepoints("beh.test"),
+            Some(vec![vec!['\u{0628}']; 2])
+        );
         workspace.undo_active_edit(true);
         workspace.overview_set_advance("700".into());
         assert_eq!(
@@ -1449,8 +1447,13 @@ mod tests {
 
         assert!(workspace.save());
         let reopened = Workspace::open(&designspace).expect("saved masters reopen");
-        for master in reopened.font.project.sources() {
-            let glyph = master.font.get_glyph("beh.test").expect("rename persisted");
+        for source in reopened.font.project.document_sources() {
+            let snapshot = reopened
+                .font
+                .project
+                .encode_ufo_source(source.id())
+                .unwrap();
+            let glyph = snapshot.get_glyph("beh.test").expect("rename persisted");
             assert!(glyph.codepoints.contains('A'));
         }
         std::fs::remove_dir_all(dir).expect("the fixture is removed");
@@ -1577,22 +1580,22 @@ mod tests {
         let reopened = Workspace::open(&copied_designspace).expect("the copied project reopens");
         assert_eq!(reopened.font.master_names(), ["Regular", "Bold"]);
         assert_eq!(reopened.font.feature_text(), "include(../shared.fea);");
-        for master in reopened.font.project.sources() {
+        for source in reopened.font.project.document_sources() {
+            let snapshot = reopened
+                .font
+                .project
+                .encode_ufo_source(source.id())
+                .unwrap();
             assert_eq!(
-                master
-                    .font
+                snapshot
                     .lib
                     .get("com.runebender.roundtrip")
                     .and_then(|v| v.as_string()),
                 Some("kept")
             );
+            assert_eq!(snapshot.font_info.note.as_deref(), Some("save-as metadata"));
             assert_eq!(
-                master.font.font_info.note.as_deref(),
-                Some("save-as metadata")
-            );
-            assert_eq!(
-                master
-                    .font
+                snapshot
                     .layers
                     .get("Sketch")
                     .and_then(|layer| layer.get_glyph("guide"))
@@ -2138,7 +2141,7 @@ mod tests {
     #[test]
     fn save_reports_failure_for_an_unwritable_source() {
         let project = runebender::document::project::Project::from_source(
-            runebender::document::project::Master::from_font(
+            runebender::document::project::SourceInput::from_font(
                 norad::Font::new(),
                 "/dev/null/runebender-test.ufo".into(),
             ),

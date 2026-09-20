@@ -193,7 +193,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::document::project::Master;
+    use crate::document::project::SourceInput;
 
     #[test]
     fn canonical_glyph_inspection_matches_the_ufo_boundary_contract() {
@@ -232,7 +232,7 @@ mod tests {
         ));
         font.default_layer_mut().insert_glyph(glyph);
         let expected = read_glyph(&font, "A", None);
-        let project = Project::from_source(Master::from_font(
+        let project = Project::from_source(SourceInput::from_font(
             font,
             PathBuf::from("CanonicalInspect.ufo"),
         ));

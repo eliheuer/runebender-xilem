@@ -20,8 +20,6 @@ pub use glyph_transactions::GlyphId;
 
 use std::collections::{BTreeMap, HashSet};
 
-use super::project::Master;
-
 /// Stable source identity within an open project.
 ///
 /// Reordering or removing other sources does not change this identity.
@@ -47,10 +45,10 @@ pub struct GlyphLayerAddress {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
-struct SourceMetadata {
-    feature_text: String,
-    font_metadata: super::canonical_metadata::CanonicalFontMetadata,
-    font_info: super::model::font_info::CanonicalFontInfo,
+pub(super) struct SourceMetadata {
+    pub(super) feature_text: String,
+    pub(super) font_metadata: super::canonical_metadata::CanonicalFontMetadata,
+    pub(super) font_info: super::model::font_info::CanonicalFontInfo,
 }
 
 /// Opaque canonical metadata for the complete current source set.
@@ -167,8 +165,9 @@ pub struct GlyphSource {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct VariableGlyph {
     id: GlyphId,
-    layers: BTreeMap<LayerId, super::babelfont::LayerPreservation>,
-    source_metadata: BTreeMap<SourceId, super::model::glyph_metadata::CanonicalSourceGlyphMetadata>,
+    pub(super) layers: BTreeMap<LayerId, super::babelfont::LayerPreservation>,
+    pub(super) source_metadata:
+        BTreeMap<SourceId, super::model::glyph_metadata::CanonicalSourceGlyphMetadata>,
 }
 
 /// Cloneable canonical editing state without source-format preservation or Master projections.
@@ -191,8 +190,8 @@ pub struct DocumentSnapshot {
 pub struct CanonicalSourceStructureSnapshot {
     glyph_geometry: babelfont::GlyphList,
     glyphs: BTreeMap<String, VariableGlyph>,
-    source_formats: BTreeMap<SourceId, super::source_format::SourceFormatData>,
-    source_metadata: BTreeMap<SourceId, SourceMetadata>,
+    pub(super) source_formats: BTreeMap<SourceId, super::source_format::SourceFormatData>,
+    pub(super) source_metadata: BTreeMap<SourceId, SourceMetadata>,
     source_ids: Vec<SourceId>,
     designspace: Option<super::model::designspace::CanonicalDesignspace>,
 }
@@ -291,13 +290,13 @@ impl<'a> GlyphView<'a> {
 
 /// Canonical glyph ownership plus glyph-free UFO persistence metadata.
 #[derive(Debug, Default)]
-pub(super) struct VariableData {
+pub(crate) struct VariableData {
     pub(super) font: babelfont::Font,
     pub(super) revision: u64,
     pub(super) compiled: std::sync::Mutex<super::compile::CompileCache>,
     pub(super) glyphs: BTreeMap<String, VariableGlyph>,
-    source_formats: BTreeMap<SourceId, super::source_format::SourceFormatData>,
-    source_metadata: BTreeMap<SourceId, SourceMetadata>,
+    pub(super) source_formats: BTreeMap<SourceId, super::source_format::SourceFormatData>,
+    pub(super) source_metadata: BTreeMap<SourceId, SourceMetadata>,
     designspace: Option<super::model::designspace::CanonicalDesignspace>,
     pub(super) source_ids: Vec<SourceId>,
     pub(super) next_source: usize,
@@ -322,6 +321,23 @@ impl Clone for VariableData {
 impl VariableData {
     pub(super) fn source_layer_names(&self, source: SourceId) -> Option<Vec<&str>> {
         Some(self.source_formats.get(&source)?.layer_names().collect())
+    }
+
+    pub(super) fn default_layer_name(&self, source: SourceId) -> Option<&str> {
+        Some(self.source_formats.get(&source)?.default_layer_name())
+    }
+
+    pub(super) fn source_contains_layer(&self, id: &LayerId) -> bool {
+        self.source_formats
+            .get(&id.source)
+            .is_some_and(|format| format.contains_layer(&id.name))
+    }
+
+    pub(super) fn ensure_layer_container(&mut self, id: &LayerId) -> Result<(), String> {
+        self.source_formats
+            .get_mut(&id.source)
+            .ok_or_else(|| "unknown source".to_owned())?
+            .ensure_layer(&id.name)
     }
 
     pub(super) fn snapshot(&self) -> DocumentSnapshot {
@@ -766,226 +782,10 @@ impl VariableData {
             })
             .collect()
     }
-
-    pub(super) fn from_sources(sources: &[Master]) -> Self {
-        let mut data = Self::default();
-        for (index, source) in sources.iter().enumerate() {
-            data.source_ids.push(SourceId(index));
-            data.update_source(SourceId(index), &source.font);
-        }
-        data.next_source = sources.len();
-        data
-    }
-
-    pub(super) fn synchronize(&mut self, sources: &[Master]) {
-        self.source_formats
-            .retain(|id, _| self.source_ids.contains(id));
-        self.source_metadata
-            .retain(|id, _| self.source_ids.contains(id));
-        for glyph in self.glyphs.values_mut() {
-            glyph
-                .layers
-                .retain(|id, _| self.source_ids.contains(&id.source));
-            glyph
-                .source_metadata
-                .retain(|id, _| self.source_ids.contains(id));
-        }
-        for (index, source) in sources.iter().enumerate() {
-            self.update_source(self.source_ids[index], &source.font);
-        }
-        self.revision = self.revision.wrapping_add(1);
-    }
-
-    fn update_source(&mut self, source: SourceId, font: &norad::Font) -> bool {
-        let mut changed = false;
-        let default_layer_name = font.default_layer().name().to_string();
-        let mut source_glyphs = HashSet::new();
-        let metadata = SourceMetadata {
-            feature_text: font.features.clone(),
-            font_metadata: super::font_ops::canonical_metadata_from_ufo(font)
-                .expect("Norad source metadata must satisfy the canonical metadata contract"),
-            font_info: super::model::font_info::CanonicalFontInfo::from_ufo(&font.font_info)
-                .expect("Norad font info must satisfy the canonical metadata contract"),
-        };
-        changed |= self.source_metadata.get(&source) != Some(&metadata);
-        self.source_metadata.insert(source, metadata);
-        // Remove deleted layers/glyphs without disturbing any other source.
-        for (name, glyph) in &mut self.glyphs {
-            let before = glyph.layers.len();
-            glyph.layers.retain(|id, _| {
-                id.source != source
-                    || font
-                        .layers
-                        .get(&id.name)
-                        .is_some_and(|layer| layer.get_glyph(name).is_some())
-            });
-            changed |= before != glyph.layers.len();
-        }
-        self.glyphs.retain(|_, glyph| !glyph.layers.is_empty());
-        for layer in font.layers.iter() {
-            let id = LayerId {
-                source,
-                name: layer.name().to_string(),
-            };
-            for payload in layer.iter() {
-                let name = payload.name().as_str();
-                if layer.name().as_str() == default_layer_name {
-                    source_glyphs.insert(name.to_owned());
-                    let metadata =
-                        super::model::glyph_metadata::canonical_glyph_metadata_from_ufo(font, name)
-                            .expect("UFO source glyph metadata must satisfy the canonical contract")
-                            .source()
-                            .clone();
-                    let glyph = self.glyphs.entry(name.to_owned()).or_default();
-                    changed |= glyph.source_metadata.get(&source) != Some(&metadata);
-                    glyph.source_metadata.insert(source, metadata);
-                }
-                let key = super::babelfont::layer_key(&id);
-                let unchanged = self
-                    .glyphs
-                    .get(name)
-                    .and_then(|glyph| glyph.layers.get(&id))
-                    .zip(
-                        self.font
-                            .glyphs
-                            .get(name)
-                            .and_then(|glyph| glyph.get_layer(&key)),
-                    )
-                    .is_some_and(|(preserved, layer)| {
-                        super::babelfont::project_layer(layer, preserved) == *payload
-                    });
-                if !unchanged {
-                    let default = layer.name() == font.default_layer().name();
-                    let converted = self
-                        .glyphs
-                        .get(name)
-                        .and_then(|glyph| glyph.layers.get(&id))
-                        .zip(
-                            self.font
-                                .glyphs
-                                .get(name)
-                                .and_then(|glyph| glyph.get_layer(&key)),
-                        )
-                        .map_or_else(
-                            || super::babelfont::layer_from_ufo(payload, &id, default),
-                            |(preserved, previous)| {
-                                super::babelfont::reconcile_layer_from_ufo(
-                                    payload, &id, default, previous, preserved,
-                                )
-                            },
-                        );
-                    let (layer, preserved) = converted;
-                    let glyph = self.glyphs.entry(payload.name().to_string()).or_default();
-                    glyph.layers.insert(id.clone(), preserved);
-                    if self.font.glyphs.get(name).is_none() {
-                        self.font.glyphs.0.push(babelfont::Glyph::new(name));
-                    }
-                    let target = self.font.glyphs.get_mut(name).expect("inserted glyph");
-                    if let Some(existing) =
-                        target.get_layer_mut(layer.id.as_deref().expect("layer identity"))
-                    {
-                        *existing = layer;
-                    } else {
-                        target.layers.push(layer);
-                    }
-                    target.codepoints = payload.codepoints.iter().map(u32::from).collect();
-                    changed = true;
-                }
-            }
-        }
-        self.font.glyphs.0.retain_mut(|glyph| {
-            let Some(projected) = self.glyphs.get(glyph.name.as_str()) else {
-                return false;
-            };
-            glyph.layers.retain(|layer| {
-                projected
-                    .layers
-                    .keys()
-                    .any(|id| layer.id.as_deref() == Some(super::babelfont::layer_key(id).as_str()))
-            });
-            !glyph.layers.is_empty()
-        });
-        for (name, glyph) in &mut self.glyphs {
-            if !source_glyphs.contains(name) {
-                changed |= glyph.source_metadata.remove(&source).is_some();
-            }
-        }
-        // Source-format preservation contains no glyphs or canonically owned source metadata.
-        let format = super::source_format::SourceFormatData::from_ufo(font);
-        changed |= self.source_formats.get(&source) != Some(&format);
-        self.source_formats.insert(source, format);
-        if changed {
-            self.revision = self.revision.wrapping_add(1);
-        }
-        changed
-    }
-
-    pub(super) fn source_font(&self, source: SourceId) -> Option<norad::Font> {
-        let mut font = self.source_formats.get(&source)?.to_ufo_template();
-        font.features
-            .clone_from(&self.source_metadata.get(&source)?.feature_text);
-        super::font_ops::write_canonical_metadata_to_ufo(
-            &mut font,
-            &self.source_metadata.get(&source)?.font_metadata,
-        )
-        .expect("canonical source metadata must remain writable as UFO");
-        self.source_metadata
-            .get(&source)?
-            .font_info
-            .write_to_ufo(&mut font.font_info)
-            .expect("canonical font info must remain writable as UFO");
-        for (name, glyph) in &self.glyphs {
-            for (id, preserved) in &glyph.layers {
-                if id.source == source {
-                    font.layers
-                        .get_mut(&id.name)
-                        .expect("every stored layer has persistence metadata")
-                        .insert_glyph(super::babelfont::project_layer(
-                            self.font
-                                .glyphs
-                                .get(name)?
-                                .get_layer(&super::babelfont::layer_key(id))?,
-                            preserved,
-                        ));
-                }
-            }
-        }
-        for (name, glyph) in &self.glyphs {
-            let Some(metadata) = glyph.source_metadata.get(&source) else {
-                continue;
-            };
-            let Some(payload) = font.get_glyph(name) else {
-                continue;
-            };
-            let boundary = super::model::glyph_metadata::CanonicalGlyphMetadata::new(
-                payload.codepoints.iter(),
-                payload.note.clone(),
-                metadata.exported(),
-                metadata.category().cloned(),
-            );
-            super::model::glyph_metadata::write_canonical_glyph_metadata_to_ufo(
-                &mut font, name, &boundary,
-            )
-            .expect("canonical glyph metadata must remain writable as UFO");
-        }
-        Some(font)
-    }
-
-    pub(super) fn project_layer(&self, name: &str, id: &LayerId) -> Option<norad::Glyph> {
-        let preserved = self.glyphs.get(name)?.layers.get(id)?;
-        let layer = self
-            .font
-            .glyphs
-            .get(name)?
-            .get_layer(&super::babelfont::layer_key(id))?;
-        Some(super::babelfont::project_layer(layer, preserved))
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use norad::{Font, Glyph};
 
     use super::*;
@@ -994,14 +794,13 @@ mod tests {
     fn structural_restore_is_guarded_and_preserves_allocator() {
         let mut original = Font::new();
         original.default_layer_mut().insert_glyph(Glyph::new("A"));
-        let source = Master::from_font(original.clone(), PathBuf::from("Original.ufo"));
-        let mut data = VariableData::from_sources(&[source]);
-        let before = data.source_structure_snapshot();
-        data.next_source = 17;
+        let original_data = crate::document::ufo_codec::decode_source(&original).unwrap();
+        let before = original_data.source_structure_snapshot();
 
         let mut edited = original;
         edited.default_layer_mut().insert_glyph(Glyph::new("B"));
-        assert!(data.update_source(SourceId(0), &edited));
+        let mut data = crate::document::ufo_codec::decode_source(&edited).unwrap();
+        data.next_source = 17;
         let after = data.source_structure_snapshot();
         let revision = data.revision;
 

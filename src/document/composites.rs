@@ -326,7 +326,7 @@ mod tests {
     use super::*;
     use norad::{AffineTransform, Anchor, Name};
 
-    use crate::document::project::{Master, Project};
+    use crate::document::project::{Project, SourceInput};
     use crate::document::variable::{GlyphLayerAddress, SourceId};
 
     fn glyph_with_anchor(name: &str, anchor: &str, x: f64, y: f64) -> Glyph {
@@ -409,7 +409,7 @@ mod tests {
         mark.transform.xy_scale = 0.125;
         mark.transform.yx_scale = -0.25;
         mark.transform.y_scale = 0.875;
-        let project = Project::from_source(Master::from_font(
+        let project = Project::from_source(SourceInput::from_font(
             font,
             PathBuf::from("CanonicalAlignment.ufo"),
         ));
@@ -459,7 +459,7 @@ mod tests {
             None,
         ));
         font.default_layer_mut().insert_glyph(inherited);
-        let project = Project::from_source(Master::from_font(
+        let project = Project::from_source(SourceInput::from_font(
             font,
             PathBuf::from("CanonicalAnchors.ufo"),
         ));
@@ -478,7 +478,7 @@ mod tests {
     fn canonical_alignment_rejects_nonfinite_results_before_mutation() {
         let mut font = mark_font();
         font.default_layer_mut().get_glyph_mut("A").unwrap().anchors[0].x = f64::NAN;
-        let project = Project::from_source(Master::from_font(
+        let project = Project::from_source(SourceInput::from_font(
             font,
             PathBuf::from("InvalidCanonicalAlignment.ufo"),
         ));

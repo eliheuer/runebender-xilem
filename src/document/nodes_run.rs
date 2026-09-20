@@ -1588,7 +1588,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
-    use crate::document::project::Master;
+    use crate::document::project::SourceInput;
 
     struct Scratch(PathBuf);
 
@@ -1630,7 +1630,7 @@ mod tests {
         )
         .unwrap();
         Project::from_designspace(document, |filename| {
-            Ok(Master::from_font(
+            Ok(SourceInput::from_font(
                 norad::Font::new(),
                 PathBuf::from(filename),
             ))
@@ -1692,7 +1692,7 @@ mod tests {
             "Family.designspace: expected one source, found 2; select a master before this node"
         );
 
-        let project = Project::from_source(Master::from_font(
+        let project = Project::from_source(SourceInput::from_font(
             norad::Font::new(),
             PathBuf::from("Regular.ufo"),
         ));
@@ -1734,13 +1734,15 @@ mod tests {
             .new_layer("com.runebender.proposal.test")
             .unwrap()
             .insert_glyph(comparison_glyph("n", 50.0));
-        let source = Project::from_source(Master::from_font(source, PathBuf::from("Regular.ufo")));
+        let source =
+            Project::from_source(SourceInput::from_font(source, PathBuf::from("Regular.ufo")));
 
         let mut target = norad::Font::new();
         target
             .default_layer_mut()
             .insert_glyph(comparison_glyph("n", 100.0));
-        let target = Project::from_source(Master::from_font(target, PathBuf::from("Bold.ufo")));
+        let target =
+            Project::from_source(SourceInput::from_font(target, PathBuf::from("Bold.ufo")));
 
         let rows = compare_project_layer(
             &source,
@@ -1794,8 +1796,10 @@ mod tests {
             .insert_glyph(proposed);
         let expected =
             crate::formats::svg::proof_sheet(&font, Some("preview"), &["A".into()], 8).unwrap();
-        let project =
-            Project::from_source(Master::from_font(font, PathBuf::from("CanonicalProof.ufo")));
+        let project = Project::from_source(SourceInput::from_font(
+            font,
+            PathBuf::from("CanonicalProof.ufo"),
+        ));
         let selected = LayerId {
             source: SourceId(0),
             name: "preview".into(),

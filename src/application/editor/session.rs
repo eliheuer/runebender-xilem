@@ -214,7 +214,7 @@ impl Session {
     #[cfg(test)]
     pub(crate) fn new(font: &norad::Font, name: &str) -> Option<Self> {
         let project = runebender::document::project::Project::from_source(
-            runebender::document::project::Master::from_font(
+            runebender::document::project::SourceInput::from_font(
                 font.clone(),
                 std::path::PathBuf::from("memory.ufo"),
             ),
@@ -2915,7 +2915,7 @@ mod tests {
     #[test]
     fn decompose_undo_rebuilds_nested_transformed_component_preview() {
         use masonry::kurbo::Shape as _;
-        use runebender::document::project::Master;
+        use runebender::document::project::SourceInput;
 
         let mut font = norad::Font::new();
         let mut base = norad::Glyph::new("base");
@@ -2956,10 +2956,9 @@ mod tests {
             None,
         ));
         font.default_layer_mut().insert_glyph(composite);
-        let mut project = runebender::document::project::Project::from_source(Master::from_font(
-            font,
-            std::path::PathBuf::new(),
-        ));
+        let mut project = runebender::document::project::Project::from_source(
+            SourceInput::from_font(font, std::path::PathBuf::new()),
+        );
         let source = project.document_sources().next().unwrap();
         let address = runebender::document::variable::GlyphLayerAddress {
             glyph: "composite".into(),
@@ -2968,7 +2967,7 @@ mod tests {
         let mut session = Session::new_from_project(
             &project,
             "composite",
-            Metrics::of(&project.active_font().font),
+            Metrics::of_canonical(project.document_font_info(source.id()).unwrap()),
         )
         .expect("composite exists");
         let before_bounds = session.components.bounding_box();

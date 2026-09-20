@@ -765,7 +765,7 @@ mod tests {
 
     use super::*;
 
-    use crate::document::project::{Master, Project};
+    use crate::document::project::{Project, SourceInput};
     use crate::document::variable::SourceId;
 
     fn anchor(name: &str, x: f64, y: f64) -> Anchor {
@@ -827,7 +827,7 @@ mod tests {
     fn canonical_plan_matches_the_legacy_derived_payload() {
         let font = latin();
         let (glyph, expected) = derive(&font, "Aacute").unwrap();
-        let project = Project::from_source(Master::from_font(
+        let project = Project::from_source(SourceInput::from_font(
             font,
             PathBuf::from("CanonicalCompose.ufo"),
         ));
@@ -885,7 +885,7 @@ mod tests {
         let (_, expected) = derive(&font, "Aacute").unwrap();
         assert_eq!(expected.recipe.base, "A");
         assert_eq!(expected.advance, 700.0);
-        let project = Project::from_source(Master::from_font(
+        let project = Project::from_source(SourceInput::from_font(
             font,
             PathBuf::from("DuplicateUnicodeCompose.ufo"),
         ));
@@ -916,7 +916,7 @@ mod tests {
             .unwrap()
             .lib
             .insert(LIB_KEY.into(), plist::Value::Integer(7.into()));
-        let project = Project::from_source(Master::from_font(
+        let project = Project::from_source(SourceInput::from_font(
             font,
             PathBuf::from("InvalidCanonicalCompose.ufo"),
         ));
@@ -998,7 +998,7 @@ mod tests {
 
         let mut recipes = HashMap::new();
         recipes.insert("Aacute.alt", "A + acute");
-        let project = Project::from_source(Master::from_font(
+        let project = Project::from_source(SourceInput::from_font(
             font,
             PathBuf::from("CanonicalExplicitCompose.ufo"),
         ));

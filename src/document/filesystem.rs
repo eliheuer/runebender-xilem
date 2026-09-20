@@ -13,7 +13,7 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use super::project::Master;
+use super::project::SourceInput;
 use crate::formats::glyphs_import::ConversionResult;
 
 /// Filesystem details outside canonical ownership that must survive an ordinary save.
@@ -121,7 +121,7 @@ pub(crate) struct ImportedUfo {
 }
 
 impl ImportedUfo {
-    pub(crate) fn into_master(self, path: PathBuf) -> Master {
+    pub(crate) fn into_source_input(self, path: PathBuf) -> SourceInput {
         let glif_paths = self
             .font
             .default_layer()
@@ -140,10 +140,10 @@ impl ImportedUfo {
                 ))
             })
             .collect();
-        let mut master = Master::from_font(self.font, path);
-        master.glif_paths = glif_paths;
-        master.preserved_files = self.preserved;
-        master
+        let mut source = SourceInput::from_font(self.font, path);
+        source.glif_paths = glif_paths;
+        source.preserved_files = self.preserved;
+        source
     }
 }
 

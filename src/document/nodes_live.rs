@@ -311,19 +311,19 @@ pub fn import_versions(graph: &mut NodeGraph, project: &Project) -> usize {
 #[cfg(test)]
 mod tests {
     use super::super::font_memory::designspace_from_str;
-    use super::super::project::Master;
+    use super::super::project::SourceInput;
     use super::*;
 
     fn two_source_project() -> Project {
         let font = Project::new_font("synthetic.ufo".into())
-            .source_snapshot(SourceId(0))
+            .encode_ufo_source(SourceId(0))
             .unwrap();
         let document = designspace_from_str(
             r#"<designspace format="5.0"><axes><axis name="Weight" tag="wght" minimum="0" default="0" maximum="1"/></axes><sources><source filename="first.ufo"><location><dimension name="Weight" xvalue="0"/></location></source><source filename="second.ufo"><location><dimension name="Weight" xvalue="1"/></location></source></sources></designspace>"#,
         )
         .unwrap();
         Project::from_designspace(document, |path| {
-            Ok(Master::from_font(font.clone(), path.into()))
+            Ok(SourceInput::from_font(font.clone(), path.into()))
         })
         .unwrap()
     }
@@ -377,7 +377,7 @@ mod tests {
         )
         .unwrap();
         let font = p.experiments.versions[version.branch.as_ref().unwrap()]
-            .source_snapshot(&p)
+            .encode_ufo_source(&p)
             .unwrap();
         let dir =
             std::env::temp_dir().join(format!("runebender-node-export-{}.ufo", std::process::id()));

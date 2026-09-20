@@ -123,7 +123,7 @@ pub fn new_font(family: &str, style: &str, weight_class: i32) -> norad::Font {
     )
     .expect("the checked-in new-font template is valid");
     project
-        .source_snapshot(super::variable::SourceId(0))
+        .encode_ufo_source(super::variable::SourceId(0))
         .expect("a new canonical font has its default source")
 }
 

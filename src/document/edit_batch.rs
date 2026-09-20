@@ -921,7 +921,7 @@ mod tests {
         let layer = project.document_source(source).unwrap().default_layer();
         let original = project.document_layer("A", &layer).unwrap().width();
         let mut external = Font::new();
-        let snapshot = project.source_snapshot(source).unwrap();
+        let snapshot = project.encode_ufo_source(source).unwrap();
         let mut proposed = snapshot.get_glyph("A").unwrap().clone();
         proposed.width = original + 90.0;
         proposal::write(&mut external, "external", [proposed]).unwrap();
@@ -1126,7 +1126,7 @@ mod tests {
             None,
         ));
         font.default_layer_mut().insert_glyph(glyph);
-        let mut project = Project::from_source(crate::document::project::Master::from_font(
+        let mut project = Project::from_source(crate::document::project::SourceInput::from_font(
             font,
             PathBuf::from("IdentityProposal.ufo"),
         ));
@@ -1184,7 +1184,7 @@ mod tests {
                 .position(),
             kurbo::Point::new(12.0, 3.0)
         );
-        let projected = project.source_snapshot(source).unwrap();
+        let projected = project.encode_ufo_source(source).unwrap();
         let projected = projected.get_glyph("A").unwrap();
         assert_eq!(projected.note.as_deref(), Some("retain note"));
         assert_eq!(

@@ -7,20 +7,23 @@ use norad::{Contour, ContourPoint, Font, Glyph, Name, PointType};
 use runebender::document::DocumentEditError;
 use runebender::document::canonical_metadata::KerningParticipant;
 use runebender::document::font_memory::designspace_from_str;
-use runebender::document::project::{DocumentEditOutcome, Master, Project};
+use runebender::document::project::{DocumentEditOutcome, Project, SourceInput};
 use runebender::document::variable::{LayerId, SourceId};
 use runebender::text::shape::ShapingFont;
 use skrifa::raw::TableProvider as _;
 
 fn edit_width(project: &mut Project, source: SourceId, glyph: &str, width: f64) {
     let layer = project.document_source(source).unwrap().default_layer();
-    assert!(matches!(
-        project.edit_document_layer(glyph, &layer, |draft| {
-            draft.set_width(width)?;
-            Ok(())
-        }),
-        Ok(DocumentEditOutcome::Changed { .. })
-    ));
+    assert!(
+        matches!(
+            project.edit_document_layer(glyph, &layer, |draft| {
+                draft.set_width(width)?;
+                Ok(())
+            }),
+            Ok(DocumentEditOutcome::Changed { .. })
+        ),
+        "fixture layer edit must change the document"
+    );
 }
 
 fn designspace() -> norad::designspace::DesignSpaceDocument {
@@ -67,7 +70,7 @@ fn project_from_designspace(doc: norad::designspace::DesignSpaceDocument) -> Pro
             .entry(Name::new("A").unwrap())
             .or_default()
             .insert(Name::new("V").unwrap(), if bold { -150.0 } else { -50.0 });
-        Ok(Master::from_font(font, name.into()))
+        Ok(SourceInput::from_font(font, name.into()))
     })
     .unwrap()
 }
@@ -137,7 +140,7 @@ fn compiler_quantizes_exact_editable_metrics_only_in_its_snapshot() {
         }),
         Ok(DocumentEditOutcome::Changed { .. })
     ));
-    let exact = project.source_snapshot(SourceId(0)).unwrap();
+    let exact = project.encode_ufo_source(SourceId(0)).unwrap();
     assert_eq!(
         exact.get_glyph("A").unwrap().width,
         500.6,
@@ -159,7 +162,7 @@ fn compiler_quantizes_exact_editable_metrics_only_in_its_snapshot() {
         shaped[0].x_advance, 450.0,
         "compiled advance and kerning must use rounded OpenType values"
     );
-    let still_exact = project.source_snapshot(SourceId(0)).unwrap();
+    let still_exact = project.encode_ufo_source(SourceId(0)).unwrap();
     assert_eq!(
         still_exact.get_glyph("A").unwrap().width,
         500.6,
@@ -240,8 +243,9 @@ fn text_buffer_applies_variable_kerning_once_and_reuses_compilation_across_locat
         "slider-only location changes must reuse immutable compiled inputs"
     );
     let mut buffer = TextBuffer::new();
-    buffer.set_glyph_inventory(TextGlyphInventory::from_font(&project.sources()[0].font));
-    buffer.set_kerning_model(TextKerningModel::from_font(&project.sources()[0].font));
+    let source = project.encode_ufo_source(SourceId(0)).unwrap();
+    buffer.set_glyph_inventory(TextGlyphInventory::from_font(&source));
+    buffer.set_kerning_model(TextKerningModel::from_font(&source));
     buffer.set_feature_overrides(vec![("liga".into(), false)]);
     buffer.set_compiled_font(Some(compiled.bytes.clone()), vec![1.0]);
     buffer.insert_character('A');
@@ -287,7 +291,6 @@ fn designspace_rules_are_present_in_the_compiled_variable_shaper() {
     project.master_names.clear();
     project.instances.clear();
     project.brace.clear();
-    project.ds_doc.as_mut().unwrap().rules.rules.clear();
     let compiled = project.compile().unwrap();
     for (location, name) in [(0.0, "A"), (1.0, "V")] {
         let shaping = ShapingFont::from_bytes((*compiled.bytes).clone())
@@ -422,7 +425,7 @@ fn canonical_source_metadata_transaction_is_atomic_and_invalidates_compile() {
         "canonical feature text was not committed"
     );
     assert_eq!(
-        project.source_snapshot(source).unwrap().features,
+        project.encode_ufo_source(source).unwrap().features,
         feature_text,
         "format projection missed canonical feature text"
     );

@@ -395,7 +395,7 @@ mod tests {
     use super::*;
     use norad::{Anchor, Component, Name};
 
-    use crate::document::project::{Master, Project};
+    use crate::document::project::{Project, SourceInput};
     use crate::document::variable::SourceId;
 
     fn anchor(name: &str, x: f64, y: f64) -> Anchor {
@@ -467,7 +467,7 @@ mod tests {
         let mut font = font();
         font.features = "languagesystem DFLT dflt;\n".into();
         let expected = generate(&font);
-        let project = Project::from_source(Master::from_font(
+        let project = Project::from_source(SourceInput::from_font(
             font,
             PathBuf::from("CanonicalFeatures.ufo"),
         ));

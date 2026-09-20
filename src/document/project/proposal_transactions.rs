@@ -50,18 +50,13 @@ impl Project {
         let index = self
             .source_index(transaction.source)
             .expect("validated proposal source remains present");
-        self.masters[index].font = self
-            .variable
-            .source_font(transaction.source)
-            .expect("committed proposal source remains projectable");
-        self.masters[index].dirty = true;
-        self.masters[index].modified_glyphs.extend(
+        self.sources[index].dirty = true;
+        self.sources[index].modified_glyphs.extend(
             transaction
                 .affected
                 .iter()
                 .map(|address| address.glyph.clone()),
         );
-        self.masters[index].refresh_from_font();
         self.compute_compat();
         Ok(transaction.affected)
     }

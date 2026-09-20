@@ -125,7 +125,7 @@ fn canonical_project_builds_the_same_text_inputs_as_its_source_boundary() {
     )
     .unwrap();
     let project = crate::document::project::Project::from_designspace(designspace, |path| {
-        Ok(crate::document::project::Master::from_font(
+        Ok(crate::document::project::SourceInput::from_font(
             font.clone(),
             path.into(),
         ))

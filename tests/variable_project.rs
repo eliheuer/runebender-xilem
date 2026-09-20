@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use kurbo::Shape as _;
 use norad::{Anchor, Component, Contour, ContourPoint, Font, Glyph, Name, PointType};
 use runebender::document::canonical_metadata::{KerningParticipant, KerningSide};
 use runebender::document::font_memory::designspace_from_str;
@@ -14,7 +15,7 @@ use runebender::document::history::{HistoryDirection, HistoryReplayError};
 use runebender::document::model::glyph_metadata::OpenTypeGlyphCategory;
 use runebender::document::project::{
     DocumentEditOutcome, DocumentHistoryError, DocumentHistoryReplayOutcome,
-    DocumentSourceMetadataHistoryError, Master, Project,
+    DocumentSourceMetadataHistoryError, Project, SourceInput,
 };
 use runebender::document::var_model::Location;
 use runebender::document::variable::{GlyphLayerAddress, LayerId, SourceId};
@@ -211,7 +212,7 @@ fn fixture() -> (Scratch, Project) {
                 .unwrap()
                 .insert_glyph(glyph("onlySketch", 999.0));
         }
-        Ok(Master::from_font(font, scratch.0.join(filename)))
+        Ok(SourceInput::from_font(font, scratch.0.join(filename)))
     })
     .unwrap();
     project.export_source = Some(scratch.0.join("Font.designspace"));
@@ -375,7 +376,7 @@ fn adversarial_fixture() -> (Scratch, Project, BTreeMap<String, Font>) {
         fonts.insert(filename.into(), font);
     }
     let project = Project::from_designspace(doc, |filename| {
-        Ok(Master::from_font(
+        Ok(SourceInput::from_font(
             fonts.get(filename).unwrap().clone(),
             scratch.0.join(filename),
         ))
@@ -440,7 +441,7 @@ fn single_source_constructors_expose_canonical_source_metadata() {
     direct_font
         .default_layer_mut()
         .insert_glyph(glyph("A", 0.0));
-    let direct_project = Project::from_source(Master::from_font(
+    let direct_project = Project::from_source(SourceInput::from_font(
         direct_font.clone(),
         scratch.0.join("Direct.ufo"),
     ));
@@ -555,18 +556,30 @@ fn document_views_read_exact_canonical_layers_and_stable_source_identity() {
 }
 
 #[test]
-fn canonical_glyph_entries_match_the_transitional_paint_cache() {
+fn canonical_glyph_entries_match_the_ufo_codec_projection() {
     let (_scratch, project) = fixture();
     let entries = project.document_source_glyph_entries(SourceId(0)).unwrap();
-    let projected = &project.sources()[0].glyphs;
-    assert_eq!(entries.len(), projected.len());
-    for (entry, projected) in entries.iter().zip(projected) {
-        assert_eq!(entry.name(), projected.name.as_ref());
-        assert_eq!(entry.codepoint(), projected.codepoint);
-        assert_eq!(entry.advance(), projected.advance);
-        assert_eq!(entry.outline().as_ref(), projected.path.as_ref());
-        assert_eq!(entry.ink(), projected.ink);
-        assert_eq!(entry.mark(), projected.mark.as_deref());
+    let projected = project.encode_ufo_source(SourceId(0)).unwrap();
+    let theme = runebender::ui::theme::load_theme("gray").unwrap();
+    assert_eq!(entries.len(), projected.default_layer().iter().count());
+    for entry in &entries {
+        let glyph = projected.get_glyph(entry.name()).unwrap();
+        let path = runebender::outline::glyph_paths::glyph_to_bezpath(glyph, &projected);
+        assert_eq!(entry.codepoint(), glyph.codepoints.iter().next());
+        assert_eq!(entry.advance(), glyph.width);
+        assert_eq!(entry.outline().as_ref(), &path);
+        assert_eq!(
+            entry.ink(),
+            if path.is_empty() {
+                kurbo::Rect::ZERO
+            } else {
+                path.bounding_box()
+            }
+        );
+        assert_eq!(
+            entry.mark(),
+            runebender::ui::theme::mark_label_for_glyph(glyph, &theme).as_deref()
+        );
     }
     assert!(
         project
@@ -590,17 +603,19 @@ fn canonical_glyph_entries_keep_intrinsic_paint_when_components_do_not_resolve()
         plist::Value::String("0.93,0.45,0.2,1".into()),
     );
     font.default_layer_mut().insert_glyph(glyph);
-    let master = Master::from_font(font, scratch.0.join("Broken.ufo"));
-    let projected = master.glyphs[0].clone();
-    let project = Project::from_source(master);
+    let projected = runebender::outline::glyph_paths::glyph_to_bezpath(
+        font.get_glyph("broken").unwrap(),
+        &font,
+    );
+    let project = Project::from_source(SourceInput::from_font(font, scratch.0.join("Broken.ufo")));
 
     let entry = project
         .document_source_glyph_entry(SourceId(0), "broken")
         .unwrap()
         .unwrap();
-    assert_eq!(entry.outline().as_ref(), projected.path.as_ref());
-    assert_eq!(entry.ink(), projected.ink);
-    assert_eq!(entry.mark(), projected.mark.as_deref());
+    assert_eq!(entry.outline().as_ref(), &projected);
+    assert_eq!(entry.ink(), projected.bounding_box());
+    assert_eq!(entry.mark(), Some("orange"));
 }
 
 #[test]
@@ -612,7 +627,7 @@ fn all_source_codepoint_edits_publish_once_and_round_trip_exactly() {
             (
                 source.id(),
                 project
-                    .source_snapshot(source.id())
+                    .encode_ufo_source(source.id())
                     .unwrap()
                     .get_glyph("A")
                     .unwrap()
@@ -649,15 +664,15 @@ fn all_source_codepoint_edits_publish_once_and_round_trip_exactly() {
         project.document_glyph_codepoints("A"),
         Some(expected.clone())
     );
-    for (index, (((source, mut glyph), codepoints), projected)) in original
-        .into_iter()
-        .zip(&expected)
-        .zip(project.sources().iter())
-        .enumerate()
+    for (index, ((source, mut glyph), codepoints)) in
+        original.into_iter().zip(&expected).enumerate()
     {
         glyph.codepoints = norad::Codepoints::new(codepoints.iter().copied());
         assert_eq!(project.source_id(index), Some(source));
-        assert_eq!(projected.font.get_glyph("A"), Some(&glyph));
+        assert_eq!(
+            project.encode_ufo_source(source).unwrap().get_glyph("A"),
+            Some(&glyph)
+        );
     }
 
     assert!(matches!(
@@ -690,7 +705,7 @@ fn all_source_codepoint_edit_rejects_a_later_missing_layer_without_mutation() {
             font.default_layer_mut().insert_glyph(glyph("A", 0.0));
             font.layers.new_layer("intermediate").unwrap();
         }
-        Ok(Master::from_font(font, scratch.0.join(filename)))
+        Ok(SourceInput::from_font(font, scratch.0.join(filename)))
     })
     .unwrap();
     let snapshot = project.document_snapshot();
@@ -747,7 +762,7 @@ fn canonical_contour_paths_match_legacy_conversion_and_keep_implied_quadratics()
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(glyph.clone());
     font.default_layer_mut().insert_glyph(Glyph::new("empty"));
-    let project = Project::from_source(Master::from_font(font, scratch.0.join("Paths.ufo")));
+    let project = Project::from_source(SourceInput::from_font(font, scratch.0.join("Paths.ufo")));
     let layer_id = project
         .document_source(SourceId(0))
         .unwrap()
@@ -856,8 +871,10 @@ fn canonical_hit_testing_matches_implied_quadratic_geometry_and_identities() {
     ));
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(glyph);
-    let project =
-        Project::from_source(Master::from_font(font, scratch.0.join("QuadraticHits.ufo")));
+    let project = Project::from_source(SourceInput::from_font(
+        font,
+        scratch.0.join("QuadraticHits.ufo"),
+    ));
     let layer_id = project
         .document_source(SourceId(0))
         .unwrap()
@@ -923,7 +940,7 @@ fn canonical_component_resolution_matches_legacy_and_reports_broken_graphs() {
         .document_source(SourceId(0))
         .unwrap()
         .default_layer();
-    let source = project.source_snapshot(SourceId(0)).unwrap();
+    let source = project.encode_ufo_source(SourceId(0)).unwrap();
     let expected =
         runebender::outline::glyph_paths::glyph_to_bezpath(source.get_glyph("C").unwrap(), &source);
     let resolved = runebender::outline::glyph_paths::ordinary_layer_to_bezpath(
@@ -1012,7 +1029,7 @@ fn canonical_component_resolution_matches_legacy_and_reports_broken_graphs() {
     for glyph in [missing, cycle_a, cycle_b] {
         font.default_layer_mut().insert_glyph(glyph);
     }
-    let broken = Project::from_source(Master::from_font(font, scratch.0.join("Broken.ufo")));
+    let broken = Project::from_source(SourceInput::from_font(font, scratch.0.join("Broken.ufo")));
     let broken_layer = broken.document_source(SourceId(0)).unwrap().default_layer();
     assert_eq!(
         runebender::outline::glyph_paths::ordinary_layer_to_bezpath(
@@ -1046,7 +1063,7 @@ fn canonical_measurement_inputs_match_legacy_geometry() {
         .unwrap()
         .default_layer();
     let layer = project.document_layer("A", &layer_id).unwrap();
-    let glyph = project.glyph_layer("A", &layer_id).unwrap();
+    let glyph = project.encode_ufo_layer("A", &layer_id).unwrap();
     let paths: Vec<_> = glyph
         .contours
         .iter()
@@ -1089,7 +1106,7 @@ fn canonical_measurements_do_not_close_open_contours() {
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(open);
     font.default_layer_mut().insert_glyph(closed);
-    let project = Project::from_source(Master::from_font(font, scratch.0.join("Measure.ufo")));
+    let project = Project::from_source(SourceInput::from_font(font, scratch.0.join("Measure.ufo")));
     let layer_id = project
         .document_source(SourceId(0))
         .unwrap()
@@ -1133,7 +1150,7 @@ fn canonical_point_roles_keep_contour_closure_coherent() {
     ));
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(glyph);
-    let mut project = Project::from_source(Master::from_font(
+    let mut project = Project::from_source(SourceInput::from_font(
         font,
         scratch.0.join("ContourClosure.ufo"),
     ));
@@ -1180,7 +1197,7 @@ fn canonical_point_roles_keep_contour_closure_coherent() {
             .is_closed(),
         "setting the initial move did not open the canonical contour"
     );
-    let projected = project.glyph_layer("closure", &layer_id).unwrap();
+    let projected = project.encode_ufo_layer("closure", &layer_id).unwrap();
     assert_eq!(
         runebender::outline::glyph_paths::ordinary_layer_contours_to_bezpath(
             project.document_layer("closure", &layer_id).unwrap(),
@@ -1221,7 +1238,7 @@ fn canonical_pen_builds_closed_contours_with_stable_new_identities() {
     let scratch = Scratch::new();
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(Glyph::new("pen"));
-    let mut project = Project::from_source(Master::from_font(font, scratch.0.join("Pen.ufo")));
+    let mut project = Project::from_source(SourceInput::from_font(font, scratch.0.join("Pen.ufo")));
     let layer_id = project
         .document_source(SourceId(0))
         .unwrap()
@@ -1353,7 +1370,7 @@ fn canonical_pen_builds_closed_contours_with_stable_new_identities() {
         Some(((300.0, 100.0), (200.0, 100.0))),
     );
     assert_eq!(
-        project.glyph_layer("pen", &layer_id).unwrap().contours,
+        project.encode_ufo_layer("pen", &layer_id).unwrap().contours,
         expected.contours,
         "canonical pen output changed the existing contour contract"
     );
@@ -1415,7 +1432,7 @@ fn canonical_hyper_pen_uses_stable_typed_contours() {
     runebender::outline::glyph_ops::append_hyper_point(&mut expected, legacy, 200.0, 0.0, false);
     runebender::outline::glyph_ops::append_hyper_point(&mut expected, legacy, 200.0, 200.0, true);
     runebender::outline::glyph_ops::close_hyper_contour(&mut expected, legacy);
-    let projected = project.glyph_layer("hyper-pen", &layer_id).unwrap();
+    let projected = project.encode_ufo_layer("hyper-pen", &layer_id).unwrap();
     assert_eq!(projected.contours[0].points, expected.contours[0].points);
     assert!(
         projected.contours[0]
@@ -1468,7 +1485,8 @@ fn canonical_shape_creation_matches_existing_geometry_with_stable_identities() {
     let scratch = Scratch::new();
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(Glyph::new("shapes"));
-    let mut project = Project::from_source(Master::from_font(font, scratch.0.join("Shapes.ufo")));
+    let mut project =
+        Project::from_source(SourceInput::from_font(font, scratch.0.join("Shapes.ufo")));
     let layer_id = project
         .document_source(SourceId(0))
         .unwrap()
@@ -1513,7 +1531,10 @@ fn canonical_shape_creation_matches_existing_geometry_with_stable_identities() {
     runebender::outline::glyph_ops::add_shape_contour(&mut expected, rectangle, false);
     runebender::outline::glyph_ops::add_shape_contour(&mut expected, ellipse, true);
     assert_eq!(
-        project.glyph_layer("shapes", &layer_id).unwrap().contours,
+        project
+            .encode_ufo_layer("shapes", &layer_id)
+            .unwrap()
+            .contours,
         expected.contours,
         "canonical rectangle and ellipse creation changed existing geometry"
     );
@@ -1690,7 +1711,7 @@ fn canonical_layer_transactions_commit_atomically_and_skip_noops() {
         kurbo::Point::new(25.25, 725.75),
         "canonical anchor edit is missing"
     );
-    let projected = project.source_snapshot(SourceId(0)).unwrap();
+    let projected = project.encode_ufo_source(SourceId(0)).unwrap();
     let projected = projected.get_glyph("A").unwrap();
     assert_eq!(
         projected.width, 725.123_456_789,
@@ -1725,7 +1746,7 @@ fn canonical_selection_transform_matches_legacy_geometry_atomically() {
     let selected_ids = [point_ids[0][0], point_ids[1][1]];
     let transform = kurbo::Affine::rotate(std::f64::consts::FRAC_PI_2)
         * kurbo::Affine::scale_non_uniform(-1.0, 0.5);
-    let mut expected = project.glyph_layer("A", &layer_id).unwrap();
+    let mut expected = project.encode_ufo_layer("A", &layer_id).unwrap();
     let selected_indices = [(0, 0), (1, 1)].into_iter().collect();
     assert!(runebender::outline::glyph_ops::transform_selection(
         &mut expected,
@@ -1741,7 +1762,7 @@ fn canonical_selection_transform_matches_legacy_geometry_atomically() {
         .unwrap();
     assert!(matches!(changed, DocumentEditOutcome::Changed { .. }));
     assert_eq!(
-        project.glyph_layer("A", &layer_id).unwrap(),
+        project.encode_ufo_layer("A", &layer_id).unwrap(),
         expected,
         "canonical selection transform changed geometry"
     );
@@ -1827,8 +1848,10 @@ fn canonical_point_drag_matches_legacy_handle_behavior_atomically() {
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(curve_glyph("drag"));
     font.default_layer_mut().insert_glyph(glyph("other", 0.0));
-    let mut project =
-        Project::from_source(Master::from_font(font, scratch.0.join("PointDrag.ufo")));
+    let mut project = Project::from_source(SourceInput::from_font(
+        font,
+        scratch.0.join("PointDrag.ufo"),
+    ));
     let layer_id = project
         .document_source(SourceId(0))
         .unwrap()
@@ -1849,7 +1872,7 @@ fn canonical_point_drag_matches_legacy_handle_behavior_atomically() {
         .point_drag_origins(&[selected], false)
         .unwrap();
     assert_eq!(originals.len(), 3, "carried handle origins were omitted");
-    let initial = project.glyph_layer("drag", &layer_id).unwrap();
+    let initial = project.encode_ufo_layer("drag", &layer_id).unwrap();
     let selected_indices: HashSet<_> = [(0, 3)].into_iter().collect();
     let legacy_originals =
         runebender::outline::point_ops::drag_origins(&initial, &selected_indices, false);
@@ -1874,7 +1897,7 @@ fn canonical_point_drag_matches_legacy_handle_behavior_atomically() {
         })
         .unwrap();
     assert_eq!(
-        project.glyph_layer("drag", &layer_id).unwrap(),
+        project.encode_ufo_layer("drag", &layer_id).unwrap(),
         expected,
         "canonical first drag event did not carry adjacent handles like the editor"
     );
@@ -1899,18 +1922,18 @@ fn canonical_point_drag_matches_legacy_handle_behavior_atomically() {
         })
         .unwrap();
     assert_eq!(
-        project.glyph_layer("drag", &layer_id).unwrap(),
+        project.encode_ufo_layer("drag", &layer_id).unwrap(),
         expected,
         "successive canonical drag events accumulated instead of using drag-start positions"
     );
-    let projected = project.glyph_layer("drag", &layer_id).unwrap();
+    let projected = project.encode_ufo_layer("drag", &layer_id).unwrap();
     assert_eq!(projected.contours[0].points[2].x, 104.0);
     assert_eq!(projected.contours[0].points[3].x, 102.0);
     assert_eq!(projected.contours[0].points[4].x, 104.0);
 
     let selected_handle = point_ids[4];
     let handle_indices: HashSet<_> = [(0, 4)].into_iter().collect();
-    let mut expected = project.glyph_layer("drag", &layer_id).unwrap();
+    let mut expected = project.encode_ufo_layer("drag", &layer_id).unwrap();
     assert!(runebender::outline::point_ops::translate_points(
         &mut expected,
         &handle_indices,
@@ -1930,7 +1953,7 @@ fn canonical_point_drag_matches_legacy_handle_behavior_atomically() {
         })
         .unwrap();
     assert_eq!(
-        project.glyph_layer("drag", &layer_id).unwrap(),
+        project.encode_ufo_layer("drag", &layer_id).unwrap(),
         expected,
         "canonical handle drag did not preserve the smooth tangent like the editor"
     );
@@ -2034,7 +2057,7 @@ fn canonical_smoothing_and_sidebearing_shift_match_legacy_geometry_atomically() 
         .collect();
     let selected = [point_ids[0][0], point_ids[1][1]];
     let selected_indices: HashSet<_> = [(0, 0), (1, 1)].into_iter().collect();
-    let mut expected = project.glyph_layer("A", &layer_id).unwrap();
+    let mut expected = project.encode_ufo_layer("A", &layer_id).unwrap();
     assert!(runebender::outline::glyph_ops::toggle_smooth(
         &mut expected,
         &selected_indices,
@@ -2046,7 +2069,7 @@ fn canonical_smoothing_and_sidebearing_shift_match_legacy_geometry_atomically() 
         })
         .unwrap();
     assert_eq!(
-        project.glyph_layer("A", &layer_id).unwrap(),
+        project.encode_ufo_layer("A", &layer_id).unwrap(),
         expected,
         "canonical smooth toggles diverged from the existing editor operation"
     );
@@ -2067,7 +2090,7 @@ fn canonical_smoothing_and_sidebearing_shift_match_legacy_geometry_atomically() 
             Ok(())
         })
         .unwrap();
-    let projected = project.glyph_layer("A", &layer_id).unwrap();
+    let projected = project.encode_ufo_layer("A", &layer_id).unwrap();
     assert_eq!(
         projected, expected,
         "canonical left-sidebearing shift changed the wrong geometry"
@@ -2151,7 +2174,7 @@ fn canonical_line_segments_convert_with_stable_endpoint_identity() {
         .map(|point| point.id())
         .collect();
     let [first, second] = [points[0], points[1]];
-    let mut expected = project.glyph_layer("A", &layer_id).unwrap();
+    let mut expected = project.encode_ufo_layer("A", &layer_id).unwrap();
     let forward = runebender::outline::segment_ops::segments(&expected)
         .into_iter()
         .find(|hit| hit.contour == 0 && hit.start == 0 && hit.end == 1)
@@ -2169,7 +2192,7 @@ fn canonical_line_segments_convert_with_stable_endpoint_identity() {
         panic!("line conversion reported no canonical change");
     };
     assert_eq!(
-        project.glyph_layer("A", &layer_id).unwrap(),
+        project.encode_ufo_layer("A", &layer_id).unwrap(),
         expected,
         "canonical forward line conversion diverged from the editor operation"
     );
@@ -2198,7 +2221,7 @@ fn canonical_line_segments_convert_with_stable_endpoint_identity() {
         })
         .unwrap();
     assert_eq!(
-        project.glyph_layer("A", &layer_id).unwrap(),
+        project.encode_ufo_layer("A", &layer_id).unwrap(),
         expected,
         "canonical closing-line conversion changed wraparound ordering"
     );
@@ -2282,8 +2305,10 @@ fn canonical_line_conversion_sets_quadratic_endpoints_to_cubic() {
     ));
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(glyph);
-    let mut project =
-        Project::from_source(Master::from_font(font, scratch.0.join("LineKinds.ufo")));
+    let mut project = Project::from_source(SourceInput::from_font(
+        font,
+        scratch.0.join("LineKinds.ufo"),
+    ));
     let layer_id = project
         .document_source(SourceId(0))
         .unwrap()
@@ -2392,7 +2417,7 @@ fn canonical_segment_insertion_preserves_existing_control_identities() {
     let original = glyph.clone();
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(glyph);
-    let mut project = Project::from_source(Master::from_font(
+    let mut project = Project::from_source(SourceInput::from_font(
         font,
         scratch.0.join("InsertSegments.ufo"),
     ));
@@ -2427,7 +2452,9 @@ fn canonical_segment_insertion_preserves_existing_control_identities() {
         runebender::outline::segment_ops::insert_point_on_segment(&mut expected, &hit, 0.5)
             .unwrap();
     }
-    let projected = project.glyph_layer("insert-segments", &layer_id).unwrap();
+    let projected = project
+        .encode_ufo_layer("insert-segments", &layer_id)
+        .unwrap();
     assert_eq!(projected.contours.len(), expected.contours.len());
     for (canonical, legacy) in projected.contours.iter().zip(&expected.contours) {
         assert_eq!(canonical.points.len(), legacy.points.len());
@@ -2571,7 +2598,7 @@ fn canonical_implied_quadratic_insertion_materializes_stable_endpoints() {
     ));
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(glyph);
-    let mut project = Project::from_source(Master::from_font(
+    let mut project = Project::from_source(SourceInput::from_font(
         font,
         scratch.0.join("ImpliedInsertion.ufo"),
     ));
@@ -2716,7 +2743,7 @@ fn canonical_implied_quadratic_insertion_rejects_stale_segment_identity() {
     ));
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(glyph);
-    let mut project = Project::from_source(Master::from_font(
+    let mut project = Project::from_source(SourceInput::from_font(
         font,
         scratch.0.join("StaleImpliedHit.ufo"),
     ));
@@ -2829,8 +2856,10 @@ fn canonical_point_deletion_preserves_surviving_identities_and_metadata() {
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(glyph);
     font.default_layer_mut().insert_glyph(Glyph::new("other"));
-    let mut project =
-        Project::from_source(Master::from_font(font, scratch.0.join("DeletePoints.ufo")));
+    let mut project = Project::from_source(SourceInput::from_font(
+        font,
+        scratch.0.join("DeletePoints.ufo"),
+    ));
     let layer_id = project
         .document_source(SourceId(0))
         .unwrap()
@@ -2855,7 +2884,9 @@ fn canonical_point_deletion_preserves_surviving_identities_and_metadata() {
         .unwrap();
     assert_eq!(
         runebender::outline::glyph_paths::contours_to_bezpath(
-            &project.glyph_layer("delete-points", &layer_id).unwrap(),
+            &project
+                .encode_ufo_layer("delete-points", &layer_id)
+                .unwrap(),
         ),
         runebender::outline::glyph_paths::contours_to_bezpath(&expected)
     );
@@ -2870,7 +2901,9 @@ fn canonical_point_deletion_preserves_surviving_identities_and_metadata() {
             Ok(())
         })
         .unwrap();
-    let projected = project.glyph_layer("delete-points", &layer_id).unwrap();
+    let projected = project
+        .encode_ufo_layer("delete-points", &layer_id)
+        .unwrap();
     assert_eq!(
         runebender::outline::glyph_paths::contours_to_bezpath(&projected),
         runebender::outline::glyph_paths::contours_to_bezpath(&expected)
@@ -2921,7 +2954,9 @@ fn canonical_point_deletion_preserves_surviving_identities_and_metadata() {
     );
     assert_eq!(
         runebender::outline::glyph_paths::contours_to_bezpath(
-            &project.glyph_layer("delete-points", &layer_id).unwrap(),
+            &project
+                .encode_ufo_layer("delete-points", &layer_id)
+                .unwrap(),
         ),
         runebender::outline::glyph_paths::contours_to_bezpath(&expected)
     );
@@ -2949,7 +2984,9 @@ fn canonical_point_deletion_preserves_surviving_identities_and_metadata() {
     );
     assert_eq!(
         runebender::outline::glyph_paths::contours_to_bezpath(
-            &project.glyph_layer("delete-points", &layer_id).unwrap(),
+            &project
+                .encode_ufo_layer("delete-points", &layer_id)
+                .unwrap(),
         ),
         runebender::outline::glyph_paths::contours_to_bezpath(&expected)
     );
@@ -3011,7 +3048,7 @@ fn canonical_quadratic_control_deletion_preserves_neighbor_segments() {
     ));
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(glyph);
-    let mut project = Project::from_source(Master::from_font(
+    let mut project = Project::from_source(SourceInput::from_font(
         font,
         scratch.0.join("QuadraticDelete.ufo"),
     ));
@@ -3117,8 +3154,10 @@ fn canonical_point_deletion_is_atomic_across_contours() {
     ));
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(glyph);
-    let mut project =
-        Project::from_source(Master::from_font(font, PathBuf::from("AtomicDelete.ufo")));
+    let mut project = Project::from_source(SourceInput::from_font(
+        font,
+        PathBuf::from("AtomicDelete.ufo"),
+    ));
     let layer_id = project
         .document_source(SourceId(0))
         .unwrap()
@@ -3204,7 +3243,7 @@ fn canonical_contour_reversal_preserves_identities_metadata_and_storage() {
     let source = glyph.clone();
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(glyph);
-    let mut project = Project::from_source(Master::from_font(
+    let mut project = Project::from_source(SourceInput::from_font(
         font,
         scratch.0.join("ReverseContours.ufo"),
     ));
@@ -3278,7 +3317,9 @@ fn canonical_contour_reversal_preserves_identities_metadata_and_storage() {
         runebender::outline::glyph_paths::ordinary_contour_to_bezpath(reversed[2]),
         before_paths[2]
     );
-    let projected = project.glyph_layer("reverse-contours", &layer_id).unwrap();
+    let projected = project
+        .encode_ufo_layer("reverse-contours", &layer_id)
+        .unwrap();
     for contour in &projected.contours {
         let source_contour = source
             .contours
@@ -3362,7 +3403,7 @@ fn canonical_contour_reversal_reports_symmetric_noop() {
     ));
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(glyph);
-    let mut project = Project::from_source(Master::from_font(
+    let mut project = Project::from_source(SourceInput::from_font(
         font,
         PathBuf::from("SymmetricReversal.ufo"),
     ));
@@ -3433,7 +3474,7 @@ fn canonical_contour_start_reorders_without_replacing_points() {
     glyph.contours = vec![closed, open];
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(glyph);
-    let mut project = Project::from_source(Master::from_font(
+    let mut project = Project::from_source(SourceInput::from_font(
         font,
         scratch.0.join("SetContourStart.ufo"),
     ));
@@ -3486,7 +3527,9 @@ fn canonical_contour_start_reorders_without_replacing_points() {
             .expect("reordering retained every segment");
         after_segments.remove(index);
     }
-    let projected = project.glyph_layer("set-contour-start", &layer_id).unwrap();
+    let projected = project
+        .encode_ufo_layer("set-contour-start", &layer_id)
+        .unwrap();
     for (point, source_index) in projected.contours[0]
         .points
         .iter()
@@ -3659,7 +3702,9 @@ fn canonical_contour_open_close_produces_persistable_topology() {
             }
         );
     }
-    let projected = project.glyph_layer("toggle-contours", &layer_id).unwrap();
+    let projected = project
+        .encode_ufo_layer("toggle-contours", &layer_id)
+        .unwrap();
     assert_eq!(projected.contours, expected.contours);
     project.save().unwrap();
     let reloaded = Project::load(&source_path).unwrap();
@@ -3669,7 +3714,7 @@ fn canonical_contour_open_close_produces_persistable_topology() {
         .default_layer();
     assert_eq!(
         reloaded
-            .glyph_layer("toggle-contours", &reloaded_layer)
+            .encode_ufo_layer("toggle-contours", &reloaded_layer)
             .unwrap()
             .contours,
         projected.contours
@@ -3690,7 +3735,9 @@ fn canonical_contour_open_close_produces_persistable_topology() {
             Ok(())
         })
         .unwrap();
-    let projected = project.glyph_layer("toggle-contours", &layer_id).unwrap();
+    let projected = project
+        .encode_ufo_layer("toggle-contours", &layer_id)
+        .unwrap();
     assert_eq!(projected.contours, expected.contours);
     project.save().unwrap();
     let reloaded = Project::load(&source_path).unwrap();
@@ -3700,7 +3747,7 @@ fn canonical_contour_open_close_produces_persistable_topology() {
         .default_layer();
     assert_eq!(
         reloaded
-            .glyph_layer("toggle-contours", &reloaded_layer)
+            .encode_ufo_layer("toggle-contours", &reloaded_layer)
             .unwrap()
             .contours,
         projected.contours
@@ -3828,7 +3875,9 @@ fn canonical_copy_paste_and_duplicate_assign_fresh_identities() {
         ]
     );
 
-    let projected = project.glyph_layer("copy-contours", &layer_id).unwrap();
+    let projected = project
+        .encode_ufo_layer("copy-contours", &layer_id)
+        .unwrap();
     for (output_index, source_index) in [(2_usize, 0_usize), (3, 1)] {
         let output = &projected.contours[output_index];
         let source = &sources[source_index];
@@ -3860,7 +3909,7 @@ fn canonical_copy_paste_and_duplicate_assign_fresh_identities() {
         .default_layer();
     assert_eq!(
         reloaded
-            .glyph_layer("copy-contours", &reloaded_layer)
+            .encode_ufo_layer("copy-contours", &reloaded_layer)
             .unwrap()
             .contours,
         projected.contours
@@ -3961,7 +4010,7 @@ fn canonical_hyper_copy_duplicate_and_decomposition_retain_editable_kind() {
                 .any(|element| matches!(element, kurbo::PathEl::CurveTo(..)))
         );
     }
-    let projected_copy = project.glyph_layer("hyper-copy", &layer_id).unwrap();
+    let projected_copy = project.encode_ufo_layer("hyper-copy", &layer_id).unwrap();
     let identifiers: Vec<_> = projected_copy
         .contours
         .iter()
@@ -3997,7 +4046,9 @@ fn canonical_hyper_copy_duplicate_and_decomposition_retain_editable_kind() {
         .unwrap();
     assert_eq!(target_layer.contours().count(), 2);
     assert!(target_layer.contours().all(|contour| contour.is_hyper()));
-    let projected_target = project.glyph_layer("hyper-components", &layer_id).unwrap();
+    let projected_target = project
+        .encode_ufo_layer("hyper-components", &layer_id)
+        .unwrap();
     assert_eq!(projected_target.contours.len(), 2);
     assert_ne!(
         projected_target.contours[0].identifier(),
@@ -4107,7 +4158,9 @@ fn canonical_hyper_conversion_replaces_only_selected_topology() {
             .collect::<Vec<_>>(),
         untouched_points
     );
-    let projected = project.glyph_layer("hyper-conversion", &layer_id).unwrap();
+    let projected = project
+        .encode_ufo_layer("hyper-conversion", &layer_id)
+        .unwrap();
     assert_eq!(
         runebender::outline::glyph_paths::contours_to_bezpath(&projected),
         runebender::outline::glyph_paths::contours_to_bezpath(&expected)
@@ -4156,7 +4209,9 @@ fn canonical_hyper_conversion_replaces_only_selected_topology() {
             .contours()
             .all(|contour| !contour.is_hyper())
     );
-    let projected = project.glyph_layer("hyper-conversion", &layer_id).unwrap();
+    let projected = project
+        .encode_ufo_layer("hyper-conversion", &layer_id)
+        .unwrap();
     project.save().unwrap();
     let reloaded = Project::load(&source_path).unwrap();
     let reloaded_layer = reloaded
@@ -4165,7 +4220,7 @@ fn canonical_hyper_conversion_replaces_only_selected_topology() {
         .default_layer();
     assert_eq!(
         reloaded
-            .glyph_layer("hyper-conversion", &reloaded_layer)
+            .encode_ufo_layer("hyper-conversion", &reloaded_layer)
             .unwrap(),
         projected
     );
@@ -4355,7 +4410,7 @@ fn canonical_filter_effects_replace_only_targeted_topology() {
         ("effect-roughen", &expected_roughen),
         ("effect-hyper", &expected_hyper),
     ] {
-        let projected = project.glyph_layer(name, &layer_id).unwrap();
+        let projected = project.encode_ufo_layer(name, &layer_id).unwrap();
         assert_eq!(projected.contours.len(), expected.contours.len());
         for (actual, expected) in projected.contours.iter().zip(&expected.contours) {
             assert!(
@@ -4386,7 +4441,9 @@ fn canonical_filter_effects_replace_only_targeted_topology() {
     );
     assert_eq!(stroke_layer.components().next().unwrap().id(), component_id);
     assert_eq!(stroke_layer.anchors().next().unwrap().id(), anchor_id);
-    let projected_stroke = project.glyph_layer("effect-stroke", &layer_id).unwrap();
+    let projected_stroke = project
+        .encode_ufo_layer("effect-stroke", &layer_id)
+        .unwrap();
     assert_eq!(projected_stroke.components, [component]);
     assert_eq!(projected_stroke.anchors, [anchor]);
     assert_eq!(
@@ -4421,7 +4478,7 @@ fn canonical_filter_effects_replace_only_targeted_topology() {
     for name in ["effect-offset", "effect-extrude"] {
         assert!(
             project
-                .glyph_layer(name, &layer_id)
+                .encode_ufo_layer(name, &layer_id)
                 .unwrap()
                 .contours
                 .iter()
@@ -4456,7 +4513,7 @@ fn canonical_filter_effects_replace_only_targeted_topology() {
         "effect-hyper",
     ]
     .into_iter()
-    .map(|name| (name, project.glyph_layer(name, &layer_id).unwrap()))
+    .map(|name| (name, project.encode_ufo_layer(name, &layer_id).unwrap()))
     .collect();
     project.save().unwrap();
     let reloaded = Project::load(&source_path).unwrap();
@@ -4465,7 +4522,10 @@ fn canonical_filter_effects_replace_only_targeted_topology() {
         .unwrap()
         .default_layer();
     for (name, glyph) in projected {
-        assert_eq!(reloaded.glyph_layer(name, &reloaded_layer).unwrap(), glyph);
+        assert_eq!(
+            reloaded.encode_ufo_layer(name, &reloaded_layer).unwrap(),
+            glyph
+        );
     }
 }
 
@@ -4579,7 +4639,9 @@ fn canonical_boolean_and_overlap_replacement_clear_old_topology_metadata() {
             .points()
             .any(|point| point.position() == kurbo::Point::new(0.0, 0.0) && point.is_smooth())
     );
-    let projected = project.glyph_layer("boolean-contours", &layer_id).unwrap();
+    let projected = project
+        .encode_ufo_layer("boolean-contours", &layer_id)
+        .unwrap();
     assert!(cyclic_paths_equal(
         &runebender::outline::glyph_paths::contours_to_bezpath(&projected),
         &runebender::outline::glyph_paths::contours_to_bezpath(&expected)
@@ -4635,9 +4697,11 @@ fn canonical_boolean_and_overlap_replacement_clear_old_topology_metadata() {
         .default_layer();
     assert_eq!(
         reloaded
-            .glyph_layer("boolean-contours", &reloaded_layer)
+            .encode_ufo_layer("boolean-contours", &reloaded_layer)
             .unwrap(),
-        project.glyph_layer("boolean-contours", &layer_id).unwrap()
+        project
+            .encode_ufo_layer("boolean-contours", &layer_id)
+            .unwrap()
     );
 }
 
@@ -4700,7 +4764,7 @@ fn canonical_mask_baking_replaces_topology_and_clears_the_boundary_key() {
             .contours()
             .all(|contour| !old_contours.contains(&contour.id()))
     );
-    let projected = project.glyph_layer("mask-bake", &layer_id).unwrap();
+    let projected = project.encode_ufo_layer("mask-bake", &layer_id).unwrap();
     assert!(runebender::formats::lib_keys::read_masks(&projected).is_empty());
     let actual = runebender::outline::glyph_paths::contours_to_bezpath(&projected);
     let expected_path = runebender::outline::glyph_paths::contours_to_bezpath(&expected);
@@ -4741,7 +4805,9 @@ fn canonical_mask_baking_replaces_topology_and_clears_the_boundary_key() {
         .unwrap()
         .default_layer();
     assert_eq!(
-        reloaded.glyph_layer("mask-bake", &reloaded_layer).unwrap(),
+        reloaded
+            .encode_ufo_layer("mask-bake", &reloaded_layer)
+            .unwrap(),
         projected
     );
 }
@@ -4839,7 +4905,9 @@ fn canonical_metaball_collapse_is_selected_atomic_and_persistable() {
         data.groups[1..],
         "selected collapse removed the wrong live group"
     );
-    let projected = project.glyph_layer("metaball-collapse", &layer_id).unwrap();
+    let projected = project
+        .encode_ufo_layer("metaball-collapse", &layer_id)
+        .unwrap();
     assert_eq!(projected.contours, expected.contours);
     assert_eq!(projected.contours[0], existing);
     assert!(projected.contours[1..].iter().all(|contour| {
@@ -4897,7 +4965,9 @@ fn canonical_metaball_collapse_is_selected_atomic_and_persistable() {
             .groups
             .is_empty()
     );
-    let projected = project.glyph_layer("metaball-collapse", &layer_id).unwrap();
+    let projected = project
+        .encode_ufo_layer("metaball-collapse", &layer_id)
+        .unwrap();
     project.save().unwrap();
     let reloaded = Project::load(&source_path).unwrap();
     let reloaded_layer = reloaded
@@ -4906,7 +4976,7 @@ fn canonical_metaball_collapse_is_selected_atomic_and_persistable() {
         .default_layer();
     assert_eq!(
         reloaded
-            .glyph_layer("metaball-collapse", &reloaded_layer)
+            .encode_ufo_layer("metaball-collapse", &reloaded_layer)
             .unwrap(),
         projected
     );
@@ -4990,7 +5060,9 @@ fn canonical_boolean_successfully_clears_empty_results() {
         assert_eq!(layer.contours().count(), 0, "{case} retained contours");
         assert_eq!(layer.components().next().unwrap().id(), component_id);
         assert_eq!(layer.anchors().next().unwrap().id(), anchor_id);
-        let projected = project.glyph_layer("empty-boolean", &layer_id).unwrap();
+        let projected = project
+            .encode_ufo_layer("empty-boolean", &layer_id)
+            .unwrap();
         assert!(projected.contours.is_empty());
         assert_eq!(projected.components, [component.clone()]);
         assert_eq!(projected.anchors, [anchor.clone()]);
@@ -5003,7 +5075,7 @@ fn canonical_boolean_successfully_clears_empty_results() {
             .default_layer();
         assert_eq!(
             reloaded
-                .glyph_layer("empty-boolean", &reloaded_layer)
+                .encode_ufo_layer("empty-boolean", &reloaded_layer)
                 .unwrap(),
             projected
         );
@@ -5074,8 +5146,8 @@ fn canonical_boolean_replacement_retains_single_cubic_loops() {
             .unwrap()
             .default_layer();
         assert_eq!(
-            reloaded.glyph_layer(name, &reloaded_layer).unwrap(),
-            project.glyph_layer(name, &layer_id).unwrap()
+            reloaded.encode_ufo_layer(name, &reloaded_layer).unwrap(),
+            project.encode_ufo_layer(name, &layer_id).unwrap()
         );
     }
 }
@@ -5201,7 +5273,9 @@ fn canonical_knife_replaces_only_cut_contours_and_preserves_quadratics() {
     assert!(contours[2].is_hyper());
     assert_eq!(layer.components().next().unwrap().id(), component_id);
     assert_eq!(layer.anchors().next().unwrap().id(), anchor_id);
-    let projected = project.glyph_layer("knife-contours", &layer_id).unwrap();
+    let projected = project
+        .encode_ufo_layer("knife-contours", &layer_id)
+        .unwrap();
     assert_eq!(projected.contours[2], untouched);
     assert_eq!(projected.components, [component.clone()]);
     assert_eq!(projected.anchors, [anchor.clone()]);
@@ -5220,7 +5294,7 @@ fn canonical_knife_replaces_only_cut_contours_and_preserves_quadratics() {
         .default_layer();
     assert_eq!(
         reloaded
-            .glyph_layer("knife-contours", &reloaded_layer)
+            .encode_ufo_layer("knife-contours", &reloaded_layer)
             .unwrap(),
         projected
     );
@@ -5257,7 +5331,9 @@ fn canonical_knife_replaces_only_cut_contours_and_preserves_quadratics() {
             Ok(())
         })
         .unwrap();
-    let projected = project.glyph_layer("quadratic-knife", &layer_id).unwrap();
+    let projected = project
+        .encode_ufo_layer("quadratic-knife", &layer_id)
+        .unwrap();
     assert_eq!(projected.contours.len(), 2);
     assert!(projected.contours.iter().all(|contour| {
         contour
@@ -5446,7 +5522,7 @@ fn canonical_knife_preserves_all_off_curve_and_mixed_degree_geometry() {
         })
         .unwrap();
     for name in ["all-off-curve-knife", "mixed-knife"] {
-        let projected = project.glyph_layer(name, &layer_id).unwrap();
+        let projected = project.encode_ufo_layer(name, &layer_id).unwrap();
         assert_eq!(projected.contours.len(), 2);
         assert!(
             projected.contours.iter().any(|contour| {
@@ -5467,8 +5543,8 @@ fn canonical_knife_preserves_all_off_curve_and_mixed_degree_geometry() {
         .default_layer();
     for name in ["all-off-curve-knife", "mixed-knife"] {
         assert_eq!(
-            reloaded.glyph_layer(name, &reloaded_layer).unwrap(),
-            project.glyph_layer(name, &layer_id).unwrap()
+            reloaded.encode_ufo_layer(name, &reloaded_layer).unwrap(),
+            project.encode_ufo_layer(name, &layer_id).unwrap()
         );
     }
 }
@@ -5566,7 +5642,9 @@ fn canonical_cleanup_preserves_surviving_identities_and_metadata() {
     assert_eq!(surviving_ids.len(), original_ids.len() - 1);
     assert!(!surviving_ids.contains(&duplicate_id));
     assert!(surviving_ids.iter().all(|id| original_ids.contains(id)));
-    let projected = project.glyph_layer("cleanup-contours", &layer_id).unwrap();
+    let projected = project
+        .encode_ufo_layer("cleanup-contours", &layer_id)
+        .unwrap();
     assert_eq!(
         runebender::outline::glyph_paths::contours_to_bezpath(&projected),
         runebender::outline::glyph_paths::contours_to_bezpath(&expected)
@@ -5605,7 +5683,7 @@ fn canonical_cleanup_preserves_surviving_identities_and_metadata() {
         .default_layer();
     assert_eq!(
         reloaded
-            .glyph_layer("cleanup-contours", &reloaded_layer)
+            .encode_ufo_layer("cleanup-contours", &reloaded_layer)
             .unwrap(),
         projected
     );
@@ -5683,7 +5761,7 @@ fn canonical_fit_and_extremes_match_existing_geometry_with_stable_objects() {
         original_ids
     );
     assert_eq!(
-        project.glyph_layer("fit-extremes", &layer_id).unwrap(),
+        project.encode_ufo_layer("fit-extremes", &layer_id).unwrap(),
         expected
     );
 
@@ -5708,7 +5786,7 @@ fn canonical_fit_and_extremes_match_existing_geometry_with_stable_objects() {
         .collect();
     assert!(original_ids.iter().all(|id| final_ids.contains(id)));
     assert!(final_ids.len() > original_ids.len());
-    let projected = project.glyph_layer("fit-extremes", &layer_id).unwrap();
+    let projected = project.encode_ufo_layer("fit-extremes", &layer_id).unwrap();
     assert_eq!(
         runebender::outline::glyph_paths::contours_to_bezpath(&projected),
         runebender::outline::glyph_paths::contours_to_bezpath(&expected)
@@ -5735,7 +5813,7 @@ fn canonical_fit_and_extremes_match_existing_geometry_with_stable_objects() {
         .default_layer();
     assert_eq!(
         reloaded
-            .glyph_layer("fit-extremes", &reloaded_layer)
+            .encode_ufo_layer("fit-extremes", &reloaded_layer)
             .unwrap(),
         projected
     );
@@ -5827,7 +5905,7 @@ fn canonical_embolden_preserves_structure_identities_and_metadata() {
         original_ids
     );
     let expected = runebender::outline::embolden::embolden(&target, offset);
-    let projected = project.glyph_layer("target", &layer_id).unwrap();
+    let projected = project.encode_ufo_layer("target", &layer_id).unwrap();
     assert_eq!(
         runebender::outline::glyph_paths::contours_to_bezpath(&projected),
         runebender::outline::glyph_paths::contours_to_bezpath(&expected)
@@ -5873,7 +5951,7 @@ fn canonical_embolden_preserves_structure_identities_and_metadata() {
             .collect::<Vec<_>>(),
         delta_ids
     );
-    let projected_delta = project.glyph_layer("delta-target", &layer_id).unwrap();
+    let projected_delta = project.encode_ufo_layer("delta-target", &layer_id).unwrap();
     assert_eq!(
         runebender::outline::glyph_paths::contours_to_bezpath(&projected_delta),
         runebender::outline::glyph_paths::contours_to_bezpath(&expected_delta)
@@ -5889,12 +5967,14 @@ fn canonical_embolden_preserves_structure_identities_and_metadata() {
         .unwrap()
         .default_layer();
     assert_eq!(
-        reloaded.glyph_layer("target", &reloaded_layer).unwrap(),
+        reloaded
+            .encode_ufo_layer("target", &reloaded_layer)
+            .unwrap(),
         projected
     );
     assert_eq!(
         reloaded
-            .glyph_layer("delta-target", &reloaded_layer)
+            .encode_ufo_layer("delta-target", &reloaded_layer)
             .unwrap(),
         projected_delta
     );
@@ -6034,7 +6114,9 @@ fn canonical_component_decomposition_resolves_nested_metadata_safely() {
     assert_ne!(contours[1].id(), existing_id);
     assert!(layer.components().next().is_none());
     assert_eq!(layer.anchors().next().unwrap().id(), anchor_id);
-    let projected = project.glyph_layer("decompose-target", &layer_id).unwrap();
+    let projected = project
+        .encode_ufo_layer("decompose-target", &layer_id)
+        .unwrap();
     assert_eq!(
         runebender::outline::glyph_paths::contours_to_bezpath(&projected),
         runebender::outline::glyph_paths::contours_to_bezpath(&expected)
@@ -6087,13 +6169,13 @@ fn canonical_component_decomposition_resolves_nested_metadata_safely() {
         .default_layer();
     assert_eq!(
         reloaded
-            .glyph_layer("decompose-target", &reloaded_layer)
+            .encode_ufo_layer("decompose-target", &reloaded_layer)
             .unwrap(),
         projected
     );
     assert!(
         reloaded
-            .glyph_layer("empty-decompose-target", &reloaded_layer)
+            .encode_ufo_layer("empty-decompose-target", &reloaded_layer)
             .unwrap()
             .components
             .is_empty()
@@ -6217,9 +6299,8 @@ fn canonical_source_metadata_edits_are_atomic_and_round_trip_exactly() {
     assert!(matches!(outcome, DocumentEditOutcome::Changed { .. }));
     assert_eq!(project.document_revision(), revision.wrapping_add(1));
     assert_eq!(project.document_font_metadata(source), Some(&edited));
-    assert!(project.sources()[0].dirty);
-    assert!(project.sources()[0].kerning_dirty);
-    let projected = project.source_snapshot(source).unwrap();
+    assert_eq!(project.document_source_is_modified(source), Some(true));
+    let projected = project.encode_ufo_source(source).unwrap();
     assert_eq!(projected.kerning["public.kern1.A"]["V"], -63.625);
     assert_eq!(
         projected.groups["com.example.arbitrary"],
@@ -6260,11 +6341,11 @@ fn canonical_source_metadata_edits_are_atomic_and_round_trip_exactly() {
     let reloaded = Project::load(&path).unwrap();
     assert_eq!(reloaded.document_font_metadata(source), Some(&edited));
     assert_eq!(
-        reloaded.source_snapshot(source).unwrap().groups,
+        reloaded.encode_ufo_source(source).unwrap().groups,
         projected.groups
     );
     assert_eq!(
-        reloaded.source_snapshot(source).unwrap().kerning,
+        reloaded.encode_ufo_source(source).unwrap().kerning,
         projected.kerning
     );
 }
@@ -6296,7 +6377,7 @@ fn source_image_install_is_validated_and_saved_without_mutable_font_access() {
     );
     assert_eq!(project.document_revision(), revision.wrapping_add(1));
     let snapshot = project.document_snapshot();
-    let dirty = project.sources()[0].dirty;
+    let dirty = project.document_source_is_modified(source);
     assert!(
         project
             .install_document_source_image(source, "nested/image.png".into(), bytes.clone())
@@ -6309,7 +6390,7 @@ fn source_image_install_is_validated_and_saved_without_mutable_font_access() {
     );
     assert_eq!(project.document_snapshot(), snapshot);
     assert_eq!(project.document_revision(), revision.wrapping_add(1));
-    assert_eq!(project.sources()[0].dirty, dirty);
+    assert_eq!(project.document_source_is_modified(source), dirty);
 
     let placed = norad::Image::new(
         image_path.clone(),
@@ -6340,7 +6421,7 @@ fn source_image_install_is_validated_and_saved_without_mutable_font_access() {
     );
     assert_eq!(
         reloaded
-            .source_snapshot(source)
+            .encode_ufo_source(source)
             .unwrap()
             .images
             .get(&image_path)
@@ -6366,7 +6447,7 @@ fn source_glyph_export_and_category_have_canonical_project_queries() {
             plist::Value::String("mark".into()),
         )])),
     );
-    let project = Project::from_source(Master::from_font(
+    let project = Project::from_source(SourceInput::from_font(
         font.clone(),
         PathBuf::from("SourceGlyphMetadata.ufo"),
     ));
@@ -6376,14 +6457,17 @@ fn source_glyph_export_and_category_have_canonical_project_queries() {
         .unwrap();
     assert!(!metadata.exported());
     assert_eq!(metadata.category(), Some(&OpenTypeGlyphCategory::Mark));
-    assert_eq!(project.source_snapshot(SourceId(0)).unwrap().lib, font.lib);
+    assert_eq!(
+        project.encode_ufo_source(SourceId(0)).unwrap().lib,
+        font.lib
+    );
 }
 
 #[test]
 fn invalid_font_info_edits_are_rejected_before_document_mutation() {
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(Glyph::new("A"));
-    let mut project = Project::from_source(Master::from_font(
+    let mut project = Project::from_source(SourceInput::from_font(
         font,
         PathBuf::from("InvalidFontInfo.ufo"),
     ));
@@ -6445,7 +6529,7 @@ fn canonical_source_metadata_snapshot_restore_is_atomic_and_order_independent() 
         Some(old_feature_text.as_str())
     );
     assert_eq!(
-        project.source_snapshot(source).unwrap().features,
+        project.encode_ufo_source(source).unwrap().features,
         old_feature_text
     );
 
@@ -6506,7 +6590,7 @@ fn canonical_layer_snapshot_restore_is_atomic_and_stale_safe() {
     };
     let before = project.capture_document_layer(&address).unwrap();
     assert_eq!(before.address(), &address);
-    let before_projection = project.glyph_layer("A", &layer).unwrap();
+    let before_projection = project.encode_ufo_layer("A", &layer).unwrap();
     let point = project
         .document_layer("A", &layer)
         .unwrap()
@@ -6526,7 +6610,7 @@ fn canonical_layer_snapshot_restore_is_atomic_and_stale_safe() {
         })
         .unwrap();
     let after = project.capture_document_layer(&address).unwrap();
-    let after_projection = project.glyph_layer("A", &layer).unwrap();
+    let after_projection = project.encode_ufo_layer("A", &layer).unwrap();
     assert_ne!(after, before);
 
     let revision = project.document_revision();
@@ -6545,7 +6629,10 @@ fn canonical_layer_snapshot_restore_is_atomic_and_stale_safe() {
     assert!(change.geometry_changed());
     assert!(change.metrics_changed());
     assert!(change.requires_compilation());
-    assert_eq!(project.glyph_layer("A", &layer).unwrap(), before_projection);
+    assert_eq!(
+        project.encode_ufo_layer("A", &layer).unwrap(),
+        before_projection
+    );
     assert_eq!(
         project.capture_document_layer(&address),
         Some(before.clone())
@@ -6563,7 +6650,7 @@ fn canonical_layer_snapshot_restore_is_atomic_and_stale_safe() {
     assert_eq!(project.document_revision(), unchanged_revision);
 
     let unchanged_document = project.document_snapshot();
-    let unchanged_projection = project.source_snapshot(SourceId(0)).unwrap();
+    let unchanged_projection = project.encode_ufo_source(SourceId(0)).unwrap();
     assert_eq!(
         project.restore_document_layer_if_current(&address, &after, before.clone()),
         Err(DocumentHistoryError::StaleLayer(address.clone()))
@@ -6571,7 +6658,7 @@ fn canonical_layer_snapshot_restore_is_atomic_and_stale_safe() {
     assert_eq!(project.document_snapshot(), unchanged_document);
     assert_eq!(project.document_revision(), unchanged_revision);
     assert_eq!(
-        project.source_snapshot(SourceId(0)).unwrap(),
+        project.encode_ufo_source(SourceId(0)).unwrap(),
         unchanged_projection
     );
 
@@ -6599,7 +6686,10 @@ fn canonical_layer_snapshot_restore_is_atomic_and_stale_safe() {
         .restore_document_layer_if_current(&address, &before, after.clone())
         .unwrap();
     assert!(matches!(outcome, DocumentEditOutcome::Changed { .. }));
-    assert_eq!(project.glyph_layer("A", &layer).unwrap(), after_projection);
+    assert_eq!(
+        project.encode_ufo_layer("A", &layer).unwrap(),
+        after_projection
+    );
     assert_eq!(project.capture_document_layer(&address), Some(after));
 }
 
@@ -6762,9 +6852,9 @@ fn guarded_snapshot_replacement_records_one_project_history_step() {
 #[test]
 fn source_authoring_keeps_identity_and_round_trips_the_designspace() {
     let (scratch, mut project) = fixture();
-    let original = project.source_snapshot(SourceId(1)).unwrap();
+    let original = project.encode_ufo_source(SourceId(1)).unwrap();
     let original_metadata = project.document_font_metadata(SourceId(1)).unwrap().clone();
-    let default = project.source_snapshot(SourceId(0)).unwrap();
+    let default = project.encode_ufo_source(SourceId(0)).unwrap();
     let default_layer = project
         .document_source(SourceId(0))
         .unwrap()
@@ -6825,7 +6915,7 @@ fn source_authoring_keeps_identity_and_round_trips_the_designspace() {
             .components()
             .all(|component| !component_ids.contains(&component.id()))
     );
-    let added_font = project.source_snapshot(added).unwrap();
+    let added_font = project.encode_ufo_source(added).unwrap();
     assert_glyph_content_eq(added_font.get_glyph("A").unwrap(), &expected);
     assert_glyph_content_eq(added_font.get_glyph("C").unwrap(), &expected_component);
     assert_eq!(added_font.lib, default.lib);
@@ -6868,13 +6958,17 @@ fn source_authoring_keeps_identity_and_round_trips_the_designspace() {
         project.document_font_metadata(SourceId(1)),
         Some(&original_metadata)
     );
-    assert_eq!(project.source_snapshot(SourceId(1)).unwrap(), original);
+    assert_eq!(project.encode_ufo_source(SourceId(1)).unwrap(), original);
     assert_eq!(project.source_index(added), Some(4));
     project.save().unwrap();
     let reloaded = Project::load(&scratch.0.join("Font.designspace")).unwrap();
     assert_eq!(reloaded.master_names[0].as_ref(), "Heavy");
     assert_glyph_content_eq(
-        reloaded.sources()[4].font.get_glyph("A").unwrap(),
+        reloaded
+            .encode_ufo_source(added)
+            .unwrap()
+            .get_glyph("A")
+            .unwrap(),
         &expected,
     );
     project.remove_source(added).unwrap();
@@ -6882,18 +6976,18 @@ fn source_authoring_keeps_identity_and_round_trips_the_designspace() {
         scratch.0.join("Medium.ufo").exists(),
         "removing a source must retain its files"
     );
-    assert!(project.source_snapshot(added).is_none());
+    assert!(project.encode_ufo_source(added).is_none());
     assert!(project.undo_sources(false).unwrap());
     assert_glyph_content_eq(
         project
-            .source_snapshot(added)
+            .encode_ufo_source(added)
             .unwrap()
             .get_glyph("A")
             .unwrap(),
         &expected,
     );
     assert!(project.undo_sources(true).unwrap());
-    assert!(project.source_snapshot(added).is_none());
+    assert!(project.encode_ufo_source(added).is_none());
     assert!(
         project.remove_source(SourceId(0)).is_err(),
         "the default source must remain"
@@ -6903,7 +6997,7 @@ fn source_authoring_keeps_identity_and_round_trips_the_designspace() {
 #[test]
 fn full_source_can_replace_intermediate_participation_without_losing_the_layer() {
     let (scratch, mut project) = fixture();
-    let original = project.source_snapshot(SourceId(0)).unwrap();
+    let original = project.encode_ufo_source(SourceId(0)).unwrap();
     let target = location(0.5, 0.0);
     let expected = project.try_interpolated_at("A", &target).unwrap();
     let added = project
@@ -6911,10 +7005,10 @@ fn full_source_can_replace_intermediate_participation_without_losing_the_layer()
         .unwrap();
     assert!(project.brace.is_empty());
     assert_eq!(project.try_interpolated_at("A", &target).unwrap(), expected);
-    assert_eq!(project.source_snapshot(SourceId(0)).unwrap(), original);
+    assert_eq!(project.encode_ufo_source(SourceId(0)).unwrap(), original);
     assert_glyph_content_eq(
         project
-            .source_snapshot(added)
+            .encode_ufo_source(added)
             .unwrap()
             .get_glyph("A")
             .unwrap(),
@@ -7031,13 +7125,13 @@ fn failed_interpolated_source_is_atomic() {
 #[test]
 fn source_undo_refuses_to_overwrite_later_edits_and_layer_operations_preserve_other_glyphs() {
     let (_scratch, mut project) = fixture();
-    let original = project.source_snapshot(SourceId(0)).unwrap();
+    let original = project.encode_ufo_source(SourceId(0)).unwrap();
     let from = LayerId {
         source: SourceId(0),
         name: original.default_layer().name().to_string(),
     };
     let layer = project.add_glyph_layer("A", &from, "backup").unwrap();
-    assert!(project.glyph_layer("A", &layer).is_some());
+    assert!(project.encode_ufo_layer("A", &layer).is_some());
     assert!(commit_layer_edit(&mut project, "A", &from, |draft| {
         draft.set_width(draft.view().width() + 10.0)?;
         Ok(())
@@ -7045,13 +7139,13 @@ fn source_undo_refuses_to_overwrite_later_edits_and_layer_operations_preserve_ot
     assert!(project.undo_sources(false).is_err());
     assert!(replay_layer_edit(&mut project, "A", &from, false));
     assert!(project.undo_sources(false).unwrap());
-    assert_eq!(project.source_snapshot(SourceId(0)).unwrap(), original);
+    assert_eq!(project.encode_ufo_source(SourceId(0)).unwrap(), original);
     assert!(project.undo_sources(true).unwrap());
     project.remove_glyph_layer("A", &layer).unwrap();
-    assert!(project.glyph_layer("A", &layer).is_none());
-    assert!(project.glyph_layer("A", &from).is_some());
+    assert!(project.encode_ufo_layer("A", &layer).is_none());
+    assert!(project.encode_ufo_layer("A", &from).is_some());
     assert!(project.undo_sources(false).unwrap());
-    assert!(project.glyph_layer("A", &layer).is_some());
+    assert!(project.encode_ufo_layer("A", &layer).is_some());
 }
 
 #[test]
@@ -7072,7 +7166,7 @@ fn auxiliary_layer_structure_mutates_the_canonical_document_atomically() {
         .map(|component| component.id())
         .collect();
     let source_anchors: Vec<_> = source.anchors().map(|anchor| anchor.id()).collect();
-    let expected = project.glyph_layer("A", &from).unwrap();
+    let expected = project.encode_ufo_layer("A", &from).unwrap();
     let revision = project.document_revision();
 
     let copied = project.add_glyph_layer("A", &from, "backup").unwrap();
@@ -7081,7 +7175,7 @@ fn auxiliary_layer_structure_mutates_the_canonical_document_atomically() {
         "structural commit did not invalidate the document revision"
     );
     assert_eq!(
-        project.glyph_layer("A", &copied).unwrap(),
+        project.encode_ufo_layer("A", &copied).unwrap(),
         expected,
         "copied source data changed"
     );
@@ -7250,7 +7344,6 @@ fn interpolation_structure_ignores_legacy_designspace_projections() {
     project.master_locations.clear();
     project.brace.clear();
     project.instances.clear();
-    project.ds_doc = None;
 
     assert_eq!(
         project.try_interpolated_at("B", &target).unwrap(),
@@ -7361,23 +7454,26 @@ fn layer_edits_and_history_round_trip_all_source_data() {
         source: SourceId(0),
         name: "intermediate".into(),
     };
-    let original = project.glyph_layer("A", &layer).unwrap();
+    let original = project.encode_ufo_layer("A", &layer).unwrap();
     assert!(commit_layer_edit(&mut project, "A", &layer, |draft| {
         draft.set_width(731.123_456_789)?;
         draft.set_note(Some("edited".into()));
         Ok(())
     }));
     assert!(replay_layer_edit(&mut project, "A", &layer, false));
-    assert_eq!(project.glyph_layer("A", &layer), Some(original));
+    assert_eq!(project.encode_ufo_layer("A", &layer), Some(original));
     assert!(replay_layer_edit(&mut project, "A", &layer, true));
     let before: Vec<_> = (0..4)
-        .map(|i| project.source_snapshot(SourceId(i)).unwrap())
+        .map(|i| project.encode_ufo_source(SourceId(i)).unwrap())
         .collect();
     project.save().unwrap();
     let reloaded = Project::load(&scratch.0.join("Font.designspace")).unwrap();
-    assert_eq!(reloaded.ds_doc, project.ds_doc);
+    assert_eq!(
+        reloaded.document_designspace(),
+        project.document_designspace()
+    );
     for (i, original) in before.iter().enumerate() {
-        let current = reloaded.source_snapshot(SourceId(i)).unwrap();
+        let current = reloaded.encode_ufo_source(SourceId(i)).unwrap();
         assert_eq!(current.font_info, original.font_info);
         assert_eq!(current.lib, original.lib);
         assert_eq!(current.features, original.features);
@@ -7399,13 +7495,13 @@ fn layer_edits_and_history_round_trip_all_source_data() {
 fn exact_values_and_object_metadata_survive_import_edit_undo_and_save() {
     let (scratch, mut project, fonts) = adversarial_fixture();
     let original = fonts.get("Regular.ufo").unwrap();
-    assert_adversarial_source(&project.source_snapshot(SourceId(0)).unwrap(), original);
+    assert_adversarial_source(&project.encode_ufo_source(SourceId(0)).unwrap(), original);
 
     project.export_source = Some(scratch.0.join("Font.designspace"));
     project.ds_dirty = true;
     project.save().unwrap();
     let mut reloaded = Project::load(&scratch.0.join("Font.designspace")).unwrap();
-    assert_adversarial_source(&reloaded.source_snapshot(SourceId(0)).unwrap(), original);
+    assert_adversarial_source(&reloaded.encode_ufo_source(SourceId(0)).unwrap(), original);
 
     let layer = LayerId {
         source: SourceId(0),
@@ -7452,7 +7548,7 @@ fn exact_values_and_object_metadata_survive_import_edit_undo_and_save() {
         "adversarial edit must change the layer"
     );
     assert_eq!(
-        reloaded.glyph_layer("A", &layer),
+        reloaded.encode_ufo_layer("A", &layer),
         Some(edited_a.clone()),
         "edit must retain every exact field"
     );
@@ -7461,7 +7557,7 @@ fn exact_values_and_object_metadata_survive_import_edit_undo_and_save() {
         "edit must be undoable"
     );
     assert_eq!(
-        reloaded.glyph_layer("A", &layer),
+        reloaded.encode_ufo_layer("A", &layer),
         Some(original_a),
         "undo must restore every exact field"
     );
@@ -7470,7 +7566,7 @@ fn exact_values_and_object_metadata_survive_import_edit_undo_and_save() {
         "edit must be redoable"
     );
     assert_eq!(
-        reloaded.glyph_layer("A", &layer),
+        reloaded.encode_ufo_layer("A", &layer),
         Some(edited_a.clone()),
         "redo must restore every exact edited field"
     );
@@ -7479,7 +7575,7 @@ fn exact_values_and_object_metadata_survive_import_edit_undo_and_save() {
     let saved = Project::load(&scratch.0.join("Font.designspace")).unwrap();
     let mut expected = original.clone();
     expected.default_layer_mut().insert_glyph(edited_a);
-    assert_adversarial_source(&saved.source_snapshot(SourceId(0)).unwrap(), &expected);
+    assert_adversarial_source(&saved.encode_ufo_source(SourceId(0)).unwrap(), &expected);
 }
 
 #[test]
@@ -7493,11 +7589,11 @@ fn canonical_edits_commit_to_layers_and_history() {
         draft.set_width(712.25)?;
         Ok(())
     }));
-    assert_eq!(project.glyph_layer("B", &layer).unwrap().width, 712.25);
+    assert_eq!(project.encode_ufo_layer("B", &layer).unwrap().width, 712.25);
     assert!(replay_layer_edit(&mut project, "B", &layer, false));
     assert_eq!(
         project
-            .source_snapshot(SourceId(0))
+            .encode_ufo_source(SourceId(0))
             .unwrap()
             .get_glyph("B")
             .unwrap()
@@ -7555,13 +7651,18 @@ fn invalid_maps_missing_layers_and_missing_sources_fail_explicitly() {
         DESIGNSPACE.replace("layer=\"intermediate\"", "layer=\"missing\""),
         DESIGNSPACE.replace("xvalue=\"70\"", "yvalue=\"70\""),
     ] {
-        let mut fonts = project.sources().iter();
+        let mut sources = project
+            .document_sources()
+            .map(|source| {
+                SourceInput::from_font(
+                    project.encode_ufo_source(source.id()).unwrap(),
+                    source.path().to_owned(),
+                )
+            })
+            .collect::<Vec<_>>()
+            .into_iter();
         let result = Project::from_designspace(designspace_from_str(&xml).unwrap(), |_| {
-            let source = fonts.next().unwrap();
-            Ok(Master::from_font(
-                source.font.clone(),
-                source.source_path.clone(),
-            ))
+            Ok(sources.next().unwrap())
         });
         assert!(result.is_err());
     }
@@ -7638,7 +7739,7 @@ fn imported_contour_append_and_replace_are_atomic_and_persistable() {
         .points()
         .map(|point| point.id())
         .collect::<Vec<_>>();
-    let exact = project.source_snapshot(SourceId(0)).unwrap();
+    let exact = project.encode_ufo_source(SourceId(0)).unwrap();
     let exact_contours = exact.get_glyph("A").unwrap().contours.clone();
     let revision = project.document_revision();
     assert_eq!(
@@ -7748,7 +7849,7 @@ fn imported_contour_append_and_replace_are_atomic_and_persistable() {
             .all(|id| !original_point_ids.contains(id))
     );
     assert_eq!(
-        project.glyph_layer("A", &layer).unwrap().contours[1],
+        project.encode_ufo_layer("A", &layer).unwrap().contours[1],
         imported
     );
 
@@ -7782,7 +7883,7 @@ fn imported_contour_append_and_replace_are_atomic_and_persistable() {
         "equal-count replacement changed contour/component paint order"
     );
     assert_eq!(
-        project.glyph_layer("A", &layer).unwrap().contours,
+        project.encode_ufo_layer("A", &layer).unwrap().contours,
         [replacement, second_replacement]
     );
 
@@ -7792,11 +7893,11 @@ fn imported_contour_append_and_replace_are_atomic_and_persistable() {
         .document_source(SourceId(0))
         .unwrap()
         .default_layer();
-    let reloaded_glyph = reloaded.glyph_layer("A", &reloaded_layer).unwrap();
+    let reloaded_glyph = reloaded.encode_ufo_layer("A", &reloaded_layer).unwrap();
     assert_eq!(reloaded_glyph.width, 500.25);
     assert_eq!(
         reloaded_glyph.contours,
-        project.glyph_layer("A", &layer).unwrap().contours
+        project.encode_ufo_layer("A", &layer).unwrap().contours
     );
     assert_eq!(reloaded_glyph.components.len(), 1);
     assert_eq!(reloaded_glyph.anchors.len(), 1);
@@ -7849,7 +7950,7 @@ fn background_copy_swap_clear_are_atomic_undoable_and_persistable() {
         glyph: "A".into(),
         layer: foreground_layer.clone(),
     };
-    let original_foreground = project.glyph_layer("A", &foreground_layer).unwrap();
+    let original_foreground = project.encode_ufo_layer("A", &foreground_layer).unwrap();
     assert!(project.document_background_layer("A", source).is_none());
 
     assert!(
@@ -7897,8 +7998,8 @@ fn background_copy_swap_clear_are_atomic_undoable_and_persistable() {
             .swap_document_layer_with_background(&foreground_address)
             .unwrap()
     );
-    let swapped_foreground = project.glyph_layer("A", &foreground_layer).unwrap();
-    let swapped_background = project.glyph_layer("A", &background_layer).unwrap();
+    let swapped_foreground = project.encode_ufo_layer("A", &foreground_layer).unwrap();
+    let swapped_background = project.encode_ufo_layer("A", &background_layer).unwrap();
     assert_eq!(swapped_foreground.contours, original_foreground.contours);
     assert_eq!(swapped_foreground.width, 620.75);
     assert_eq!(
@@ -7915,7 +8016,7 @@ fn background_copy_swap_clear_are_atomic_undoable_and_persistable() {
     assert!(project.undo_sources(false).unwrap());
     assert_eq!(
         project
-            .glyph_layer("A", &foreground_layer)
+            .encode_ufo_layer("A", &foreground_layer)
             .unwrap()
             .contours
             .as_slice(),
@@ -7923,7 +8024,7 @@ fn background_copy_swap_clear_are_atomic_undoable_and_persistable() {
     );
     assert_eq!(
         project
-            .glyph_layer("A", &background_layer)
+            .encode_ufo_layer("A", &background_layer)
             .unwrap()
             .contours,
         original_foreground.contours
@@ -7931,7 +8032,7 @@ fn background_copy_swap_clear_are_atomic_undoable_and_persistable() {
     assert!(project.undo_sources(true).unwrap());
     assert_eq!(
         project
-            .glyph_layer("A", &foreground_layer)
+            .encode_ufo_layer("A", &foreground_layer)
             .unwrap()
             .contours,
         original_foreground.contours
@@ -7950,16 +8051,20 @@ fn background_copy_swap_clear_are_atomic_undoable_and_persistable() {
     let reloaded_foreground = reloaded.document_source(source).unwrap().default_layer();
     let (reloaded_background, _) = reloaded.document_background_layer("A", source).unwrap();
     assert_eq!(
-        reloaded.glyph_layer("A", &reloaded_foreground).unwrap(),
-        project.glyph_layer("A", &foreground_layer).unwrap()
-    );
-    assert_eq!(
-        reloaded.glyph_layer("A", &reloaded_background).unwrap(),
-        project.glyph_layer("A", &background_layer).unwrap()
+        reloaded
+            .encode_ufo_layer("A", &reloaded_foreground)
+            .unwrap(),
+        project.encode_ufo_layer("A", &foreground_layer).unwrap()
     );
     assert_eq!(
         reloaded
-            .source_snapshot(source)
+            .encode_ufo_layer("A", &reloaded_background)
+            .unwrap(),
+        project.encode_ufo_layer("A", &background_layer).unwrap()
+    );
+    assert_eq!(
+        reloaded
+            .encode_ufo_source(source)
             .unwrap()
             .layers
             .get("public.background")
@@ -8033,7 +8138,7 @@ fn background_copy_transfers_object_metadata_and_swap_retains_shape_order() {
     let (background_layer, _) = project.document_background_layer("A", source).unwrap();
     assert_eq!(
         project
-            .glyph_layer("A", &background_layer)
+            .encode_ufo_layer("A", &background_layer)
             .unwrap()
             .contours[0]
             .lib()
@@ -8061,7 +8166,7 @@ fn background_copy_transfers_object_metadata_and_swap_retains_shape_order() {
     assert_eq!(shape_order(&project), [true, false, true]);
     assert!(project.copy_document_layer_to_background(&address).unwrap());
     let mut changed_background = project
-        .glyph_layer("A", &background_layer)
+        .encode_ufo_layer("A", &background_layer)
         .unwrap()
         .contours;
     changed_background[0].points[0].x += 100.0;

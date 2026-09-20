@@ -272,7 +272,7 @@ mod canonical_tests {
     use super::*;
     use crate::document::model::glyph_metadata::{Metaball, MetaballGroup, Metaballs};
     use crate::document::project::Project;
-    use crate::document::source::Master;
+    use crate::document::source::SourceInput;
     use crate::document::variable::{GlyphLayerAddress, SourceId};
     use crate::formats::metaballs::write_metaballs;
     use norad::{AffineTransform, Component, Name};
@@ -314,7 +314,8 @@ mod canonical_tests {
         let mut font = Font::default();
         font.default_layer_mut().insert_glyph(blob);
         font.default_layer_mut().insert_glyph(user);
-        let project = Project::from_source(Master::from_font(font, "MetaballComponent.ufo".into()));
+        let project =
+            Project::from_source(SourceInput::from_font(font, "MetaballComponent.ufo".into()));
         let layer = project
             .document_source(SourceId(0))
             .unwrap()

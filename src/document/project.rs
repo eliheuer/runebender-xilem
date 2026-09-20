@@ -15,7 +15,8 @@ use std::sync::Arc;
 
 use kurbo::{BezPath, Rect, Shape as _};
 
-pub use super::source::{GlyphEntry, GlyphPoint, Master, extract_anchors, extract_points};
+pub use super::source::SourceInput;
+use super::source::SourceState;
 use super::variable::{
     CanonicalSourceMetadataSnapshot, DocumentSnapshot, GlyphLayerAddress, GlyphSource, GlyphView,
     LayerId, SourceId, SourceMetadataEditDraft, SourceMetadataRestoreError, VariableData,
@@ -307,15 +308,15 @@ impl DocumentChange {
 
 #[derive(Debug)]
 /// An open variable font with canonical glyph-local layers and source metadata.
-/// UFO projections support existing tools through scoped edits.
+/// Source-format codec values exist only at explicit import and persistence boundaries.
 pub struct Project {
-    /// Compatibility projections, in display order; never directly mutable outside Project.
-    masters: Vec<Master>,
+    /// Glyph-free persistence state in canonical source display order.
+    sources: Vec<SourceState>,
     pub(super) variable: VariableData,
     source_history: sources::SourceHistory,
     document_history: super::history::DocumentHistory,
     source_metadata_history: super::history::SourceMetadataHistory,
-    /// Index into `masters` of the master being edited.
+    /// Index into `sources` of the source being edited.
     pub active: usize,
     /// Style names for the master switcher, one per master.
     pub master_names: Vec<Arc<str>>,
@@ -336,10 +337,6 @@ pub struct Project {
     /// Named designspace instances: style name and normalized
     /// location, for the Instances rows under the axis sliders.
     pub instances: Vec<(Arc<str>, Location)>,
-    /// The loaded designspace document, kept so instance edits, and
-    /// later axis edits, can be written back. `None` for single-UFO
-    /// projects.
-    pub ds_doc: Option<norad::designspace::DesignSpaceDocument>,
     /// Source or instance edits not yet written to the Designspace file.
     pub ds_dirty: bool,
     /// Sparse "brace" sources: per-glyph intermediate masters living
@@ -504,20 +501,22 @@ impl Project {
             .expect("the checked-in new-font template is valid")
     }
 
-    /// Build a project from one format-adapter source projection.
-    pub fn from_source(model: Master) -> Self {
-        let name = model
+    /// Canonicalize one transient format-adapter source.
+    pub fn from_source(input: SourceInput) -> Self {
+        let name = input
             .font
             .font_info
             .style_name
             .clone()
             .unwrap_or_else(|| "Regular".into());
+        let variable = super::ufo_codec::decode_source(&input.font)
+            .expect("a Project source input must satisfy the UFO boundary contract");
         let mut project = Self {
-            variable: VariableData::default(),
+            variable,
             source_history: sources::SourceHistory::default(),
             document_history: super::history::DocumentHistory::default(),
             source_metadata_history: super::history::SourceMetadataHistory::default(),
-            masters: vec![model],
+            sources: vec![SourceState::from_input(input)],
             active: 0,
             master_names: vec![name.into()],
             axes: Vec::new(),
@@ -527,12 +526,10 @@ impl Project {
             compat: HashMap::new(),
             export_source: None,
             instances: Vec::new(),
-            ds_doc: None,
             ds_dirty: false,
             brace: Vec::new(),
             experiments: super::experiments::Experiments::default(),
         };
-        project.variable = VariableData::from_sources(&project.masters);
         project.compute_compat();
         project
     }
@@ -543,9 +540,10 @@ impl Project {
         if project.export_source.is_none() {
             project.export_source = Some(path.to_path_buf());
         }
-        if project.variable.source_ids.is_empty() {
-            project.variable = VariableData::from_sources(&project.masters);
-        }
+        debug_assert!(
+            !project.variable.source_ids.is_empty(),
+            "a loaded project must retain at least one canonical source"
+        );
         project.compute_compat();
         Ok(project)
     }
@@ -604,39 +602,12 @@ impl Project {
                 Self::from_designspace(*document, move |filename| {
                     sources
                         .remove(filename)
-                        .map(|source| source.into_master(directory.join(filename)))
+                        .map(|source| source.into_source_input(directory.join(filename)))
                         .ok_or_else(|| format!("missing validated source {filename}"))
                 })
             }
             super::filesystem::ImportPlan::Ufo { path, source } => {
-                let model = (*source).into_master(path);
-                let name: Arc<str> = model
-                    .font
-                    .font_info
-                    .style_name
-                    .clone()
-                    .unwrap_or_else(|| "Regular".into())
-                    .into();
-                Ok(Self {
-                    variable: VariableData::default(),
-                    source_history: sources::SourceHistory::default(),
-                    document_history: super::history::DocumentHistory::default(),
-                    source_metadata_history: super::history::SourceMetadataHistory::default(),
-                    masters: vec![model],
-                    active: 0,
-                    master_names: vec![name],
-                    axes: Vec::new(),
-                    master_locations: vec![Location::new()],
-                    model: None,
-                    location: Location::new(),
-                    compat: HashMap::new(),
-                    export_source: None,
-                    instances: Vec::new(),
-                    ds_doc: None,
-                    ds_dirty: false,
-                    brace: Vec::new(),
-                    experiments: super::experiments::Experiments::default(),
-                })
+                Ok(Self::from_source((*source).into_source_input(path)))
             }
         }
     }
@@ -645,14 +616,14 @@ impl Project {
     /// filename to its font model (filesystem or in-memory host).
     pub fn from_designspace(
         doc: norad::designspace::DesignSpaceDocument,
-        load_master: impl FnMut(&str) -> Result<Master, String>,
+        load_source: impl FnMut(&str) -> Result<SourceInput, String>,
     ) -> Result<Self, String> {
-        Self::from_designspace_with_variable(doc, load_master, None)
+        Self::from_designspace_with_variable(doc, load_source, None)
     }
 
     fn from_designspace_with_variable(
         doc: norad::designspace::DesignSpaceDocument,
-        mut load_master: impl FnMut(&str) -> Result<Master, String>,
+        mut load_source: impl FnMut(&str) -> Result<SourceInput, String>,
         canonical_variable: Option<VariableData>,
     ) -> Result<Self, String> {
         if doc
@@ -746,7 +717,7 @@ impl Project {
         for instance in &doc.instances {
             normalize(&instance.location)?;
         }
-        let mut masters = Vec::new();
+        let mut inputs = Vec::new();
         let mut master_names = Vec::new();
         let mut master_locations = Vec::new();
         let mut files = Vec::new();
@@ -761,7 +732,7 @@ impl Project {
             if master_locations.contains(&location) {
                 return Err("duplicate full source locations are ambiguous".into());
             }
-            masters.push(load_master(&source.filename)?);
+            inputs.push(load_source(&source.filename)?);
             files.push(source.filename.clone());
             master_names.push(
                 source
@@ -772,7 +743,7 @@ impl Project {
             );
             master_locations.push(location);
         }
-        if masters.is_empty() {
+        if inputs.is_empty() {
             return Err("designspace has no full sources".into());
         }
         let default_index = master_locations
@@ -791,7 +762,7 @@ impl Project {
                         source.filename
                     )
                 })?;
-            if masters[master].font.layers.get(layer).is_none() {
+            if inputs[master].font.layers.get(layer).is_none() {
                 return Err(format!("{}: missing source layer {layer}", source.filename));
             }
             brace.push(BraceSource {
@@ -800,22 +771,24 @@ impl Project {
                 location: normalize(&source.location)?,
             });
         }
-        let mut variable =
-            canonical_variable.unwrap_or_else(|| VariableData::from_sources(&masters));
-        if variable.source_ids.len() != masters.len() {
+        let mut variable = match canonical_variable {
+            Some(variable) => variable,
+            None => super::ufo_codec::decode_sources(inputs.iter().map(|source| &source.font))?,
+        };
+        if variable.source_ids.len() != inputs.len() {
             return Err("canonical source count does not match Designspace sources".into());
         }
         let source_identities = variable
             .source_ids
             .iter()
             .copied()
-            .zip(masters.iter())
-            .map(|(source, master)| {
+            .zip(inputs.iter())
+            .map(|(source, input)| {
                 (
                     source,
                     LayerId {
                         source,
-                        name: master.font.default_layer().name().to_string(),
+                        name: input.font.default_layer().name().to_string(),
                     },
                 )
             })
@@ -826,14 +799,14 @@ impl Project {
                 source_identities,
             )?;
         variable.install_designspace(canonical_designspace);
-        let model = if masters.len() > 1 || !brace.is_empty() {
+        let model = if inputs.len() > 1 || !brace.is_empty() {
             Some(VariationModel::new(&master_locations)?)
         } else {
             None
         };
         let location = axes.iter().map(|axis| (axis.name.clone(), 0.0)).collect();
         let mut project = Self {
-            masters,
+            sources: inputs.into_iter().map(SourceState::from_input).collect(),
             variable,
             source_history: sources::SourceHistory::default(),
             document_history: super::history::DocumentHistory::default(),
@@ -847,7 +820,6 @@ impl Project {
             compat: HashMap::new(),
             export_source: None,
             instances: Vec::new(),
-            ds_doc: Some(doc),
             ds_dirty: false,
             brace,
             experiments: super::experiments::Experiments::default(),
@@ -1419,16 +1391,6 @@ impl Project {
         (result != glyph_name).then_some(result)
     }
 
-    /// The master being edited.
-    pub fn active_font(&self) -> &Master {
-        &self.masters[self.active]
-    }
-
-    /// Read-only source projections for rendering and legacy outline algorithms.
-    pub fn sources(&self) -> &[Master] {
-        &self.masters
-    }
-
     /// Stable identity of the source at a display index.
     pub fn source_id(&self, index: usize) -> Option<SourceId> {
         self.variable.source_ids.get(index).copied()
@@ -1613,13 +1575,13 @@ impl Project {
     /// Read one source's stable identity and metadata without its UFO projection.
     pub fn document_source(&self, id: SourceId) -> Option<SourceView<'_>> {
         let index = self.source_index(id)?;
-        let source = self.masters.get(index)?;
+        let source = self.sources.get(index)?;
         Some(SourceView {
             id,
             name: self.master_names.get(index)?.as_ref(),
             location: self.master_locations.get(index)?,
             path: &source.source_path,
-            default_layer_name: source.font.default_layer().name().as_str(),
+            default_layer_name: self.variable.default_layer_name(id)?,
         })
     }
 
@@ -1628,7 +1590,7 @@ impl Project {
     /// Unlike the Designspace filename, this path is resolved against the opened document and
     /// can therefore serve as the base for relative feature includes at a format boundary.
     pub fn document_source_path(&self, id: SourceId) -> Option<&Path> {
-        Some(&self.masters.get(self.source_index(id)?)?.source_path)
+        Some(&self.sources.get(self.source_index(id)?)?.source_path)
     }
 
     /// Layer-container names in exact UFO order for one stable source.
@@ -1643,6 +1605,16 @@ impl Project {
             .iter()
             .copied()
             .filter_map(|id| self.document_source(id))
+    }
+
+    /// Whether any source or Designspace metadata has unsaved changes.
+    pub fn is_modified(&self) -> bool {
+        self.ds_dirty || self.sources.iter().any(|source| source.dirty)
+    }
+
+    /// Whether one stable source has unsaved changes.
+    pub fn document_source_is_modified(&self, id: SourceId) -> Option<bool> {
+        Some(self.sources.get(self.source_index(id)?)?.dirty)
     }
 
     /// Read one source's canonical OpenType feature text.
@@ -1699,12 +1671,7 @@ impl Project {
         {
             return Ok(false);
         }
-        self.masters[index]
-            .font
-            .images
-            .insert(path, bytes)
-            .expect("validated image remains valid for the compatibility projection");
-        self.masters[index].dirty = true;
+        self.sources[index].dirty = true;
         Ok(true)
     }
 
@@ -1736,7 +1703,6 @@ impl Project {
         expected: &super::model::designspace::CanonicalDesignspace,
         replacement: super::model::designspace::CanonicalDesignspace,
     ) -> Result<bool, String> {
-        let document = replacement.to_norad()?;
         if replacement.full_source_order().collect::<Vec<_>>() != self.variable.source_ids {
             return Err("canonical Designspace source order does not match the document".into());
         }
@@ -1745,7 +1711,6 @@ impl Project {
             .replace_designspace_if_current(expected, replacement)
             .map_err(|_| "canonical Designspace changed after edit capture")?;
         if changed {
-            self.ds_doc = Some(document);
             self.ds_dirty = true;
         }
         Ok(changed)
@@ -1946,7 +1911,7 @@ impl Project {
             });
         }
         for source in &affected {
-            self.synchronize_compatibility_source_metadata(*source);
+            self.record_source_metadata_change(*source);
         }
         Ok(DocumentEditOutcome::Changed {
             revision: self.variable.revision,
@@ -2133,7 +2098,7 @@ impl Project {
             metadata: delta.metadata,
             compilation: true,
         };
-        self.synchronize_compatibility_layer(&address.glyph, &address.layer);
+        self.record_layer_change(&address.glyph, &address.layer);
         Ok(DocumentEditOutcome::Changed {
             revision: self.variable.revision,
             change,
@@ -2172,7 +2137,7 @@ impl Project {
             metadata: delta.metadata,
             compilation: true,
         };
-        self.synchronize_compatibility_layer(name, layer);
+        self.record_layer_change(name, layer);
         Ok(DocumentEditOutcome::Changed {
             revision: self.variable.revision,
             change,
@@ -2236,7 +2201,7 @@ impl Project {
             .collect::<Vec<_>>();
         let dependent_layers = self.variable.dependent_component_layers(name);
         for address in &affected_layers {
-            self.synchronize_compatibility_layer(&address.glyph, &address.layer);
+            self.record_layer_change(&address.glyph, &address.layer);
         }
         Ok(DocumentEditOutcome::Changed {
             revision: self.variable.revision,
@@ -2273,7 +2238,7 @@ impl Project {
                 revision: self.variable.revision,
             });
         }
-        self.synchronize_compatibility_source_metadata(source);
+        self.record_source_metadata_change(source);
         Ok(DocumentEditOutcome::Changed {
             revision: self.variable.revision,
             change: DocumentChange {
@@ -2288,74 +2253,23 @@ impl Project {
         })
     }
 
-    fn synchronize_compatibility_source_metadata(&mut self, source: SourceId) {
+    fn record_source_metadata_change(&mut self, source: SourceId) {
         let index = self
             .source_index(source)
             .expect("canonical source metadata retains its source");
-        let feature_text = self
-            .variable
-            .feature_text(source)
-            .expect("committed metadata")
-            .to_owned();
-        let font_metadata = self
-            .variable
-            .font_metadata(source)
-            .expect("committed metadata")
-            .clone();
-        let font_info = self
-            .variable
-            .font_info(source)
-            .expect("committed metadata")
-            .clone();
-        let source = &mut self.masters[index];
-        let kerning_changed = match super::font_ops::canonical_metadata_from_ufo(&source.font) {
-            Ok(current) => current != font_metadata,
-            Err(_) => true,
-        };
-        let font_info_changed =
-            match super::model::font_info::CanonicalFontInfo::from_ufo(&source.font.font_info) {
-                Ok(current) => current != font_info,
-                Err(_) => true,
-            };
-        source.font.features = feature_text;
-        super::font_ops::write_canonical_metadata_to_ufo(&mut source.font, &font_metadata)
-            .expect("canonical source metadata must remain writable as UFO");
-        font_info
-            .write_to_ufo(&mut source.font.font_info)
-            .expect("canonical font info must remain writable as UFO");
+        let source = &mut self.sources[index];
         source.dirty = true;
-        source.kerning_dirty |= kerning_changed;
-        if font_info_changed {
-            source.refresh_from_font();
-        }
+        source.kerning_dirty = true;
     }
 
-    fn synchronize_compatibility_layer(&mut self, name: &str, layer: &LayerId) {
-        let payload = self
-            .variable
-            .project_layer(name, layer)
-            .expect("committed layer remains projectable");
+    fn record_layer_change(&mut self, name: &str, layer: &LayerId) {
         let index = self
             .source_index(layer.source)
             .expect("committed layer retains its source");
-        let source = &mut self.masters[index];
-        source
-            .font
-            .layers
-            .get_mut(&layer.name)
-            .expect("committed layer retains its compatibility projection")
-            .insert_glyph(payload);
+        let source = &mut self.sources[index];
         source.dirty = true;
         source.modified_glyphs.insert(name.to_owned());
-        if let Some(&index) = source.name_map.get(name) {
-            source.rebuild_entry(index);
-        }
         self.recheck_compat(name);
-    }
-
-    /// Materialize one glyph layer for a format boundary or transitional caller.
-    pub fn glyph_layer(&self, name: &str, layer: &LayerId) -> Option<norad::Glyph> {
-        self.variable.project_layer(name, layer)
     }
 
     /// All glyph names, including glyphs found only in sparse or auxiliary layers.
@@ -2363,20 +2277,21 @@ impl Project {
         self.variable.glyphs.keys().map(String::as_str)
     }
 
-    /// Materialize a source for a format adapter from canonical glyph/layer storage.
-    pub fn source_snapshot(&self, source: SourceId) -> Option<norad::Font> {
-        self.variable.source_font(source)
+    pub(crate) fn codec_data(&self) -> &VariableData {
+        &self.variable
     }
 
     /// Save every source from the variable project, then its Designspace metadata.
     pub fn save(&mut self) -> Result<(), String> {
-        let mut sources = Vec::with_capacity(self.masters.len());
-        for index in 0..self.masters.len() {
-            let font = self
-                .source_snapshot(self.source_id(index).expect("source identity"))
-                .ok_or("missing source data")?;
-            let source = &self.masters[index];
-            sources.push(super::filesystem::SourceExport {
+        let mut exports = Vec::with_capacity(self.sources.len());
+        for index in 0..self.sources.len() {
+            let font = super::ufo_codec::encode_source(
+                &self.variable,
+                self.source_id(index).expect("source identity"),
+            )
+            .ok_or("missing source data")?;
+            let source = &self.sources[index];
+            exports.push(super::filesystem::SourceExport {
                 destination: source.source_path.clone(),
                 font,
                 preserved: source.preserved_files.clone(),
@@ -2387,15 +2302,15 @@ impl Project {
                 self.export_source
                     .clone()
                     .ok_or("designspace has no save destination")?,
-                self.ds_doc
-                    .clone()
-                    .ok_or("designspace document is unavailable")?,
+                self.document_designspace()
+                    .ok_or("designspace document is unavailable")?
+                    .to_norad()?,
             ))
         } else {
             None
         };
-        super::filesystem::ExportPlan::new(sources, designspace)?.execute()?;
-        for source in &mut self.masters {
+        super::filesystem::ExportPlan::new(exports, designspace)?.execute()?;
+        for source in &mut self.sources {
             source.dirty = false;
             source.modified_glyphs.clear();
             source.kerning_dirty = false;
@@ -2417,7 +2332,7 @@ mod tests {
     #[test]
     fn designspace_loads_with_masters() {
         let project = Project::load(&fonts::designspace()).expect("designspace loads");
-        assert_eq!(project.sources().len(), 2, "regular + bold");
+        assert_eq!(project.document_sources().count(), 2, "regular + bold");
         assert!(project.master_names.iter().any(|n| n.contains("Bold")));
         // Active master is the default location (Regular).
         assert!(!project.master_names[project.active].contains("Bold"));
@@ -2633,17 +2548,17 @@ mod tests {
         // And the real Arabic set: a medial beh (a composite —
         // components must resolve) touches both edges.
         let project = Project::load(&fonts::designspace()).expect("loads");
-        let font = project.active_font();
-        if let Some(g) = font.font.get_glyph("beh-ar.medi") {
-            let i = font.name_map["beh-ar.medi"];
-            let advance = font.glyphs[i].advance;
-            let outline = crate::outline::glyph_paths::glyph_to_bezpath(g, &font.font);
+        let source = project.source_id(project.active).unwrap();
+        if let Some(glyph) = project
+            .document_source_glyph_entry(source, "beh-ar.medi")
+            .unwrap()
+        {
             assert!(
-                joining_band(&outline, advance, true, 2.0).is_some(),
+                joining_band(glyph.outline(), glyph.advance(), true, 2.0).is_some(),
                 "medial joins left"
             );
             assert!(
-                joining_band(&outline, advance, false, 2.0).is_some(),
+                joining_band(glyph.outline(), glyph.advance(), false, 2.0).is_some(),
                 "medial joins right"
             );
         }
@@ -2694,7 +2609,7 @@ mod tests {
                 .unwrap()
                 .metrics_key(true)
                 .unwrap();
-            assert_eq!(back.as_deref(), Some("=n+10"));
+            assert_eq!(back, Some("=n+10"));
         }
     }
 
@@ -2707,16 +2622,23 @@ mod tests {
         let name = "n";
         let axis = project.axes[0].clone();
         let (lo, hi) = project.axis_end_masters().expect("two ends");
-        let a = {
-            let g = project.sources()[lo].font.get_glyph(name).unwrap();
-            let p = &g.contours[0].points[0];
-            (p.x, p.y)
+        let first_point = |index| {
+            let source = project.source_id(index).unwrap();
+            let layer = project.document_source(source).unwrap().default_layer();
+            let point = project
+                .document_layer(name, &layer)
+                .unwrap()
+                .contours()
+                .next()
+                .unwrap()
+                .points()
+                .next()
+                .unwrap()
+                .position();
+            (point.x, point.y)
         };
-        let b = {
-            let g = project.sources()[hi].font.get_glyph(name).unwrap();
-            let p = &g.contours[0].points[0];
-            (p.x, p.y)
-        };
+        let a = first_point(lo);
+        let b = first_point(hi);
         let q = ((a.0 + b.0) / 2.0 + 80.0, (a.1 + b.1) / 2.0 + 40.0);
         let source = project.source_id(lo).unwrap();
         let layer = project.document_source(source).unwrap().default_layer();
@@ -2763,8 +2685,18 @@ mod tests {
         let tracks = project
             .trajectory_samples(name, 10)
             .expect("samples with plain masters");
-        let regular = project.sources()[0].font.get_glyph(name).unwrap();
-        let first_point = &regular.contours[0].points[0];
+        let source = project.source_id(0).unwrap();
+        let layer = project.document_source(source).unwrap().default_layer();
+        let first_point = project
+            .document_layer(name, &layer)
+            .unwrap()
+            .contours()
+            .next()
+            .unwrap()
+            .points()
+            .next()
+            .unwrap()
+            .position();
         // The t=0 end of every track is the Regular master exactly.
         assert!(
             (tracks[0][0].x - first_point.x).abs() < 1e-6
@@ -2818,7 +2750,11 @@ mod tests {
     fn rule_substitute_switches_past_the_condition() {
         let mut project = Project::load(&fonts::designspace()).expect("loads");
         let axis = project.axes[0].clone();
-        let doc = project.ds_doc.as_mut().expect("doc kept");
+        let mut doc = project
+            .document_designspace()
+            .expect("designspace kept canonically")
+            .to_norad()
+            .unwrap();
         doc.rules.rules.push(norad::designspace::Rule {
             name: Some("a bold".into()),
             condition_sets: vec![norad::designspace::ConditionSet {
@@ -2837,6 +2773,15 @@ mod tests {
                 with: norad::Name::new("a.bold").unwrap(),
             }],
         });
+        let identities = project
+            .document_sources()
+            .map(|source| (source.id(), source.default_layer()))
+            .collect::<Vec<_>>();
+        let canonical = crate::document::model::designspace::CanonicalDesignspace::from_norad_with_source_identities(
+                &doc, identities,
+            )
+            .unwrap();
+        project.variable.install_designspace(canonical);
         let at = |project: &mut Project, design: f64| {
             let axis = &project.axes[0];
             let normalized = crate::document::var_model::normalize_value(
@@ -2866,12 +2811,13 @@ mod tests {
         // Measured straight from the test font's H, the same path the
         // Dimensions section walks.
         let project = Project::load(&fonts::designspace()).expect("loads");
-        let font = project.active_font();
-        let g = font.font.get_glyph("H").expect("has H");
-        let paths: Vec<crate::outline::path::Path> = g
+        let source = project.source_id(project.active).unwrap();
+        let layer = project.document_source(source).unwrap().default_layer();
+        let glyph = project.encode_ufo_layer("H", &layer).expect("has H");
+        let paths: Vec<crate::outline::path::Path> = glyph
             .contours
             .iter()
-            .map(|c| crate::outline::path::Path::from_contour(&WContour::from_norad(c)))
+            .map(|contour| crate::outline::path::Path::from_contour(&WContour::from_norad(contour)))
             .collect();
         let stems: Vec<i64> = measure::glyph_measurements(&paths)
             .into_iter()
@@ -2900,8 +2846,13 @@ mod tests {
             .expect("compatible masters interpolate");
         assert!(!path.elements().is_empty());
         // The interpolated advance sits between the two masters'.
-        let a0 = project.sources()[0].font.get_glyph("n").unwrap().width;
-        let a1 = project.sources()[1].font.get_glyph("n").unwrap().width;
+        let width = |index| {
+            let source = project.source_id(index).unwrap();
+            let layer = project.document_source(source).unwrap().default_layer();
+            project.document_layer("n", &layer).unwrap().width()
+        };
+        let a0 = width(0);
+        let a1 = width(1);
         let (lo, hi) = (a0.min(a1), a0.max(a1));
         assert!(
             advance >= lo - 1e-6 && advance <= hi + 1e-6,

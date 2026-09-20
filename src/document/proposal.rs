@@ -793,7 +793,7 @@ mod tests {
     use norad::{Anchor, Contour, ContourPoint, Name, PointType};
 
     use crate::document::history::HistoryDirection;
-    use crate::document::project::{Master, Project};
+    use crate::document::project::{Project, SourceInput};
     use crate::document::variable::GlyphLayerAddress;
 
     fn glyph(name: &str, points: &[(f64, f64)], width: f64) -> Glyph {
@@ -843,7 +843,7 @@ mod tests {
             target.note = Some(format!("retain {name}"));
             font.default_layer_mut().insert_glyph(target);
         }
-        let project = Project::from_source(Master::from_font(
+        let project = Project::from_source(SourceInput::from_font(
             font,
             PathBuf::from("CompositionProposal.ufo"),
         ));
@@ -1010,7 +1010,7 @@ mod tests {
         );
         assert_eq!(
             project
-                .source_snapshot(source)
+                .encode_ufo_source(source)
                 .unwrap()
                 .get_glyph("Aacute")
                 .unwrap()

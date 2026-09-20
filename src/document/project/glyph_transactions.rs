@@ -252,7 +252,7 @@ impl Project {
                 debug_assert!(moved, "validated rename cannot collide with layer history");
             }
         }
-        self.refresh_glyph_projections(&transaction.history, &transaction.affected_layers);
+        self.record_glyph_changes(&transaction.history, &transaction.affected_layers);
         Ok(DocumentEditOutcome::Changed {
             revision: self.variable.revision,
             change: DocumentChange {
@@ -323,27 +323,16 @@ impl Project {
         self.commit_glyph_transaction(transaction)
     }
 
-    fn refresh_glyph_projections(
+    fn record_glyph_changes(
         &mut self,
         history: &HistoryUpdate,
         affected_layers: &[GlyphLayerAddress],
     ) {
-        let fonts = self
-            .variable
-            .source_ids
-            .iter()
-            .map(|source| {
-                self.variable
-                    .source_font(*source)
-                    .expect("committed source remains projectable")
-            })
-            .collect::<Vec<_>>();
         let affected = affected_layers
             .iter()
             .map(|address| address.glyph.as_str())
             .collect::<std::collections::BTreeSet<_>>();
-        for (source, font) in self.masters.iter_mut().zip(fonts) {
-            source.font = font;
+        for source in &mut self.sources {
             source.dirty = true;
             source.kerning_dirty = true;
             source
@@ -356,7 +345,6 @@ impl Project {
             if let HistoryUpdate::Remove(name) = history {
                 source.modified_glyphs.remove(name);
             }
-            source.refresh_from_font();
         }
         self.compute_compat();
     }
@@ -392,13 +380,19 @@ mod tests {
             font.default_layer_mut().insert_glyph(user);
             font
         };
-        let regular = Master::from_font(font(500.125), PathBuf::from("Regular.ufo"));
-        let bold = Master::from_font(font(650.875), PathBuf::from("Bold.ufo"));
-        let mut project = Project::from_source(regular);
-        project.masters.push(bold);
+        let regular = font(500.125);
+        let bold = font(650.875);
+        let variable = crate::document::ufo_codec::decode_sources([&regular, &bold]).unwrap();
+        let mut project = Project::from_source(SourceInput::from_font(
+            regular,
+            PathBuf::from("Regular.ufo"),
+        ));
+        project
+            .sources
+            .push(SourceState::new(PathBuf::from("Bold.ufo"), false));
         project.master_names.push("Bold".into());
         project.master_locations.push(Location::new());
-        project.variable = VariableData::from_sources(&project.masters);
+        project.variable = variable;
         project.compute_compat();
         project
     }
@@ -437,9 +431,13 @@ mod tests {
         );
         assert_eq!(
             project
-                .sources()
-                .iter()
-                .map(|source| source.font.get_glyph(&copy_name).unwrap().width)
+                .document_sources()
+                .map(|source| {
+                    project
+                        .document_layer(&copy_name, &source.default_layer())
+                        .unwrap()
+                        .width()
+                })
                 .collect::<Vec<_>>(),
             vec![500.125, 650.875]
         );
@@ -469,7 +467,7 @@ mod tests {
         let remove = project.begin_remove_glyph("A.alt").unwrap();
         project.commit_glyph_transaction(remove).unwrap();
         assert!(project.document_glyph("A.alt").is_none());
-        assert!(project.sources()[0].font.get_glyph("A.alt").is_none());
+        assert!(project.document_glyph("A.alt").is_none());
     }
 
     #[test]
@@ -489,9 +487,21 @@ mod tests {
         assert_eq!(added, 2);
         assert!(matches!(outcome, DocumentEditOutcome::Changed { .. }));
         assert_eq!(project.document_revision(), revision + 1);
-        for source in project.sources() {
-            assert_eq!(source.font.get_glyph("B").unwrap().width, 550.625);
-            assert_eq!(source.font.get_glyph("C").unwrap().width, 550.625);
+        for source in project.document_sources() {
+            assert_eq!(
+                project
+                    .document_layer("B", &source.default_layer())
+                    .unwrap()
+                    .width(),
+                550.625
+            );
+            assert_eq!(
+                project
+                    .document_layer("C", &source.default_layer())
+                    .unwrap()
+                    .width(),
+                550.625
+            );
         }
 
         project
@@ -518,7 +528,11 @@ mod tests {
                 .unwrap()
         );
         project.active = 1;
-        assert!(project.sources()[1].font.get_glyph("A").is_none());
+        let bold = project
+            .document_source(SourceId(1))
+            .unwrap()
+            .default_layer();
+        assert!(project.document_layer("A", &bold).is_none());
         let revision = project.document_revision();
 
         let outcome = project
@@ -527,12 +541,13 @@ mod tests {
         assert!(matches!(outcome, DocumentEditOutcome::Changed { .. }));
         assert_eq!(project.document_revision(), revision + 1);
         assert_eq!(project.document_glyph("A").unwrap().id(), id);
+        assert_eq!(project.document_layer("A", &bold).unwrap().width(), 700.375);
+        let regular = project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
         assert_eq!(
-            project.sources()[1].font.get_glyph("A").unwrap().width,
-            700.375
-        );
-        assert_eq!(
-            project.sources()[0].font.get_glyph("A").unwrap().width,
+            project.document_layer("A", &regular).unwrap().width(),
             500.125
         );
     }
@@ -624,12 +639,12 @@ mod tests {
                 .as_nanos()
         ));
         project
-            .source_snapshot(SourceId(0))
+            .encode_ufo_source(SourceId(0))
             .unwrap()
             .save(&path)
             .unwrap();
 
-        let reopened = Project::from_source(Master::load(&path).unwrap());
+        let reopened = Project::from_source(SourceInput::load(&path).unwrap());
         let source = reopened.document_sources().next().unwrap();
         let user = reopened
             .document_layer("Aacute", &source.default_layer())
@@ -642,8 +657,9 @@ mod tests {
         assert_eq!(copy.width(), 500.125);
         assert_eq!(copy.codepoints().count(), 0);
         assert_eq!(
-            reopened.sources()[0]
-                .font
+            reopened
+                .encode_ufo_source(SourceId(0))
+                .unwrap()
                 .get_glyph("A.alt")
                 .unwrap()
                 .lib

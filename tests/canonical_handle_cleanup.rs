@@ -11,7 +11,7 @@ use norad::{Anchor, Component, Contour, ContourPoint, Font, Glyph, Name, PointTy
 use runebender::document::LayerPointType;
 use runebender::document::history::HistoryDirection;
 use runebender::document::project::{
-    DocumentEditOutcome, DocumentHistoryReplayOutcome, Master, Project,
+    DocumentEditOutcome, DocumentHistoryReplayOutcome, Project, SourceInput,
 };
 use runebender::document::variable::{GlyphLayerAddress, LayerId, SourceId};
 
@@ -135,7 +135,7 @@ fn fixture() -> (Scratch, Project, LayerId, GlyphLayerAddress) {
     for glyph in [glyph, base, other] {
         font.default_layer_mut().insert_glyph(glyph);
     }
-    let project = Project::from_source(Master::from_font(font, source_path));
+    let project = Project::from_source(SourceInput::from_font(font, source_path));
     let layer = project
         .document_source(SourceId(0))
         .unwrap()
@@ -150,7 +150,7 @@ fn fixture() -> (Scratch, Project, LayerId, GlyphLayerAddress) {
 #[test]
 fn selected_closed_and_open_corners_round_with_stable_metadata_and_history() {
     let (scratch, mut project, layer, address) = fixture();
-    let before_projection = project.glyph_layer("corners", &layer).unwrap();
+    let before_projection = project.encode_ufo_layer("corners", &layer).unwrap();
     let before = project.document_layer("corners", &layer).unwrap();
     let contours: Vec<_> = before.contours().collect();
     let contour_ids: Vec<_> = contours.iter().map(|contour| contour.id()).collect();
@@ -234,7 +234,7 @@ fn selected_closed_and_open_corners_round_with_stable_metadata_and_history() {
         "fillet endpoints are smooth"
     );
 
-    let after_projection = project.glyph_layer("corners", &layer).unwrap();
+    let after_projection = project.encode_ufo_layer("corners", &layer).unwrap();
     assert_eq!(after_projection.width, before_projection.width);
     assert_eq!(after_projection.height, before_projection.height);
     assert_eq!(after_projection.note, before_projection.note);
@@ -261,7 +261,7 @@ fn selected_closed_and_open_corners_round_with_stable_metadata_and_history() {
         DocumentHistoryReplayOutcome::Changed { .. }
     ));
     assert_eq!(
-        project.glyph_layer("corners", &layer),
+        project.encode_ufo_layer("corners", &layer),
         Some(before_projection),
         "undo restores the exact source projection"
     );
@@ -272,7 +272,7 @@ fn selected_closed_and_open_corners_round_with_stable_metadata_and_history() {
         DocumentHistoryReplayOutcome::Changed { .. }
     ));
     assert_eq!(
-        project.glyph_layer("corners", &layer),
+        project.encode_ufo_layer("corners", &layer),
         Some(after_projection.clone()),
         "redo restores the rounded result"
     );
@@ -284,7 +284,7 @@ fn selected_closed_and_open_corners_round_with_stable_metadata_and_history() {
         .unwrap()
         .default_layer();
     assert_eq!(
-        reloaded.glyph_layer("corners", &reloaded_layer),
+        reloaded.encode_ufo_layer("corners", &reloaded_layer),
         Some(after_projection),
         "rounded topology and metadata survive UFO save/reopen"
     );
@@ -452,7 +452,7 @@ fn handle_fixture() -> (Scratch, Project, LayerId, GlyphLayerAddress) {
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(glyph);
     font.default_layer_mut().insert_glyph(other);
-    let project = Project::from_source(Master::from_font(font, source_path));
+    let project = Project::from_source(SourceInput::from_font(font, source_path));
     let layer = project
         .document_source(SourceId(0))
         .unwrap()
@@ -610,7 +610,7 @@ fn balance_scopes_a_cubic_by_any_stable_segment_point() {
         DocumentEditOutcome::Changed { .. }
     ));
 
-    let projected = project.glyph_layer("handles", &layer).unwrap();
+    let projected = project.encode_ufo_layer("handles", &layer).unwrap();
     let after = project.document_layer("handles", &layer).unwrap();
     let points: Vec<_> = after.contours().next().unwrap().points().collect();
     assert_eq!(
@@ -712,7 +712,7 @@ fn harmonize_and_balance_leave_quadratic_chains_atomically_unchanged() {
 #[test]
 fn optimize_empty_selection_moves_cubic_handles_with_stable_identity_and_history() {
     let (_scratch, mut project, layer, address) = handle_fixture();
-    let before_projection = project.glyph_layer("handles", &layer).unwrap();
+    let before_projection = project.encode_ufo_layer("handles", &layer).unwrap();
     let before = project.document_layer("handles", &layer).unwrap();
     let points: Vec<_> = before.contours().next().unwrap().points().collect();
     let identities: Vec<_> = points.iter().map(|point| point.id()).collect();
@@ -754,7 +754,7 @@ fn optimize_empty_selection_moves_cubic_handles_with_stable_identity_and_history
             "unexpected optimized position at point {index}"
         );
     }
-    let projected = project.glyph_layer("handles", &layer).unwrap();
+    let projected = project.encode_ufo_layer("handles", &layer).unwrap();
     assert_eq!(
         projected.contours[0].points[1].name.as_deref(),
         Some("out-adjacent")
@@ -769,7 +769,7 @@ fn optimize_empty_selection_moves_cubic_handles_with_stable_identity_and_history
         DocumentHistoryReplayOutcome::Changed { .. }
     ));
     assert_eq!(
-        project.glyph_layer("handles", &layer),
+        project.encode_ufo_layer("handles", &layer),
         Some(before_projection),
         "undo restores the exact source projection"
     );

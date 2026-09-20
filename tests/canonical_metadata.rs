@@ -17,7 +17,7 @@ use runebender::document::history::{
 use runebender::document::model::glyph_metadata::{
     CanonicalGlyphMetadata, GlyphMetadataError, OpenTypeGlyphCategory, parse_codepoints,
 };
-use runebender::document::project::{DocumentEditOutcome, Master, Project};
+use runebender::document::project::{DocumentEditOutcome, Project, SourceInput};
 use runebender::document::variable::SourceId;
 
 static SCRATCH_ID: AtomicUsize = AtomicUsize::new(0);
@@ -97,7 +97,7 @@ fn variable_metadata_project() -> (Scratch, Project) {
                 -80.25 - f64::from(source_index),
             )]),
         );
-        Ok(Master::from_font(font, scratch.0.join(filename)))
+        Ok(SourceInput::from_font(font, scratch.0.join(filename)))
     })
     .expect("fixture project loads");
     (scratch, project)
@@ -478,7 +478,7 @@ fn project_source_metadata_is_atomic_and_survives_save_reload() {
     project.save().unwrap();
     let reloaded = Project::load(&path).unwrap();
     assert_eq!(reloaded.document_font_metadata(source), Some(&edited));
-    let saved = reloaded.source_snapshot(source).unwrap();
+    let saved = reloaded.encode_ufo_source(source).unwrap();
     assert_eq!(saved.kerning["A"]["V"], -63.625);
     assert_eq!(
         saved.groups["com.example.arbitrary"],
@@ -540,7 +540,7 @@ fn source_metadata_history_replays_multiple_sources_across_reordering() {
     );
     assert_eq!(SourceMetadataHistory::capture(&project), after);
     assert_eq!(
-        project.source_snapshot(second).unwrap().kerning["A"]["V"],
+        project.encode_ufo_source(second).unwrap().kerning["A"]["V"],
         -113.625
     );
 

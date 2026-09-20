@@ -274,9 +274,9 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
             if v.root != source {
                 return Err("experiment belongs to another source".into());
             }
-            v.source_snapshot(project)?
+            v.encode_ufo_source(project)?
         }
-        None => project.source_snapshot(source).ok_or("unknown source")?,
+        None => project.encode_ufo_source(source).ok_or("unknown source")?,
     };
     let layer = object
         .get("layer")

@@ -10,7 +10,7 @@ use runebender::document::font_memory::designspace_from_str;
 use runebender::document::history::HistoryDirection;
 use runebender::document::model::designspace::SourceOrderEntry;
 use runebender::document::project::{
-    DocumentEditOutcome, DocumentHistoryReplayOutcome, Master, Project,
+    DocumentEditOutcome, DocumentHistoryReplayOutcome, Project, SourceInput,
 };
 use runebender::document::variable::{GlyphLayerAddress, LayerId, SourceId};
 
@@ -67,7 +67,7 @@ fn project_from_designspace(doc: norad::designspace::DesignSpaceDocument) -> Pro
                 .unwrap()
                 .insert_glyph(glyph("A", 80.0));
         }
-        Ok(Master::from_font(font, PathBuf::from(filename)))
+        Ok(SourceInput::from_font(font, PathBuf::from(filename)))
     })
     .unwrap()
 }
@@ -182,7 +182,7 @@ fn removed_source_roundtrip_preserves_auxiliary_compatibility_history() {
     let source = SourceId(1);
     let default = project.document_source(source).unwrap().default_layer();
     let auxiliary = project.add_glyph_layer("A", &default, "backup").unwrap();
-    let initial_width = project.glyph_layer("A", &auxiliary).unwrap().width;
+    let initial_width = project.encode_ufo_layer("A", &auxiliary).unwrap().width;
     let address = GlyphLayerAddress {
         glyph: "A".into(),
         layer: auxiliary.clone(),
@@ -201,14 +201,17 @@ fn removed_source_roundtrip_preserves_auxiliary_compatibility_history() {
         Ok(DocumentHistoryReplayOutcome::Changed { .. })
     ));
     assert_eq!(
-        project.glyph_layer("A", &auxiliary).unwrap().width,
+        project.encode_ufo_layer("A", &auxiliary).unwrap().width,
         initial_width
     );
     assert!(matches!(
         project.replay_document_layer_history(&address, HistoryDirection::Redo),
         Ok(DocumentHistoryReplayOutcome::Changed { .. })
     ));
-    assert_eq!(project.glyph_layer("A", &auxiliary).unwrap().width, 750.625);
+    assert_eq!(
+        project.encode_ufo_layer("A", &auxiliary).unwrap().width,
+        750.625
+    );
 }
 
 #[test]
@@ -242,10 +245,8 @@ fn source_move_and_history_preserve_full_sparse_serialized_interleaving() {
         project.document_designspace().unwrap().source_order(),
         moved
     );
-    let serialized = project
-        .ds_doc
-        .as_ref()
-        .unwrap()
+    let serialized_document = project.document_designspace().unwrap().to_norad().unwrap();
+    let serialized = serialized_document
         .sources
         .iter()
         .map(|source| (source.filename.as_str(), source.layer.as_deref()))

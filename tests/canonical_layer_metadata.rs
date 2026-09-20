@@ -12,7 +12,7 @@ use runebender::document::model::glyph_metadata::{
     COMPOSITION_RECIPE_KEY, LEFT_METRICS_KEY, MARK_COLOR_KEY, MARK_LABEL_KEY, METABALLS_KEY,
     MarkColor, Metaball, MetaballGroup, Metaballs, RIGHT_METRICS_KEY,
 };
-use runebender::document::project::{DocumentEditOutcome, Master, Project};
+use runebender::document::project::{DocumentEditOutcome, Project, SourceInput};
 use runebender::document::variable::{GlyphLayerAddress, SourceId};
 
 struct Scratch(PathBuf);
@@ -79,7 +79,10 @@ fn fixture() -> (Project, GlyphLayerAddress) {
         .lib
         .insert("future.key".into(), plist::Value::String("exact".into()));
     font.default_layer_mut().insert_glyph(glyph);
-    let project = Project::from_source(Master::from_font(font, PathBuf::from("LayerMetadata.ufo")));
+    let project = Project::from_source(SourceInput::from_font(
+        font,
+        PathBuf::from("LayerMetadata.ufo"),
+    ));
     let address = GlyphLayerAddress {
         glyph: "A".into(),
         layer: project
@@ -115,7 +118,7 @@ fn layer_metadata_reads_writes_and_replays_atomically() {
         Some(" A + acutecomb ")
     );
 
-    let exact = project.source_snapshot(SourceId(0)).unwrap();
+    let exact = project.encode_ufo_source(SourceId(0)).unwrap();
     let exact_lib = exact.get_glyph("A").unwrap().lib.clone();
     assert_eq!(
         exact_lib.get(MARK_COLOR_KEY),
@@ -143,7 +146,7 @@ fn layer_metadata_reads_writes_and_replays_atomically() {
     );
     assert_eq!(
         project
-            .source_snapshot(SourceId(0))
+            .encode_ufo_source(SourceId(0))
             .unwrap()
             .get_glyph("A")
             .unwrap()
@@ -203,7 +206,7 @@ fn layer_metadata_reads_writes_and_replays_atomically() {
     project
         .replay_document_layer_history(&address, HistoryDirection::Undo)
         .unwrap();
-    let restored = project.source_snapshot(SourceId(0)).unwrap();
+    let restored = project.encode_ufo_source(SourceId(0)).unwrap();
     assert_eq!(restored.get_glyph("A").unwrap().lib, exact_lib);
 }
 
@@ -241,7 +244,7 @@ fn semantic_mark_updates_both_keys_atomically_and_survives_save() {
         alpha: 1.0,
     };
     let exact_lib = project
-        .source_snapshot(SourceId(0))
+        .encode_ufo_source(SourceId(0))
         .unwrap()
         .get_glyph("A")
         .unwrap()
@@ -267,7 +270,7 @@ fn semantic_mark_updates_both_keys_atomically_and_survives_save() {
     );
     assert_eq!(
         project
-            .source_snapshot(SourceId(0))
+            .encode_ufo_source(SourceId(0))
             .unwrap()
             .get_glyph("A")
             .unwrap()
@@ -313,7 +316,7 @@ fn semantic_mark_updates_both_keys_atomically_and_survives_save() {
     };
     assert!(change.metadata_changed());
     assert!(!change.geometry_changed());
-    let projected = project.source_snapshot(SourceId(0)).unwrap();
+    let projected = project.encode_ufo_source(SourceId(0)).unwrap();
     let projected = projected.get_glyph("A").unwrap();
     assert_eq!(
         projected.lib.get(MARK_COLOR_KEY),
@@ -348,7 +351,7 @@ fn semantic_mark_updates_both_keys_atomically_and_survives_save() {
         .unwrap();
     assert!(clear.draft_mut().set_mark(None, None).unwrap());
     reloaded.commit_document_layer_transaction(clear).unwrap();
-    let cleared = reloaded.source_snapshot(SourceId(0)).unwrap();
+    let cleared = reloaded.encode_ufo_source(SourceId(0)).unwrap();
     let cleared = cleared.get_glyph("A").unwrap();
     assert!(!cleared.lib.contains_key(MARK_COLOR_KEY));
     assert!(!cleared.lib.contains_key(MARK_LABEL_KEY));
