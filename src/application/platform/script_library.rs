@@ -79,9 +79,11 @@ impl fmt::Display for ScriptLibraryError {
             Self::TooLarge => formatter.write_str("script exceeds 262144 UTF-8 bytes"),
             Self::InvalidUtf8 => formatter.write_str("script is not valid UTF-8"),
             Self::AlreadyExists => formatter.write_str("script already exists"),
-            Self::Conflict { .. } => {
-                formatter.write_str("script changed on disk; reload or save under another name")
-            }
+            Self::Conflict { actual_revision } => write!(
+                formatter,
+                "script changed on disk (current revision {}); reload or save under another name",
+                actual_revision.chars().take(12).collect::<String>()
+            ),
             Self::Io(error) => write!(formatter, "script library I/O failed: {error}"),
         }
     }

@@ -345,6 +345,7 @@ impl Workspace {
             ai: local_ai::LocalAiState::default(),
             chat: chat::ChatState::default(),
             scripts: scripts::ScriptsState::default(),
+            script_jobs: None,
             kern_filter_buf: String::new(),
             kern_first_buf: String::new(),
             kern_second_buf: String::new(),
@@ -367,6 +368,16 @@ impl Workspace {
         app.rescan_models();
         app.scan_chat_models();
         app.refresh_proposals();
+        if let Ok(content) = std::env::var("RUNEBENDER_SCRIPT_DRAFT") {
+            app.open_script_artifact(scripts::ScriptArtifact {
+                name: std::env::var("RUNEBENDER_SCRIPT_NAME")
+                    .unwrap_or_else(|_| "headless-recipe.py".into()),
+                content,
+            });
+            if let Ok(parameters) = std::env::var("RUNEBENDER_SCRIPT_PARAMETERS") {
+                app.script_parameters_changed(parameters);
+            }
+        }
         // Headless: RUNEBENDER_RAIL=ai, chat or scripts starts the corresponding
         // local-model panel, RUNEBENDER_MODEL=<dir> chooses an outline model, and
         // RUNEBENDER_PROPOSAL_PREVIEW=<task> shows its review overlay.

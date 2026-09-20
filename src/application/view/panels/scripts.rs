@@ -4,7 +4,10 @@
 //! The non-executing Scripts rail: draft editing and runtime availability.
 
 use crate::application::view::design::{Region, Space, Stroke, TextSize, column as xcolumn};
+use crate::application::view::recipes;
 use crate::application::view::{label, text_input};
+use crate::application::widgets::scroll_viewport::portal;
+use crate::application::widgets::selectable_text::selectable_text;
 use crate::application::workspace::Workspace;
 use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
@@ -58,6 +61,30 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
                     .corner_radius(crate::application::view::design::Radius::None.length()),
                 )
                 .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(280.0)))),
+                label("Parameters · JSON object")
+                    .text_size(TextSize::Caption.px())
+                    .color(pal.text_muted),
+                sized_box(
+                    text_input(
+                        app.scripts.parameters.clone(),
+                        |app: &mut Workspace, value| {
+                            app.script_parameters_changed(value);
+                        },
+                    )
+                    .insert_newline(InsertNewline::OnEnter)
+                    .clip(true)
+                    .placeholder("{\"recipe\":\"list\"}")
+                    .text_color(pal.text)
+                    .placeholder_color(pal.text_muted)
+                    .background_color(pal.field())
+                    .border_color(pal.field_outline)
+                    .border_width(Stroke::Hairline.length())
+                    .corner_radius(crate::application::view::design::Radius::None.length()),
+                )
+                .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(88.0)))),
+                label(app.script_scope_label())
+                    .text_size(TextSize::Body.px())
+                    .color(pal.text_muted),
             ),
         )
     });
@@ -66,26 +93,189 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
         .notice
         .clone()
         .map(|text| label(text).color(pal.text_muted));
-
-    xcolumn(
-        Region::Panel,
+    #[cfg(not(target_arch = "wasm32"))]
+    let saved_rows = app
+        .scripts
+        .library_items
+        .iter()
+        .filter(|item| {
+            let filter = app.scripts.library_filter.trim().to_lowercase();
+            filter.is_empty()
+                || item.name.to_lowercase().contains(&filter)
+                || item
+                    .description
+                    .as_deref()
+                    .is_some_and(|description| description.to_lowercase().contains(&filter))
+        })
+        .map(|item| {
+            let name = item.name.clone();
+            let age = item
+                .modified
+                .and_then(|modified| modified.elapsed().ok())
+                .map_or_else(
+                    || "date unavailable".into(),
+                    |elapsed| {
+                        let seconds = elapsed.as_secs();
+                        if seconds < 60 {
+                            "updated just now".into()
+                        } else if seconds < 3_600 {
+                            format!("updated {} min ago", seconds / 60)
+                        } else if seconds < 86_400 {
+                            format!("updated {} hr ago", seconds / 3_600)
+                        } else {
+                            format!("updated {} days ago", seconds / 86_400)
+                        }
+                    },
+                );
+            let description = item.description.clone().unwrap_or_else(|| "Python".into());
+            let detail = format!("{description} · {} B · {age}", item.size);
+            recipes::list_row(pal, item.name.clone(), detail, false, move |app| {
+                app.open_saved_script(&name);
+            })
+        })
+        .collect::<Vec<_>>();
+    #[cfg(not(target_arch = "wasm32"))]
+    let library_controls = xcolumn(
+        Region::List,
         (
-            label("Scripts").color(pal.text),
-            label("Python drafts are not run when opened.")
-                .text_size(TextSize::Body.px())
-                .color(pal.text_muted),
-            editor,
-            (!app.scripts.draft.is_some()).then(|| {
-                label("Open a completed Python artifact from Chat to begin editing.")
-                    .text_size(TextSize::Body.px())
-                    .color(pal.text_muted)
+            recipes::toggle(
+                pal,
+                "Choose Scripts folder".into(),
+                false,
+                |app: &mut Workspace| app.choose_script_library(),
+            ),
+            app.scripts.draft.is_some().then(|| {
+                recipes::toggle(pal, "Save".into(), false, |app: &mut Workspace| {
+                    app.save_script_draft()
+                })
             }),
-            label("Script storage and Run controls appear after the native recipe runtime is connected.")
-                .text_size(TextSize::Body.px())
-                .color(pal.text_muted),
-            notice,
+            app.scripts.library.as_ref().map(|_| {
+                recipes::toggle(pal, "Refresh".into(), false, |app: &mut Workspace| {
+                    app.refresh_script_library()
+                })
+            }),
+            app.scripts.library.as_ref().map(|_| {
+                recipes::field_bare(
+                    pal,
+                    "Search scripts",
+                    app.scripts.library_filter.clone(),
+                    |app, value| app.scripts.library_filter = value,
+                    |_, _| {},
+                )
+            }),
+            xcolumn(Region::List, saved_rows),
         ),
+    );
+    #[cfg(target_arch = "wasm32")]
+    let library_controls = label("Saving and Python execution are available in the desktop app.")
+        .color(pal.text_muted);
+
+    #[cfg(not(target_arch = "wasm32"))]
+    let run_controls = xcolumn(
+        Region::List,
+        (
+            (app.scripts.running.is_none() && app.scripts.draft.is_some()).then(|| {
+                recipes::toggle(
+                    pal,
+                    "Run captured scope".into(),
+                    true,
+                    |app: &mut Workspace| {
+                        app.run_script_draft();
+                    },
+                )
+            }),
+            app.scripts.running.as_ref().map(|run| {
+                recipes::toggle(
+                    pal,
+                    format!("Cancel job {}", run.handle.get()),
+                    false,
+                    |app: &mut Workspace| app.cancel_script_run(),
+                )
+            }),
+        ),
+    );
+    #[cfg(target_arch = "wasm32")]
+    let run_controls = label("Run is unavailable in the browser.").color(pal.text_muted);
+
+    let proposal = app.scripts.proposal.as_ref().map(|proposal| {
+        let operations = proposal
+            .result
+            .edits
+            .iter()
+            .map(|edit| edit.operations.len())
+            .sum::<usize>();
+        let stale = app.script_proposal_stale_reason();
+        xcolumn(
+            Region::List,
+            (
+                label(format!(
+                    "Report · inspected {} layers · proposes {} changes in {} layers",
+                    proposal.input.layers.len(),
+                    operations,
+                    proposal.result.edits.len()
+                ))
+                .color(pal.text),
+                selectable_text::<Workspace, ()>(proposal.result.report.clone())
+                    .color(pal.text)
+                    .text_size(TextSize::Body.px()),
+                (!proposal.stderr.trim().is_empty()).then(|| {
+                    selectable_text::<Workspace, ()>(format!(
+                        "Diagnostics\n{}",
+                        proposal.stderr.trim()
+                    ))
+                    .color(pal.text_muted)
+                    .text_size(TextSize::Body.px())
+                }),
+                stale.clone().map(|reason| {
+                    label(format!("Preview stale · {reason}"))
+                        .text_size(TextSize::Body.px())
+                        .color(pal.role("danger"))
+                }),
+                #[cfg(unix)]
+                (stale.is_none() && !proposal.result.edits.is_empty()).then(|| {
+                    recipes::toggle(
+                        pal,
+                        format!("Apply {operations} changes"),
+                        true,
+                        |app: &mut Workspace| app.apply_script_proposal(),
+                    )
+                }),
+                proposal.applied.then(|| {
+                    recipes::toggle(
+                        pal,
+                        "Undo applied script".into(),
+                        false,
+                        |app: &mut Workspace| {
+                            app.undo_script_apply();
+                        },
+                    )
+                }),
+            ),
+        )
+    });
+
+    portal(
+        xcolumn(
+            Region::Panel,
+            (
+                label("Scripts").color(pal.text),
+                label("Python drafts are not run when opened.")
+                    .text_size(TextSize::Body.px())
+                    .color(pal.text_muted),
+                editor,
+                (!app.scripts.draft.is_some()).then(|| {
+                    label("Open a completed Python artifact from Chat to begin editing.")
+                        .text_size(TextSize::Body.px())
+                        .color(pal.text_muted)
+                }),
+                library_controls,
+                run_controls,
+                proposal,
+                notice,
+            ),
+        )
+        .gap(Space::Md)
+        .background_color(pal.panel),
     )
-    .gap(Space::Md)
-    .background_color(pal.panel)
+    .constrain_horizontal(true)
 }

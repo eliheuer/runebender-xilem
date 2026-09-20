@@ -4,7 +4,7 @@
 //! The render tree: how the workspace's state becomes a frame.
 
 use crate::application::actions;
-use crate::application::editor::tools::{chat, local_ai, nodes};
+use crate::application::editor::tools::{chat, local_ai, nodes, scripts};
 use crate::application::platform::export;
 #[cfg(unix)]
 use crate::application::platform::live;
@@ -322,19 +322,47 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     #[cfg(not(target_arch = "wasm32"))]
     watch::with_watch(
         ai_pump(
-            chat_pump(
-                export_pump(
-                    nodes_pump(
-                        preview_pump(content, app.font.project.preview_job().is_some()).boxed(),
-                        app.nodes.job.clone(),
+            script_pump(
+                chat_pump(
+                    export_pump(
+                        nodes_pump(
+                            preview_pump(content, app.font.project.preview_job().is_some()).boxed(),
+                            app.nodes.job.clone(),
+                        ),
+                        app.export_job.clone(),
                     ),
-                    app.export_job.clone(),
+                    app.chat.job.clone(),
                 ),
-                app.chat.job.clone(),
+                app.scripts.running.is_some(),
             ),
             app.ai.job.clone(),
         ),
         app.font.master_paths().clone(),
+    )
+}
+
+/// Rebuild periodically while the Scripts panel owns a retained background job.
+fn script_pump<V: WidgetView<Workspace>>(
+    view: V,
+    running: bool,
+) -> impl WidgetView<Workspace> + use<V> {
+    use xilem::core::{MessageProxy, fork};
+    use xilem::view::task_raw;
+    fork(
+        view,
+        running.then(|| {
+            task_raw(
+                |proxy: MessageProxy<scripts::ScriptProgress>, _: &mut Workspace| async move {
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+                        if proxy.message(scripts::ScriptProgress).is_err() {
+                            return;
+                        }
+                    }
+                },
+                |app: &mut Workspace, _: scripts::ScriptProgress| app.script_pump(),
+            )
+        }),
     )
 }
 

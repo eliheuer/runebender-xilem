@@ -6,7 +6,7 @@
 use crate::application::editor::session::Session;
 use crate::application::editor::tools::{chat, local_ai, nodes, scripts};
 use crate::application::font_model::FontModel;
-use crate::application::platform::{dialogs, export};
+use crate::application::platform::{dialogs, export, script_jobs};
 use crate::application::view::canvas;
 use crate::application::view::canvas::grid::Cell;
 use crate::application::view::panels::tabs::Rail;
@@ -273,6 +273,8 @@ pub(crate) struct Workspace {
     pub(crate) chat: chat::ChatState,
     /// The non-executing script draft opened explicitly from Chat or the library.
     pub(crate) scripts: scripts::ScriptsState,
+    /// The one native recipe queue shared by Scripts and Nodes.
+    pub(crate) script_jobs: Option<script_jobs::ScriptJobQueue>,
     /// The Kerning section's fields: filter, then the pair being
     /// edited.
     pub(crate) kern_filter_buf: String,
@@ -287,6 +289,13 @@ pub(crate) struct Workspace {
     pub(crate) features_edited: bool,
     /// What the Features section last did.
     pub(crate) features_status: Option<String>,
+}
+
+impl Workspace {
+    /// Borrow the single shared recipe queue without draining another workflow's jobs.
+    pub(crate) fn script_job_queue(&self) -> Option<&script_jobs::ScriptJobQueue> {
+        self.script_jobs.as_ref()
+    }
 }
 
 /// The window's document boundary.

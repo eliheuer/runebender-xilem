@@ -12,10 +12,14 @@ No release has been published yet.
 
 - Added the native Python recipe runtime and script-file library foundation, plus anchor report and move examples.
   Recipes receive immutable captures and return validated reports or proposals; applying an edit remains a separate guarded action.
-  Process deadlines, bounded result capture and observed file-conflict checks cover the runtime boundary; Scripts panel and Nodes integration remain in progress.
+  Process deadlines, bounded result capture and observed file-conflict checks cover the runtime boundary; Nodes integration remains in progress.
 
 - Added full-family proof-input derivation for unpublished guarded edits.
   Changed specimen inputs preserve other masters, axes and features while the original document and baseline remain unchanged.
+
+- Added a native Scripts workflow for ordinary Python recipe files.
+  Chat can offer a completed Python artifact without saving or executing it; users can edit and revision-save it, bind validated JSON parameters to an explicit glyph/source scope, run it in a bounded background worker, review its report and guarded proposal, and explicitly Apply through ordinary editor history.
+  Script execution remains unavailable in the browser.
 
 - Added asynchronous native `proof_start`, `proof_status`, `proof_cancel` and `proof_release` tools.
   Completed proofs return compiled PNG images through MCP with immutable font hashes, captured revisions and explicit stale-result labels.

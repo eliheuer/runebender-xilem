@@ -18,10 +18,6 @@ pub(crate) mod screenshot;
     reason = "the parallel Scripts UI phase consumes this foundation after integration"
 )]
 pub(crate) mod script_jobs;
-#[allow(
-    dead_code,
-    reason = "the parallel Scripts UI phase consumes this foundation after integration"
-)]
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod script_library;
 #[cfg(not(target_arch = "wasm32"))]
