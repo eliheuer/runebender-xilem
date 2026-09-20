@@ -180,7 +180,18 @@ fn mcp_receipt_tools_reconcile_retry_and_real_application_undo() {
         .find(|tool| tool["name"] == "agent_receipt")
         .unwrap();
     assert_eq!(receipt_tool["annotations"]["readOnlyHint"], true);
+    let cancel_tool = listed
+        .iter()
+        .find(|tool| tool["name"] == "agent_cancel")
+        .unwrap();
+    assert_eq!(cancel_tool["annotations"]["readOnlyHint"], false);
+    assert_eq!(cancel_tool["inputSchema"]["additionalProperties"], false);
     let context = mcp.tool("editor_context", json!({}));
+    assert_eq!(context["capabilities"]["edit_cancellation"], true);
+    assert_eq!(
+        context["capabilities"]["cancellation_identity"],
+        "document_epoch+actor+operation_key"
+    );
     let epoch = context["document_epoch"].clone();
     let read = mcp.tool(
         "read_glyph",

@@ -1814,19 +1814,69 @@ fn agent_call_source(
 /// so a client sees exactly what the chat pane and the command line
 /// see, and no tool writes the foreground.
 fn mcp_serve(font: Option<&Path>, session: Option<&Path>, live: bool, tool: Option<&Path>) -> i32 {
-    use std::io::{BufRead as _, Write as _};
+    use std::io::BufRead as _;
     if font.is_some_and(|font| !font.exists()) {
         eprintln!("font not found");
         return exit::USAGE;
     }
-    let mut connected = session.map(Path::to_path_buf);
     let live_mode = live || session.is_some();
-    let stdin = std::io::stdin();
-    let mut out = std::io::stdout().lock();
-    let mut reply = |value: serde_json::Value| {
-        let _ = writeln!(out, "{value}");
-        let _ = out.flush();
+    let connected = std::sync::Arc::new(std::sync::Mutex::new(session.map(Path::to_path_buf)));
+    let output = std::sync::Arc::new(std::sync::Mutex::new(std::io::stdout()));
+    let inflight = std::sync::Arc::new(std::sync::Mutex::new(std::collections::BTreeMap::<
+        String,
+        std::sync::Arc<McpInFlight>,
+    >::new()));
+    let (request_sender, request_worker) = if live_mode {
+        let (sender, receiver) = std::sync::mpsc::sync_channel::<McpWork>(MAX_MCP_REQUESTS);
+        let worker_font = font.map(Path::to_path_buf);
+        let worker_tool = tool.map(Path::to_path_buf);
+        let worker_connected = connected.clone();
+        let worker_output = output.clone();
+        let worker_inflight = inflight.clone();
+        let worker = std::thread::spawn(move || {
+            while let Ok(work) = receiver.recv() {
+                let cancelled = work
+                    .state
+                    .cancelled
+                    .load(std::sync::atomic::Ordering::Acquire);
+                let semantic_cancelled = work
+                    .state
+                    .semantic_cancelled
+                    .load(std::sync::atomic::Ordering::Acquire);
+                if cancelled && !semantic_cancelled {
+                    worker_inflight
+                        .lock()
+                        .expect("MCP inflight mutex poisoned")
+                        .remove(&work.key);
+                    continue;
+                }
+                let response = mcp_response(
+                    work.id,
+                    &work.method,
+                    work.params,
+                    worker_font.as_deref(),
+                    true,
+                    worker_tool.as_deref(),
+                    &worker_connected,
+                );
+                if !work
+                    .state
+                    .cancelled
+                    .load(std::sync::atomic::Ordering::Acquire)
+                {
+                    write_mcp(&worker_output, response);
+                }
+                worker_inflight
+                    .lock()
+                    .expect("MCP inflight mutex poisoned")
+                    .remove(&work.key);
+            }
+        });
+        (Some(sender), Some(worker))
+    } else {
+        (None, None)
     };
+    let stdin = std::io::stdin();
     let mut input = stdin.lock();
     const MAX_MCP_FRAME: u64 = 8 * 1024 * 1024;
     loop {
@@ -1836,9 +1886,12 @@ fn mcp_serve(font: Option<&Path>, session: Option<&Path>, live: bool, tool: Opti
             Ok(_) => {}
         }
         if line.len() as u64 > MAX_MCP_FRAME || !line.ends_with('\n') {
-            reply(json!({"jsonrpc":"2.0","id":null,"error":{
-                "code":-32600,"message":"invalid or oversized MCP frame (limit 8 MiB)"
-            }}));
+            write_mcp(
+                &output,
+                json!({"jsonrpc":"2.0","id":null,"error":{
+                    "code":-32600,"message":"invalid or oversized MCP frame (limit 8 MiB)"
+                }}),
+            );
             break;
         }
         if line.trim().is_empty() {
@@ -1847,75 +1900,274 @@ fn mcp_serve(font: Option<&Path>, session: Option<&Path>, live: bool, tool: Opti
         let message: serde_json::Value = match serde_json::from_str(&line) {
             Ok(v) => v,
             Err(e) => {
-                reply(json!({ "jsonrpc": "2.0", "id": null,
-                    "error": { "code": -32700, "message": format!("parse error: {e}") } }));
+                write_mcp(
+                    &output,
+                    json!({ "jsonrpc": "2.0", "id": null,
+                    "error": { "code": -32700, "message": format!("parse error: {e}") } }),
+                );
                 continue;
             }
         };
         let id = message.get("id").cloned();
         let method = message.get("method").and_then(|m| m.as_str()).unwrap_or("");
         let params = message.get("params").cloned().unwrap_or(json!({}));
-        // A notification has no id and gets no reply.
-        let Some(id) = id else {
+        if id.is_none() {
+            if live_mode && method == "notifications/cancelled" {
+                cancel_mcp_request(&params, &inflight, &connected);
+            }
             continue;
-        };
-        let result = match method {
-            "initialize" => {
-                let version = params
-                    .get("protocolVersion")
-                    .and_then(|v| v.as_str())
-                    .filter(|version| {
-                        matches!(
-                            *version,
-                            "2024-11-05" | "2025-03-26" | "2025-06-18" | "2025-11-25"
-                        )
-                    })
-                    .unwrap_or("2025-11-25");
-                Ok(json!({
-                    "protocolVersion": version,
-                    "capabilities": { "tools": {} },
-                    "serverInfo": {
-                        "name": "runebender",
-                        "version": env!("CARGO_PKG_VERSION"),
-                    },
-                    "instructions": if live_mode { runebender::document::live::INSTRUCTIONS.into() } else { mcp_instructions(font.expect("font or session")) },
-                }))
+        }
+        let id = id.expect("checked above");
+        if !live_mode {
+            write_mcp(
+                &output,
+                mcp_response(id, method, params, font, false, tool, &connected),
+            );
+            continue;
+        }
+
+        // Semantic cancellation must bypass the ordered request worker so it can interrupt the
+        // apply currently waiting on the live endpoint.
+        if method == "tools/call" && params["name"] == "agent_cancel" {
+            if inflight
+                .lock()
+                .expect("MCP inflight mutex poisoned")
+                .contains_key(&mcp_request_key(&id))
+            {
+                write_mcp(
+                    &output,
+                    json!({"jsonrpc":"2.0","id":id,"error":{
+                        "code":-32600,"message":"duplicate in-progress request id"
+                    }}),
+                );
+                continue;
             }
-            "ping" => Ok(json!({})),
-            "tools/list" => Ok(json!({
-                "tools": mcp_tools(live_mode).iter().map(|t| json!({
-                    "name": t.name,
-                    "description": t.description,
-                    "inputSchema": t.parameters,
-                    "annotations": {"readOnlyHint": matches!(t.name.as_str(), "proof_status" | "agent_receipt" | "editor_context" | "project_info" | "font_info" | "read_glyph" | "glyph_inventory" | "design_context" | "experiment_list" | "read_kerning" | "specimen" | "editor_sessions" | "editor_connect" | "proposal_list") || (live_mode && t.name == "proof"), "openWorldHint": !live_mode},
-                })).collect::<Vec<_>>()
-            })),
-            "tools/call" => {
-                let name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                let args = params.get("arguments").cloned().unwrap_or(json!({}));
-                let value = if live_mode {
-                    live_client_call(name, &args, &mut connected)
-                } else {
-                    dispatch_call(name, font, None, &args, tool)
-                };
-                let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(true);
-                Ok(json!({
-                    "content": proof_content(value),
-                    "isError": !ok,
-                }))
-            }
-            "resources/list" => Ok(json!({ "resources": [] })),
-            "prompts/list" => Ok(json!({ "prompts": [] })),
-            other => {
-                Err(json!({ "code": -32601, "message": format!("method not found: {other}") }))
-            }
-        };
-        reply(match result {
-            Ok(r) => json!({ "jsonrpc": "2.0", "id": id, "result": r }),
-            Err(e) => json!({ "jsonrpc": "2.0", "id": id, "error": e }),
+            write_mcp(
+                &output,
+                mcp_response(id, method, params, font, true, tool, &connected),
+            );
+            continue;
+        }
+        let key = mcp_request_key(&id);
+        if inflight
+            .lock()
+            .expect("MCP inflight mutex poisoned")
+            .contains_key(&key)
+        {
+            write_mcp(
+                &output,
+                json!({"jsonrpc":"2.0","id":id,"error":{
+                    "code":-32600,"message":"duplicate in-progress request id"
+                }}),
+            );
+            continue;
+        }
+        let cancellation = mcp_cancellation_arguments(method, &params);
+        let apply_arguments = mcp_apply_arguments(method, &params).cloned();
+        let semantic_reserved = apply_arguments
+            .as_ref()
+            .map(|arguments| live_client_call("agent_reserve", arguments, &connected)["ok"] == true)
+            .unwrap_or(false);
+        let state = std::sync::Arc::new(McpInFlight {
+            cancelled: std::sync::atomic::AtomicBool::new(false),
+            semantic_cancelled: std::sync::atomic::AtomicBool::new(false),
+            semantic_reserved,
+            cancellation,
         });
+        {
+            let mut requests = inflight.lock().expect("MCP inflight mutex poisoned");
+            requests.insert(key.clone(), state.clone());
+        }
+        let work = McpWork {
+            id: id.clone(),
+            method: method.to_owned(),
+            params,
+            key: key.clone(),
+            state,
+        };
+        if request_sender
+            .as_ref()
+            .expect("live request worker")
+            .try_send(work)
+            .is_err()
+        {
+            inflight
+                .lock()
+                .expect("MCP inflight mutex poisoned")
+                .remove(&key);
+            if semantic_reserved && let Some(arguments) = apply_arguments.as_ref() {
+                let _ = live_client_call("agent_release", arguments, &connected);
+            }
+            write_mcp(
+                &output,
+                json!({"jsonrpc":"2.0","id":id,"error":{
+                    "code":-32000,"message":"live MCP request capacity exhausted"
+                }}),
+            );
+        }
+    }
+    drop(request_sender);
+    if let Some(worker) = request_worker {
+        let _ = worker.join();
     }
     exit::OK
+}
+
+const MAX_MCP_REQUESTS: usize = 32;
+
+struct McpInFlight {
+    cancelled: std::sync::atomic::AtomicBool,
+    semantic_cancelled: std::sync::atomic::AtomicBool,
+    semantic_reserved: bool,
+    cancellation: Option<serde_json::Value>,
+}
+
+struct McpWork {
+    id: serde_json::Value,
+    method: String,
+    params: serde_json::Value,
+    key: String,
+    state: std::sync::Arc<McpInFlight>,
+}
+
+fn mcp_response(
+    id: serde_json::Value,
+    method: &str,
+    params: serde_json::Value,
+    font: Option<&Path>,
+    live_mode: bool,
+    tool: Option<&Path>,
+    connected: &std::sync::Arc<std::sync::Mutex<Option<PathBuf>>>,
+) -> serde_json::Value {
+    let result = match method {
+        "initialize" => {
+            let version = params
+                .get("protocolVersion")
+                .and_then(|v| v.as_str())
+                .filter(|version| {
+                    matches!(
+                        *version,
+                        "2024-11-05" | "2025-03-26" | "2025-06-18" | "2025-11-25"
+                    )
+                })
+                .unwrap_or("2025-11-25");
+            Ok(json!({
+                "protocolVersion": version,
+                "capabilities": { "tools": {} },
+                "serverInfo": {
+                    "name": "runebender",
+                    "version": env!("CARGO_PKG_VERSION"),
+                },
+                "instructions": if live_mode { runebender::document::live::INSTRUCTIONS.into() } else { mcp_instructions(font.expect("font or session")) },
+            }))
+        }
+        "ping" => Ok(json!({})),
+        "tools/list" => Ok(json!({
+            "tools": mcp_tools(live_mode).iter().map(|t| json!({
+                "name": t.name,
+                "description": t.description,
+                "inputSchema": t.parameters,
+                "annotations": {"readOnlyHint": matches!(t.name.as_str(), "agent_receipt" | "proof_status" | "editor_context" | "project_info" | "font_info" | "read_glyph" | "glyph_inventory" | "design_context" | "experiment_list" | "read_kerning" | "specimen" | "editor_sessions" | "editor_connect" | "proposal_list") || (live_mode && t.name == "proof"), "openWorldHint": !live_mode},
+            })).collect::<Vec<_>>()
+        })),
+        "tools/call" => {
+            let name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
+            let args = params.get("arguments").cloned().unwrap_or(json!({}));
+            let value = if live_mode {
+                live_client_call(name, &args, connected)
+            } else {
+                dispatch_call(name, font, None, &args, tool)
+            };
+            let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(true);
+            Ok(json!({
+                "content": proof_content(value),
+                "isError": !ok,
+            }))
+        }
+        "resources/list" => Ok(json!({ "resources": [] })),
+        "prompts/list" => Ok(json!({ "prompts": [] })),
+        other => Err(json!({
+            "code": -32601,
+            "message": format!("method not found: {other}")
+        })),
+    };
+    match result {
+        Ok(result) => json!({"jsonrpc":"2.0","id":id,"result":result}),
+        Err(error) => json!({"jsonrpc":"2.0","id":id,"error":error}),
+    }
+}
+
+fn write_mcp(output: &std::sync::Arc<std::sync::Mutex<std::io::Stdout>>, value: serde_json::Value) {
+    use std::io::Write as _;
+    let mut output = output.lock().expect("MCP output mutex poisoned");
+    let _ = writeln!(output, "{value}");
+    let _ = output.flush();
+}
+
+fn mcp_request_key(id: &serde_json::Value) -> String {
+    id.to_string()
+}
+
+fn mcp_cancellation_arguments(
+    method: &str,
+    params: &serde_json::Value,
+) -> Option<serde_json::Value> {
+    if method != "tools/call" || params["name"] != "agent_apply" {
+        return None;
+    }
+    let arguments = params.get("arguments")?;
+    Some(json!({
+        "expected_document_epoch":arguments.get("expected_document_epoch")?.as_str()?,
+        "actor":arguments.get("actor")?.as_str()?,
+        "operation_key":arguments.get("operation_key")?.as_str()?,
+    }))
+}
+
+fn mcp_apply_arguments<'a>(
+    method: &str,
+    params: &'a serde_json::Value,
+) -> Option<&'a serde_json::Value> {
+    (method == "tools/call" && params["name"] == "agent_apply")
+        .then(|| params.get("arguments"))
+        .flatten()
+}
+
+fn cancel_mcp_request(
+    params: &serde_json::Value,
+    inflight: &std::sync::Arc<
+        std::sync::Mutex<std::collections::BTreeMap<String, std::sync::Arc<McpInFlight>>>,
+    >,
+    connected: &std::sync::Arc<std::sync::Mutex<Option<PathBuf>>>,
+) {
+    let Some(request_id) = params.get("requestId") else {
+        return;
+    };
+    let state = inflight
+        .lock()
+        .expect("MCP inflight mutex poisoned")
+        .get(&mcp_request_key(request_id))
+        .cloned();
+    let Some(state) = state else {
+        return;
+    };
+    if state.semantic_reserved
+        && let Some(arguments) = &state.cancellation
+    {
+        let result = live_client_call("agent_cancel", arguments, connected);
+        if matches!(
+            result
+                .get("cancellation_status")
+                .and_then(serde_json::Value::as_str),
+            Some("prevented" | "already_prevented")
+        ) {
+            state
+                .semantic_cancelled
+                .store(true, std::sync::atomic::Ordering::Release);
+        }
+    }
+    state
+        .cancelled
+        .store(true, std::sync::atomic::Ordering::Release);
 }
 
 /// Live tools include explicit discovery and connection, so clients need one stable config.
@@ -1937,7 +2189,7 @@ fn mcp_tools(live: bool) -> Vec<agent::Tool> {
 fn live_client_call(
     name: &str,
     args: &serde_json::Value,
-    connected: &mut Option<PathBuf>,
+    connected: &std::sync::Arc<std::sync::Mutex<Option<PathBuf>>>,
 ) -> serde_json::Value {
     #[cfg(not(unix))]
     {
@@ -1997,7 +2249,11 @@ fn live_client_call(
             return run.unwrap_or_else(|error| json!({"ok":false,"error":error}));
         }
         if name == "editor_sessions" {
-            return json!({"ok":true, "sessions":live_socket::sessions(), "connected":connected});
+            let selected = connected
+                .lock()
+                .expect("MCP connection mutex poisoned")
+                .clone();
+            return json!({"ok":true, "sessions":live_socket::sessions(), "connected":selected});
         }
         if name == "editor_connect" {
             let Some(path) = args
@@ -2012,12 +2268,16 @@ fn live_client_call(
             }
             let value = dispatch_call("project_info", None, Some(&path), &json!({}), None);
             if value["ok"] == true {
-                *connected = Some(path);
+                *connected.lock().expect("MCP connection mutex poisoned") = Some(path);
             }
             return value;
         }
-        match connected {
-            Some(path) => dispatch_call(name, None, Some(path), args, None),
+        let selected = connected
+            .lock()
+            .expect("MCP connection mutex poisoned")
+            .clone();
+        match selected {
+            Some(path) => dispatch_call(name, None, Some(&path), args, None),
             None => json!({"ok":false, "error":"call editor_sessions, then editor_connect first"}),
         }
     }

@@ -4,6 +4,9 @@
 //! Receipt-backed native live edits over the real Workspace and its application history.
 
 use runebender::document::agent::ToolCall;
+use runebender::document::agent_cancellation::{
+    AgentCancellationIdentity, AgentCancellationTerminal, AgentCommitClaim,
+};
 use runebender::document::agent_edit::AgentEditRequest;
 use runebender::document::agent_session::{
     AgentOperationKey, AgentOperationOutcome, AgentOperationReceipt, AgentOperationRejection,
@@ -111,12 +114,6 @@ impl Workspace {
         if let Err(error) = self.validate_agent_epoch(&request.expected_document_epoch) {
             return error;
         }
-        if request.authorization != "user-approved" {
-            return failure(
-                "authorization_required",
-                "use user-approved only within the user's granted edit authorization",
-            );
-        }
         let metadata =
             match AgentSessionMetadata::new(&request.expected_document_epoch, &request.actor) {
                 Ok(metadata) => metadata,
@@ -126,8 +123,30 @@ impl Workspace {
             Ok(key) => key,
             Err(error) => return failure("invalid_arguments", error.to_string()),
         };
+        let cancellation_identity = match AgentCancellationIdentity::new(
+            &request.expected_document_epoch,
+            &request.actor,
+            &request.operation_key,
+        ) {
+            Ok(identity) => identity,
+            Err(error) => return failure("invalid_arguments", error.to_string()),
+        };
+        let cancellations = self
+            .live
+            .as_ref()
+            .expect("validated native endpoint remains available")
+            .cancellations();
+        let payload_digest = request.payload_digest();
+        if request.authorization != "user-approved" {
+            let _ = cancellations.release_unqueued(&cancellation_identity, payload_digest);
+            return failure(
+                "authorization_required",
+                "use user-approved only within the user's granted edit authorization",
+            );
+        }
         if !self.agent_sessions.contains_key(&request.actor) {
             if self.agent_sessions.len() >= MAX_ACTORS {
+                let _ = cancellations.release_unqueued(&cancellation_identity, payload_digest);
                 return failure(
                     "actor_capacity",
                     "document actor capacity exhausted; existing receipts remain available",
@@ -144,10 +163,10 @@ impl Workspace {
             .agent_sessions
             .get_mut(&request.actor)
             .expect("actor ledger admitted above");
-        let applied = session.apply_document_edit(
+        let applied = session.apply_document_edit_with_precommit(
             &mut self.font.project,
             key,
-            request.payload_digest(),
+            payload_digest,
             |project| {
                 if busy {
                     return Err(AgentOperationRejection::InvalidRequest(
@@ -156,10 +175,22 @@ impl Workspace {
                 }
                 request.stage(project)
             },
+            || match cancellations.claim_commit(&cancellation_identity) {
+                Ok(AgentCommitClaim::Claimed) => Ok(true),
+                Ok(AgentCommitClaim::Prevented) => Ok(false),
+                Ok(AgentCommitClaim::Unknown) => Err(AgentOperationRejection::InvalidRequest(
+                    "operation cancellation state is unavailable; reconnect and retry with a new key"
+                        .into(),
+                )),
+                Err(error) => Err(AgentOperationRejection::InvalidRequest(error.to_string())),
+            },
         );
         let applied = match applied {
             Ok(applied) => applied,
             Err(error) => {
+                if !matches!(error, AgentSessionError::PayloadMismatch { .. }) {
+                    let _ = cancellations.release_unqueued(&cancellation_identity, payload_digest);
+                }
                 return match error {
                     AgentSessionError::PayloadMismatch { .. } => {
                         failure("payload_mismatch", error.to_string())
@@ -171,6 +202,15 @@ impl Workspace {
                 };
             }
         };
+        if applied.disposition() == AgentReceiptDisposition::Recorded {
+            let terminal = match applied.receipt().outcome() {
+                AgentOperationOutcome::Committed { .. } => AgentCancellationTerminal::Committed,
+                AgentOperationOutcome::Cancelled { .. } => AgentCancellationTerminal::Prevented,
+                AgentOperationOutcome::Unchanged { .. }
+                | AgentOperationOutcome::Rejected { .. } => AgentCancellationTerminal::Completed,
+            };
+            let _ = cancellations.finish(&cancellation_identity, terminal);
+        }
         if applied.is_new_commit()
             && let AgentOperationOutcome::Committed {
                 history_group,
@@ -278,6 +318,11 @@ fn receipt_result(receipt: &AgentOperationReceipt, project: &Project) -> Value {
         AgentOperationOutcome::Unchanged { revision } => {
             json!({"status":"unchanged","revision":revision,"changed_objects":[]})
         }
+        AgentOperationOutcome::Cancelled { revision } => {
+            json!({"status":"cancelled","cancellation":"prevented","revision":revision,
+                "error":"operation cancelled before commit","error_code":"cancelled",
+                "changed_objects":[]})
+        }
         AgentOperationOutcome::Rejected {
             revision,
             rejection,
@@ -296,7 +341,7 @@ fn receipt_result(receipt: &AgentOperationReceipt, project: &Project) -> Value {
             None => "unavailable",
         }
     });
-    json!({"ok":outcome["status"] != "rejected", "saved":false, "history_state":history_state,
+    json!({"ok":!matches!(outcome["status"].as_str(), Some("rejected" | "cancelled")), "saved":false, "history_state":history_state,
         "receipt":{"document_epoch":receipt.document_epoch(),"actor":receipt.actor(),"operation_key":receipt.operation_key().as_str(),"payload_sha256":receipt.payload_digest().to_hex(),"outcome":outcome}})
 }
 
@@ -399,6 +444,17 @@ mod tests {
         client.join().unwrap()
     }
 
+    fn endpoint_call(app: &Workspace, name: &str, arguments: Value) -> Value {
+        live_socket::call(
+            app.live.as_ref().unwrap().path(),
+            &ToolCall {
+                name: name.into(),
+                arguments,
+            },
+        )
+        .unwrap()
+    }
+
     fn replay(app: &mut Workspace, payload: &Value, direction: &str) -> Value {
         let mut args = identity(payload);
         args["authorization"] = json!("user-approved");
@@ -460,6 +516,22 @@ mod tests {
         assert_eq!(app.font.project.document_revision(), revision + 1);
         assert!(std::sync::Arc::ptr_eq(&session, &app.session));
         assert!(std::sync::Arc::ptr_eq(&cells, &app.cells));
+        let mut conflicting = payload.clone();
+        conflicting["edits"][0]["operations"][0]["width"] = json!(999.0);
+        assert_eq!(
+            endpoint_call(&app, "agent_apply", conflicting)["error_code"],
+            "payload_mismatch"
+        );
+        let cancelled = live_socket::call(
+            app.live.as_ref().unwrap().path(),
+            &ToolCall {
+                name: "agent_cancel".into(),
+                arguments: identity(&payload),
+            },
+        )
+        .unwrap();
+        assert_eq!(cancelled["cancellation_status"], "committed");
+        assert_eq!(width(&app, 0, "A"), 430.0);
         app.undo_active_edit(false);
         assert_eq!(width(&app, 0, "A"), 400.0);
         assert_eq!(width(&app, 0, "B"), 400.0);
@@ -489,6 +561,119 @@ mod tests {
     }
 
     #[test]
+    fn queued_cancel_records_terminal_receipt_and_exact_retry_never_edits() {
+        let mut app = workspace(project());
+        let payload = request(&app, "cancel-queued", 0, &[("A", 430.0)]);
+        let identity = identity(&payload);
+        let endpoint = app.live.as_ref().unwrap().path().to_owned();
+        let apply_payload = payload.clone();
+        let apply_endpoint = endpoint.clone();
+        let apply = std::thread::spawn(move || {
+            live_socket::call(
+                &apply_endpoint,
+                &ToolCall {
+                    name: "agent_apply".into(),
+                    arguments: apply_payload,
+                },
+            )
+            .unwrap()
+        });
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let pending = loop {
+            if let Some(pending) = app.live.as_ref().unwrap().try_recv() {
+                break pending;
+            }
+            assert!(Instant::now() < deadline, "apply did not enter mailbox");
+            std::thread::sleep(Duration::from_millis(5));
+        };
+
+        let cancelled = live_socket::call(
+            &endpoint,
+            &ToolCall {
+                name: "agent_cancel".into(),
+                arguments: identity.clone(),
+            },
+        )
+        .unwrap();
+        assert_eq!(cancelled["cancellation_status"], "prevented");
+        let revision = app.font.project.document_revision();
+        pending.respond(|call| app.call_live(call));
+        let result = apply.join().unwrap();
+        assert_eq!(result["receipt"]["outcome"]["status"], "cancelled");
+        assert_eq!(result["receipt"]["outcome"]["changed_objects"], json!([]));
+        assert_eq!(result["root_changed"], false);
+        assert_eq!(app.font.project.document_revision(), revision);
+        assert_eq!(width(&app, 0, "A"), 400.0);
+        assert!(app.metadata_undo.is_empty());
+
+        let retry = call(&mut app, "agent_apply", payload);
+        assert_eq!(retry["replayed"], true);
+        assert_eq!(retry["receipt"], result["receipt"]);
+        assert_eq!(width(&app, 0, "A"), 400.0);
+        let receipt = call(&mut app, "agent_receipt", identity.clone());
+        assert_eq!(receipt["receipt"]["outcome"]["status"], "cancelled");
+
+        let mut other_actor = identity;
+        other_actor["actor"] = json!("another-actor");
+        assert_eq!(
+            live_socket::call(
+                &endpoint,
+                &ToolCall {
+                    name: "agent_cancel".into(),
+                    arguments: other_actor,
+                },
+            )
+            .unwrap()["cancellation_status"],
+            "unknown"
+        );
+    }
+
+    #[test]
+    fn reserved_cancel_records_one_receipt_and_rejects_changed_payload_retry() {
+        let mut app = workspace(project());
+        let payload = request(&app, "cancel-before-mailbox", 0, &[("A", 430.0)]);
+        let endpoint = app.live.as_ref().unwrap().path().to_owned();
+        let reserved = live_socket::call(
+            &endpoint,
+            &ToolCall {
+                name: "agent_reserve".into(),
+                arguments: payload.clone(),
+            },
+        )
+        .unwrap();
+        assert_eq!(reserved["reservation_status"], "new");
+        let cancelled = live_socket::call(
+            &endpoint,
+            &ToolCall {
+                name: "agent_cancel".into(),
+                arguments: identity(&payload),
+            },
+        )
+        .unwrap();
+        assert_eq!(cancelled["cancellation_status"], "prevented");
+
+        let revision = app.font.project.document_revision();
+        let recorded = call(&mut app, "agent_apply", payload.clone());
+        assert_eq!(recorded["receipt"]["outcome"]["status"], "cancelled");
+        assert_eq!(recorded["replayed"], false);
+        assert_eq!(app.font.project.document_revision(), revision);
+        assert_eq!(width(&app, 0, "A"), 400.0);
+        assert!(app.metadata_undo.is_empty());
+
+        let replayed = call(&mut app, "agent_apply", payload.clone());
+        assert_eq!(replayed["replayed"], true);
+        assert_eq!(replayed["receipt"], recorded["receipt"]);
+        let mut conflicting = payload;
+        conflicting["edits"][0]["operations"][0]["width"] = json!(999.0);
+        assert_eq!(
+            endpoint_call(&app, "agent_apply", conflicting)["error_code"],
+            "payload_mismatch"
+        );
+        assert_eq!(app.font.project.document_revision(), revision);
+        assert_eq!(width(&app, 0, "A"), 400.0);
+    }
+
+    #[test]
     fn stale_dependency_invalid_late_operation_and_payload_reuse_never_partially_apply() {
         let mut app = workspace(project());
         let mut payload = request(
@@ -515,7 +700,7 @@ mod tests {
             .unwrap()
             .pop();
         assert_eq!(
-            call(&mut app, "agent_apply", payload)["error_code"],
+            endpoint_call(&app, "agent_apply", payload)["error_code"],
             "payload_mismatch"
         );
 

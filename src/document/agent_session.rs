@@ -137,6 +137,11 @@ pub enum AgentOperationOutcome {
         /// Current revision at the original apply attempt.
         revision: u64,
     },
+    /// Cancellation won after staging and before canonical publication.
+    Cancelled {
+        /// Current revision when cancellation prevented publication.
+        revision: u64,
+    },
     /// The admitted request reached a terminal rejection without mutation.
     Rejected {
         /// Canonical revision after rejection.
@@ -186,9 +191,9 @@ impl AgentOperationReceipt {
     pub fn history_group(&self) -> Option<EditHistoryGroupId> {
         match &self.outcome {
             AgentOperationOutcome::Committed { history_group, .. } => Some(*history_group),
-            AgentOperationOutcome::Unchanged { .. } | AgentOperationOutcome::Rejected { .. } => {
-                None
-            }
+            AgentOperationOutcome::Unchanged { .. }
+            | AgentOperationOutcome::Cancelled { .. }
+            | AgentOperationOutcome::Rejected { .. } => None,
         }
     }
 }
@@ -350,6 +355,34 @@ impl AgentSession {
     where
         F: FnOnce(&Project) -> Result<CanonicalDocumentEditTransaction, AgentOperationRejection>,
     {
+        self.apply_document_edit_with_precommit(
+            project,
+            operation_key,
+            payload_digest,
+            stage,
+            || Ok(true),
+        )
+    }
+
+    /// Admit and stage one edit, then consult a single hook immediately before publication.
+    ///
+    /// `Ok(false)` records an immutable cancelled receipt and never invokes the canonical commit
+    /// operation.
+    /// A hook error records a rejected receipt, keeping unavailable or inconsistent cancellation
+    /// state distinct from a confirmed cancellation.
+    /// Exact retries return that receipt without staging or consulting the hook again.
+    pub fn apply_document_edit_with_precommit<F, C>(
+        &mut self,
+        project: &mut Project,
+        operation_key: AgentOperationKey,
+        payload_digest: AgentPayloadDigest,
+        stage: F,
+        precommit: C,
+    ) -> Result<AgentApplyResult, AgentSessionError>
+    where
+        F: FnOnce(&Project) -> Result<CanonicalDocumentEditTransaction, AgentOperationRejection>,
+        C: FnOnce() -> Result<bool, AgentOperationRejection>,
+    {
         if let Some(receipt) = self.receipts.get(&operation_key) {
             if receipt.payload_digest != payload_digest {
                 return Err(AgentSessionError::PayloadMismatch { operation_key });
@@ -366,26 +399,35 @@ impl AgentSession {
         }
 
         let outcome = match stage(project) {
-            Ok(transaction) => match project.commit_document_edit_transaction(transaction) {
-                Ok(DocumentEditTransactionOutcome::Changed {
-                    before_revision,
-                    after_revision,
-                    change,
-                    changed_objects,
-                    history_group,
-                }) => AgentOperationOutcome::Committed {
-                    before_revision,
-                    after_revision,
-                    change,
-                    changed_objects,
-                    history_group,
-                },
-                Ok(DocumentEditTransactionOutcome::Unchanged { revision }) => {
-                    AgentOperationOutcome::Unchanged { revision }
-                }
-                Err(error) => AgentOperationOutcome::Rejected {
+            Ok(transaction) => match precommit() {
+                Ok(false) => AgentOperationOutcome::Cancelled {
                     revision: project.document_revision(),
-                    rejection: error.into(),
+                },
+                Err(rejection) => AgentOperationOutcome::Rejected {
+                    revision: project.document_revision(),
+                    rejection,
+                },
+                Ok(true) => match project.commit_document_edit_transaction(transaction) {
+                    Ok(DocumentEditTransactionOutcome::Changed {
+                        before_revision,
+                        after_revision,
+                        change,
+                        changed_objects,
+                        history_group,
+                    }) => AgentOperationOutcome::Committed {
+                        before_revision,
+                        after_revision,
+                        change,
+                        changed_objects,
+                        history_group,
+                    },
+                    Ok(DocumentEditTransactionOutcome::Unchanged { revision }) => {
+                        AgentOperationOutcome::Unchanged { revision }
+                    }
+                    Err(error) => AgentOperationOutcome::Rejected {
+                        revision: project.document_revision(),
+                        rejection: error.into(),
+                    },
                 },
             },
             Err(rejection) => AgentOperationOutcome::Rejected {
@@ -527,9 +569,9 @@ mod tests {
             AgentOperationOutcome::Committed {
                 changed_objects, ..
             } => changed_objects,
-            AgentOperationOutcome::Unchanged { .. } | AgentOperationOutcome::Rejected { .. } => {
-                panic!("the width edit must commit")
-            }
+            AgentOperationOutcome::Unchanged { .. }
+            | AgentOperationOutcome::Cancelled { .. }
+            | AgentOperationOutcome::Rejected { .. } => panic!("the width edit must commit"),
         };
         assert_eq!(
             changed_objects,
@@ -731,9 +773,9 @@ mod tests {
         let history_group = applied.receipt().history_group().unwrap();
         let original_after_revision = match applied.receipt().outcome() {
             AgentOperationOutcome::Committed { after_revision, .. } => *after_revision,
-            AgentOperationOutcome::Unchanged { .. } | AgentOperationOutcome::Rejected { .. } => {
-                panic!("the first operation must commit")
-            }
+            AgentOperationOutcome::Unchanged { .. }
+            | AgentOperationOutcome::Cancelled { .. }
+            | AgentOperationOutcome::Rejected { .. } => panic!("the first operation must commit"),
         };
         project
             .replay_document_edit_history_group(history_group, HistoryDirection::Undo)
@@ -760,6 +802,75 @@ mod tests {
             project.document_edit_history_group_state(history_group),
             Some(EditHistoryGroupState::Undone)
         );
+    }
+
+    #[test]
+    fn precommit_cancellation_is_terminal_and_never_publishes() {
+        let mut project = project();
+        let address = address(&project, "A");
+        let before_revision = project.document_revision();
+        let mut session = session(4);
+        let operation_key = key("cancel-before-commit");
+        let payload = digest("cancelled payload");
+        let cancelled = session
+            .apply_document_edit_with_precommit(
+                &mut project,
+                operation_key.clone(),
+                payload,
+                |project| stage_width(project, &address, 540.0),
+                || Ok(false),
+            )
+            .unwrap();
+        assert!(matches!(
+            cancelled.receipt().outcome(),
+            AgentOperationOutcome::Cancelled { revision } if *revision == before_revision
+        ));
+        assert_eq!(width(&project, &address), 500.0);
+        assert_eq!(project.document_revision(), before_revision);
+        assert!(cancelled.receipt().history_group().is_none());
+
+        let retry = session
+            .apply_document_edit_with_precommit(
+                &mut project,
+                operation_key,
+                payload,
+                |_| panic!("cancelled retry must not stage"),
+                || panic!("cancelled retry must not claim commit"),
+            )
+            .unwrap();
+        assert_eq!(retry.disposition(), AgentReceiptDisposition::Replayed);
+        assert_eq!(retry.receipt(), cancelled.receipt());
+        assert_eq!(width(&project, &address), 500.0);
+    }
+
+    #[test]
+    fn precommit_failure_is_rejected_not_mislabeled_as_cancelled() {
+        let mut project = project();
+        let address = address(&project, "A");
+        let before_revision = project.document_revision();
+        let mut session = session(1);
+        let rejected = session
+            .apply_document_edit_with_precommit(
+                &mut project,
+                key("missing-cancellation-state"),
+                digest("payload"),
+                |project| stage_width(project, &address, 540.0),
+                || {
+                    Err(AgentOperationRejection::InvalidRequest(
+                        "cancellation state unavailable".into(),
+                    ))
+                },
+            )
+            .unwrap();
+        assert!(matches!(
+            rejected.receipt().outcome(),
+            AgentOperationOutcome::Rejected { revision, rejection }
+                if *revision == before_revision
+                    && matches!(rejection, AgentOperationRejection::InvalidRequest(message)
+                        if message == "cancellation state unavailable")
+        ));
+        assert_eq!(width(&project, &address), 500.0);
+        assert_eq!(project.document_revision(), before_revision);
     }
 
     #[test]

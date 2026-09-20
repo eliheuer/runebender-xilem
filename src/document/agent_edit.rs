@@ -271,6 +271,12 @@ pub fn tools() -> Vec<Tool> {
             identity.clone(),
             json!(["expected_document_epoch", "actor", "operation_key"]),
         ),
+        make(
+            "agent_cancel",
+            "Prevent an admitted agent_apply from committing, addressed by its exact document epoch, actor and operation key. Returns prevented, already_prevented, too_late, committed, completed or unknown. Cancellation never undoes a committed edit; use agent_history for that.",
+            identity.clone(),
+            json!(["expected_document_epoch", "actor", "operation_key"]),
+        ),
     ];
     identity["direction"] = json!({"enum":["undo","redo"]});
     identity["authorization"] = json!({"enum":["user-approved"]});
