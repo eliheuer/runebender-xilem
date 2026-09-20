@@ -13,9 +13,9 @@ use std::marker::PhantomData;
 use masonry::accesskit::{Node, Role};
 use masonry::core::keyboard::{Key, KeyState, Modifiers};
 use masonry::core::{
-    AccessCtx, AccessEvent, ChildrenIds, CursorIcon, EventCtx, LayoutCtx, MeasureCtx, NewWidget,
-    PaintCtx, PointerEvent, PropertiesMut, PropertiesRef, QueryCtx, RegisterCtx, StyleProperty,
-    TextEvent, Update, UpdateCtx, Widget, WidgetMut,
+    AccessCtx, AccessEvent, ChildrenIds, CursorIcon, EventCtx, LayoutCtx, MeasureCtx, PaintCtx,
+    PointerEvent, PropertiesMut, PropertiesRef, QueryCtx, RegisterCtx, StyleProperty, TextEvent,
+    Update, UpdateCtx, Widget, WidgetMut,
 };
 use masonry::imaging::Painter;
 use masonry::kurbo::{Axis, Point, Size};
@@ -77,11 +77,12 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
         if let Some(color) = self.text_color {
             props.insert(ContentColor { color });
         }
-        let widget =
-            NewWidget::new(SourceTextArea::new(&self.contents).with_text_size(TextSize::Body.px()))
-                .with_props(props);
-        ctx.record_action_source(widget.id());
-        (ctx.create_pod(widget), ())
+        let pod = Pod::new_with_props(
+            SourceTextArea::new(&self.contents).with_text_size(TextSize::Body.px()),
+            props,
+        );
+        ctx.record_action_source(pod.new_widget.id());
+        (pod, ())
     }
 
     fn rebuild(
