@@ -616,10 +616,7 @@ impl Widget for NodesWidget {
             // Rows: an input's name at the left, an output's at the right.
             let port_r = nl::PORT_R * zoom;
             for port in &nb.inputs {
-                let label = match &port.value {
-                    Some(v) => format!("{} {v}", port.name),
-                    None => port.name.clone(),
-                };
+                let label = input_port_label(port);
                 let at = tf * Point::new(nb.rect.x0, nb.row_top(port.row) + nl::ROW_H / 2.0);
                 text_label::draw(
                     painter,
@@ -1054,6 +1051,22 @@ impl Widget for NodesWidget {
                 .map(WidgetPod::id)
                 .chain(self.preview_images.values().map(WidgetPod::id)),
         )
+    }
+}
+
+/// Keep large source and recipe payloads in their real child/editor surfaces.
+/// Painting the same JSON beside the socket makes it run through adjacent
+/// nodes and competes with the graph topology.
+fn input_port_label(port: &nl::PortBox) -> String {
+    let Some(value) = &port.value else {
+        return port.name.clone();
+    };
+    let hide_value =
+        matches!(port.name.as_str(), "code" | "recipe" | "edits") || value.chars().count() > 48;
+    if hide_value {
+        format!("{} …", port.name)
+    } else {
+        format!("{} {value}", port.name)
     }
 }
 

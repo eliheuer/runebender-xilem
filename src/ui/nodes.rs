@@ -270,21 +270,23 @@ pub fn node_box_with_content(
         Some(NodeContent::Image(content)) => f64::from(content.size[1]) + PAD * 2.0 + RESIZE_HANDLE,
         None => 0.0,
     };
-    let h = HEADER_H
-        + PAD
-        + ROW_H * rows as f64
-        + if live {
-            ROW_H * 2.0
-                + ACTION_H * actions(&node.type_name).len() as f64
-                + if node.type_name == "live.proof" {
-                    PREVIEW_H
-                } else {
-                    0.0
-                }
-        } else {
-            0.0
-        }
-        + content_height;
+    // The old live-node shell reserved space for canvas action buttons and a
+    // proof preview. Embedded children now own that content area, so retaining
+    // both allocations leaves a large blank gap before the real editor/image.
+    // Keep the legacy reservation only for content-free nodes until those
+    // actions have an actual painted surface again.
+    let legacy_live_height = if live && content.is_none() {
+        ROW_H * 2.0
+            + ACTION_H * actions(&node.type_name).len() as f64
+            + if node.type_name == "live.proof" {
+                PREVIEW_H
+            } else {
+                0.0
+            }
+    } else {
+        0.0
+    };
+    let h = HEADER_H + PAD + ROW_H * rows as f64 + legacy_live_height + content_height;
     let rect = Rect::new(x, y, x + width, y + h);
     let row_y = |i: usize| y + HEADER_H + PAD / 2.0 + ROW_H * (i as f64 + 0.5);
     let first_input = outputs.len();
@@ -719,6 +721,54 @@ mod tests {
             })
         );
         assert_eq!(hit(&boxes, content_rect.center()), Hit::Node(node.id));
+    }
+
+    #[test]
+    fn comparison_starter_content_boxes_do_not_overlap() {
+        let graph =
+            crate::document::nodes_live::comparison_starter(crate::document::variable::SourceId(0));
+        let mut content = NodeContentMap::default();
+        for node in &graph.nodes {
+            match node.type_name.as_str() {
+                "live.python" => {
+                    content.by_node.insert(
+                        node.id,
+                        NodeContent::Script(ScriptContent {
+                            text: String::new(),
+                            content_hash: String::new(),
+                            state: ContentState::Idle,
+                            size: [LIVE_W as f32 - (PAD * 2.0) as f32, CODE_H as f32],
+                        }),
+                    );
+                }
+                "live.proof" => {
+                    content.by_node.insert(
+                        node.id,
+                        NodeContent::Image(ImageContent {
+                            image: None,
+                            previous_image: None,
+                            state: ContentState::Idle,
+                            size: [LIVE_W as f32 - (PAD * 2.0) as f32, IMAGE_H as f32],
+                        }),
+                    );
+                }
+                _ => {}
+            }
+        }
+        let boxes = layout_with_content(&graph, &Registry::core(), &content);
+        for (index, left) in boxes.iter().enumerate() {
+            for right in boxes.iter().skip(index + 1) {
+                assert!(
+                    left.rect.x1 <= right.rect.x0
+                        || right.rect.x1 <= left.rect.x0
+                        || left.rect.y1 <= right.rect.y0
+                        || right.rect.y1 <= left.rect.y0,
+                    "starter nodes overlap: {:?} and {:?}",
+                    left.rect,
+                    right.rect
+                );
+            }
+        }
     }
 
     #[test]

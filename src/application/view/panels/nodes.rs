@@ -525,6 +525,10 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                         edit_live_scope(app, scope);
                     },
                 ))
+                .text_color(pal.text)
+                .placeholder_color(pal.text_muted)
+                .background_color(pal.field())
+                .border_color(pal.field_outline)
                 .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
                 .flex(1.0),
             ),

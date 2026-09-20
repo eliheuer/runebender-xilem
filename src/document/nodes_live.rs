@@ -153,7 +153,7 @@ pub fn comparison_starter(source_id: SourceId) -> NodeGraph {
         .values
         .insert("recipe".into(), default_proof_recipe());
     graph.connect(source, "font", unchanged, "font");
-    let python = graph.add("live.python", [336.0, 416.0]);
+    let python = graph.add("live.python", [336.0, 32.0]);
     graph
         .node_mut(python)
         .unwrap()
@@ -165,7 +165,7 @@ pub fn comparison_starter(source_id: SourceId) -> NodeGraph {
         .values
         .insert("parameters".into(), json!({}));
     graph.connect(source, "font", python, "font");
-    let changed = graph.add("live.proof", [640.0, 416.0]);
+    let changed = graph.add("live.proof", [928.0, 32.0]);
     graph
         .node_mut(changed)
         .unwrap()
