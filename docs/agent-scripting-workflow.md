@@ -100,7 +100,8 @@ The latest user approval releases implementation and disposable local recipe tri
 
 The user next requested a ComfyUI-like graph with a base font branching into an unchanged specimen and a Python-transformed specimen.
 The Python node should show editable code inside its box, and image output nodes should be movable side by side for comparison.
-This is a requested next product phase, not an implemented capability or an instruction to duplicate the current workers.
+The user subsequently authorized implementation with scheduled Nodes workers; the [Nodes plan](agent-nodes-plan.md) defines that active phase.
+It is not yet an implemented capability and does not duplicate the current scripting workers.
 
 The intended graph is captured base FontVersion → specimen A, and the same captured FontVersion → Python script → derived FontVersion → specimen B.
 Run captures one immutable baseline shared by both paths, including unsaved editor changes.
@@ -133,6 +134,7 @@ Renderer differences must remain visible rather than being mistaken for script-i
 The current engine declares live.font, live.fork, live.proof and live.apply, but native editor/tools/nodes.rs removes live types from the palette and rejects their execution through the disk runner.
 The custom native Nodes canvas currently has no registered child widgets for inline editing.
 Therefore this phase requires a native live-graph scheduler, derived-version recipe adapter, full-family proof overlay where needed, and real code/image node content; it is not just adding a node label.
-Keep this phase queued behind the shared runner contract and current review, then split engine/scheduler and canvas/editor work with explicit ownership.
+Engine/session and canvas/editor workers may progress independently on agreed interfaces while the shared runner is reviewed.
+Runtime integration remains dependent on that shared contract and the coordinator's review.
 
 Acceptance must show the original branch unchanged, a visible scripted anchor difference in a suitable mark-attachment specimen, identical proof settings, correct stale/cancel behavior, graph save/reopen without live bindings, and an explicit Apply/Undo that changes only the chosen target.

@@ -207,3 +207,24 @@ The previous OMP image continuation is deleted and its unreviewed harness is pre
 The automatic approval block on credentialed external-model image submission is unresolved and must not be bypassed.
 Python recipe implementation and disposable local acceptance are authorized; a foreground native GUI still requires an agreed interruption.
 Full-family atomic script edits and remaining variable/multilingual/client/platform acceptance remain in the broader plan.
+
+## Native Nodes and agent integration wave
+
+The user explicitly authorized a native Nodes scripting/agent implementation pass and new scheduled workers.
+The [Nodes plan](agent-nodes-plan.md) records the current gaps, ComfyUI evidence, shared service boundary and acceptance criteria.
+No ComfyUI installation or runtime dependency is part of this work.
+
+| Task | Model | Continuation | Ownership |
+|---|---|---|---|
+| `01a0bf8c-4d25-7591-992b-25d1b0904ae4` | Sol | `complete-native-live-nodes-execution`, 10 minutes | Typed live graph session/commands, immutable run state and native execution adapter |
+| `01a0bf8c-9e56-7370-8a0f-f40afa21043c` | Terra | `complete-script-and-specimen-node-ui`, 20 minutes | Actual inline Python editor and movable/resizable image nodes, focus/input and layout |
+
+Both workers started in isolated worktrees and must publish interfaces early.
+Central owns live graph agent exposure through existing native adapters, compiled-family overlay integration, cross-worker review and acceptance.
+The existing Script UI worker retains script buffer/library controls and application capture/preview/Apply; it is not replaced by a second script implementation.
+
+Runtime worker `c8ea6d4` is complete and awaiting central review; its continuation is deleted.
+It reports strict native/browser Clippy and 14 focused tests, including corrected Python recipes executed through the real queue and validated by Rust.
+Recipes `7d431ea` plus `8314665` now pass 12 centrally rerun Python tests and their pure subprocess harness, and the runtime worker confirmed cross-language schema/hash/proposal validation.
+The script artifact/draft UI phase `af6bc7a` plus ownership clarification `bad3901` awaits review and follow-up for real storage, Run, preview, Apply and captures.
+These worker handoffs are not evidence that the complete scripting or Nodes workflow is usable yet.
