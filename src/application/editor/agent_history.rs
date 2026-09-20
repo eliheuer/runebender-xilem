@@ -93,10 +93,17 @@ impl Workspace {
             return false;
         };
         if self.session.gesture_in_progress()
-            || (matches!(self.mode, Mode::Overview)
+            || (matches!(self.mode, Mode::Overview | Mode::Nodes)
                 && self.overview_undo.len() != *overview_undo_depth)
         {
             return false;
+        }
+        if matches!(self.mode, Mode::Nodes) {
+            return self
+                .font
+                .project
+                .check_document_edit_history_group(*group, direction(redo))
+                .is_ok();
         }
         let glyph = match self.mode {
             Mode::Editor(_) => Some(self.session.glyph_name.as_str()),

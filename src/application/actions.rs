@@ -130,7 +130,7 @@ impl Entry {
                 Mode::Overview => {
                     !app.overview_undo.is_empty() || app.can_metadata_history_step(false)
                 }
-                _ => false,
+                Mode::Nodes => app.can_metadata_history_step(false),
             },
             A::Redo => match app.mode {
                 Mode::Editor(index) => {
@@ -144,7 +144,7 @@ impl Entry {
                 Mode::Overview => {
                     !app.overview_redo.is_empty() || app.can_metadata_history_step(true)
                 }
-                _ => false,
+                Mode::Nodes => app.can_metadata_history_step(true),
             },
             A::MetaballsToCubic | A::MetaballGroupsToCubic => editor,
             A::FontMetaballsToCubic => matches!(app.mode, Mode::Overview),

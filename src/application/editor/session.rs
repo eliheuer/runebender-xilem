@@ -2376,6 +2376,10 @@ impl Workspace {
     /// Undo in the active editing context. Overview actions may change a
     /// multi-selection, so their per-glyph engine snapshots travel as one batch.
     pub(crate) fn undo_active_edit(&mut self, redo: bool) {
+        if matches!(self.mode, Mode::Nodes) {
+            self.metadata_history_step(redo);
+            return;
+        }
         if matches!(self.mode, Mode::Editor(_)) {
             self.undo_open_glyph(redo);
             return;

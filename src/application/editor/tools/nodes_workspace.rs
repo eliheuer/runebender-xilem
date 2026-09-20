@@ -561,8 +561,9 @@ mod tests {
             return app;
         };
         use crate::application::view::theme::Palette;
-        use crate::application::workspace::{AppState, Mode};
+        use crate::application::workspace::Mode;
         use std::sync::Arc;
+        use xilem::WidgetView as _;
 
         let directory = std::path::PathBuf::from(directory);
         std::fs::create_dir_all(&directory).unwrap();
@@ -573,19 +574,14 @@ mod tests {
         for theme in ["gray", "light"] {
             app.theme_id = theme;
             app.palette = Arc::new(Palette::load(theme));
-            let state = AppState {
-                palette: app.palette.clone(),
-                theme_id: theme,
-                workspace: Some(app),
-                notice: None,
-                running: true,
-            };
-            let background = state.background();
-            let state = crate::application::platform::screenshot::render_to(
-                state,
+            let background = app.palette.app;
+            app = crate::application::platform::screenshot::render_to(
+                app,
                 background,
-                |state: &mut AppState| {
-                    xilem::view::sized_box(crate::application::view::render::root_logic(state))
+                |workspace: &mut Workspace| {
+                    xilem::view::sized_box(
+                        crate::application::view::render::app_logic(workspace).boxed(),
+                    )
                 },
                 (1440, 900),
                 1.0,
@@ -594,7 +590,6 @@ mod tests {
                     .to_str()
                     .unwrap(),
             );
-            app = state.workspace.unwrap();
         }
         app.mode = mode;
         app
@@ -718,6 +713,10 @@ json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],
                 .width(),
             500.0
         );
+        app.mode = crate::application::workspace::Mode::Nodes;
+        let graph_before_undo =
+            serde_json::to_value(app.live_graph_session().unwrap().snapshot()).unwrap();
+        assert!(app.can_metadata_history_step(false));
         app.undo_active_edit(false);
         assert_eq!(
             app.font
@@ -726,6 +725,21 @@ json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],
                 .unwrap()
                 .width(),
             400.0
+        );
+        assert!(app.can_metadata_history_step(true));
+        app.undo_active_edit(true);
+        assert_eq!(
+            app.font
+                .project
+                .document_layer("A", &layer)
+                .unwrap()
+                .width(),
+            500.0
+        );
+        app.undo_active_edit(false);
+        assert_eq!(
+            serde_json::to_value(app.live_graph_session().unwrap().snapshot()).unwrap(),
+            graph_before_undo
         );
         let replay = call(&mut app, "nodes_apply", apply);
         assert_eq!(replay["replayed"], true);
