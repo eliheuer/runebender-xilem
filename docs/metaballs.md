@@ -69,17 +69,36 @@ F(x, y) = sum(stiffness * max(0, 1 - distance² / radius²)³)
 inside = F(x, y) >= group.threshold
 ```
 
-A triangular grid extracts oriented boundary loops. Bisection locates field
-crossings; analytic gradients supply cubic tangents. Kurbo's
-`simplify::simplify_bezpath` fits the resulting paths. Conversion writes fractional
-cubic UFO contour coordinates without rounding them to a font-unit grid.
+A triangular grid extracts oriented boundary loops.
+Bisection locates field crossings; analytic gradients supply cubic tangents.
+The interactive preview fits the whole loop with Kurbo's `simplify::simplify_bezpath`.
+
+Explicit conversion additionally locates horizontal and vertical extrema and curvature sign changes on the implicit field.
+It projects these feature points back onto the boundary, splits the loop at them, and fits each span separately with Kurbo.
+This retains the structural nodes and their tangents instead of allowing whole-loop simplification to move them.
+Extremum handles are exactly horizontal or vertical, and conversion retains fractional coordinates without rounding to a font-unit grid.
+A feature that cannot be resolved safely returns an error and leaves the source intact.
+
+This follows the font-oriented goals of [img2bez](https://github.com/eliheuer/img2bez), while using the exact field derivatives available for metaballs.
+The pinned img2bez dependency also offers `trace_sdf`, which can fit a sampled field without a PNG intermediate.
+Its cleanup is useful for traced images, but does not guarantee fidelity to the original analytic field.
+The comparison below exercises that alternative rather than assuming it improves every shape.
+
+Generate a reproducible SVG with nodes, handles, segment counts, and sampled field discrepancy:
+
+```sh
+cargo run --no-default-features --example metaball_conversion_proof -- /tmp/metaball-comparison.svg
+```
+
+The proof compares the previous whole-loop fit, img2bez's Clean profile with rounding and smoothing disabled, and constrained conversion on a circle, a blended stem, an unequal diagonal blend, and a counter.
+The diagonal blend needs more segments with constrained fitting; retaining extrema and inflections does not guarantee a globally minimal outline or replace a designer's judgment.
+The reported discrepancy is a first-order normal-distance estimate sampled along the fitted curves, not a Hausdorff error bound.
 
 Sampling spacing is not a guaranteed error bound against the analytic field.
-Very small holes or bridges can be missed, especially near a merge or split.
-The grid is capped at one million cells per group; an oversized request returns
-an error instead of silently coarsening the result. Interactive previews and conversion use a
-2-unit grid by default. A later adaptive sampler can
-improve both speed and small-feature fidelity without changing the source format.
+Very small holes or bridges, or multiple feature roots within a grid edge, can be missed, especially near a merge or split.
+The grid is capped at one million cells per group; an oversized request returns an error instead of silently coarsening the result.
+Interactive previews and conversion use a 2-unit grid by default.
+A later adaptive sampler can improve both speed and small-feature fidelity without changing the source format.
 
 ## References
 

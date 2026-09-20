@@ -356,3 +356,80 @@ fn semantic_mark_updates_both_keys_atomically_and_survives_save() {
     assert!(!cleared.lib.contains_key(MARK_COLOR_KEY));
     assert!(!cleared.lib.contains_key(MARK_LABEL_KEY));
 }
+
+#[test]
+fn cubic_metaballs_survive_canonical_conversion_save_and_undo() {
+    use kurbo::{ParamCurve, Point};
+    use runebender::outline::glyph_paths::ordinary_layer_contours_to_bezpath;
+    use runebender::outline::metaballs::OutlineOptions;
+
+    let (mut project, address) = fixture();
+    let mut source = source_metaballs();
+    source.groups[0].threshold = 0.5;
+    source.groups[0].balls[0].stiffness = 2.0;
+    let ball = source.groups[0].balls[0].clone();
+    let mut setup = project.begin_document_layer_transaction(&address).unwrap();
+    setup.draft_mut().set_metaballs(source.clone()).unwrap();
+    project.commit_document_layer_transaction(setup).unwrap();
+    let before = project.encode_ufo_source(SourceId(0)).unwrap();
+    let before = before.get_glyph("A").unwrap().clone();
+
+    let mut transaction = project.begin_document_layer_transaction(&address).unwrap();
+    assert_eq!(
+        transaction
+            .draft_mut()
+            .collapse_metaballs(None, OutlineOptions::default())
+            .unwrap(),
+        1
+    );
+    project
+        .commit_document_layer_transaction(transaction)
+        .unwrap();
+    let converted = project.encode_ufo_source(SourceId(0)).unwrap();
+    let converted = converted.get_glyph("A").unwrap();
+    assert!(!converted.lib.contains_key(METABALLS_KEY));
+    assert_eq!(
+        converted.lib.get("future.key"),
+        before.lib.get("future.key")
+    );
+    // Exercise GLIF serialization too: control ordering must survive both format boundaries.
+    let reloaded = norad::Glyph::parse_raw(&converted.encode_xml().unwrap()).unwrap();
+    let mut font = norad::Font::new();
+    font.default_layer_mut().insert_glyph(reloaded.clone());
+    let loaded = Project::from_source(SourceInput::from_font(font, PathBuf::from("Roundtrip.ufo")));
+    let layer = loaded.document_source(SourceId(0)).unwrap().default_layer();
+    let path = ordinary_layer_contours_to_bezpath(loaded.document_layer("A", &layer).unwrap());
+    assert_eq!(path.segments().count(), 4);
+    assert_eq!(
+        reloaded.contours[0]
+            .points
+            .iter()
+            .filter(|p| p.smooth)
+            .count(),
+        4
+    );
+    let center = Point::new(ball.x, ball.y);
+    let radius = ball.radius * (1.0 - 0.25_f64.cbrt()).sqrt();
+    for segment in path.segments() {
+        let c = segment.to_cubic();
+        for handle in [c.p1 - c.p0, c.p3 - c.p2] {
+            assert!(handle.x == 0.0 || handle.y == 0.0);
+        }
+        for i in 0..=100 {
+            assert!((c.eval(f64::from(i) / 100.0).distance(center) - radius).abs() < 0.025);
+        }
+    }
+    project
+        .replay_document_layer_history(&address, HistoryDirection::Undo)
+        .unwrap();
+    let restored = project.encode_ufo_source(SourceId(0)).unwrap();
+    assert_eq!(
+        restored.get_glyph("A").unwrap().encode_xml().unwrap(),
+        before.encode_xml().unwrap()
+    );
+    project
+        .replay_document_layer_history(&address, HistoryDirection::Redo)
+        .unwrap();
+    let redone = project.encode_ufo_source(SourceId(0)).unwrap();
+    assert_eq!(redone.get_glyph("A").unwrap().contours, converted.contours);
+}

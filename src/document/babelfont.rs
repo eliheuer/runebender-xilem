@@ -4508,7 +4508,7 @@ impl LayerEditDraft {
             .iter()
             .filter(|group| selected.contains(&group.id))
         {
-            let paths = crate::outline::metaballs::preview(group, options)?;
+            let paths = crate::outline::metaballs::cubic_outline(group, options)?;
             if paths.is_empty() {
                 return Err("metaball group has no sampled outline; source preserved".into());
             }

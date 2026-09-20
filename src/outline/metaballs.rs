@@ -55,6 +55,8 @@ fn tangent(group: &MetaballGroup, point: Point) -> Vec2 {
     Vec2::new(gradient.y, -gradient.x)
 }
 
+mod fitting;
+
 type Edge = (usize, usize);
 
 /// Generates closed cubic preview paths for one group without editing its source.
@@ -62,6 +64,27 @@ type Edge = (usize, usize);
 /// Rejects nonfinite settings, invalid source data, and grids over one million cells.
 /// Sampling can omit sub-grid features; decrease `resolution` near a merge or split.
 pub fn preview(group: &MetaballGroup, options: OutlineOptions) -> Result<Vec<BezPath>, String> {
+    sample_outline(group, options, false)
+}
+
+/// Fits editable cubic contours with nodes at field extrema and inflections.
+///
+/// Tangents at extrema are exactly horizontal or vertical.
+/// Sampling and validation use the same bounded grid as [`preview`].
+/// Accuracy bounds fitting against the sampled boundary, not the analytic field.
+/// Returns an error when a structural feature cannot be resolved safely.
+pub fn cubic_outline(
+    group: &MetaballGroup,
+    options: OutlineOptions,
+) -> Result<Vec<BezPath>, String> {
+    sample_outline(group, options, true)
+}
+
+fn sample_outline(
+    group: &MetaballGroup,
+    options: OutlineOptions,
+    structured: bool,
+) -> Result<Vec<BezPath>, String> {
     Metaballs {
         version: 1,
         groups: vec![group.clone()],
@@ -175,28 +198,32 @@ pub fn preview(group: &MetaballGroup, options: OutlineOptions) -> Result<Vec<Bez
         if points.len() < 3 {
             continue;
         }
-        let mut path = BezPath::new();
-        path.move_to(points[0]);
-        for i in 0..points.len() {
-            let a = points[i];
-            let b = points[(i + 1) % points.len()];
-            let chord = b - a;
-            let control = |p| {
-                let t = tangent(group, p);
-                if t.hypot() > 1e-12 {
-                    t.normalize() * (chord.hypot() / 3.0)
-                } else {
-                    chord / 3.0
-                }
-            };
-            path.curve_to(a + control(a), b - control(b), b);
-        }
-        path.close_path();
-        let fitted = kurbo::simplify::simplify_bezpath(
-            path,
-            options.accuracy,
-            &kurbo::simplify::SimplifyOptions::default(),
-        );
+        let fitted = if structured {
+            fitting::fit(group, &points, options.accuracy)?
+        } else {
+            let mut path = BezPath::new();
+            path.move_to(points[0]);
+            for i in 0..points.len() {
+                let a = points[i];
+                let b = points[(i + 1) % points.len()];
+                let chord = b - a;
+                let control = |p| {
+                    let t = tangent(group, p);
+                    if t.hypot() > 1e-12 {
+                        t.normalize() * (chord.hypot() / 3.0)
+                    } else {
+                        chord / 3.0
+                    }
+                };
+                path.curve_to(a + control(a), b - control(b), b);
+            }
+            path.close_path();
+            kurbo::simplify::simplify_bezpath(
+                path,
+                options.accuracy,
+                &kurbo::simplify::SimplifyOptions::default(),
+            )
+        };
         // Kurbo can leave a floating-point-sized closing line. Snap that seam
         // instead of turning it into an extra, effectively coincident UFO node.
         let mut segments: Vec<_> = fitted
@@ -293,7 +320,7 @@ pub fn collapse(
     }
     let mut generated = Vec::new();
     for group in data.groups.iter().filter(|g| selected.contains(&g.id)) {
-        let paths = preview(group, options)?;
+        let paths = cubic_outline(group, options)?;
         if paths.is_empty() {
             return Err("metaball group has no sampled outline; source preserved".into());
         }
@@ -370,6 +397,91 @@ mod tests {
                     "radial error {}",
                     distance - radius
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn conversion_places_four_circle_nodes_at_exact_extrema() {
+        // Fractional centers and several grid spacings must not rotate the node layout.
+        for resolution in [1.0, 2.0, 3.0] {
+            let mut b = ball(1, 123.125);
+            b.y = -47.375;
+            let center = Point::new(b.x, b.y);
+            let radius = b.radius * (1.0 - 0.25_f64.cbrt()).sqrt();
+            let paths = cubic_outline(
+                &group(vec![b]),
+                OutlineOptions {
+                    resolution,
+                    ..OutlineOptions::default()
+                },
+            )
+            .unwrap();
+            assert_eq!(paths.len(), 1);
+            let segments: Vec<_> = paths[0].segments().map(|s| s.to_cubic()).collect();
+            assert_eq!(segments.len(), 4, "one cubic per quadrant");
+            for c in &segments {
+                let delta = c.p0 - center;
+                assert!(
+                    delta.x.abs().min(delta.y.abs()) < 1e-8,
+                    "node at an extremum"
+                );
+                assert!((delta.hypot() - radius).abs() < 1e-8, "node on the field");
+                for handle in [c.p1 - c.p0, c.p3 - c.p2] {
+                    assert!(
+                        handle.x == 0.0 || handle.y == 0.0,
+                        "exact axis handles: {handle:?}, curve {c:?}, spacing {resolution}"
+                    );
+                }
+                for i in 0..=100 {
+                    let error = (c.eval(f64::from(i) / 100.0).distance(center) - radius).abs();
+                    assert!(error < 0.025, "circle radial error {error}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn conversion_preserves_blends_holes_and_smooth_joins() {
+        let mut diagonal = ball(2, 140.0);
+        diagonal.y = 150.0;
+        diagonal.radius = 140.0;
+        let mut large = ball(1, 0.0);
+        large.radius = 180.0;
+        let mut negative = ball(2, 0.0);
+        negative.radius = 40.0;
+        negative.stiffness = -4.0;
+        for g in [
+            group(vec![ball(1, -45.0), ball(2, 45.0)]),
+            group(vec![ball(1, -150.0), ball(2, 150.0)]),
+            group(vec![large, diagonal]),
+            group(vec![ball(1, 0.0), negative]),
+        ] {
+            let reference = preview(&g, OutlineOptions::default()).unwrap();
+            let paths = cubic_outline(&g, OutlineOptions::default()).unwrap();
+            assert_eq!(paths.len(), reference.len(), "preserve sampled topology");
+            for (path, reference) in paths.iter().zip(reference.iter()) {
+                assert_eq!(
+                    path.area().signum(),
+                    reference.area().signum(),
+                    "preserve winding"
+                );
+                let segments: Vec<_> = path.segments().map(|s| s.to_cubic()).collect();
+                assert!(segments.len() <= 20, "compact editable output");
+                for (i, c) in segments.iter().enumerate() {
+                    let next = segments[(i + 1) % segments.len()];
+                    assert_eq!(c.p3, next.p0, "closed joins");
+                    let incoming = (c.p3 - c.p2).normalize();
+                    let outgoing = (next.p1 - next.p0).normalize();
+                    assert!(incoming.dot(outgoing) > 1.0 - 1e-8, "smooth join");
+                    for j in 0..=100 {
+                        let point = c.eval(f64::from(j) / 100.0);
+                        // First-order normal distance, a regression metric, not a Hausdorff bound.
+                        let error =
+                            (field(&g, point) - g.threshold).abs() / tangent(&g, point).hypot();
+                        assert!(error < 0.25, "sampled normal discrepancy {error}");
+                    }
+                }
             }
         }
     }
