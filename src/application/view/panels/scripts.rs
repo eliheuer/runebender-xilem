@@ -3,9 +3,9 @@
 
 //! The non-executing Scripts rail: draft editing and runtime availability.
 
-use crate::application::view::design::{
-    ControlSize, Region, Space, Stroke, TextSize, column as xcolumn,
-};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::application::view::design::ControlSize;
+use crate::application::view::design::{Region, Space, Stroke, TextSize, column as xcolumn};
 use crate::application::view::recipes;
 use crate::application::view::{label, text_input};
 use crate::application::widgets::scroll_viewport::portal;

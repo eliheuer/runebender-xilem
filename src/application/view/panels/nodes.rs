@@ -519,16 +519,18 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                 label("Glyph scope")
                     .text_size(TextSize::Caption.px())
                     .color(pal.text_muted),
-                sized_box(text_input(
-                    app.nodes.live_scope.clone(),
-                    |app: &mut Workspace, scope| {
-                        edit_live_scope(app, scope);
-                    },
-                ))
-                .text_color(pal.text)
-                .placeholder_color(pal.text_muted)
-                .background_color(pal.field())
-                .border_color(pal.field_outline)
+                sized_box(
+                    text_input(
+                        app.nodes.live_scope.clone(),
+                        |app: &mut Workspace, scope| {
+                            edit_live_scope(app, scope);
+                        },
+                    )
+                    .text_color(pal.text)
+                    .placeholder_color(pal.text_muted)
+                    .background_color(pal.field())
+                    .border_color(pal.field_outline),
+                )
                 .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
                 .flex(1.0),
             ),
