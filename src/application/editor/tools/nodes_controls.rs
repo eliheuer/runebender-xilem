@@ -52,7 +52,7 @@ pub(crate) fn edit_live_scope(app: &mut Workspace, scope: String) {
     app.nodes.live_scope = scope;
 }
 
-/// Commit one focused TextArea value through the canonical graph guard.
+/// Commit one focused `TextArea` value through the canonical graph guard.
 pub(crate) fn edit_live_code(
     app: &mut Workspace,
     guard: runebender::document::nodes_session::GraphGuard,

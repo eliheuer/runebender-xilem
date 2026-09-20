@@ -16,7 +16,7 @@ use crate::application::editor::tools::nodes_controls::{
 };
 use crate::application::view::canvas::nodes::{NodesEvent, nodes_canvas};
 use crate::application::view::design::{Region, Space, TextSize, row as xrow};
-use crate::application::view::render::bottom_keyline;
+use crate::application::view::render::{bottom_keyline, px32};
 use crate::application::view::{design, label, recipes, text_input};
 use crate::application::workspace::Workspace;
 use masonry::layout::{Dim, Length};
@@ -104,7 +104,7 @@ fn legacy_projection(app: &Workspace) -> Option<CanvasProjection> {
                 content.by_node.insert(
                     node.id,
                     NodeContent::Script(ScriptContent {
-                        content_hash: fixture.then_some("ui-fixture").unwrap_or_default().into(),
+                        content_hash: if fixture { "ui-fixture" } else { "" }.into(),
                         text,
                         state: if fixture {
                             ContentState::Current
@@ -152,8 +152,8 @@ fn legacy_projection(app: &Workspace) -> Option<CanvasProjection> {
 
 fn content_size(app: &Workspace, node: u32, height: f64) -> [f32; 2] {
     app.nodes.content_sizes.get(&node).copied().unwrap_or([
-        (runebender::ui::nodes::LIVE_W - runebender::ui::nodes::PAD * 2.0) as f32,
-        height as f32,
+        px32(runebender::ui::nodes::LIVE_W - runebender::ui::nodes::PAD * 2.0),
+        px32(height),
     ])
 }
 
