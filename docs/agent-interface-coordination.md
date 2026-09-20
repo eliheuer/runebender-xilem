@@ -178,3 +178,32 @@ Sol is incorporating the complete bounded-response helper and a multi-megabyte r
 Native evidence lives in `/private/tmp/runebender-agent-compiled-live-20260920`.
 The initial targeted run lacked `RUNEBENDER_TEST_FONTS`; the final suite used disposable sources and passed.
 These are automated protocol checks, not an actual model image-interpretation trial.
+
+## Python scripting product wave
+
+The full remaining validation matrix passed at `7eb0a86`, and native main and origin/main were directly verified at that checkpoint.
+The user then approved the scripting workflow and requested new scheduled tasks to implement it.
+The final language decision is Python only; no Rust scripting prototype is assigned.
+The [workflow contract](agent-scripting-workflow.md) defines the first usable product loop and shared process boundary.
+
+| Task | Model | Continuation | Ownership |
+|---|---|---|---|
+| `01a0bf72-cbd3-7631-9675-a9dfc3b782b8` | Sol | `complete-python-script-runtime`, 10 minutes | Typed recipe contract, bounded subprocess runner, persistent script library |
+| `01a0bf73-2c77-7723-8cea-f9b86cd94e06` | Terra | `complete-chat-and-scripts-panel`, 10 minutes | Chat artifacts, Scripts list and editing, application preview/apply integration |
+| `01a0bf73-79cb-76d2-b4ec-ef8361f2a23b` | Luna | `complete-python-anchor-recipes`, 20 minutes | Anchor examples, thin helper, deterministic conformance and failure tests |
+
+These workers have started in isolated worktrees and received each other's task IDs and an agreed version-1 recipe schema.
+The runtime owner publishes exact signatures and commits before consumers integrate them.
+Workers remove their own continuations when ready for review; central archives them only after successful integration.
+Central retains API review, cancellation integration, combined validation, disposable application acceptance and coherent main/upstream promotion.
+No completed worker is restarted without a separate bounded need.
+
+The previous cancellation worker finished at `fd0ddcbc4df1d852e42035aace55e2a732cdd885` and removed its continuation.
+Its report claims 863 native tests passed with four ignored tests, strict Clippy and race/transport tests; this remains worker evidence until central review and integration.
+Its parent is Terra's receipt commit `3decf8b`, so do not integrate that earlier change twice.
+Preserve central compiled-proof image forwarding while resolving the dispatcher overlap.
+
+The previous OMP image continuation is deleted and its unreviewed harness is preserved at `b642190`.
+The automatic approval block on credentialed external-model image submission is unresolved and must not be bypassed.
+Python recipe implementation and disposable local acceptance are authorized; a foreground native GUI still requires an agreed interruption.
+Full-family atomic script edits and remaining variable/multilingual/client/platform acceptance remain in the broader plan.

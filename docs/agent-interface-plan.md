@@ -140,6 +140,11 @@ Two agents making disjoint edits can succeed; overlapping or dependency-conflict
 
 ## Milestone 3: repeatable procedures and local jobs
 
+The user approved the [native scripting workflow](agent-scripting-workflow.md) on 2026-09-20, then explicitly narrowed implementation to Python only.
+The first product delivery is chat artifact → saved script → report or preview → guarded Apply → ordinary Undo.
+Three isolated workers own runtime/library, native chat/Scripts UI and Python anchor examples respectively.
+This releases implementation and disposable recipe trials; it does not imply that these features already exist or that the broader milestones are complete.
+
 - [x] Add a thin live Python example using session/schema/receipt APIs, with no editable font wrapper or duplicated geometry.
   `scripts/live_spacing.py` prepares an explicit guarded width batch and supports apply, receipt reconciliation and undo without source-file edits.
 - [ ] Make deterministic operation recipes reusable from CLI and nodes with explicit parameters and inputs.
