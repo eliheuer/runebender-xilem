@@ -350,21 +350,46 @@ fn captured_font(project: &Project) -> Result<babelfont::Font, String> {
 }
 
 fn has_unresolved_feature_include(features: &str) -> bool {
-    for line in features.lines() {
-        let code = line.split_once('#').map_or(line, |(code, _)| code);
-        let mut remaining = code;
-        while let Some(index) = remaining.find("include") {
-            let (prefix, after_prefix) = remaining.split_at(index);
-            let suffix = &after_prefix["include".len()..];
-            let starts_identifier = prefix
-                .as_bytes()
-                .last()
-                .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_');
-            if !starts_identifier && suffix.trim_start().starts_with('(') {
-                return true;
+    let mut code = String::with_capacity(features.len());
+    let mut comment = false;
+    let mut quoted = false;
+    let mut escaped = false;
+    for character in features.chars() {
+        if comment {
+            if character == '\n' {
+                comment = false;
+                code.push('\n');
             }
-            remaining = suffix;
+        } else if quoted {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == '"' {
+                quoted = false;
+            }
+            code.push(' ');
+        } else if character == '#' {
+            comment = true;
+        } else if character == '"' {
+            quoted = true;
+            code.push(' ');
+        } else {
+            code.push(character);
         }
+    }
+    let mut remaining = code.as_str();
+    while let Some(index) = remaining.find("include") {
+        let (prefix, after_prefix) = remaining.split_at(index);
+        let suffix = &after_prefix["include".len()..];
+        let starts_identifier = prefix
+            .as_bytes()
+            .last()
+            .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_');
+        if !starts_identifier && suffix.trim_start().starts_with('(') {
+            return true;
+        }
+        remaining = suffix;
     }
     false
 }
@@ -565,6 +590,15 @@ mod tests {
             "myinclude (identifier.fea);"
         ));
         assert!(has_unresolved_feature_include("include (live.fea);"));
+        assert!(has_unresolved_feature_include(
+            "include\n# comment\n(live.fea);"
+        ));
+        assert!(has_unresolved_feature_include(
+            "nameid 1 \"Hash#name\"; include\n(live.fea);"
+        ));
+        assert!(!has_unresolved_feature_include(
+            "nameid 1 \"include (only a string)\";"
+        ));
 
         let root = std::env::temp_dir().join(format!(
             "runebender-compiled-proof-whitespace-features-{}",

@@ -86,3 +86,22 @@ First prove context/read, one bounded unsaved edit, application cache/session re
 Then connect each actual client to a disposable font session and retain the transport and visible result evidence.
 A bundled Codex CLI check does not establish that the desktop task has loaded the tools, and a tools-list response does not establish model image delivery.
 Full Milestone 1 acceptance still requires integrated atomic receipts, retries/conflicts/cancellation, asynchronous compiled proofs and the final validation matrix.
+
+## Next core implementation boundary
+
+Add a transport-independent session value holding only epoch, actor binding, bounded receipts and job handles; pass the canonical Project into operations rather than copying or wrapping another editable font model.
+The native Workspace must construct this value from the same epoch as its socket server, because the existing mailbox validates and removes `expected_document_epoch` before application dispatch.
+The browser must not advertise a live native session merely because it shares the Workspace type.
+
+For a first atomic wire operation, resolve explicit source/layer/glyph and existing point/anchor IDs against canonical reads, compare the existing external glyph revision tokens, then stage the complete read/write set through `begin_document_edit_transaction`.
+The engine's guarded commit remains the final publication boundary.
+Validate receipt capacity and operation-key conflicts before publication; retain terminal unchanged and rejected outcomes as well as committed receipts.
+An exact retry must return its original receipt without repeating application refresh or adding another history entry.
+
+Add one application `MetadataEdit` variant carrying the Project-owned group handle and affected addresses.
+Ordinary editor undo/redo and agent-targeted replay must use the same engine group, update the same application history entries and retain unrelated later edits.
+Tests must cover targeted undo followed by ordinary undo, ordinary undo followed by targeted undo, conflicts after later edits, and inactive-source cache refresh.
+The existing per-layer proposal-install bookkeeping is not an adequate substitute for this integration.
+
+Keep cancellation unadvertised until the serial socket and MCP loops can accept it independently of a running request, with explicit queued/committed race tests.
+Proof jobs must capture immutable inputs on the application thread, compile/render on workers, and return epoch/revision-bound handles without allowing a late result to become the current proof.
