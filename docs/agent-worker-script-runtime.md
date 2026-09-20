@@ -60,3 +60,42 @@ The UI retains unsaved draft text and decides whether to reload or save under an
 The revision checks are not a universal filesystem lock or an atomic compare-and-swap against arbitrary external writers.
 Another process can still race the final check and rename on filesystems without cooperative locking.
 The library promises conflict detection for changes it observes, same-directory replacement and no intentional overwrite after an observed mismatch.
+
+## Bounded runtime correction
+
+The follow-up correction starts from runtime foundation commit `c8ea6d49e3e1404bb8d2fea0cef006df1ef198e2` on branch `codex/python-runtime-bounds-fix`.
+It is limited to the native job runner, script library and this report.
+
+Recipe stdin, stdout and stderr now use regular files in the fresh per-job directory instead of pipe-reader threads.
+The parent opens separate read handles before spawning Python and uses those retained file identities for size monitoring and bounded reads.
+A script replacing the visible `stdout` pathname therefore cannot redirect or block result capture.
+Cancellation, output overflow and deadlines kill and reap the direct child without joining readers that can remain blocked on inherited descendant handles.
+
+Capture reads retain at most the configured limit plus one sentinel byte.
+The worker polls spool sizes every ten milliseconds, so a process can write beyond the threshold on disk between polls before the direct child is stopped.
+This remains a direct-child process boundary rather than process-tree containment.
+A descendant may survive or retain its inherited file handles, but it no longer prevents the job worker or queue shutdown from returning.
+
+Interpreter availability uses the same monitored file capture with a two-second deadline and 4096-byte limits for each output stream.
+It no longer uses unbounded `Command::output` collection.
+
+Library loads and revision checks open one regular file handle and read at most 262145 bytes from that handle.
+Concurrent growth therefore cannot cause an unbounded allocation.
+Same-name rename requests now verify the caller's observed revision before returning the current document.
+
+## Correction validation
+
+The focused native filter passed twelve tests, including inherited descendant handles, capture-path replacement, oversized version output, process deadline and cancellation, oversized result output, same-name stale rename and oversized library input.
+
+```text
+CARGO_TARGET_DIR=/Users/eli/.codex/worktrees/5d82/runebender-xilem/target CARGO_BUILD_JOBS=2 cargo test --locked application::platform::script_ -- --test-threads=1
+```
+
+The final strict workspace Clippy check passed.
+
+```text
+CARGO_TARGET_DIR=/Users/eli/.codex/worktrees/5d82/runebender-xilem/target CARGO_BUILD_JOBS=2 cargo clippy --workspace --all-targets --locked -- -D warnings
+```
+
+`cargo fmt --all -- --check` and `git diff --check` also passed.
+The worker did not run the full unfiltered workspace test suite.

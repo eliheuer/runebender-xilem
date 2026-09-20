@@ -240,8 +240,8 @@ pub(crate) enum ScriptRuntimeAvailability {
 #[cfg(not(target_arch = "wasm32"))]
 mod native {
     use std::collections::BTreeMap;
-    use std::fs::{self, OpenOptions};
-    use std::io::{Read, Write};
+    use std::fs::{self, File, OpenOptions};
+    use std::io::{Read, Seek, SeekFrom, Write};
     use std::path::Path;
     use std::process::{Child, Command, ExitStatus, Stdio};
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -255,6 +255,8 @@ mod native {
     use super::*;
 
     static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(1);
+    const RUNTIME_CHECK_DEADLINE: Duration = Duration::from_secs(2);
+    const MAX_RUNTIME_CHECK_OUTPUT_BYTES: usize = 4 * 1024;
 
     struct JobRecord {
         identity: ScriptJobIdentity,
@@ -330,20 +332,60 @@ mod native {
         /// Run the explicitly selected interpreter's version command with a cleared environment.
         pub(crate) fn check(executable: impl Into<PathBuf>) -> Self {
             let executable = executable.into();
-            match Command::new(&executable)
+            let temporary = match TemporaryDirectory::new() {
+                Ok(temporary) => temporary,
+                Err(error) => return Self::Unavailable(error.to_string()),
+            };
+            let stdout_path = temporary.path.join("version.stdout");
+            let stderr_path = temporary.path.join("version.stderr");
+            let (stdout, mut stdout_reader) = match create_capture(&stdout_path) {
+                Ok(capture) => capture,
+                Err(error) => return Self::Unavailable(error.to_string()),
+            };
+            let (stderr, mut stderr_reader) = match create_capture(&stderr_path) {
+                Ok(capture) => capture,
+                Err(error) => return Self::Unavailable(error.to_string()),
+            };
+            let mut child = match Command::new(&executable)
                 .arg("--version")
                 .env_clear()
                 .stdin(Stdio::null())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .output()
+                .stdout(Stdio::from(stdout))
+                .stderr(Stdio::from(stderr))
+                .spawn()
             {
-                Ok(output) if output.status.success() => {
-                    let bytes = if output.stdout.is_empty() {
-                        output.stderr
-                    } else {
-                        output.stdout
-                    };
+                Ok(child) => child,
+                Err(error) => return Self::Unavailable(error.to_string()),
+            };
+            let cancel = AtomicBool::new(false);
+            let completion = monitor_child(
+                &mut child,
+                &cancel,
+                RUNTIME_CHECK_DEADLINE,
+                &stdout_reader,
+                &stderr_reader,
+                MAX_RUNTIME_CHECK_OUTPUT_BYTES,
+                MAX_RUNTIME_CHECK_OUTPUT_BYTES,
+            );
+            let (stdout, stdout_exceeded) =
+                match read_bounded_capture(&mut stdout_reader, MAX_RUNTIME_CHECK_OUTPUT_BYTES) {
+                    Ok(output) => output,
+                    Err(error) => return Self::Unavailable(error.to_string()),
+                };
+            let (stderr, stderr_exceeded) =
+                match read_bounded_capture(&mut stderr_reader, MAX_RUNTIME_CHECK_OUTPUT_BYTES) {
+                    Ok(output) => output,
+                    Err(error) => return Self::Unavailable(error.to_string()),
+                };
+            match completion {
+                ProcessCompletion::Exited(status) if status.success() => {
+                    if stdout_exceeded {
+                        return Self::Unavailable("version stdout exceeded 4096 bytes".into());
+                    }
+                    if stderr_exceeded {
+                        return Self::Unavailable("version stderr exceeded 4096 bytes".into());
+                    }
+                    let bytes = if stdout.is_empty() { stderr } else { stdout };
                     Self::Available(
                         String::from_utf8_lossy(&bytes)
                             .trim()
@@ -352,8 +394,22 @@ mod native {
                             .collect(),
                     )
                 }
-                Ok(output) => Self::Unavailable(format!("exit status {:?}", output.status.code())),
-                Err(error) => Self::Unavailable(error.to_string()),
+                ProcessCompletion::Exited(status) => {
+                    Self::Unavailable(format!("exit status {:?}", status.code()))
+                }
+                ProcessCompletion::Forced(ForcedStop::Deadline) => {
+                    Self::Unavailable("version check exceeded its deadline".into())
+                }
+                ProcessCompletion::Forced(ForcedStop::StdoutLimit) => {
+                    Self::Unavailable("version stdout exceeded 4096 bytes".into())
+                }
+                ProcessCompletion::Forced(ForcedStop::StderrLimit) => {
+                    Self::Unavailable("version stderr exceeded 4096 bytes".into())
+                }
+                ProcessCompletion::Forced(ForcedStop::Cancelled) => {
+                    Self::Unavailable("version check was cancelled".into())
+                }
+                ProcessCompletion::Io(error) => Self::Unavailable(error),
             }
         }
     }
@@ -605,6 +661,24 @@ mod native {
         if let Err(error) = write_script(&script_path, request.script.as_bytes()) {
             return failed(ScriptJobFailure::Io(error.to_string()), "");
         }
+        let input_path = temporary.path.join("input.json");
+        if let Err(error) = write_file(&input_path, &input) {
+            return failed(ScriptJobFailure::Io(error.to_string()), "");
+        }
+        let stdout_path = temporary.path.join("stdout");
+        let stderr_path = temporary.path.join("stderr");
+        let stdin = match File::open(&input_path) {
+            Ok(stdin) => stdin,
+            Err(error) => return failed(ScriptJobFailure::Io(error.to_string()), ""),
+        };
+        let (stdout, mut stdout_reader) = match create_capture(&stdout_path) {
+            Ok(capture) => capture,
+            Err(error) => return failed(ScriptJobFailure::Io(error.to_string()), ""),
+        };
+        let (stderr, mut stderr_reader) = match create_capture(&stderr_path) {
+            Ok(capture) => capture,
+            Err(error) => return failed(ScriptJobFailure::Io(error.to_string()), ""),
+        };
 
         let mut child = match Command::new(&config.python_executable)
             .args(["-I", "recipe.py"])
@@ -613,9 +687,9 @@ mod native {
             .env("PYTHONDONTWRITEBYTECODE", "1")
             .env("PYTHONIOENCODING", "utf-8")
             .env("PYTHONUNBUFFERED", "1")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stdin(Stdio::from(stdin))
+            .stdout(Stdio::from(stdout))
+            .stderr(Stdio::from(stderr))
             .spawn()
         {
             Ok(child) => child,
@@ -624,73 +698,62 @@ mod native {
             }
         };
 
-        let stdout_overflow = Arc::new(AtomicBool::new(false));
-        let stderr_overflow = Arc::new(AtomicBool::new(false));
-        let stdout_thread = read_thread(
-            child.stdout.take().expect("piped stdout"),
+        let completion = monitor_child(
+            &mut child,
+            cancel,
+            config.deadline,
+            &stdout_reader,
+            &stderr_reader,
             MAX_STDOUT_BYTES,
-            stdout_overflow.clone(),
-        );
-        let stderr_thread = read_thread(
-            child.stderr.take().expect("piped stderr"),
             MAX_STDERR_BYTES,
-            stderr_overflow.clone(),
         );
-        let stdin_thread = {
-            let mut stdin = child.stdin.take().expect("piped stdin");
-            std::thread::spawn(move || stdin.write_all(&input))
-        };
-
-        let started = Instant::now();
-        let mut forced = None;
-        let status = loop {
-            if cancel.load(Ordering::Acquire) {
-                forced = Some(ForcedStop::Cancelled);
-                break kill_and_wait(&mut child);
-            }
-            if stdout_overflow.load(Ordering::Acquire) {
-                forced = Some(ForcedStop::StdoutLimit);
-                break kill_and_wait(&mut child);
-            }
-            if stderr_overflow.load(Ordering::Acquire) {
-                forced = Some(ForcedStop::StderrLimit);
-                break kill_and_wait(&mut child);
-            }
-            if started.elapsed() >= config.deadline {
-                forced = Some(ForcedStop::Deadline);
-                break kill_and_wait(&mut child);
-            }
-            match child.try_wait() {
-                Ok(Some(status)) => break Ok(status),
-                Ok(None) => std::thread::sleep(Duration::from_millis(10)),
-                Err(error) => break Err(error),
-            }
-        };
-
-        let _ = stdin_thread.join();
-        let stdout = stdout_thread.join().unwrap_or_default();
-        let stderr_bytes = stderr_thread.join().unwrap_or_default();
-        let stderr = String::from_utf8_lossy(&stderr_bytes).into_owned();
-        if let Some(forced) = forced {
-            return match forced {
-                ForcedStop::Cancelled => ScriptJobOutcome::Cancelled {
-                    while_running: true,
-                    stderr,
-                },
-                ForcedStop::StdoutLimit => failed(
-                    ScriptJobFailure::OutputLimitExceeded { stream: "stdout" },
-                    stderr,
-                ),
-                ForcedStop::StderrLimit => failed(
-                    ScriptJobFailure::OutputLimitExceeded { stream: "stderr" },
-                    stderr,
-                ),
-                ForcedStop::Deadline => failed(ScriptJobFailure::DeadlineExceeded, stderr),
+        let (stdout, stdout_exceeded) =
+            match read_bounded_capture(&mut stdout_reader, MAX_STDOUT_BYTES) {
+                Ok(output) => output,
+                Err(error) => return failed(ScriptJobFailure::Io(error.to_string()), ""),
             };
-        }
-        let status = match status {
-            Ok(status) => status,
-            Err(error) => return failed(ScriptJobFailure::Io(error.to_string()), stderr),
+        let (stderr_bytes, stderr_exceeded) =
+            match read_bounded_capture(&mut stderr_reader, MAX_STDERR_BYTES) {
+                Ok(output) => output,
+                Err(error) => return failed(ScriptJobFailure::Io(error.to_string()), ""),
+            };
+        let stderr = String::from_utf8_lossy(&stderr_bytes).into_owned();
+        let status = match completion {
+            ProcessCompletion::Exited(status) => {
+                if stdout_exceeded {
+                    return failed(
+                        ScriptJobFailure::OutputLimitExceeded { stream: "stdout" },
+                        stderr,
+                    );
+                }
+                if stderr_exceeded {
+                    return failed(
+                        ScriptJobFailure::OutputLimitExceeded { stream: "stderr" },
+                        stderr,
+                    );
+                }
+                status
+            }
+            ProcessCompletion::Forced(forced) => {
+                return match forced {
+                    ForcedStop::Cancelled => ScriptJobOutcome::Cancelled {
+                        while_running: true,
+                        stderr,
+                    },
+                    ForcedStop::StdoutLimit => failed(
+                        ScriptJobFailure::OutputLimitExceeded { stream: "stdout" },
+                        stderr,
+                    ),
+                    ForcedStop::StderrLimit => failed(
+                        ScriptJobFailure::OutputLimitExceeded { stream: "stderr" },
+                        stderr,
+                    ),
+                    ForcedStop::Deadline => failed(ScriptJobFailure::DeadlineExceeded, stderr),
+                };
+            }
+            ProcessCompletion::Io(error) => {
+                return failed(ScriptJobFailure::Io(error), stderr);
+            }
         };
         if !status.success() {
             return failed(
@@ -712,6 +775,7 @@ mod native {
         ScriptJobOutcome::Completed { result, stderr }
     }
 
+    #[derive(Debug)]
     enum ForcedStop {
         Cancelled,
         StdoutLimit,
@@ -719,34 +783,77 @@ mod native {
         Deadline,
     }
 
-    fn read_thread(
-        mut reader: impl Read + Send + 'static,
-        limit: usize,
-        overflow: Arc<AtomicBool>,
-    ) -> JoinHandle<Vec<u8>> {
-        std::thread::spawn(move || {
-            let mut output = Vec::new();
-            let mut buffer = [0_u8; 8 * 1024];
-            loop {
-                match reader.read(&mut buffer) {
-                    Ok(0) | Err(_) => break,
-                    Ok(read) => {
-                        let remaining = limit.saturating_sub(output.len());
-                        output.extend_from_slice(&buffer[..read.min(remaining)]);
-                        if read > remaining {
-                            overflow.store(true, Ordering::Release);
-                            break;
-                        }
-                    }
+    enum ProcessCompletion {
+        Exited(ExitStatus),
+        Forced(ForcedStop),
+        Io(String),
+    }
+
+    fn monitor_child(
+        child: &mut Child,
+        cancel: &AtomicBool,
+        deadline: Duration,
+        stdout: &File,
+        stderr: &File,
+        stdout_limit: usize,
+        stderr_limit: usize,
+    ) -> ProcessCompletion {
+        let started = Instant::now();
+        loop {
+            let forced = if cancel.load(Ordering::Acquire) {
+                Some(ForcedStop::Cancelled)
+            } else if capture_exceeds(stdout, stdout_limit) {
+                Some(ForcedStop::StdoutLimit)
+            } else if capture_exceeds(stderr, stderr_limit) {
+                Some(ForcedStop::StderrLimit)
+            } else if started.elapsed() >= deadline {
+                Some(ForcedStop::Deadline)
+            } else {
+                None
+            };
+            if let Some(forced) = forced {
+                return match kill_and_wait(child) {
+                    Ok(_) => ProcessCompletion::Forced(forced),
+                    Err(error) => ProcessCompletion::Io(format!(
+                        "could not stop script process after {forced:?}: {error}"
+                    )),
+                };
+            }
+            match child.try_wait() {
+                Ok(Some(status)) => return ProcessCompletion::Exited(status),
+                Ok(None) => std::thread::sleep(Duration::from_millis(10)),
+                Err(error) => {
+                    let _ = kill_and_wait(child);
+                    return ProcessCompletion::Io(error.to_string());
                 }
             }
-            output
-        })
+        }
+    }
+
+    fn capture_exceeds(file: &File, limit: usize) -> bool {
+        file.metadata()
+            .is_ok_and(|metadata| metadata.len() > limit as u64)
+    }
+
+    fn read_bounded_capture(file: &mut File, limit: usize) -> std::io::Result<(Vec<u8>, bool)> {
+        file.seek(SeekFrom::Start(0))?;
+        let mut output = Vec::new();
+        Read::by_ref(file)
+            .take(limit.saturating_add(1) as u64)
+            .read_to_end(&mut output)?;
+        let exceeded = output.len() > limit || capture_exceeds(file, limit);
+        output.truncate(limit);
+        Ok((output, exceeded))
     }
 
     fn kill_and_wait(child: &mut Child) -> std::io::Result<ExitStatus> {
-        let _ = child.kill();
-        child.wait()
+        match child.kill() {
+            Ok(()) => child.wait(),
+            Err(kill_error) => match child.try_wait()? {
+                Some(status) => Ok(status),
+                None => Err(kill_error),
+            },
+        }
     }
 
     fn failed(failure: ScriptJobFailure, stderr: impl Into<String>) -> ScriptJobOutcome {
@@ -812,9 +919,19 @@ mod native {
     }
 
     fn write_script(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+        write_file(path, bytes)
+    }
+
+    fn write_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
         file.write_all(bytes)?;
         file.sync_all()
+    }
+
+    fn create_capture(path: &Path) -> std::io::Result<(File, File)> {
+        let writer = OpenOptions::new().write(true).create_new(true).open(path)?;
+        let reader = OpenOptions::new().read(true).open(path)?;
+        Ok((writer, reader))
     }
 
     fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -1056,6 +1173,79 @@ mod native {
                     ..
                 }
             ));
+        }
+
+        #[test]
+        fn deadline_does_not_wait_for_descendant_standard_handles() {
+            let Some(python) = python() else {
+                return;
+            };
+            let queue = queue(python, Duration::from_millis(100));
+            let started = Instant::now();
+            let handle = queue
+                .submit(ScriptJobRequest {
+                    input: input(),
+                    script: "import subprocess, sys\nsubprocess.Popen([sys.executable, '-c', 'import time; time.sleep(2)'])\nwhile True:\n    pass\n".into(),
+                })
+                .expect("submit child with descendant");
+            assert!(matches!(
+                wait(&queue, handle),
+                ScriptJobOutcome::Failed {
+                    failure: ScriptJobFailure::DeadlineExceeded,
+                    ..
+                }
+            ));
+            assert!(
+                started.elapsed() < Duration::from_secs(1),
+                "deadline waited for a surviving descendant's standard handles"
+            );
+        }
+
+        #[cfg(unix)]
+        #[test]
+        fn runtime_availability_rejects_oversized_version_output() {
+            use std::os::unix::fs::PermissionsExt;
+
+            let temporary = TemporaryDirectory::new().expect("temporary directory");
+            let executable = temporary.path.join("oversized-version");
+            write_script(
+                &executable,
+                b"#!/bin/sh\n/bin/dd if=/dev/zero bs=5000 count=1 2>/dev/null\n",
+            )
+            .expect("write executable");
+            let mut permissions = fs::metadata(&executable).expect("metadata").permissions();
+            permissions.set_mode(0o700);
+            fs::set_permissions(&executable, permissions).expect("make executable");
+
+            assert!(matches!(
+                ScriptRuntimeAvailability::check(executable),
+                ScriptRuntimeAvailability::Unavailable(message)
+                    if message.contains("exceeded 4096 bytes")
+            ));
+        }
+
+        #[cfg(unix)]
+        #[test]
+        fn result_capture_uses_the_preopened_file_identity() {
+            let Some(python) = python() else {
+                return;
+            };
+            let queue = queue(python, Duration::from_secs(2));
+            let handle = queue
+                .submit(ScriptJobRequest {
+                    input: input(),
+                    script: format!(
+                        "import json, os, sys\ndata = json.load(sys.stdin)\nos.unlink('stdout')\nwith open('stdout', 'w') as replacement:\n    replacement.write('not the result')\njson.dump({{'schema_version': {}, 'job_id': data['job_id'], 'input_hash': data['input_hash'], 'report': 'original capture', 'reads': [], 'edits': []}}, sys.stdout)\n",
+                        SCRIPT_RECIPE_SCHEMA_VERSION
+                    ),
+                })
+                .expect("submit capture replacement");
+            match wait(&queue, handle) {
+                ScriptJobOutcome::Completed { result, .. } => {
+                    assert_eq!(result.report, "original capture");
+                }
+                other => panic!("unexpected outcome: {other:?}"),
+            }
         }
 
         #[test]

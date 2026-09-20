@@ -9,7 +9,7 @@
 
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
@@ -141,14 +141,8 @@ impl ScriptLibrary {
     /// Load one direct script and compute the revision of its exact bytes.
     pub(crate) fn load(&self, name: &str) -> Result<ScriptDocument, ScriptLibraryError> {
         let path = self.script_path(name)?;
-        let metadata = regular_file_metadata(&path)?;
-        if metadata.len() > MAX_SCRIPT_BYTES as u64 {
-            return Err(ScriptLibraryError::TooLarge);
-        }
-        let bytes = fs::read(&path)?;
-        if bytes.len() > MAX_SCRIPT_BYTES {
-            return Err(ScriptLibraryError::TooLarge);
-        }
+        let (file, metadata) = open_regular_file(&path)?;
+        let bytes = read_bounded(file, metadata.len())?;
         let content = String::from_utf8(bytes).map_err(|_| ScriptLibraryError::InvalidUtf8)?;
         Ok(document(name, content, metadata.modified().ok()))
     }
@@ -195,10 +189,10 @@ impl ScriptLibrary {
     ) -> Result<ScriptDocument, ScriptLibraryError> {
         let old_path = self.script_path(old_name)?;
         let new_path = self.script_path(new_name)?;
+        self.check_expected(&old_path, Some(expected_revision))?;
         if old_path == new_path {
             return self.load(old_name);
         }
-        self.check_expected(&old_path, Some(expected_revision))?;
         match fs::symlink_metadata(&new_path) {
             Ok(_) => return Err(ScriptLibraryError::AlreadyExists),
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
@@ -242,14 +236,8 @@ impl ScriptLibrary {
     }
 
     fn load_path_revision(&self, path: &Path) -> Result<String, ScriptLibraryError> {
-        let metadata = regular_file_metadata(path)?;
-        if metadata.len() > MAX_SCRIPT_BYTES as u64 {
-            return Err(ScriptLibraryError::TooLarge);
-        }
-        let bytes = fs::read(path)?;
-        if bytes.len() > MAX_SCRIPT_BYTES {
-            return Err(ScriptLibraryError::TooLarge);
-        }
+        let (file, metadata) = open_regular_file(path)?;
+        let bytes = read_bounded(file, metadata.len())?;
         Ok(hex_digest(Sha256::digest(bytes)))
     }
 
@@ -288,18 +276,36 @@ fn document(name: &str, content: String, modified: Option<SystemTime>) -> Script
     ScriptDocument { metadata, content }
 }
 
-fn regular_file_metadata(path: &Path) -> Result<fs::Metadata, ScriptLibraryError> {
-    let metadata = fs::symlink_metadata(path).map_err(|error| {
+fn open_regular_file(path: &Path) -> Result<(File, fs::Metadata), ScriptLibraryError> {
+    let path_metadata = fs::symlink_metadata(path).map_err(|error| {
         if error.kind() == io::ErrorKind::NotFound {
             ScriptLibraryError::NotFound
         } else {
             ScriptLibraryError::Io(error)
         }
     })?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
+    if path_metadata.file_type().is_symlink() || !path_metadata.is_file() {
         return Err(ScriptLibraryError::NotFound);
     }
-    Ok(metadata)
+    let file = File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() {
+        return Err(ScriptLibraryError::NotFound);
+    }
+    Ok((file, metadata))
+}
+
+fn read_bounded(file: File, observed_size: u64) -> Result<Vec<u8>, ScriptLibraryError> {
+    if observed_size > MAX_SCRIPT_BYTES as u64 {
+        return Err(ScriptLibraryError::TooLarge);
+    }
+    let mut bytes = Vec::with_capacity(usize::try_from(observed_size).unwrap_or(MAX_SCRIPT_BYTES));
+    file.take(MAX_SCRIPT_BYTES.saturating_add(1) as u64)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > MAX_SCRIPT_BYTES {
+        return Err(ScriptLibraryError::TooLarge);
+    }
+    Ok(bytes)
 }
 
 fn validate_name(name: &str) -> Result<(), ScriptLibraryError> {
@@ -419,5 +425,24 @@ mod tests {
             fs::read_to_string(root.0.join("recipe.py")).expect("read external edit"),
             "print('external')\n"
         );
+        let error = library
+            .rename("recipe.py", "recipe.py", &saved.metadata.revision)
+            .expect_err("same-name rename must retain its revision guard");
+        assert!(matches!(error, ScriptLibraryError::Conflict { .. }));
+    }
+
+    #[test]
+    fn rejects_oversized_script_without_retaining_its_bytes() {
+        let root = TestDirectory::new("oversized");
+        let library = ScriptLibrary::open(&root.0).expect("open library");
+        fs::write(
+            root.0.join("oversized.py"),
+            vec![b'x'; MAX_SCRIPT_BYTES + 1],
+        )
+        .expect("write oversized script");
+        assert!(matches!(
+            library.load("oversized.py"),
+            Err(ScriptLibraryError::TooLarge)
+        ));
     }
 }
