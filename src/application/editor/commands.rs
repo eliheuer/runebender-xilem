@@ -28,9 +28,9 @@ impl Workspace {
     pub(crate) fn command_add_component(&mut self) {
         let base = self.component_base_buf.trim().to_string();
         let glyph = self.session.glyph_name.clone();
-        let Some(glyph_index) = self.font.index_of(&glyph) else {
+        if self.font.index_of(&glyph).is_none() {
             return;
-        };
+        }
         let Some(address) = self.font.active_layer_address(&glyph) else {
             self.note = "The active glyph layer is unavailable".into();
             return;
@@ -46,7 +46,6 @@ impl Workspace {
             self.note = format!("Cannot add component {base}");
             return;
         }
-        let undo_depth = self.font.master().undo_depth(glyph_index);
         let Ok(mut transaction) = self.font.project.begin_document_layer_transaction(&address)
         else {
             self.note = "The active glyph layer changed before adding the component".into();
@@ -75,7 +74,6 @@ impl Workspace {
                 &address,
                 runebender::document::history::HistoryDirection::Undo,
             ),
-            undo_depth,
         });
         self.metadata_redo.clear();
         if self.reload_canonical_layer(&address) {
@@ -95,14 +93,13 @@ impl Workspace {
             return;
         };
         let glyph = self.session.glyph_name.clone();
-        let Some(glyph_index) = self.font.index_of(&glyph) else {
+        if self.font.index_of(&glyph).is_none() {
             return;
-        };
+        }
         let Some(address) = self.font.active_layer_address(&glyph) else {
             self.note = "The active glyph layer is unavailable".into();
             return;
         };
-        let undo_depth = self.font.master().undo_depth(glyph_index);
         let Ok(mut transaction) = self.font.project.begin_document_layer_transaction(&address)
         else {
             self.note = "The active glyph layer changed before component alignment".into();
@@ -157,7 +154,6 @@ impl Workspace {
                 &address,
                 runebender::document::history::HistoryDirection::Undo,
             ),
-            undo_depth,
         });
         self.metadata_redo.clear();
         let _ = self.reload_canonical_layer(&address);
@@ -259,7 +255,6 @@ impl Workspace {
             self.note = "The active glyph layer is unavailable".into();
             return;
         };
-        let undo_depth = self.font.master().undo_depth(index);
         let outcome = match self
             .font
             .project
@@ -283,7 +278,6 @@ impl Workspace {
                     &address,
                     runebender::document::history::HistoryDirection::Undo,
                 ),
-                undo_depth,
             });
             self.metadata_redo.clear();
             self.font.rebuild_cache();
@@ -573,7 +567,6 @@ impl Workspace {
             return;
         };
         let active_source = self.font.project.source_id(self.font.active());
-        let undo_depth = self.font.master().undo_depth(index);
         let addresses = self
             .font
             .project
@@ -624,7 +617,6 @@ impl Workspace {
                         address,
                         runebender::document::history::HistoryDirection::Undo,
                     ),
-                    undo_depth,
                 });
                 self.metadata_redo.clear();
             }
@@ -1270,14 +1262,13 @@ impl Workspace {
             return;
         }
         let glyph = self.session.glyph_name.clone();
-        let Some(glyph_index) = self.font.index_of(&glyph) else {
+        if self.font.index_of(&glyph).is_none() {
             return;
-        };
+        }
         let Some(address) = self.font.active_layer_address(&glyph) else {
             self.note = "The active glyph layer is unavailable".into();
             return;
         };
-        let undo_depth = self.font.master().undo_depth(glyph_index);
         let Ok(mut transaction) = self.font.project.begin_document_layer_transaction(&address)
         else {
             self.note = "The active glyph layer changed before pasting".into();
@@ -1303,7 +1294,6 @@ impl Workspace {
                 &address,
                 runebender::document::history::HistoryDirection::Undo,
             ),
-            undo_depth,
         });
         self.metadata_redo.clear();
         if self.reload_canonical_layer(&address)
@@ -1366,13 +1356,15 @@ impl Workspace {
             return;
         }
         let name = self.session.glyph_name.clone();
-        let Some(index) = self.font.index_of(&name) else {
+        if self.font.index_of(&name).is_none() {
             return;
-        };
+        }
         let Some(address) = self.font.active_layer_address(&name) else {
             return;
         };
-        let undo_depth = self.font.master().undo_depth(index);
+        let undo_depth = self
+            .font
+            .history_depth(&name, runebender::document::history::HistoryDirection::Undo);
         let before = self.font.project.document_snapshot();
         match self
             .font
@@ -1409,9 +1401,9 @@ impl Workspace {
             return;
         }
         let name = self.session.glyph_name.clone();
-        let Some(index) = self.font.index_of(&name) else {
+        if self.font.index_of(&name).is_none() {
             return;
-        };
+        }
         let Some(address) = self.font.active_layer_address(&name) else {
             return;
         };
@@ -1425,7 +1417,9 @@ impl Workspace {
             self.note = "no background to swap".into();
             return;
         }
-        let undo_depth = self.font.master().undo_depth(index);
+        let undo_depth = self
+            .font
+            .history_depth(&name, runebender::document::history::HistoryDirection::Undo);
         let before = self.font.project.document_snapshot();
         match self
             .font
@@ -1465,13 +1459,15 @@ impl Workspace {
             return;
         }
         let name = self.session.glyph_name.clone();
-        let Some(index) = self.font.index_of(&name) else {
+        if self.font.index_of(&name).is_none() {
             return;
-        };
+        }
         let Some(source) = self.font.project.source_id(self.font.active()) else {
             return;
         };
-        let undo_depth = self.font.master().undo_depth(index);
+        let undo_depth = self
+            .font
+            .history_depth(&name, runebender::document::history::HistoryDirection::Undo);
         let before = self.font.project.document_snapshot();
         match self.font.project.clear_document_background(&name, source) {
             Ok(true) => {}

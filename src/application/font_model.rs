@@ -13,7 +13,9 @@ use kurbo::{BezPath, Rect};
 use runebender::analysis::category::GlyphCategory;
 use runebender::document::canonical_metadata::{CanonicalFontMetadata, KerningSide};
 use runebender::document::model::font_info::CanonicalFontInfo;
-use runebender::document::project::{CanonicalGlyphEntry, DocumentEditOutcome, Master, Project};
+#[cfg(test)]
+use runebender::document::project::Master;
+use runebender::document::project::{CanonicalGlyphEntry, DocumentEditOutcome, Project};
 use runebender::document::proposal;
 #[cfg(test)]
 use runebender::document::variable::{SourceEdit, SourceFontEdit};
@@ -123,6 +125,30 @@ impl FontModel {
         })
     }
 
+    /// Project-owned history depth for one active-source glyph layer.
+    pub(crate) fn history_depth(
+        &self,
+        glyph: &str,
+        direction: runebender::document::history::HistoryDirection,
+    ) -> usize {
+        self.active_layer_address(glyph).map_or(0, |address| {
+            self.project
+                .document_layer_history_depth(&address, direction)
+        })
+    }
+
+    /// Whether Project-owned history can replay one active-source glyph layer.
+    pub(crate) fn can_replay_history(
+        &self,
+        glyph: &str,
+        direction: runebender::document::history::HistoryDirection,
+    ) -> bool {
+        self.active_layer_address(glyph).is_some_and(|address| {
+            self.project
+                .can_replay_document_layer_history(&address, direction)
+        })
+    }
+
     pub(crate) fn preview_font(
         &self,
     ) -> Result<Option<Arc<runebender::document::compile::CompiledFont>>, String> {
@@ -191,6 +217,7 @@ impl FontModel {
 
     // ---- the active master ----
 
+    #[cfg(test)]
     pub(crate) fn master(&self) -> &Master {
         self.project.active_font()
     }
@@ -201,6 +228,7 @@ impl FontModel {
     }
 
     /// The active master's font, to read.
+    #[cfg(test)]
     pub(crate) fn font(&self) -> &norad::Font {
         &self.master().font
     }

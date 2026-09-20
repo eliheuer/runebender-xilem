@@ -45,6 +45,7 @@ pub(crate) struct Metrics {
 }
 
 impl Metrics {
+    #[cfg(test)]
     pub(crate) fn of(font: &norad::Font) -> Self {
         let info = &font.font_info;
         let upm = info.units_per_em.map(|u| u.as_f64()).unwrap_or(1000.0);
@@ -172,9 +173,7 @@ struct PenPt {
 impl Session {
     /// Build an inactive session with metrics from the canonical active source.
     pub(crate) fn inactive_from_model(font: &FontModel) -> Self {
-        let mut session = Self::inactive(font.font());
-        session.metrics = Metrics::of_canonical(font.font_info());
-        session
+        Self::inactive_with_metrics(Metrics::of_canonical(font.font_info()))
     }
 
     /// Build an editor session with metrics from the canonical active source.
@@ -182,12 +181,7 @@ impl Session {
         Self::new_from_project(&font.project, name, Metrics::of_canonical(font.font_info()))
     }
 
-    /// Makes the inactive session held while the overview has no glyph to open.
-    ///
-    /// The editor only reads this session in [`Mode::Editor`]. Keeping an
-    /// inert session here avoids making every editor-facing view optional when
-    /// a valid UFO has no glyphs yet; opening the first glyph replaces it.
-    pub(crate) fn inactive(font: &norad::Font) -> Self {
+    fn inactive_with_metrics(metrics: Metrics) -> Self {
         Self {
             glyph_name: String::new(),
             metaball_preview: BezPath::new(),
@@ -203,7 +197,7 @@ impl Session {
             active_metric_drag: None,
             active_metaball_drag: None,
             metaballs: metaballs::MetaballSelection::default(),
-            metrics: Metrics::of(font),
+            metrics,
             selection: HashSet::new(),
             viewport: ViewPort::new(),
             fitted: false,
@@ -2228,11 +2222,6 @@ impl Workspace {
             } else {
                 Ok(false)
             };
-            let undo_depth = self
-                .font
-                .index_of(&name)
-                .map(|index| self.font.master().undo_depth(index))
-                .unwrap_or_default();
             let commit = alignment.map_err(|error| error.to_string()).and_then(|_| {
                 self.font
                     .project
@@ -2242,15 +2231,15 @@ impl Workspace {
             match commit {
                 Ok(runebender::document::project::DocumentEditOutcome::Changed { .. }) => {
                     outcome = SessionSyncOutcome::Changed;
+                    let layer_history_depth = self.font.project.document_layer_history_depth(
+                        &address,
+                        runebender::document::history::HistoryDirection::Undo,
+                    );
                     self.metadata_undo.push(MetadataEdit::DocumentLayer {
                         glyph: name.clone(),
                         address: address.clone(),
                         label: label.into(),
-                        layer_history_depth: self.font.project.document_layer_history_depth(
-                            &address,
-                            runebender::document::history::HistoryDirection::Undo,
-                        ),
-                        undo_depth,
+                        layer_history_depth,
                     });
                     self.metadata_redo.clear();
                     if !session.reload_from_project(&self.font.project, &address) {

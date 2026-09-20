@@ -658,6 +658,32 @@ The focused regression covers canonical cross-source edit, Undo/Redo, rename int
 The complete binary suite passed 173 tests with four documented model or external-font tests ignored.
 Warning-denied native workspace/all-target Clippy, the release WASM build, warning-denied browser Clippy, formatting and diff checks passed.
 
+## Canonical application history and revision slice
+
+Implementation commit: `Track application history canonically`.
+Resolve its exact ID with `git log --format=%H --grep='^Track application history canonically$' -1`.
+Affected paths: `src/application/actions.rs`, editor commands, inspector, session, local-AI and Nodes tools, `src/application/font_model.rs`, architecture and migration records.
+
+Undo and Redo enablement, metadata ordering and session publication now query the active canonical layer and Project-owned history depth.
+`DocumentLayer` entries use their exact post-commit layer depth for Undo and the preceding depth for Redo, keeping rename and outline replay ordered on the same canonical stack.
+Local-AI and Nodes stale-result guards hash canonical default layers under stable source identity rather than reading the active UFO projection.
+Production application code no longer calls `FontModel::master` or `FontModel::font`; those accessors and the remaining mutable projection accessors are test-only until M13 removes their fixtures.
+
+Executed evidence:
+
+```sh
+cargo test --workspace --locked history -- --test-threads=1
+cargo test --workspace --locked revision -- --test-threads=1
+cargo test --locked --bin runebender -- --test-threads=1
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The focused history and revision regressions passed.
+The complete application suite passed 176 tests with four documented model or external-font tests ignored.
+Warning-denied native workspace/all-target Clippy passed with the existing `block v0.1.6` future-incompatibility notice.
+
 ## Next action
 
-Remove the remaining production read-only `FontModel::font` and legacy-history callers, then delete the compatibility Master shell and mutable guards during M13.
+Rewrite the remaining compatibility fixtures against canonical transactions, then delete the Master shell, mutable guards, legacy histories and source-history parking code during M13.

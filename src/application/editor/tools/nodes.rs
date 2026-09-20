@@ -405,7 +405,7 @@ impl Workspace {
         let master = self.font.master_names().get(self.font.active()).cloned();
         let device = self.nodes.device.clone();
         let glyphs = self.node_glyphs();
-        let foreground_revisions = match foreground_revisions(self.font.font(), &glyphs) {
+        let foreground_revisions = match foreground_revisions(&self.font, &glyphs) {
             Ok(revisions) => revisions,
             Err(error) => {
                 self.note = format!("Cannot capture node target: {error}");
@@ -550,7 +550,7 @@ impl Workspace {
         let current = self.document_id == job.document_id
             && self.font.source() == job.master_path
             && self.session.glyph_name == job.active_glyph
-            && foreground_is_current(self.font.font(), &job.foreground_revisions, job.all_glyphs);
+            && foreground_is_current(&self.font, &job.foreground_revisions, job.all_glyphs);
         if installed && current {
             self.reload_from_disk();
         }
@@ -763,7 +763,7 @@ mod tests {
             master_path: font_path,
             document_id: workspace.document_id,
             active_glyph: workspace.session.glyph_name.clone(),
-            foreground_revisions: foreground_revisions(workspace.font.font(), &[])
+            foreground_revisions: foreground_revisions(&workspace.font, &[])
                 .expect("the empty foreground can be revised"),
             all_glyphs: true,
             ..NodeJob::default()
@@ -879,7 +879,7 @@ mod tests {
             master_path: path.clone(),
             document_id: workspace.document_id,
             active_glyph: workspace.session.glyph_name.clone(),
-            foreground_revisions: foreground_revisions(workspace.font.font(), &target_names)
+            foreground_revisions: foreground_revisions(&workspace.font, &target_names)
                 .expect("the foreground revision is captured"),
             ..NodeJob::default()
         };
@@ -943,7 +943,7 @@ mod tests {
             master_path: path.clone(),
             document_id: workspace.document_id,
             active_glyph: workspace.session.glyph_name.clone(),
-            foreground_revisions: foreground_revisions(workspace.font.font(), &target_names)
+            foreground_revisions: foreground_revisions(&workspace.font, &target_names)
                 .expect("the foreground revision is captured"),
             ..NodeJob::default()
         };

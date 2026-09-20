@@ -23,6 +23,7 @@ use runebender::document::proposal::{self, ProposalSummary};
 use runebender::document::variable::GlyphLayerAddress;
 
 use crate::application::editor::session::Session;
+use crate::application::font_model::FontModel;
 use crate::application::view::canvas::grid::cells_of;
 use crate::application::workspace::{Mode, Workspace};
 
@@ -159,33 +160,44 @@ pub(crate) struct AiProgress;
 /// Capture canonical foreground revisions for named glyphs, or the whole
 /// default layer when `names` is empty.
 pub(crate) fn foreground_revisions(
-    font: &norad::Font,
+    font: &FontModel,
     names: &[String],
 ) -> Result<BTreeMap<String, String>, String> {
-    let glyphs: Vec<_> = if names.is_empty() {
-        font.default_layer().iter().collect()
+    let source = font
+        .project
+        .source_id(font.active())
+        .ok_or_else(|| "active source no longer exists".to_owned())?;
+    let layer = font
+        .project
+        .document_source(source)
+        .ok_or_else(|| "active source no longer exists".to_owned())?
+        .default_layer();
+    let names: Vec<_> = if names.is_empty() {
+        font.project
+            .glyph_names()
+            .filter(|name| font.project.document_layer(name, &layer).is_some())
+            .map(str::to_owned)
+            .collect()
     } else {
-        names
-            .iter()
-            .map(|name| {
-                font.get_glyph(name)
-                    .ok_or_else(|| format!("{name}: foreground glyph no longer exists"))
-            })
-            .collect::<Result<_, _>>()?
+        names.to_vec()
     };
-    glyphs
+    names
         .into_iter()
-        .map(|glyph| {
+        .map(|name| {
+            let glyph = font
+                .project
+                .document_layer(&name, &layer)
+                .ok_or_else(|| format!("{name}: foreground glyph no longer exists"))?;
             Ok((
-                glyph.name().to_string(),
-                runebender::document::edit_batch::glyph_revision(glyph)?,
+                name,
+                runebender::document::edit_batch::canonical_glyph_revision(glyph)?,
             ))
         })
         .collect()
 }
 
 pub(crate) fn foreground_is_current(
-    font: &norad::Font,
+    font: &FontModel,
     expected: &BTreeMap<String, String>,
     all_glyphs: bool,
 ) -> bool {
@@ -580,7 +592,7 @@ impl Workspace {
         let strength = self.ai.strength;
         let device = self.nodes.device.clone();
         let target_names: Vec<_> = glyph_name.iter().cloned().collect();
-        let foreground_revisions = match foreground_revisions(self.font.font(), &target_names) {
+        let foreground_revisions = match foreground_revisions(&self.font, &target_names) {
             Ok(revisions) => revisions,
             Err(error) => {
                 self.note = format!("Cannot capture model target: {error}");
@@ -667,7 +679,7 @@ impl Workspace {
             || self.font.source() != job.master_path
             || self.font.source() != job.source
             || self.session.glyph_name != job.active_glyph
-            || !foreground_is_current(self.font.font(), &job.foreground_revisions, job.all_glyphs)
+            || !foreground_is_current(&self.font, &job.foreground_revisions, job.all_glyphs)
         {
             self.note =
                 "font-ml result is stale after a document, master, glyph, or revision change"
@@ -841,7 +853,7 @@ mod tests {
             document_id: workspace.document_id,
             glyph: Some("A".into()),
             active_glyph: workspace.session.glyph_name.clone(),
-            foreground_revisions: foreground_revisions(workspace.font.font(), &target_names)
+            foreground_revisions: foreground_revisions(&workspace.font, &target_names)
                 .expect("the foreground revision is captured"),
             ..AiJob::default()
         };
@@ -988,7 +1000,7 @@ mod tests {
             document_id: workspace.document_id,
             glyph: Some("A".into()),
             active_glyph: workspace.session.glyph_name.clone(),
-            foreground_revisions: foreground_revisions(workspace.font.font(), &target_names)
+            foreground_revisions: foreground_revisions(&workspace.font, &target_names)
                 .expect("the foreground revision is captured"),
             ..AiJob::default()
         };
@@ -1037,7 +1049,7 @@ mod tests {
             document_id: workspace.document_id,
             glyph: Some("A".into()),
             active_glyph: workspace.session.glyph_name.clone(),
-            foreground_revisions: foreground_revisions(workspace.font.font(), &target_names)
+            foreground_revisions: foreground_revisions(&workspace.font, &target_names)
                 .expect("the foreground revision is captured"),
             ..AiJob::default()
         };
@@ -1058,13 +1070,19 @@ mod tests {
         let mut font = norad::Font::new();
         font.default_layer_mut()
             .insert_glyph(norad::Glyph::new("A"));
-        let expected = foreground_revisions(&font, &[]).expect("the layer can be revised");
+        let mut model =
+            FontModel::from_project(runebender::document::project::Project::from_source(
+                runebender::document::project::Master::from_font(
+                    font,
+                    PathBuf::from("Revision.ufo"),
+                ),
+            ));
+        let expected = foreground_revisions(&model, &[]).expect("the layer can be revised");
 
-        font.default_layer_mut()
-            .insert_glyph(norad::Glyph::new("B"));
+        assert!(model.add_glyph("B", 500.0, None));
 
-        assert!(!foreground_is_current(&font, &expected, true));
-        assert!(foreground_is_current(&font, &expected, false));
+        assert!(!foreground_is_current(&model, &expected, true));
+        assert!(foreground_is_current(&model, &expected, false));
     }
 
     #[cfg(unix)]

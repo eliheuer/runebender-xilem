@@ -81,10 +81,7 @@ impl Workspace {
                 .clone(),
             Mode::Nodes => return None,
         };
-        let undo_depth = self
-            .font
-            .index_of(&glyph)
-            .map_or(0, |index| self.font.master().undo_depth(index));
+        let undo_depth = self.font.history_depth(&glyph, HistoryDirection::Undo);
         Some((
             glyph,
             undo_depth,
@@ -326,10 +323,7 @@ impl Workspace {
         if before == after {
             return;
         }
-        let undo_depth = self
-            .font
-            .index_of(name)
-            .map_or(0, |index| self.font.master().undo_depth(index));
+        let undo_depth = self.font.history_depth(name, HistoryDirection::Undo);
         if self.apply_unicode_snapshot(name, &after) {
             self.metadata_undo.push(MetadataEdit::Unicode {
                 source_ids: (0..self.font.master_count())
@@ -388,10 +382,7 @@ impl Workspace {
         if new.is_empty() || new == old {
             return;
         }
-        let undo_depth = self
-            .font
-            .index_of(old)
-            .map_or(0, |index| self.font.master().undo_depth(index));
+        let undo_depth = self.font.history_depth(old, HistoryDirection::Undo);
         if self.rename_without_history(old, new) {
             self.metadata_undo.push(MetadataEdit::Rename {
                 before: old.into(),
@@ -456,12 +447,21 @@ impl Workspace {
             | MetadataEdit::SourceMetadata {
                 glyph, undo_depth, ..
             }
-            | MetadataEdit::DocumentLayer {
-                glyph, undo_depth, ..
-            }
             | MetadataEdit::SourceStructure {
                 glyph, undo_depth, ..
             } => (glyph, *undo_depth),
+            MetadataEdit::DocumentLayer {
+                glyph,
+                layer_history_depth,
+                ..
+            } => (
+                glyph,
+                if redo {
+                    layer_history_depth.saturating_sub(1)
+                } else {
+                    *layer_history_depth
+                },
+            ),
         };
         let current_name = match self.mode {
             Mode::Editor(_) => Some(self.session.glyph_name.as_str()),
@@ -474,10 +474,10 @@ impl Workspace {
         if current_name != Some(expected.as_str()) {
             return false;
         }
-        let Some(index) = self.font.index_of(expected) else {
+        if self.font.index_of(expected).is_none() {
             return false;
-        };
-        let depth = self.font.master().undo_depth(index);
+        }
+        let depth = self.font.history_depth(expected, HistoryDirection::Undo);
         if depth != undo_depth {
             // A lower depth means an older glyph edit must redo first; a
             // higher depth means a later edit must undo first.
@@ -634,12 +634,21 @@ impl Workspace {
             | MetadataEdit::SourceMetadata {
                 glyph, undo_depth, ..
             }
-            | MetadataEdit::DocumentLayer {
-                glyph, undo_depth, ..
-            }
             | MetadataEdit::SourceStructure {
                 glyph, undo_depth, ..
             } => (glyph, *undo_depth),
+            MetadataEdit::DocumentLayer {
+                glyph,
+                layer_history_depth,
+                ..
+            } => (
+                glyph,
+                if redo {
+                    layer_history_depth.saturating_sub(1)
+                } else {
+                    *layer_history_depth
+                },
+            ),
         };
         let current_name = match self.mode {
             Mode::Editor(_) => Some(self.session.glyph_name.as_str()),
@@ -700,10 +709,8 @@ impl Workspace {
             && document_layer_available
             && source_structure_available
             && current_name == Some(expected.as_str())
-            && self
-                .font
-                .index_of(expected)
-                .is_some_and(|index| self.font.master().undo_depth(index) == undo_depth)
+            && self.font.index_of(expected).is_some()
+            && self.font.history_depth(expected, HistoryDirection::Undo) == undo_depth
     }
 
     fn reorder_source_snapshot<T: Clone>(
