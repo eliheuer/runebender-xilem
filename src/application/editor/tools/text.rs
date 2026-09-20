@@ -223,10 +223,14 @@ impl TextState {
             glyph.codepoints.insert(codepoint);
             font.default_layer_mut().insert_glyph(glyph);
         }
+        let project = runebender::document::project::Project::from_source(
+            runebender::document::project::SourceInput::from_font(font, "text-test.ufo".into()),
+        );
+        let source = project.source_id(0).unwrap();
         Self::new(&TextInputs {
             context_id: (0, 0),
-            inventory: TextGlyphInventory::from_font(&font),
-            kerning: TextKerningModel::from_font(&font),
+            inventory: TextGlyphInventory::from_project(&project, source).unwrap(),
+            kerning: TextKerningModel::from_project(&project, source).unwrap(),
             outlines: Arc::new(Vec::new()),
             compiled: None,
             normalized: Vec::new(),
@@ -541,9 +545,13 @@ mod tests {
         other.width = 500.0;
         other.codepoints.insert('A');
         font.default_layer_mut().insert_glyph(other);
+        let project = runebender::document::project::Project::from_source(
+            runebender::document::project::SourceInput::from_font(font, "text-test.ufo".into()),
+        );
+        let source = project.source_id(0).unwrap();
         let mut inputs = TextInputs {
             context_id: (0, 0),
-            inventory: TextGlyphInventory::from_font(&font),
+            inventory: TextGlyphInventory::from_project(&project, source).unwrap(),
             kerning: TextKerningModel::default(),
             outlines: Arc::new(Vec::new()),
             compiled: None,

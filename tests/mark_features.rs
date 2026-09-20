@@ -9,6 +9,8 @@
 
 use std::path::PathBuf;
 
+use runebender::document::project::Project;
+use runebender::document::variable::SourceId;
 use runebender::text::features;
 use runebender::text::shape::{ShapedGlyph, ShapingFont, ShapingGlyph, ShapingSource};
 
@@ -24,14 +26,23 @@ fn fixture() -> PathBuf {
 
 /// The shaping font for Virtua with the generated features inlined,
 /// and the glyph names in id order.
-fn shaping_font(font: &norad::Font) -> ShapingFont {
-    let mut glyphs: Vec<ShapingGlyph> = font
-        .default_layer()
-        .iter()
-        .map(|g| ShapingGlyph {
-            name: g.name().to_string(),
-            advance: g.width,
-            unicodes: g.codepoints.iter().map(|c| c as u32).collect(),
+fn project() -> (Project, SourceId) {
+    let project = Project::load(&fixture()).expect("fixture loads");
+    let source = project.source_id(0).unwrap();
+    (project, source)
+}
+
+fn shaping_font(project: &Project, source: SourceId) -> ShapingFont {
+    let layer = project.document_source(source).unwrap().default_layer();
+    let mut glyphs: Vec<ShapingGlyph> = project
+        .glyph_names()
+        .filter_map(|name| {
+            let glyph = project.document_layer(name, &layer)?;
+            Some(ShapingGlyph {
+                name: name.to_owned(),
+                advance: glyph.width(),
+                unicodes: glyph.codepoints().map(u32::from).collect(),
+            })
         })
         .collect();
     glyphs.sort_by(|a, b| a.name.cmp(&b.name));
@@ -40,9 +51,14 @@ fn shaping_font(font: &norad::Font) -> ShapingFont {
         glyphs.insert(0, notdef);
     }
     ShapingFont::build(&ShapingSource {
-        units_per_em: 1024.0,
+        units_per_em: project
+            .document_font_info(source)
+            .unwrap()
+            .metrics
+            .resolved()
+            .units_per_em,
         glyphs,
-        features: features::with_generated(font),
+        features: features::with_generated_project(project, source).unwrap(),
     })
     .expect("the features compile")
 }
@@ -62,20 +78,19 @@ fn origins(shaped: &[ShapedGlyph]) -> Vec<(f64, f64)> {
         .collect()
 }
 
-fn anchor(font: &norad::Font, glyph: &str, name: &str) -> (f64, f64) {
-    let g = font.get_glyph(glyph).expect(glyph);
-    let a = g
-        .anchors
-        .iter()
-        .find(|a| a.name.as_ref().is_some_and(|n| n.as_str() == name))
-        .unwrap_or_else(|| panic!("{glyph} has no {name} anchor"));
-    (a.x, a.y)
+fn anchor(project: &Project, source: SourceId, glyph: &str, name: &str) -> (f64, f64) {
+    features::anchors_project(project, source, glyph)
+        .unwrap()
+        .into_iter()
+        .find(|(candidate, _, _)| candidate == name)
+        .map(|(_, x, y)| (x, y))
+        .unwrap_or_else(|| panic!("{glyph} has no {name} anchor"))
 }
 
 #[test]
 fn the_generated_features_name_virtuas_classes() {
-    let font = norad::Font::load(fixture()).expect("fixture loads");
-    let g = features::generate(&font);
+    let (project, source) = project();
+    let g = features::generate_project(&project, source).unwrap();
     assert!(g.classes.iter().any(|c| c == "top"), "{:?}", g.classes);
     assert!(g.classes.iter().any(|c| c == "bottom"));
     assert!(
@@ -100,15 +115,15 @@ fn the_generated_features_name_virtuas_classes() {
         &g.fea[..600]
     );
     assert!(
-        !features::defines_mark_features(&font.features),
+        !features::defines_mark_features(project.document_feature_text(source).unwrap()),
         "Virtua's fea has no mark feature"
     );
 }
 
 #[test]
 fn a_fatha_lands_on_the_alefs_top_anchor() {
-    let font = norad::Font::load(fixture()).expect("fixture loads");
-    let sf = shaping_font(&font);
+    let (project, source) = project();
+    let sf = shaping_font(&project, source);
     let shaped = sf.shape("\u{0627}\u{064E}", true).expect("shapes");
     let names: Vec<&str> = shaped
         .iter()
@@ -121,8 +136,8 @@ fn a_fatha_lands_on_the_alefs_top_anchor() {
     let at = origins(&shaped);
     let alef = at[names.iter().position(|n| *n == "alef-ar").unwrap()];
     let fatha = at[names.iter().position(|n| *n == "fatha-ar").unwrap()];
-    let (bx, by) = anchor(&font, "alef-ar", "top");
-    let (mx, my) = anchor(&font, "fatha-ar", "_top");
+    let (bx, by) = anchor(&project, source, "alef-ar", "top");
+    let (mx, my) = anchor(&project, source, "fatha-ar", "_top");
     assert_eq!(
         (fatha.0 - alef.0, fatha.1 - alef.1),
         (bx - mx, by - my),
@@ -132,8 +147,8 @@ fn a_fatha_lands_on_the_alefs_top_anchor() {
 
 #[test]
 fn an_acute_lands_on_the_b() {
-    let font = norad::Font::load(fixture()).expect("fixture loads");
-    let sf = shaping_font(&font);
+    let (project, source) = project();
+    let sf = shaping_font(&project, source);
     // b, not a: the font has aacute, so a plus U+0301 composes to it
     // before positioning runs, which is right and not what this tests.
     let shaped = sf.shape("b\u{0301}", false).expect("shapes");
@@ -143,8 +158,8 @@ fn an_acute_lands_on_the_b() {
         .collect();
     assert_eq!(names, ["b", "acutecomb"], "{names:?}");
     let at = origins(&shaped);
-    let (bx, by) = anchor(&font, "b", "top");
-    let (mx, my) = anchor(&font, "acutecomb", "_top");
+    let (bx, by) = anchor(&project, source, "b", "top");
+    let (mx, my) = anchor(&project, source, "acutecomb", "_top");
     assert_eq!(
         (at[1].0 - at[0].0, at[1].1 - at[0].1),
         (bx - mx, by - my),
@@ -156,8 +171,8 @@ fn an_acute_lands_on_the_b() {
 fn a_sukun_stacks_on_a_shadda_through_mkmk() {
     // sukun, not fatha: shadda plus fatha is a ligature the font draws
     // as one glyph; shadda plus sukun stays two marks, one on the other.
-    let font = norad::Font::load(fixture()).expect("fixture loads");
-    let sf = shaping_font(&font);
+    let (project, source) = project();
+    let sf = shaping_font(&project, source);
     let shaped = sf.shape("\u{0627}\u{0651}\u{0652}", true).expect("shapes");
     let names: Vec<&str> = shaped
         .iter()
@@ -171,10 +186,10 @@ fn a_sukun_stacks_on_a_shadda_through_mkmk() {
             .unwrap_or_else(|| panic!("{n} in {names:?}"))]
     };
     let (alef, shadda, sukun) = (find("alef-ar"), find("shadda-ar"), find("sukun-ar"));
-    let (atx, aty) = anchor(&font, "alef-ar", "top");
-    let (s_x, s_y) = anchor(&font, "shadda-ar", "_top");
-    let (stx, sty) = anchor(&font, "shadda-ar", "top");
-    let (k_x, k_y) = anchor(&font, "sukun-ar", "_top");
+    let (atx, aty) = anchor(&project, source, "alef-ar", "top");
+    let (s_x, s_y) = anchor(&project, source, "shadda-ar", "_top");
+    let (stx, sty) = anchor(&project, source, "shadda-ar", "top");
+    let (k_x, k_y) = anchor(&project, source, "sukun-ar", "_top");
     assert_eq!(
         (shadda.0 - alef.0, shadda.1 - alef.1),
         (atx - s_x, aty - s_y),
@@ -190,9 +205,9 @@ fn a_sukun_stacks_on_a_shadda_through_mkmk() {
 #[test]
 fn the_text_buffer_lays_a_fatha_on_the_beh() {
     use runebender::text::buffer::{TextBuffer, TextGlyphInventory};
-    let font = norad::Font::load(fixture()).expect("fixture loads");
+    let (project, source) = project();
     // The shaper's answer, to hold the buffer to.
-    let sf = shaping_font(&font);
+    let sf = shaping_font(&project, source);
     let shaped = sf.shape("\u{0628}\u{064E}", true).expect("shapes");
     let names: Vec<&str> = shaped
         .iter()
@@ -206,13 +221,13 @@ fn the_text_buffer_lays_a_fatha_on_the_beh() {
     let fatha = at[names.iter().position(|n| *n == "fatha-ar").unwrap()];
     // beh-ar has no anchors of its own; its top comes from behDotless-ar
     // through the component, and the fatha's _top lands on it.
-    let beh_glyph = font.get_glyph("beh-ar").unwrap();
-    let (tx, ty) = features::anchors(&font, beh_glyph)
+    let (tx, ty) = features::anchors_project(&project, source, "beh-ar")
+        .unwrap()
         .into_iter()
         .find(|(n, _, _)| n == "top")
         .map(|(_, x, y)| (x, y))
         .expect("beh-ar offers top through its components");
-    let (mx, my) = anchor(&font, "fatha-ar", "_top");
+    let (mx, my) = anchor(&project, source, "fatha-ar", "_top");
     assert_eq!(
         (fatha.0 - beh.0, fatha.1 - beh.1),
         (tx - mx, ty - my),
@@ -220,7 +235,7 @@ fn the_text_buffer_lays_a_fatha_on_the_beh() {
     );
 
     let mut buffer = TextBuffer::new();
-    buffer.set_glyph_inventory(TextGlyphInventory::from_font(&font));
+    buffer.set_glyph_inventory(TextGlyphInventory::from_project(&project, source).unwrap());
     assert!(buffer.insert_character('\u{0628}'));
     assert!(buffer.insert_character('\u{064E}'));
     let layout = buffer.layout(1200.0);

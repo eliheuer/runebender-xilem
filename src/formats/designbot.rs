@@ -5,12 +5,19 @@
 
 use serde_json::{Value, json};
 
+use crate::document::LayerView;
+use crate::document::canonical_metadata::CanonicalFontMetadata;
+use crate::document::experiments::Experiment;
+use crate::document::project::Project;
+use crate::document::variable::{GlyphLayerAddress, LayerId, SourceId};
+
 /// Build an isolated-glyph proof from the supplied source font or proposal layer.
 /// Geometry is resolved before transport; no source files are read by Designbot.
 #[allow(
     clippy::cast_possible_truncation,
     reason = "Scene dimensions are bounded positive integers"
 )]
+#[cfg(test)]
 pub fn scene(font: &norad::Font, layer: Option<&str>, names: &[String]) -> Result<Value, String> {
     use kurbo::Affine;
     if names.is_empty() || names.len() > 256 {
@@ -42,6 +49,113 @@ pub fn scene(font: &norad::Font, layer: Option<&str>, names: &[String]) -> Resul
         let path = Affine::translate((x, y))
             * Affine::scale(scale)
             * crate::outline::glyph_paths::glyph_to_bezpath(glyph, font);
+        paths.push(json!({"d":path.to_svg()}));
+        labels
+            .push(json!({"text":name,"x":x,"y":y-24.0*reduction,"size":(12.0*reduction).max(1.0)}));
+    }
+    Ok(
+        json!({"version":1,"width":(columns as f64*cell*reduction).round() as u64,"height":height.round() as u64,"paths":paths,"labels":labels}),
+    )
+}
+
+/// Build an isolated-glyph scene directly from one canonical Project source.
+pub fn scene_project(
+    project: &Project,
+    source: SourceId,
+    layer: Option<&str>,
+    names: &[String],
+) -> Result<Value, String> {
+    let default = project
+        .document_source(source)
+        .ok_or("unknown source")?
+        .default_layer();
+    let selected = layer.map(|name| LayerId {
+        source,
+        name: name.to_owned(),
+    });
+    if let Some(selected) = &selected
+        && !project
+            .document_source_layer_names(source)
+            .is_some_and(|names| names.contains(&selected.name.as_str()))
+    {
+        return Err(format!("no layer named {}", selected.name));
+    }
+    let units_per_em = project
+        .document_font_info(source)
+        .ok_or("unknown source font information")?
+        .metrics
+        .resolved()
+        .units_per_em;
+    scene_canonical(units_per_em, names, |name| {
+        let layer = selected
+            .as_ref()
+            .filter(|layer| project.document_layer(name, layer).is_some())
+            .unwrap_or(&default);
+        project
+            .document_layer_path(&GlyphLayerAddress {
+                glyph: name.to_owned(),
+                layer: layer.clone(),
+            })
+            .map_err(|error| error.to_string())
+    })
+}
+
+/// Build an isolated-glyph scene from one canonical experiment snapshot.
+pub fn scene_experiment(
+    project: &Project,
+    experiment: &Experiment,
+    layer: Option<&str>,
+    names: &[String],
+) -> Result<Value, String> {
+    if let Some(layer) = layer
+        && !experiment
+            .layer_drafts()
+            .any(|(address, _)| address.layer.name == layer)
+    {
+        return Err(format!("no layer named {layer}"));
+    }
+    let units_per_em = project
+        .document_font_info(experiment.root)
+        .ok_or("unknown experiment source font information")?
+        .metrics
+        .resolved()
+        .units_per_em;
+    scene_canonical(units_per_em, names, |name| {
+        let (selected, _) = experiment
+            .selected_layer(name, layer)
+            .or_else(|| experiment.selected_layer(name, None))
+            .ok_or_else(|| format!("no glyph named {name}"))?;
+        experiment
+            .layer_path(name, &selected)
+            .map_err(|error| error.to_string())
+    })
+}
+
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "Scene dimensions are bounded positive integers"
+)]
+fn scene_canonical(
+    units_per_em: f64,
+    names: &[String],
+    mut path: impl FnMut(&str) -> Result<kurbo::BezPath, String>,
+) -> Result<Value, String> {
+    use kurbo::Affine;
+    if names.is_empty() || names.len() > 256 {
+        return Err("proof requires 1 to 256 glyphs".into());
+    }
+    let columns = names.len().min(6);
+    let rows = names.len().div_ceil(columns);
+    let cell = 256.0;
+    let height = (rows as f64 * cell).min(2048.0);
+    let reduction = height / (rows as f64 * cell);
+    let scale = 190.0 / units_per_em * reduction;
+    let mut paths = Vec::new();
+    let mut labels = Vec::new();
+    for (index, name) in names.iter().enumerate() {
+        let x = ((index % columns) as f64 * cell + 24.0) * reduction;
+        let y = height - ((index / columns) as f64 * cell + 205.0) * reduction;
+        let path = Affine::translate((x, y)) * Affine::scale(scale) * path(name)?;
         paths.push(json!({"d":path.to_svg()}));
         labels
             .push(json!({"text":name,"x":x,"y":y-24.0*reduction,"size":(12.0*reduction).max(1.0)}));
@@ -124,8 +238,9 @@ pub fn render(scene: &Value, pdf: bool) -> Result<Vec<u8>, String> {
 }
 
 /// A one-page Latin kerning specimen from live outlines, shaped with harfrust.
-/// Uses UFO kerning with `kern` disabled in feature shaping to avoid double kerning.
+/// Uses canonical kerning with `kern` disabled in feature shaping to avoid double kerning.
 /// Other feature positioning remains active. Fails on unsupported text or feature errors.
+#[cfg(test)]
 pub fn specimen(font: &norad::Font, text: &str) -> Result<Value, String> {
     use crate::text::shape::{ShapingFont, ShapingGlyph, ShapingSource};
     use kurbo::Affine;
@@ -216,7 +331,180 @@ pub fn specimen(font: &norad::Font, text: &str) -> Result<Value, String> {
     Ok(json!({"version":1,"width":612,"height":792,"paths":paths,"labels":labels}))
 }
 
+/// Build a one-page specimen from one canonical Project source.
+pub fn specimen_project(project: &Project, source: SourceId, text: &str) -> Result<Value, String> {
+    let default = project
+        .document_source(source)
+        .ok_or("unknown source")?
+        .default_layer();
+    let info = project
+        .document_font_info(source)
+        .ok_or("unknown source font information")?;
+    let layers = project
+        .glyph_names()
+        .filter_map(|name| {
+            project
+                .document_layer(name, &default)
+                .map(|layer| (name.to_owned(), layer))
+        })
+        .collect();
+    specimen_canonical(
+        info.metrics.resolved().units_per_em,
+        project.document_feature_text(source).unwrap_or_default(),
+        layers,
+        project
+            .document_font_metadata(source)
+            .ok_or("unknown source metadata")?,
+        |name| {
+            project
+                .document_layer_path(&GlyphLayerAddress {
+                    glyph: name.to_owned(),
+                    layer: default.clone(),
+                })
+                .map_err(|error| error.to_string())
+        },
+        text,
+    )
+}
+
+/// Build a one-page specimen from one canonical experiment snapshot.
+pub fn specimen_experiment(
+    project: &Project,
+    experiment: &Experiment,
+    text: &str,
+) -> Result<Value, String> {
+    let info = project
+        .document_font_info(experiment.root)
+        .ok_or("unknown experiment source font information")?;
+    let names = experiment
+        .layer_drafts()
+        .map(|(address, _)| address.glyph.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    let layers = names
+        .into_iter()
+        .filter_map(|name| {
+            experiment
+                .selected_layer(&name, None)
+                .map(|(_, layer)| (name, layer))
+        })
+        .collect();
+    specimen_canonical(
+        info.metrics.resolved().units_per_em,
+        project
+            .document_feature_text(experiment.root)
+            .unwrap_or_default(),
+        layers,
+        experiment.font_metadata(),
+        |name| {
+            let (selected, _) = experiment
+                .selected_layer(name, None)
+                .ok_or_else(|| format!("missing glyph {name}"))?;
+            experiment
+                .layer_path(name, &selected)
+                .map_err(|error| error.to_string())
+        },
+        text,
+    )
+}
+
+fn specimen_canonical<'a>(
+    units_per_em: f64,
+    features: &str,
+    layers: Vec<(String, LayerView<'a>)>,
+    metadata: &CanonicalFontMetadata,
+    mut path: impl FnMut(&str) -> Result<kurbo::BezPath, String>,
+    text: &str,
+) -> Result<Value, String> {
+    use crate::text::shape::{ShapingFont, ShapingGlyph, ShapingSource};
+    use kurbo::Affine;
+    if text.is_empty()
+        || text.len() > 256
+        || !text.is_ascii()
+        || text
+            .chars()
+            .any(|character| character.is_control() && character != '\n')
+    {
+        return Err(
+            "MVP text proofs accept 1 to 256 basic Latin characters, with optional newlines".into(),
+        );
+    }
+    let available = layers
+        .iter()
+        .map(|(name, _)| name.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    let mut glyphs = layers
+        .iter()
+        .map(|(name, layer)| ShapingGlyph {
+            name: name.clone(),
+            advance: layer.width(),
+            unicodes: layer.codepoints().map(u32::from).collect(),
+        })
+        .collect::<Vec<_>>();
+    glyphs.sort_by_key(|glyph| (glyph.name != ".notdef", glyph.name.clone()));
+    if glyphs.first().is_none_or(|glyph| glyph.name != ".notdef") {
+        glyphs.insert(
+            0,
+            ShapingGlyph {
+                name: ".notdef".into(),
+                advance: units_per_em * 0.5,
+                unicodes: vec![],
+            },
+        );
+    }
+    let shaper = ShapingFont::build(&ShapingSource {
+        units_per_em,
+        glyphs,
+        features: features.to_owned(),
+    })?;
+    let mut paths = Vec::new();
+    let mut labels = Vec::new();
+    let mut baseline = 742.0;
+    for size in [18.0, 24.0, 36.0, 48.0] {
+        let scale = size / units_per_em;
+        labels.push(json!({"text":format!("{size} pt / live UFO kerning"),"x":30,"y":baseline+16.0,"size":10}));
+        for line in text.lines() {
+            let shaped = shaper.shape_with_features(line, false, &[("kern".into(), false)])?;
+            let mut x = 30.0;
+            let mut previous: Option<&str> = None;
+            for item in shaped {
+                let name = shaper
+                    .glyph_name(item.glyph_id)
+                    .ok_or("invalid shaped glyph")?;
+                if name == ".notdef" || !available.contains(name) {
+                    return Err("specimen contains an unmapped character".into());
+                }
+                let kern = previous
+                    .and_then(|left| metadata.resolved_kerning(left, name))
+                    .unwrap_or(0.0);
+                if x + (kern + item.x_advance) * scale > 582.0 {
+                    x = 30.0;
+                    baseline -= size * 1.5;
+                    previous = None;
+                }
+                if baseline < 40.0 {
+                    return Err("specimen exceeds one page; use shorter text".into());
+                }
+                if previous.is_some() {
+                    x += kern * scale;
+                }
+                let glyph_path = Affine::translate((
+                    x + item.x_offset * scale,
+                    baseline + item.y_offset * scale,
+                )) * Affine::scale(scale)
+                    * path(name)?;
+                paths.push(json!({"d":glyph_path.to_svg()}));
+                x += item.x_advance * scale;
+                previous = Some(name);
+            }
+            baseline -= size * 1.5;
+        }
+        baseline -= 32.0;
+    }
+    Ok(json!({"version":1,"width":612,"height":792,"paths":paths,"labels":labels}))
+}
+
 /// Resolve pair exceptions before side-specific UFO group pairs.
+#[cfg(test)]
 fn pair_kerning(font: &norad::Font, left: &str, right: &str) -> f64 {
     let left_group = font
         .groups

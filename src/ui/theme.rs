@@ -12,6 +12,7 @@
 
 use std::collections::HashMap;
 
+#[cfg(test)]
 use crate::document::model::glyph_metadata::{MARK_COLOR_KEY, MARK_LABEL_KEY};
 use crate::ui::color::ColorRgba;
 
@@ -389,6 +390,7 @@ pub fn load_theme(theme_id: &str) -> Option<Theme> {
 /// Writes `public.markColor`, the fixed palette colour other editors
 /// need, and `com.runebender.markLabel`, what the mark means,
 /// together, or removes both.
+#[cfg(test)]
 pub fn set_glyph_mark(glyph: &mut norad::Glyph, label: Option<&str>) {
     match label.and_then(ufo_rgba_for_label) {
         Some(rgba) => {
@@ -427,6 +429,7 @@ fn hue_of(r: f64, g: f64, b: f64) -> Option<f64> {
 /// present, otherwise its `public.markColor` snapped to the nearest
 /// palette hue. The snapped label is display only and never written
 /// back.
+#[cfg(test)]
 pub fn mark_label_for_glyph(glyph: &norad::Glyph, theme: &Theme) -> Option<String> {
     if let Some(plist::Value::String(label)) = glyph.lib.get(MARK_LABEL_KEY)
         && theme.mark(label).is_some()
@@ -439,6 +442,20 @@ pub fn mark_label_for_glyph(glyph: &norad::Glyph, theme: &Theme) -> Option<Strin
     label_for_rgba(rgba, theme)
 }
 
+/// Resolve the display mark for one canonical glyph layer.
+pub fn mark_label_for_layer(
+    layer: crate::document::LayerView<'_>,
+    theme: &Theme,
+) -> Option<String> {
+    if let Ok(Some(label)) = layer.mark_label()
+        && theme.mark(label).is_some()
+    {
+        return Some(label.to_owned());
+    }
+    let color = layer.mark_color().ok().flatten()?;
+    label_for_channels(color.red, color.green, color.blue, theme)
+}
+
 /// Snap a UFO "r,g,b,a" colour (0–1 floats) to the nearest palette
 /// label by hue. `None` for greys and colours far from every hue.
 pub fn label_for_rgba(rgba: &str, theme: &Theme) -> Option<String> {
@@ -449,7 +466,11 @@ pub fn label_for_rgba(rgba: &str, theme: &Theme) -> Option<String> {
     if parts.len() < 3 {
         return None;
     }
-    let hue = hue_of(parts[0], parts[1], parts[2])?;
+    label_for_channels(parts[0], parts[1], parts[2], theme)
+}
+
+fn label_for_channels(red: f64, green: f64, blue: f64, theme: &Theme) -> Option<String> {
+    let hue = hue_of(red, green, blue)?;
     let mut best: Option<&str> = None;
     let mut best_distance = f64::INFINITY;
     for (name, color) in &theme.marks {

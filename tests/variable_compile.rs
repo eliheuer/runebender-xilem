@@ -243,9 +243,8 @@ fn text_buffer_applies_variable_kerning_once_and_reuses_compilation_across_locat
         "slider-only location changes must reuse immutable compiled inputs"
     );
     let mut buffer = TextBuffer::new();
-    let source = project.encode_ufo_source(SourceId(0)).unwrap();
-    buffer.set_glyph_inventory(TextGlyphInventory::from_font(&source));
-    buffer.set_kerning_model(TextKerningModel::from_font(&source));
+    buffer.set_glyph_inventory(TextGlyphInventory::from_project(&project, SourceId(0)).unwrap());
+    buffer.set_kerning_model(TextKerningModel::from_project(&project, SourceId(0)).unwrap());
     buffer.set_feature_overrides(vec![("liga".into(), false)]);
     buffer.set_compiled_font(Some(compiled.bytes.clone()), vec![1.0]);
     buffer.insert_character('A');

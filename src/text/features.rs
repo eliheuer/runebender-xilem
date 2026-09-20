@@ -31,6 +31,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+#[cfg(test)]
 use norad::{Font, Glyph};
 
 use crate::document::LayerView;
@@ -75,10 +76,12 @@ impl Generated {
 /// one of the same name, so a dot placed on a base hands on its own
 /// `bottom`. Attaching anchors (`_top`) never propagate: a composite
 /// is not a mark because it holds one.
+#[cfg(test)]
 pub fn anchors(font: &Font, glyph: &Glyph) -> Vec<(String, f64, f64)> {
     effective_anchors(font, glyph, 0)
 }
 
+#[cfg(test)]
 fn effective_anchors(font: &Font, glyph: &Glyph, depth: usize) -> Vec<(String, f64, f64)> {
     let own: Vec<(String, f64, f64)> = glyph
         .anchors
@@ -111,6 +114,7 @@ fn effective_anchors(font: &Font, glyph: &Glyph, depth: usize) -> Vec<(String, f
 
 /// The feature text for a font, deterministic: glyphs and classes in
 /// name order, coordinates rounded to units.
+#[cfg(test)]
 pub fn generate(font: &Font) -> Generated {
     let glyphs = font
         .default_layer()
@@ -153,6 +157,22 @@ pub fn generate_project(project: &Project, source: SourceId) -> Option<Generated
             .filter_map(|name| project.document_layer(name, &layer)),
         |name| project.document_layer(name, &layer),
     ))
+}
+
+/// Read the effective anchors for one canonical source glyph.
+pub fn anchors_project(
+    project: &Project,
+    source: SourceId,
+    glyph: &str,
+) -> Option<Vec<(String, f64, f64)>> {
+    let layer = project.document_source(source)?.default_layer();
+    let glyph = project.document_layer(glyph, &layer)?;
+    Some(
+        effective_document_anchors(glyph, |name| project.document_layer(name, &layer))
+            .into_iter()
+            .map(|(name, point)| (name, point.x, point.y))
+            .collect(),
+    )
 }
 
 #[derive(Debug)]
@@ -310,6 +330,7 @@ pub fn defines_mark_features(fea: &str) -> bool {
 /// generated features, unless the file defines its own. The include
 /// line `--write` adds is dropped, since the text is inlined here and
 /// the in-memory compiler follows no includes.
+#[cfg(test)]
 pub fn with_generated(font: &Font) -> String {
     let own: String = font
         .features

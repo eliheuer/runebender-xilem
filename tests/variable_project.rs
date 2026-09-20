@@ -578,7 +578,19 @@ fn canonical_glyph_entries_match_the_ufo_codec_projection() {
         );
         assert_eq!(
             entry.mark(),
-            runebender::ui::theme::mark_label_for_glyph(glyph, &theme).as_deref()
+            runebender::ui::theme::mark_label_for_layer(
+                project
+                    .document_layer(
+                        entry.name(),
+                        &project
+                            .document_source(SourceId(0))
+                            .unwrap()
+                            .default_layer()
+                    )
+                    .unwrap(),
+                &theme,
+            )
+            .as_deref()
         );
     }
     assert!(
@@ -6399,15 +6411,10 @@ fn source_image_install_is_validated_and_saved_without_mutable_font_access() {
     assert_eq!(project.document_revision(), revision.wrapping_add(1));
     assert_eq!(project.document_source_is_modified(source), dirty);
 
-    let placed = norad::Image::new(
+    let placed = runebender::document::LayerImage::new(
         image_path.clone(),
         None,
-        norad::AffineTransform {
-            x_scale: 0.5,
-            y_scale: 0.5,
-            y_offset: -200.0,
-            ..norad::AffineTransform::default()
-        },
+        kurbo::Affine::new([0.5, 0.0, 0.0, 0.5, 0.0, -200.0]),
     )
     .unwrap();
     project
@@ -7765,11 +7772,12 @@ fn imported_contour_append_and_replace_are_atomic_and_persistable() {
         .collect::<Vec<_>>();
     let exact = project.encode_ufo_source(SourceId(0)).unwrap();
     let exact_contours = exact.get_glyph("A").unwrap().contours.clone();
+    let exact_import = runebender::formats::ufo::decode_contours(&exact_contours).unwrap();
     let revision = project.document_revision();
     assert_eq!(
         project
             .edit_document_layer("A", &layer, |draft| {
-                assert!(!draft.replace_imported_contours(&exact_contours)?);
+                assert!(!draft.replace_imported_contours(exact_import)?);
                 Ok(())
             })
             .unwrap(),
@@ -7806,13 +7814,7 @@ fn imported_contour_append_and_replace_are_atomic_and_persistable() {
     let mut invalid = imported.clone();
     invalid.points[1].x = f64::NAN;
     let snapshot = project.document_snapshot();
-    assert_eq!(
-        project.edit_document_layer("A", &layer, |draft| {
-            draft.append_imported_contours(&[imported.clone(), invalid])?;
-            Ok(())
-        }),
-        Err(runebender::document::DocumentEditError::NonFinite)
-    );
+    assert!(runebender::formats::ufo::decode_contours(&[imported.clone(), invalid]).is_err());
     assert_eq!(project.document_snapshot(), snapshot);
     assert_eq!(project.document_revision(), revision);
 
@@ -7825,33 +7827,42 @@ fn imported_contour_append_and_replace_are_atomic_and_persistable() {
     );
     let mut duplicate_identifier = imported.clone();
     duplicate_identifier.replace_identifier(norad::Identifier::new("surviving-component").unwrap());
-    for invalid in [malformed, duplicate_identifier] {
-        let before = project.document_snapshot();
-        let before_revision = project.document_revision();
-        assert_eq!(
-            project.edit_document_layer("A", &layer, |draft| {
-                draft.append_imported_contours(std::slice::from_ref(&invalid))?;
-                Ok(())
-            }),
-            Err(runebender::document::DocumentEditError::InvalidLayerMetadata)
-        );
-        assert_eq!(project.document_snapshot(), before);
-        assert_eq!(project.document_revision(), before_revision);
-        assert_eq!(
-            project.edit_document_layer("A", &layer, |draft| {
-                draft.replace_imported_contours(std::slice::from_ref(&invalid))?;
-                Ok(())
-            }),
-            Err(runebender::document::DocumentEditError::InvalidLayerMetadata)
-        );
-        assert_eq!(project.document_snapshot(), before);
-        assert_eq!(project.document_revision(), before_revision);
-    }
+    let before = project.document_snapshot();
+    let before_revision = project.document_revision();
+    assert!(runebender::formats::ufo::decode_contours(&[malformed]).is_err());
+    assert_eq!(project.document_snapshot(), before);
+    assert_eq!(project.document_revision(), before_revision);
+    let invalid = duplicate_identifier;
+    let before = project.document_snapshot();
+    let before_revision = project.document_revision();
+    let decoded = runebender::formats::ufo::decode_contours(std::slice::from_ref(&invalid))
+        .expect("the standalone contour is valid");
+    assert_eq!(
+        project.edit_document_layer("A", &layer, |draft| {
+            draft.append_imported_contours(decoded)?;
+            Ok(())
+        }),
+        Err(runebender::document::DocumentEditError::InvalidLayerMetadata)
+    );
+    assert_eq!(project.document_snapshot(), before);
+    assert_eq!(project.document_revision(), before_revision);
+    let decoded = runebender::formats::ufo::decode_contours(std::slice::from_ref(&invalid))
+        .expect("the standalone contour is valid");
+    assert_eq!(
+        project.edit_document_layer("A", &layer, |draft| {
+            draft.replace_imported_contours(decoded)?;
+            Ok(())
+        }),
+        Err(runebender::document::DocumentEditError::InvalidLayerMetadata)
+    );
+    assert_eq!(project.document_snapshot(), before);
+    assert_eq!(project.document_revision(), before_revision);
 
     let mut pasted = None;
+    let imported_payload = runebender::formats::ufo::decode_contours(&[imported.clone()]).unwrap();
     let DocumentEditOutcome::Changed { change, .. } = project
         .edit_document_layer("A", &layer, |draft| {
-            pasted = Some(draft.append_imported_contours(&[imported.clone()])?);
+            pasted = Some(draft.append_imported_contours(imported_payload)?);
             Ok(())
         })
         .unwrap()
@@ -7881,13 +7892,15 @@ fn imported_contour_append_and_replace_are_atomic_and_persistable() {
     replacement.points[0].x = 225.0;
     let mut second_replacement = exact_contours[0].clone();
     second_replacement.points[0].x = -25.0;
+    let replacement_payload = runebender::formats::ufo::decode_contours(&[
+        replacement.clone(),
+        second_replacement.clone(),
+    ])
+    .unwrap();
     assert!(matches!(
         project
             .edit_document_layer("A", &layer, |draft| {
-                assert!(draft.replace_imported_contours(&[
-                    replacement.clone(),
-                    second_replacement.clone(),
-                ])?);
+                assert!(draft.replace_imported_contours(replacement_payload)?);
                 Ok(())
             })
             .unwrap(),
@@ -8010,9 +8023,11 @@ fn background_copy_swap_clear_are_atomic_undoable_and_persistable() {
     assert_eq!(project.document_revision(), copied_revision);
 
     let replacement = contour(250.0);
+    let replacement_payload =
+        runebender::formats::ufo::decode_contours(std::slice::from_ref(&replacement)).unwrap();
     project
         .edit_document_layer("A", &foreground_layer, |draft| {
-            assert!(draft.replace_imported_contours(std::slice::from_ref(&replacement))?);
+            assert!(draft.replace_imported_contours(replacement_payload)?);
             assert!(draft.set_width(620.75)?);
             Ok(())
         })
@@ -8172,10 +8187,12 @@ fn background_copy_transfers_object_metadata_and_swap_retains_shape_order() {
     assert!(!project.copy_document_layer_to_background(&address).unwrap());
 
     let second = contour(50.0, "second", "second-contour");
+    let second_payload =
+        runebender::formats::ufo::decode_contours(std::slice::from_ref(&second)).unwrap();
     project
         .edit_document_layer("A", &foreground_layer, |draft| {
             draft.add_component("B".into(), kurbo::Affine::default())?;
-            draft.append_imported_contours(std::slice::from_ref(&second))?;
+            draft.append_imported_contours(second_payload)?;
             Ok(())
         })
         .unwrap();
@@ -8194,9 +8211,11 @@ fn background_copy_transfers_object_metadata_and_swap_retains_shape_order() {
         .unwrap()
         .contours;
     changed_background[0].points[0].x += 100.0;
+    let changed_background =
+        runebender::formats::ufo::decode_contours(&changed_background).unwrap();
     project
         .edit_document_layer("A", &background_layer, |draft| {
-            draft.replace_imported_contours(&changed_background)?;
+            draft.replace_imported_contours(changed_background)?;
             Ok(())
         })
         .unwrap();

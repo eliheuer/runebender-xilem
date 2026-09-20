@@ -739,8 +739,8 @@ impl Workspace {
             });
         match traced {
             Ok(glyph) => {
-                let count = glyph.contours.len();
-                self.apply_op(move |session| session.replace_imported_contours(&glyph.contours));
+                let count = glyph.len();
+                self.apply_op(move |session| session.replace_imported_contours(glyph));
                 self.note = format!("Traced {count} contour(s)");
             }
             Err(error) => self.note = format!("Trace: {error}"),
@@ -772,7 +772,7 @@ impl Workspace {
         match contours {
             Ok(contours) => {
                 let count = contours.len();
-                self.apply_op(move |session| session.append_imported_contours(&contours));
+                self.apply_op(move |session| session.append_imported_contours(contours));
                 self.note = format!("Imported {count} SVG contour(s)");
             }
             Err(error) => self.note = format!("SVG import: {error}"),
@@ -813,17 +813,10 @@ impl Workspace {
             .unwrap_or_else(|| "image.png".into());
         let scale =
             ((self.font.ascender() - self.font.descender()) / f64::from(height).max(1.0)).max(1e-6);
-        let placed = match norad::Image::new(
+        let placed = match runebender::document::LayerImage::new(
             std::path::PathBuf::from(&file_name),
             None,
-            norad::AffineTransform {
-                x_scale: scale,
-                xy_scale: 0.0,
-                yx_scale: 0.0,
-                y_scale: scale,
-                x_offset: 0.0,
-                y_offset: self.font.descender(),
-            },
+            kurbo::Affine::new([scale, 0.0, 0.0, scale, 0.0, self.font.descender()]),
         ) {
             Ok(image) => image,
             Err(error) => {
@@ -1689,7 +1682,8 @@ mod tests {
         assert_eq!(workspace.metadata_undo.len(), 1, "a no-op adds no history");
 
         let replacement = rectangle("A", 200.0, 300.0).contours;
-        workspace.apply_op(move |session| session.replace_imported_contours(&replacement));
+        let replacement = runebender::formats::ufo::decode_contours(&replacement).unwrap();
+        workspace.apply_op(move |session| session.replace_imported_contours(replacement));
         assert_eq!(workspace.metadata_undo.len(), 2);
         workspace.swap_background();
         assert_eq!(workspace.metadata_undo.len(), 3);

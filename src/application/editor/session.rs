@@ -495,7 +495,7 @@ impl Session {
             .metaballs()
     }
 
-    pub(crate) fn set_image(&mut self, image: Option<norad::Image>) -> bool {
+    pub(crate) fn set_image(&mut self, image: Option<runebender::document::LayerImage>) -> bool {
         self.stage_canonical_edit("set image", move |draft| Ok(draft.set_image(image)))
     }
 
@@ -1864,8 +1864,11 @@ impl Session {
     }
 
     /// Replace every contour decoded at an explicit import boundary.
-    pub(crate) fn replace_imported_contours(&mut self, contours: &[norad::Contour]) -> bool {
-        let changed = self.stage_canonical_edit("replace imported contours", |draft| {
+    pub(crate) fn replace_imported_contours(
+        &mut self,
+        contours: runebender::document::ImportedContours,
+    ) -> bool {
+        let changed = self.stage_canonical_edit("replace imported contours", move |draft| {
             draft.replace_imported_contours(contours)
         });
         if changed {
@@ -1875,7 +1878,10 @@ impl Session {
     }
 
     /// Append contours decoded at an explicit import boundary, selecting their fresh points.
-    pub(crate) fn append_imported_contours(&mut self, contours: &[norad::Contour]) -> bool {
+    pub(crate) fn append_imported_contours(
+        &mut self,
+        contours: runebender::document::ImportedContours,
+    ) -> bool {
         if contours.is_empty() {
             return false;
         }
@@ -2672,7 +2678,8 @@ mod tests {
     fn imported_contours_append_and_select_fresh_points() {
         let mut session = two_squares();
         let copied = session.contours_for_copy();
-        assert!(session.append_imported_contours(&copied));
+        let decoded = runebender::formats::ufo::decode_contours(&copied).unwrap();
+        assert!(session.append_imported_contours(decoded));
         assert_eq!(
             session.pending_canonical_label,
             Some("append imported contours")
@@ -2693,21 +2700,24 @@ mod tests {
             .insert(replacement.point_id_at(0, 0).expect("first point"));
         let mut imported = copied[..1].to_vec();
         imported[0].points[0].x = -40.0;
-        assert!(replacement.replace_imported_contours(&imported));
+        let expected = imported.clone();
+        let imported = runebender::formats::ufo::decode_contours(&imported).unwrap();
+        assert!(replacement.replace_imported_contours(imported));
         assert_eq!(
             replacement.pending_canonical_label,
             Some("replace imported contours")
         );
         assert!(replacement.selection.is_empty());
         let projected = projected_glyph(&replacement);
-        assert_eq!(projected.contours, imported);
+        assert_eq!(projected.contours, expected);
         assert_eq!(projected.width, 0.0);
     }
 
     #[test]
     fn importing_no_contours_changes_nothing() {
         let mut session = two_squares();
-        assert!(!session.append_imported_contours(&[]));
+        let empty = runebender::formats::ufo::decode_contours(&[]).unwrap();
+        assert!(!session.append_imported_contours(empty));
         assert_eq!(projected_glyph(&session).contours.len(), 2);
     }
 

@@ -264,20 +264,17 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
             json!({"ok":true,"source":source.0,"installed":{"installed":installed},"root_changed":true}),
         );
     }
-    let font = match branch {
-        Some(name) => {
-            let v = project
-                .experiments
-                .versions
-                .get(name)
-                .ok_or("unknown experiment")?;
-            if v.root != source {
-                return Err("experiment belongs to another source".into());
-            }
-            v.encode_ufo_source(project)?
-        }
-        None => project.encode_ufo_source(source).ok_or("unknown source")?,
-    };
+    if let Some(name) = branch
+        && project
+            .experiments
+            .versions
+            .get(name)
+            .ok_or("unknown experiment")?
+            .root
+            != source
+    {
+        return Err("experiment belongs to another source".into());
+    }
     let layer = object
         .get("layer")
         .map(|v| v.as_str().ok_or("layer must be a string"))
@@ -288,7 +285,30 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
                 .get("text")
                 .and_then(Value::as_str)
                 .ok_or("text required")?;
-            json!({"ok":true,"scene":crate::formats::designbot::specimen(&font,text)?,"text":text,"kerning_revision":super::experiments::kerning_revision(project.document_font_metadata(source).ok_or("unknown source metadata")?)?})
+            let metadata = match branch {
+                Some(branch) => project
+                    .experiments
+                    .versions
+                    .get(branch)
+                    .ok_or("unknown experiment")?
+                    .font_metadata(),
+                None => project
+                    .document_font_metadata(source)
+                    .ok_or("unknown source metadata")?,
+            };
+            let scene = match branch {
+                Some(branch) => crate::formats::designbot::specimen_experiment(
+                    project,
+                    project
+                        .experiments
+                        .versions
+                        .get(branch)
+                        .ok_or("unknown experiment")?,
+                    text,
+                )?,
+                None => crate::formats::designbot::specimen_project(project, source, text)?,
+            };
+            json!({"ok":true,"scene":scene,"text":text,"kerning_revision":super::experiments::kerning_revision(metadata)?})
         }
         "read_kerning" => {
             let metadata = match branch {
@@ -397,17 +417,41 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
                     .proposals(),
                 None => proposal::list_project(project, source),
             };
-            let units_per_em = font
-                .font_info
-                .units_per_em
-                .map(|value| value.as_f64())
-                .unwrap_or(1000.0);
-            json!({"ok": true, "family": font.font_info.family_name,
-                "style": font.font_info.style_name, "units_per_em": units_per_em,
-                "ascender": font.font_info.ascender.unwrap_or(units_per_em * 0.8),
-                "descender": font.font_info.descender.unwrap_or(-(units_per_em * 0.2)),
-                "x_height": font.font_info.x_height, "cap_height": font.font_info.cap_height,
-                "glyphs": font.default_layer().len(), "proposals": proposals})
+            let info = project
+                .document_font_info(source)
+                .ok_or("unknown source font information")?;
+            let metrics = info.metrics.resolved();
+            let glyphs = match branch {
+                Some(branch) => {
+                    let experiment = project
+                        .experiments
+                        .versions
+                        .get(branch)
+                        .ok_or("unknown experiment")?;
+                    experiment
+                        .layer_drafts()
+                        .map(|(address, _)| address.glyph.as_str())
+                        .collect::<std::collections::BTreeSet<_>>()
+                        .into_iter()
+                        .filter(|name| experiment.selected_layer(name, None).is_some())
+                        .count()
+                }
+                None => {
+                    let default = project
+                        .document_source(source)
+                        .ok_or("unknown source")?
+                        .default_layer();
+                    project
+                        .glyph_names()
+                        .filter(|name| project.document_layer(name, &default).is_some())
+                        .count()
+                }
+            };
+            json!({"ok": true, "family": info.names.family_name,
+                "style": info.names.style_name, "units_per_em": metrics.units_per_em,
+                "ascender": metrics.ascender, "descender": metrics.descender,
+                "x_height": info.metrics.x_height, "cap_height": info.metrics.cap_height,
+                "glyphs": glyphs, "proposals": proposals})
         }
         "glyph_inventory" => {
             let theme = crate::ui::theme::load_theme("dark").ok_or("missing built-in theme")?;
@@ -436,24 +480,67 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
             if !(1..=256).contains(&limit) {
                 return Err("limit must be between 1 and 256".into());
             }
-            let matches: Vec<_> = font
-                .default_layer()
-                .iter()
-                .filter_map(|g| {
-                    let label = crate::ui::theme::mark_label_for_glyph(g, &theme);
-                    if mark.is_some_and(|m| label.as_deref() != Some(m))
-                        || codepoint.is_some_and(|c| !g.codepoints.contains(c))
+            let layers: Vec<(String, super::LayerView<'_>)> = match branch {
+                Some(branch) => {
+                    let experiment = project
+                        .experiments
+                        .versions
+                        .get(branch)
+                        .ok_or("unknown experiment")?;
+                    let names = experiment
+                        .layer_drafts()
+                        .map(|(address, _)| address.glyph.clone())
+                        .collect::<std::collections::BTreeSet<_>>();
+                    names
+                        .into_iter()
+                        .filter_map(|name| {
+                            experiment
+                                .selected_layer(&name, None)
+                                .map(|(_, layer)| (name, layer))
+                        })
+                        .collect()
+                }
+                None => {
+                    let default = project
+                        .document_source(source)
+                        .ok_or("unknown source")?
+                        .default_layer();
+                    project
+                        .glyph_names()
+                        .filter_map(|name| {
+                            project
+                                .document_layer(name, &default)
+                                .map(|layer| (name.to_owned(), layer))
+                        })
+                        .collect()
+                }
+            };
+            let matches = layers
+                .into_iter()
+                .filter_map(|(name, layer)| {
+                    let label = crate::ui::theme::mark_label_for_layer(layer, &theme);
+                    if mark.is_some_and(|mark| label.as_deref() != Some(mark))
+                        || codepoint.is_some_and(|codepoint| {
+                            !layer.codepoints().any(|candidate| candidate == codepoint)
+                        })
                     {
                         return None;
                     }
-                    Some((g, label))
+                    Some((name, layer, label))
+                })
+                .collect::<Vec<_>>();
+            let rows: Result<Vec<_>, String> = matches
+                .iter()
+                .skip(offset)
+                .take(limit)
+                .map(|(name, layer, label)| {
+                    Ok(json!({"glyph":name,
+                        "codepoints":layer.codepoints().map(u32::from).collect::<Vec<_>>(),
+                        "mark":label,
+                        "empty":layer.contours().next().is_none() && layer.components().next().is_none(),
+                        "revision":edit_batch::canonical_glyph_revision(*layer)?}))
                 })
                 .collect();
-            let rows: Result<Vec<_>, String> = matches.iter().skip(offset).take(limit).map(|(g, label)| {
-                Ok(json!({"glyph":g.name(), "codepoints":g.codepoints.iter().map(u32::from).collect::<Vec<_>>(),
-                    "mark":label, "empty":g.contours.is_empty() && g.components.is_empty(),
-                    "revision":edit_batch::glyph_revision(g)?}))
-            }).collect();
             json!({"ok":true,"total":matches.len(),"offset":offset,"glyphs":rows?,
                 "next_offset": (offset.saturating_add(limit) < matches.len()).then_some(offset.saturating_add(limit))})
         }
@@ -483,8 +570,28 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
             if names.is_empty() || names.len() > 256 {
                 return Err("live proofs require between 1 and 256 explicit glyph names".into());
             }
-            let proof = crate::formats::svg::proof_sheet(&font, layer, &names, 10)?;
-            json!({"ok": true, "svg_content": proof.svg, "metrics": proof.metrics, "scene":crate::formats::designbot::scene(&font, layer, &names)?})
+            let (proof, scene) = match branch {
+                Some(branch) => {
+                    let experiment = project
+                        .experiments
+                        .versions
+                        .get(branch)
+                        .ok_or("unknown experiment")?;
+                    (
+                        crate::formats::svg::proof_sheet_experiment(
+                            project, experiment, layer, &names, 10,
+                        )?,
+                        crate::formats::designbot::scene_experiment(
+                            project, experiment, layer, &names,
+                        )?,
+                    )
+                }
+                None => (
+                    crate::formats::svg::proof_sheet_project(project, source, layer, &names, 10)?,
+                    crate::formats::designbot::scene_project(project, source, layer, &names)?,
+                ),
+            };
+            json!({"ok": true, "svg_content": proof.svg, "metrics": proof.metrics, "scene":scene})
         }
         "propose_edits" => {
             let mut batch = object.clone();
@@ -603,6 +710,51 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
 mod tests {
     use super::*;
     use crate::document::history::HistoryDirection;
+
+    #[test]
+    fn experiment_specimen_reports_the_snapshot_kerning_revision() {
+        let mut project = Project::new_font("never-saved.ufo".into());
+        let source = project.source_id(0).unwrap();
+        assert_eq!(
+            call(
+                &mut project,
+                "experiment_fork",
+                &json!({"source":source.0,"name":"kern-proof","reason":"test"}),
+            )["ok"],
+            true
+        );
+        let before = call(
+            &mut project,
+            "read_kerning",
+            &json!({"source":source.0,"branch":"kern-proof"}),
+        )["revision"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let changed = call(
+            &mut project,
+            "experiment_kern",
+            &json!({"source":source.0,"branch":"kern-proof","expected_revision":before,
+                "reason":"test","pairs":[{"left":"A","right":"A","value":-42.0}]}),
+        );
+        assert_eq!(changed["ok"], true, "{changed:#}");
+        let revision = changed["revision"].as_str().unwrap();
+        let proof = call(
+            &mut project,
+            "specimen",
+            &json!({"source":source.0,"branch":"kern-proof","text":"AA"}),
+        );
+        assert_eq!(proof["ok"], true, "{proof:#}");
+        assert_eq!(proof["kerning_revision"], revision);
+        assert_ne!(
+            proof["kerning_revision"],
+            crate::document::experiments::kerning_revision(
+                project.document_font_metadata(source).unwrap(),
+            )
+            .unwrap(),
+            "the experiment proof must not report the unchanged root revision"
+        );
+    }
 
     #[test]
     fn unsaved_reads_proposals_install_and_undo_share_one_document() {

@@ -413,7 +413,12 @@ impl Workspace {
         task: &str,
         source: &Path,
     ) -> Result<ProposalSummary, String> {
-        let on_disk = norad::Font::load(source).map_err(|e| e.to_string())?;
+        let on_disk = runebender::document::project::Project::load(source)?;
+        let on_disk_source = on_disk
+            .document_sources()
+            .next()
+            .ok_or("the proposal source has no font source")?
+            .id();
         let source = self
             .font
             .project
@@ -423,9 +428,14 @@ impl Workspace {
             proposal::discard_project(&mut self.font.project, source, task)
                 .map_err(|error| error.to_string())?;
         }
-        let summary =
-            proposal::adopt_external_project(&mut self.font.project, source, &on_disk, task)
-                .map_err(|error| error.to_string())?;
+        let summary = proposal::adopt_external_project(
+            &mut self.font.project,
+            source,
+            &on_disk,
+            on_disk_source,
+            task,
+        )
+        .map_err(|error| error.to_string())?;
         self.modified = true;
         Ok(summary)
     }

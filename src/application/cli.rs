@@ -11,10 +11,8 @@
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
-use norad::Font;
 use runebender::document::agent;
 use runebender::document::compose;
-use runebender::document::font_ops;
 use runebender::document::nodes;
 use runebender::document::nodes_run;
 use runebender::document::project::Project;
@@ -44,11 +42,6 @@ fn fail(json: bool, code: i32, message: &str) -> i32 {
         eprintln!("{message}");
     }
     code
-}
-
-/// Loads one UFO, reporting a bad path as a usage error.
-fn open(path: &Path, json: bool) -> Result<Font, i32> {
-    Font::load(path).map_err(|e| fail(json, exit::USAGE, &format!("{}: {e}", path.display())))
 }
 
 #[derive(Parser)]
@@ -2081,9 +2074,10 @@ fn propose(
         .rev()
         .find_map(|line| serde_json::from_str(line).ok())
         .unwrap_or_else(|| json!({ "raw": stdout.trim() }));
-    let arrived = Font::load(source)
-        .ok()
-        .and_then(|f| proposal::find(&f, task).ok());
+    let arrived = Project::load(source).ok().and_then(|project| {
+        let source = project.source_id(0)?;
+        proposal::find_project(&project, source, task).ok()
+    });
     if json {
         println!(
             "{}",
@@ -2127,10 +2121,14 @@ fn bolden(
     check: bool,
     json: bool,
 ) -> i32 {
-    let (light, heavy) = match (open(from, json), open(to, json)) {
+    let (light, heavy) = match (open_project(from, json), open_project(to, json)) {
         (Ok(a), Ok(b)) => (a, b),
         (Err(code), _) | (_, Err(code)) => return code,
     };
+    let light_source = light.source_id(0).expect("one source");
+    let heavy_source = heavy.source_id(0).expect("one source");
+    let light_layer = light.document_source(light_source).unwrap().default_layer();
+    let heavy_layer = heavy.document_source(heavy_source).unwrap().default_layer();
     let default_refs = [
         "n".to_string(),
         "o".to_string(),
@@ -2142,12 +2140,12 @@ fn bolden(
         .iter()
         .filter_map(|n| {
             Some((
-                light.default_layer().get_glyph(n.as_str())?,
-                heavy.default_layer().get_glyph(n.as_str())?,
+                light.document_layer(n, &light_layer)?,
+                heavy.document_layer(n, &heavy_layer)?,
             ))
         })
         .collect();
-    let Some(offset) = embolden::learn_offset(&pairs) else {
+    let Some(offset) = embolden::learn_layer_offset(&pairs) else {
         return fail(
             json,
             exit::USAGE,
@@ -2159,38 +2157,50 @@ fn bolden(
     let todo: Vec<String> = match glyphs {
         Some(list) => list.to_vec(),
         None => light
-            .default_layer()
-            .iter()
-            .filter(|g| !g.contours.is_empty() && g.components.is_empty())
-            .filter(|g| {
+            .glyph_names()
+            .filter(|name| {
+                let Some(light_glyph) = light.document_layer(name, &light_layer) else {
+                    return false;
+                };
+                if light_glyph.contours().next().is_none()
+                    || light_glyph.components().next().is_some()
+                {
+                    return false;
+                }
                 heavy
-                    .default_layer()
-                    .get_glyph(g.name().as_str())
-                    .is_some_and(|h| {
-                        font_ops::glyph_signature(h) == font_ops::glyph_signature(g)
-                            && h.contours == g.contours
+                    .document_layer(name, &heavy_layer)
+                    .is_some_and(|heavy_glyph| {
+                        canonical_outline(heavy_glyph) == canonical_outline(light_glyph)
                     })
             })
-            .map(|g| g.name().to_string())
+            .map(str::to_owned)
             .collect(),
     };
     if check {
-        return bolden_check(&light, &heavy, offset, glyphs, limit, json);
+        return bolden_check(
+            &light,
+            &heavy,
+            &light_layer,
+            &heavy_layer,
+            offset,
+            glyphs,
+            limit,
+            json,
+        );
     }
     let mut rows = Vec::new();
     for name in todo.iter().take(limit) {
-        let Some(g) = light.default_layer().get_glyph(name.as_str()) else {
+        let Some(glyph) = light.document_layer(name, &light_layer) else {
             continue;
         };
-        let out = embolden::embolden(g, offset);
-        let moved = g
-            .contours
+        let original = flat_layer_points(glyph);
+        let predicted = emboldened_layer_points(glyph, offset);
+        let moved = original
             .iter()
-            .flat_map(|c| c.points.iter())
-            .zip(out.contours.iter().flat_map(|c| c.points.iter()))
-            .filter(|(a, b)| a.x != b.x || a.y != b.y)
+            .zip(&predicted)
+            .filter(|(a, b)| a != b)
             .count();
-        let points: usize = g.contours.iter().map(|c| c.points.len()).sum();
+        let points = original.len();
         rows.push((name.clone(), moved, points));
     }
     if json {
@@ -2232,8 +2242,10 @@ fn bolden(
 /// shifting every point by the average amount. A method that cannot
 /// beat that constant is not carrying its weight.
 fn bolden_check(
-    light: &Font,
-    heavy: &Font,
+    light: &Project,
+    heavy: &Project,
+    light_layer: &LayerId,
+    heavy_layer: &LayerId,
     offset: embolden::Offset,
     glyphs: Option<&[String]>,
     limit: usize,
@@ -2242,37 +2254,39 @@ fn bolden_check(
     let names: Vec<String> = match glyphs {
         Some(list) => list.to_vec(),
         None => light
-            .default_layer()
-            .iter()
-            .filter(|g| !g.contours.is_empty() && g.components.is_empty())
-            .filter(|g| {
+            .glyph_names()
+            .filter(|name| {
+                let Some(light_glyph) = light.document_layer(name, light_layer) else {
+                    return false;
+                };
+                if light_glyph.contours().next().is_none()
+                    || light_glyph.components().next().is_some()
+                {
+                    return false;
+                }
                 heavy
-                    .default_layer()
-                    .get_glyph(g.name().as_str())
-                    .is_some_and(|h| {
-                        font_ops::glyph_signature(h) == font_ops::glyph_signature(g)
-                            && h.contours != g.contours
+                    .document_layer(name, heavy_layer)
+                    .is_some_and(|heavy_glyph| {
+                        compatible_outlines(light_glyph, heavy_glyph)
+                            && canonical_outline(light_glyph) != canonical_outline(heavy_glyph)
                     })
             })
-            .map(|g| g.name().to_string())
+            .map(str::to_owned)
             .collect(),
-    };
-    let flat = |g: &norad::Glyph| -> Vec<(f64, f64)> {
-        g.contours
-            .iter()
-            .flat_map(|c| c.points.iter().map(|p| (p.x, p.y)))
-            .collect()
     };
     let mut rows = Vec::new();
     let (mut sum_dx, mut sum_dy, mut n) = (0.0, 0.0, 0_usize);
     for name in names.iter().take(limit) {
         let (Some(l), Some(h)) = (
-            light.default_layer().get_glyph(name.as_str()),
-            heavy.default_layer().get_glyph(name.as_str()),
+            light.document_layer(name, light_layer),
+            heavy.document_layer(name, heavy_layer),
         ) else {
             continue;
         };
-        let (a, b) = (flat(l), flat(h));
+        if !compatible_outlines(l, h) {
+            continue;
+        }
+        let (a, b) = (flat_layer_points(l), flat_layer_points(h));
         if a.len() != b.len() || a.is_empty() {
             continue;
         }
@@ -2281,7 +2295,7 @@ fn bolden_check(
             sum_dy += q.1 - p.1;
             n += 1;
         }
-        let pred = flat(&embolden::embolden(l, offset));
+        let pred = emboldened_layer_points(l, offset);
         let err = pred
             .iter()
             .zip(&b)
@@ -2336,6 +2350,67 @@ fn bolden_check(
     exit::OK
 }
 
+fn canonical_outline(
+    layer: runebender::document::LayerView<'_>,
+) -> Vec<Vec<(kurbo::Point, runebender::document::LayerPointType, bool)>> {
+    layer
+        .contours()
+        .map(|contour| {
+            contour
+                .points()
+                .map(|point| (point.position(), point.point_type(), point.is_smooth()))
+                .collect()
+        })
+        .collect()
+}
+
+fn compatible_outlines(
+    first: runebender::document::LayerView<'_>,
+    second: runebender::document::LayerView<'_>,
+) -> bool {
+    let first = canonical_outline(first);
+    let second = canonical_outline(second);
+    first.len() == second.len()
+        && first.iter().zip(second).all(|(first, second)| {
+            first.len() == second.len()
+                && first
+                    .iter()
+                    .zip(second)
+                    .all(|(first, second)| first.1 == second.1)
+        })
+}
+
+fn flat_layer_points(layer: runebender::document::LayerView<'_>) -> Vec<(f64, f64)> {
+    layer
+        .contours()
+        .flat_map(|contour| {
+            contour
+                .points()
+                .map(|point| (point.position().x, point.position().y))
+        })
+        .collect()
+}
+
+fn emboldened_layer_points(
+    layer: runebender::document::LayerView<'_>,
+    offset: embolden::Offset,
+) -> Vec<(f64, f64)> {
+    layer
+        .contours()
+        .flat_map(|contour| {
+            let points = contour
+                .points()
+                .map(|point| point.position())
+                .collect::<Vec<_>>();
+            points
+                .iter()
+                .zip(embolden::outward_normals_for_points(&points))
+                .map(move |(point, (nx, ny))| (point.x + nx * offset.x, point.y + ny * offset.y))
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
 /// Return an actual MCP image alongside proof metadata, without external resources.
 #[allow(
     clippy::cast_possible_truncation,
@@ -2370,7 +2445,7 @@ fn collapse_metaballs(
     accuracy: f64,
     json: bool,
 ) -> i32 {
-    use runebender::outline::metaballs::{OutlineOptions, collapse_font};
+    use runebender::outline::metaballs::OutlineOptions;
     if out.exists() {
         return fail(
             json,
@@ -2378,22 +2453,45 @@ fn collapse_metaballs(
             "output already exists; choose a new UFO path",
         );
     }
-    let mut font = match open(source, json) {
-        Ok(font) => font,
+    let mut project = match open_project(source, json) {
+        Ok(project) => project,
         Err(code) => return code,
     };
-    let count = match collapse_font(
-        &mut font,
-        OutlineOptions {
-            resolution,
-            accuracy,
-        },
-    ) {
-        Ok(count) => count,
-        Err(e) => return fail(json, exit::FAILED, &e),
-    };
-    if let Err(e) = font.save(out) {
-        return fail(json, exit::FAILED, &e.to_string());
+    let source_id = project.source_id(0).expect("one source");
+    let layer = project
+        .document_source(source_id)
+        .expect("one source")
+        .default_layer();
+    let names = project.glyph_names().map(str::to_owned).collect::<Vec<_>>();
+    let mut count = 0;
+    for glyph in names {
+        let address = GlyphLayerAddress {
+            glyph,
+            layer: layer.clone(),
+        };
+        let Ok(mut transaction) = project.begin_document_layer_transaction(&address) else {
+            continue;
+        };
+        let converted = match transaction.draft_mut().collapse_metaballs(
+            None,
+            OutlineOptions {
+                resolution,
+                accuracy,
+            },
+        ) {
+            Ok(converted) => converted,
+            Err(error) => return fail(json, exit::FAILED, &error),
+        };
+        if converted == 0 {
+            continue;
+        }
+        if let Err(error) = project.commit_document_layer_transaction(transaction) {
+            return fail(json, exit::FAILED, &error.to_string());
+        }
+        count += converted;
+    }
+    if let Err(error) = project.save_as(out) {
+        return fail(json, exit::FAILED, &error);
     }
     if json {
         println!(

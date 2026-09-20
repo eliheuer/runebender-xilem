@@ -6,6 +6,27 @@
 use crate::application::editor::tools::local_ai::InstalledProposalEdit;
 use crate::application::workspace::Workspace;
 
+fn installed_in_active_source(
+    project: &runebender::document::project::Project,
+    result: &serde_json::Value,
+) -> Option<Vec<String>> {
+    if result["root_changed"] != true {
+        return None;
+    }
+    let changed_source = result["source_id"]
+        .as_u64()
+        .or_else(|| result["source"].as_u64())
+        .and_then(|value| {
+            usize::try_from(value)
+                .ok()
+                .map(runebender::document::variable::SourceId)
+        })?;
+    if project.source_id(project.active) != Some(changed_source) {
+        return None;
+    }
+    serde_json::from_value(result["installed"]["installed"].clone()).ok()
+}
+
 /// Pumps the mailbox on the UI thread; socket workers never touch font data.
 pub(crate) fn with_live<V: xilem::WidgetView<Workspace>>(
     view: V,
@@ -35,13 +56,9 @@ pub(crate) fn with_live<V: xilem::WidgetView<Workspace>>(
                             &call.name,
                             &call.arguments,
                         );
-                        if result["root_changed"] == true
-                            && result["master"].as_u64() == Some(app.font.project.active as u64)
-                        {
+                        if let Some(names) = installed_in_active_source(&app.font.project, &result) {
                             root_changed = true;
-                            installed =
-                                serde_json::from_value(result["installed"]["installed"].clone())
-                                    .unwrap_or_default();
+                            installed = names;
                         }
                         result
                     });
@@ -66,4 +83,46 @@ pub(crate) fn with_live<V: xilem::WidgetView<Workspace>>(
             },
         ),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use runebender::document::project::{Project, SourceInput};
+    use runebender::document::variable::SourceId;
+
+    fn two_source_project() -> Project {
+        let font = Project::new_font("synthetic.ufo".into())
+            .encode_ufo_source(SourceId(0))
+            .unwrap();
+        let document = runebender::document::font_memory::designspace_from_str(
+            r#"<designspace format="5.0"><axes><axis name="Weight" tag="wght" minimum="0" default="0" maximum="1"/></axes><sources><source filename="first.ufo"><location><dimension name="Weight" xvalue="0"/></location></source><source filename="second.ufo"><location><dimension name="Weight" xvalue="1"/></location></source></sources></designspace>"#,
+        )
+        .unwrap();
+        Project::from_designspace(document, |path| {
+            Ok(SourceInput::from_font(font.clone(), path.into()))
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn live_root_changes_follow_stable_source_identity_after_reorder() {
+        let mut project = two_source_project();
+        let source = project.source_id(0).unwrap();
+        assert!(project.move_source(source, 1).unwrap());
+        project.active = 1;
+        let result = serde_json::json!({
+            "ok": true,
+            "source": source.0,
+            "root_changed": true,
+            "installed": {"installed": ["A"]},
+        });
+        assert_eq!(
+            installed_in_active_source(&project, &result),
+            Some(vec!["A".to_owned()]),
+            "a reordered active source must still trigger cache refresh and undo bookkeeping"
+        );
+        project.active = 0;
+        assert_eq!(installed_in_active_source(&project, &result), None);
+    }
 }

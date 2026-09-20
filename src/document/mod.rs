@@ -19,9 +19,9 @@ pub mod axis;
 mod babelfont;
 pub use babelfont::{
     AnchorId, AnchorView, CanonicalLayerSnapshot, ComponentId, ComponentView, ContourId,
-    ContourView, CopiedContour, DocumentEditError, DocumentSegmentEndpoint, LayerEditDraft,
-    LayerPointType, LayerShapeView, LayerView, PastedContours, PointId, PointView,
-    QuadraticSegmentInsertion,
+    ContourView, CopiedContour, DocumentEditError, DocumentSegmentEndpoint, ImportedContours,
+    LayerEditDraft, LayerImage, LayerPointType, LayerShapeView, LayerView, PastedContours, PointId,
+    PointView, QuadraticSegmentInsertion,
 };
 pub use variable::{CanonicalSourceMetadataSnapshot, CanonicalSourceStructureSnapshot};
 pub mod canonical_metadata;

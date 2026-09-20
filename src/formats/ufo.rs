@@ -3,9 +3,57 @@
 
 //! Explicit transient UFO codec values.
 
-use crate::document::LayerView;
 use crate::document::project::Project;
 use crate::document::variable::{LayerId, SourceId};
+use crate::document::{ImportedContours, LayerView};
+
+/// Decode UFO contours once into canonical Babelfont paths plus exact object metadata.
+pub fn decode_contours(contours: &[norad::Contour]) -> Result<ImportedContours, String> {
+    ImportedContours::from_ufo(contours).map_err(|error| error.to_string())
+}
+
+/// Decode the public drawing schema into canonical contours at the UFO wire boundary.
+pub fn decode_drawing_contours(
+    input: &[crate::outline::drawing::DrawingContour],
+) -> Result<ImportedContours, String> {
+    decode_contours(&drawing_contours(input)?)
+}
+
+pub(crate) fn drawing_contours(
+    input: &[crate::outline::drawing::DrawingContour],
+) -> Result<Vec<norad::Contour>, String> {
+    use crate::outline::drawing::DrawingPointType;
+
+    crate::outline::drawing::validate(input)?;
+    Ok(input
+        .iter()
+        .map(|contour| {
+            norad::Contour::new(
+                contour
+                    .points
+                    .iter()
+                    .map(|point| {
+                        norad::ContourPoint::new(
+                            point.x,
+                            point.y,
+                            match point.kind {
+                                DrawingPointType::Move => norad::PointType::Move,
+                                DrawingPointType::Line => norad::PointType::Line,
+                                DrawingPointType::Curve => norad::PointType::Curve,
+                                DrawingPointType::Qcurve => norad::PointType::QCurve,
+                                DrawingPointType::Offcurve => norad::PointType::OffCurve,
+                            },
+                            point.smooth,
+                            None,
+                            None,
+                        )
+                    })
+                    .collect(),
+                None,
+            )
+        })
+        .collect())
+}
 
 /// Materialize one canonical layer as a detached UFO glyph.
 ///

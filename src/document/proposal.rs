@@ -550,7 +550,8 @@ pub fn discard_project(
 pub fn adopt_external_project(
     project: &mut Project,
     source: SourceId,
-    external: &Font,
+    external: &Project,
+    external_source: SourceId,
     task: &str,
 ) -> Result<ProposalSummary, ProposalError> {
     validate_task(task)?;
@@ -559,13 +560,18 @@ pub fn adopt_external_project(
             "proposal task already exists; use a new task name",
         ));
     }
-    let source_layer =
-        external
-            .layers
-            .get(&layer_name(task))
-            .ok_or_else(|| ProposalError::NoProposal {
-                task: task.to_owned(),
-            })?;
+    let source_layer = LayerId {
+        source: external_source,
+        name: layer_name(task),
+    };
+    if !external
+        .document_source_layer_names(external_source)
+        .is_some_and(|layers| layers.iter().any(|name| name == &source_layer.name))
+    {
+        return Err(ProposalError::NoProposal {
+            task: task.to_owned(),
+        });
+    }
     let foreground = project
         .document_source(source)
         .ok_or_else(|| project_error("unknown source"))?
@@ -573,15 +579,22 @@ pub fn adopt_external_project(
     let target = proposal_layer(source, task);
     let mut seen = HashSet::new();
     let mut staged = Vec::new();
-    for glyph in source_layer.iter() {
-        let name = glyph.name().to_string();
+    for name in external.glyph_names() {
+        let Some(snapshot) = external.capture_document_layer(&GlyphLayerAddress {
+            glyph: name.to_owned(),
+            layer: source_layer.clone(),
+        }) else {
+            continue;
+        };
+        let name = name.to_owned();
         if !seen.insert(name.clone()) || project.document_layer(&name, &foreground).is_none() {
             return Err(ProposalError::NoSuchGlyph {
                 task: task.to_owned(),
                 glyph: name,
             });
         }
-        let (layer, preserved) = super::babelfont::layer_from_ufo(glyph, &target, false);
+        let (layer, preserved) = snapshot.into_parts();
+        let (layer, preserved) = super::babelfont::copy_layer(&layer, &preserved, &target);
         staged.push((name, LayerEditDraft::new(layer, preserved)));
     }
     if staged.is_empty() {

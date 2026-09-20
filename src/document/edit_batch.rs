@@ -159,9 +159,9 @@ fn replace_outline_canonically(
     contours: &[crate::outline::drawing::DrawingContour],
     clear_components: bool,
 ) -> Result<(), String> {
-    let contours = crate::outline::drawing::contours(contours)?;
+    let contours = crate::formats::ufo::decode_drawing_contours(contours)?;
     draft
-        .replace_imported_contours(&contours)
+        .replace_imported_contours(contours)
         .map_err(|error| error.to_string())?;
     if clear_components {
         let components = draft
@@ -344,7 +344,7 @@ fn apply(glyph: &mut Glyph, operation: &Operation) -> Result<(), String> {
             contours,
             clear_components,
         } => {
-            glyph.contours = crate::outline::drawing::contours(contours)?;
+            glyph.contours = crate::formats::ufo::drawing_contours(contours)?;
             if *clear_components {
                 glyph.components.clear();
             }
@@ -925,17 +925,35 @@ mod tests {
         let mut proposed = snapshot.get_glyph("A").unwrap().clone();
         proposed.width = original + 90.0;
         proposal::write(&mut external, "external", [proposed]).unwrap();
+        let external = Project::from_source(crate::document::project::SourceInput::from_font(
+            external,
+            PathBuf::from("external.ufo"),
+        ));
+        let external_source = external.source_id(0).unwrap();
 
         let before_invalid = project.document_revision();
         assert!(
-            proposal::adopt_external_project(&mut project, source, &external, "bad task")
-                .unwrap_err()
-                .to_string()
-                .contains("task must contain")
+            proposal::adopt_external_project(
+                &mut project,
+                source,
+                &external,
+                external_source,
+                "bad task",
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("task must contain")
         );
         assert_eq!(project.document_revision(), before_invalid);
 
-        proposal::adopt_external_project(&mut project, source, &external, "external").unwrap();
+        proposal::adopt_external_project(
+            &mut project,
+            source,
+            &external,
+            external_source,
+            "external",
+        )
+        .unwrap();
         let before = project.document_revision();
         let installed = proposal::install_project(&mut project, source, "external", None, true)
             .unwrap()
