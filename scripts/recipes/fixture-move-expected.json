@@ -1,0 +1,33 @@
+{
+  "edits": [
+    {
+      "operations": [
+        {"anchor_id": "a-top", "op": "set_anchor", "x": 50.625, "y": 599.25}
+      ],
+      "target": {
+        "expected_revision": "rev-a-1",
+        "glyph": "A",
+        "glyph_id": "glyph-a",
+        "layer": "Regular"
+      }
+    },
+    {
+      "operations": [
+        {"anchor_id": "anchor-top-1", "op": "set_anchor", "x": 101.0, "y": 699.0},
+        {"anchor_id": "anchor-top-2", "op": "set_anchor", "x": 12.75, "y": 510.25}
+      ],
+      "target": {
+        "expected_revision": "rev-b-1",
+        "glyph": "B",
+        "glyph_id": "glyph-b",
+        "layer": "Regular"
+      }
+    }
+  ],
+  "input_hash": "fixture-capture-sha256-1",
+  "job_id": "fixture-anchor-move-1",
+  "report": "Proposed 3 anchor move(s)\nglyph=A source=7 layer=Regular name=top id=a-top x=50.125 y=600.5\nglyph=B source=7 layer=Regular name=top id=anchor-top-1 x=100.5 y=700.25\nglyph=B source=7 layer=Regular name=top id=anchor-top-2 x=12.25 y=511.5",
+  "reads": [],
+  "schema_version": 1,
+  "source": 7
+}

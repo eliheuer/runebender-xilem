@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "job_id": "fixture-anchor-list-1",
+  "input_hash": "fixture-capture-sha256-1",
+  "source": 7,
+  "parameters": {
+    "recipe": "list_anchors",
+    "glyphs": ["A", "B"],
+    "include_unnamed": true
+  },
+  "layers": [
+    {
+      "guard": {
+        "glyph": "B",
+        "glyph_id": "glyph-b",
+        "layer": "Regular",
+        "expected_revision": "rev-b-1"
+      },
+      "width": 600.0,
+      "anchors": [
+        {"id": "anchor-top-2", "name": "top", "x": 12.25, "y": 511.5},
+        {"id": "anchor-top-1", "name": "top", "x": 100.5, "y": 700.25},
+        {"id": "anchor-unnamed", "x": 0.125, "y": -3.75}
+      ]
+    },
+    {
+      "guard": {
+        "glyph": "A",
+        "glyph_id": "glyph-a",
+        "layer": "Regular",
+        "expected_revision": "rev-a-1"
+      },
+      "width": 500.5,
+      "anchors": [
+        {"id": "a-top", "name": "top", "x": 50.125, "y": 600.5},
+        {"id": "a-bottom", "name": "bottom", "x": 50.5, "y": 0.25}
+      ]
+    }
+  ]
+}

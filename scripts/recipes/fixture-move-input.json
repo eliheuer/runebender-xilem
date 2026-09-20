@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "job_id": "fixture-anchor-move-1",
+  "input_hash": "fixture-capture-sha256-1",
+  "source": 7,
+  "parameters": {
+    "recipe": "move_named_anchors",
+    "glyphs": ["A", "B"],
+    "anchor_names": ["top"],
+    "dx": 0.5,
+    "dy": -1.25
+  },
+  "layers": [
+    {
+      "guard": {
+        "glyph": "B",
+        "glyph_id": "glyph-b",
+        "layer": "Regular",
+        "expected_revision": "rev-b-1"
+      },
+      "width": 600.0,
+      "anchors": [
+        {"id": "anchor-top-2", "name": "top", "x": 12.25, "y": 511.5},
+        {"id": "anchor-top-1", "name": "top", "x": 100.5, "y": 700.25},
+        {"id": "anchor-unnamed", "x": 0.125, "y": -3.75}
+      ]
+    },
+    {
+      "guard": {
+        "glyph": "A",
+        "glyph_id": "glyph-a",
+        "layer": "Regular",
+        "expected_revision": "rev-a-1"
+      },
+      "width": 500.5,
+      "anchors": [
+        {"id": "a-top", "name": "top", "x": 50.125, "y": 600.5},
+        {"id": "a-bottom", "name": "bottom", "x": 50.5, "y": 0.25}
+      ]
+    },
+    {
+      "guard": {
+        "glyph": "C",
+        "glyph_id": "glyph-c",
+        "layer": "Regular",
+        "expected_revision": "rev-c-1"
+      },
+      "width": 400.0,
+      "anchors": [
+        {"id": "c-top", "name": "top", "x": 8.0, "y": 9.0}
+      ]
+    }
+  ]
+}
