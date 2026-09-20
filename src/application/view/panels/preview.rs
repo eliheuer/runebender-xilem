@@ -63,6 +63,15 @@ pub(crate) fn preview_strip(app: &Workspace) -> impl WidgetView<Workspace> + use
                 app.text_script.as_deref(),
                 app.text_language.as_deref(),
             );
+        let inputs = if app.on_active_master() {
+            let mut live = (*outline).clone();
+            if has_components {
+                live.extend((*components).clone());
+            }
+            inputs.with_live_outline(&app.session.glyph_name, std::sync::Arc::new(live))
+        } else {
+            inputs
+        };
         let placed = text_tool::TextState::new(&inputs).placed();
         let advance = placed
             .iter()

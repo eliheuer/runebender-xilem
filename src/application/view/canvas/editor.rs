@@ -1982,9 +1982,15 @@ impl Widget for EditorWidget {
                 }
                 match &mut self.drag {
                     Drag::Metaballs { last, changed } => {
-                        *changed |= self.session.move_metaballs(glyph_design - *last, true);
+                        let moved = self.session.move_metaballs(glyph_design - *last, true);
+                        *changed |= moved;
                         *last = glyph_design;
-                        ctx.request_render();
+                        if moved {
+                            // Publish the live draft to the proof strip and inspector.
+                            // Only release emits Edited and commits this gesture.
+                            self.emit(ctx, false);
+                            ctx.request_render();
+                        }
                     }
                     Drag::AdvanceLine => {
                         let d = glyph_design;
@@ -3522,6 +3528,105 @@ mod tests {
             assert!(!session.gesture_in_progress());
             assert!(!session.metaball_preview.elements().is_empty());
         });
+    }
+
+    fn check_metaball_drag_preview(cancel: bool) {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-metaball-live-proof-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(projected_glyph(&session()));
+        font.save(&path).expect("the fixture saves");
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        workspace.open_glyph(0);
+        let original = workspace.session.outline_arc();
+        let revision = workspace.font.project.document_revision();
+        let undo_depth = workspace.metadata_undo.len();
+        let redo_depth = workspace.metadata_redo.len();
+        let mut editor = widget();
+        editor.session = (*workspace.session).clone();
+        editor.tool = Tool::Metaball;
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+        let dispatch = |harness: &mut TestHarness<EditorWidget>, workspace: &mut Workspace| {
+            let mut edited = 0;
+            while let Some((event, _)) = harness.pop_action::<EditorEvent>() {
+                harness.edit_root_widget(|root| {
+                    dispatch_editor_event(
+                        workspace,
+                        &mut root.widget.session,
+                        event,
+                        |app, event| match event {
+                            EditorEvent::Edited => {
+                                edited += 1;
+                                app.finish_open_glyph_refresh();
+                            }
+                            EditorEvent::Selection(count) => app.selected_points = count,
+                            _ => panic!("unexpected metaball gesture event"),
+                        },
+                    );
+                });
+            }
+            edited
+        };
+
+        harness.mouse_move(Point::new(300.0, 200.0));
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        assert_eq!(dispatch(&mut harness, &mut workspace), 0);
+        let mut previous = workspace.session.outline_arc();
+        assert_ne!(previous, original, "placing a center updates the proof");
+        for at in [Point::new(320.0, 210.0), Point::new(340.0, 230.0)] {
+            harness.mouse_move(at);
+            assert_eq!(dispatch(&mut harness, &mut workspace), 0);
+            let proof = workspace.session.outline_arc();
+            assert_ne!(proof, previous, "the proof follows each pointer move");
+            harness.edit_root_widget(|root| {
+                assert_eq!(proof, root.widget.session.outline_arc());
+                assert!(root.widget.session.gesture_in_progress());
+                assert!(root.widget.session.pending_canonical.is_none());
+            });
+            assert_eq!(workspace.font.project.document_revision(), revision);
+            assert_eq!(workspace.metadata_undo.len(), undo_depth);
+            assert_eq!(workspace.metadata_redo.len(), redo_depth);
+            assert!(!workspace.modified);
+            previous = proof;
+        }
+
+        if cancel {
+            harness.process_pointer_event(PointerEvent::Cancel(PRIMARY_MOUSE));
+            assert_eq!(dispatch(&mut harness, &mut workspace), 0);
+            assert_eq!(workspace.session.outline_arc(), original);
+            assert_eq!(workspace.font.project.document_revision(), revision);
+            assert_eq!(workspace.metadata_undo.len(), undo_depth);
+            assert_eq!(workspace.metadata_redo.len(), redo_depth);
+            assert!(!workspace.modified);
+        } else {
+            harness.mouse_button_release(Some(PointerButton::Primary));
+            assert_eq!(dispatch(&mut harness, &mut workspace), 1);
+            assert_eq!(workspace.session.outline_arc(), previous);
+            assert_eq!(workspace.font.project.document_revision(), revision + 1);
+            assert_eq!(workspace.metadata_undo.len(), undo_depth + 1);
+            workspace.undo_open_glyph(false);
+            assert_eq!(workspace.session.outline_arc(), original);
+        }
+        assert!(!workspace.session.gesture_in_progress());
+        std::fs::remove_dir_all(path).expect("the fixture is removed");
+    }
+
+    #[test]
+    fn metaball_drag_updates_the_proof_before_one_release_commit() {
+        check_metaball_drag_preview(false);
+    }
+
+    #[test]
+    fn cancelled_metaball_drag_restores_the_live_proof_without_committing() {
+        check_metaball_drag_preview(true);
     }
 
     #[test]

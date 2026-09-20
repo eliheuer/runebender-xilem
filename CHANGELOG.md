@@ -146,6 +146,10 @@ No release has been published yet.
 
 ### Fixed
 
+- The bottom preview now follows live metaball dragging, including occurrences in proof text.
+  Metaball parameters use sliders with numeric readouts; each drag is one undo step.
+  X/Y sliders move selected centers together, preserving their spacing.
+
 - Read cached master compatibility counts during view rebuilds, avoiding repeated whole-font interpolation on the UI thread.
 
 - Metaball conversion now fits across inflections to reduce unnecessary nodes, while preserving extrema and the fitting tolerance.

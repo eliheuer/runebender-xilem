@@ -214,18 +214,43 @@ impl Session {
         }
     }
 
-    pub(crate) fn set_metaball_value(&mut self, field: &'static str, value: String) -> bool {
+    /// The selection mean positions a mixed-value slider; X/Y move the selection together.
+    pub(crate) fn metaball_slider_value(&self, field: &str) -> f64 {
+        let Ok(source) = self.metaball_data() else {
+            return 0.0;
+        };
+        let values: Vec<_> = source
+            .groups
+            .iter()
+            .flat_map(|g| {
+                g.balls
+                    .iter()
+                    .filter(|b| self.metaballs.selected.contains(&(g.id, b.id)))
+                    .map(move |b| match field {
+                        "X" => b.x,
+                        "Y" => b.y,
+                        "Radius" => b.radius,
+                        "Strength" => b.stiffness,
+                        _ => g.threshold,
+                    })
+            })
+            .collect();
+        let (sum, count) = values
+            .iter()
+            .fold((0.0, 0.0), |(sum, count), value| (sum + value, count + 1.0));
+        if count == 0.0 { 0.0 } else { sum / count }
+    }
+
+    pub(crate) fn set_metaball_value(&mut self, field: &str, value: f64, drag: bool) -> bool {
+        let offset = value - self.metaball_slider_value(field);
         let result = (|| {
-            let value = value
-                .parse::<f64>()
-                .map_err(|_| "Enter a number".to_string())?;
             let mut source = self.metaball_data().map_err(|error| error.to_string())?;
             for g in &mut source.groups {
                 for b in &mut g.balls {
                     if self.metaballs.selected.contains(&(g.id, b.id)) {
                         match field {
-                            "X" => b.x = value,
-                            "Y" => b.y = value,
+                            "X" => b.x += offset,
+                            "Y" => b.y += offset,
                             "Radius" => b.radius = value,
                             "Strength" => b.stiffness = value,
                             _ => g.threshold = value,
@@ -233,7 +258,11 @@ impl Session {
                     }
                 }
             }
-            self.store_metaballs(source, false)
+            let changed = self.store_metaballs(source, drag)?;
+            if changed {
+                self.refresh_metaball_preview();
+            }
+            Ok(changed)
         })();
         self.metaball_result(result)
     }
@@ -264,6 +293,25 @@ impl Session {
 }
 
 impl Workspace {
+    pub(crate) fn slide_metaball_value(&mut self, field: &str, value: f64, drag: bool) {
+        let changed = Arc::make_mut(&mut self.session).set_metaball_value(field, value, drag);
+        if changed && !drag {
+            self.refresh_open_glyph();
+        }
+    }
+
+    pub(crate) fn finish_metaball_slider(&mut self, cancelled: bool) {
+        let session = Arc::make_mut(&mut self.session);
+        if cancelled {
+            session.cancel_metaball_drag();
+        } else {
+            session.end_metaball_drag();
+            if session.pending_canonical.is_some() {
+                self.refresh_open_glyph();
+            }
+        }
+    }
+
     pub(crate) fn edit_metaballs(&mut self, edit: impl FnOnce(&mut Session) -> bool) {
         let changed = edit(Arc::make_mut(&mut self.session));
         if changed {
@@ -356,6 +404,95 @@ mod tests {
     }
 
     #[test]
+    fn metaball_sliders_preview_group_changes_and_commit_once() {
+        use crate::application::editor::tools::text::{TextInputs, TextState};
+        let path =
+            std::env::temp_dir().join(format!("xilem-metaball-sliders-{}.ufo", std::process::id()));
+        let mut font = norad::Font::new();
+        let mut glyph = norad::Glyph::new("i");
+        glyph.width = 500.0;
+        glyph.codepoints.insert('i');
+        font.default_layer_mut().insert_glyph(glyph);
+        font.save(&path).unwrap();
+        let mut app = Workspace::open(&path).unwrap();
+        app.open_glyph(0);
+        app.select_tool(Tool::Metaball);
+        for x in [200.0, 400.0] {
+            app.edit_metaballs(|s| {
+                let changed = s.metaball_click(kurbo::Point::new(x, 300.0), 10.0, false);
+                s.end_metaball_drag();
+                changed
+            });
+        }
+        Arc::make_mut(&mut app.session).select_all_metaballs();
+        let original = app.session.metaball_data().unwrap();
+        let before = app.session.outline_arc();
+        let revision = app.font.project.document_revision();
+        let history = app.metadata_undo.len();
+        for value in [310.0, 325.0, 350.0] {
+            app.slide_metaball_value("X", value, true);
+            let data = app.session.metaball_data().unwrap();
+            assert_eq!(data.groups[0].balls[1].x - data.groups[0].balls[0].x, 200.0);
+            assert_eq!(app.session.metaball_slider_value("X"), value);
+            assert_ne!(app.session.outline_arc(), before);
+            assert_eq!(app.font.project.document_revision(), revision);
+            assert_eq!(app.metadata_undo.len(), history);
+        }
+        let live = app.session.outline_arc();
+        let inputs = TextInputs::new(&app.font)
+            .with_text("ii")
+            .with_live_outline("i", live.clone());
+        let placed = TextState::new(&inputs).placed();
+        assert_eq!(placed.len(), 2);
+        for sort in placed {
+            assert_eq!(
+                sort.path,
+                kurbo::Affine::translate(sort.origin.to_vec2()) * (*live).clone()
+            );
+        }
+        app.finish_metaball_slider(false);
+        assert_eq!(app.font.project.document_revision(), revision + 1);
+        assert_eq!(app.metadata_undo.len(), history + 1);
+        app.undo_open_glyph(false);
+        assert_eq!(app.session.metaball_data().unwrap(), original);
+        Arc::make_mut(&mut app.session).select_all_metaballs();
+        app.slide_metaball_value("Radius", 250.0, true);
+        assert_ne!(app.session.outline_arc(), before);
+        app.finish_metaball_slider(true);
+        assert_eq!(app.session.metaball_data().unwrap(), original);
+        assert_eq!(app.session.outline_arc(), before);
+        assert_eq!(app.metadata_undo.len(), history);
+        app.slide_metaball_value("Strength", 2.5, false);
+        assert_eq!(
+            app.metadata_undo.len(),
+            history + 1,
+            "keyboard changes commit directly"
+        );
+
+        // Optional deterministic visual evidence using the same selected source and controls.
+        if let Ok(dir) = std::env::var("RUNEBENDER_METABALL_PROOF_DIR") {
+            std::fs::create_dir_all(&dir).unwrap();
+            for theme in ["gray", "light"] {
+                app.palette = Arc::new(crate::application::view::theme::Palette::load(theme));
+                let background = app.palette.panel;
+                app = crate::application::platform::screenshot::render_to(
+                    app,
+                    background,
+                    |app| {
+                        xilem::view::sized_box(crate::application::view::panels::metaballs::panel(
+                            app,
+                        ))
+                    },
+                    (246, 620),
+                    1.0,
+                    &format!("{dir}/metaball-sliders-{theme}.png"),
+                );
+            }
+        }
+        std::fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
     fn live_sources_save_reopen_convert_and_undo_in_xilem() {
         let path = std::env::temp_dir().join(format!("xilem-metaballs-{}.ufo", std::process::id()));
         let mut font = norad::Font::new();
@@ -380,14 +517,14 @@ mod tests {
                 changed
             });
             Arc::make_mut(&mut app.session).select_all_metaballs();
-            app.edit_metaballs(|s| s.set_metaball_value("Radius", "200".into()));
+            app.edit_metaballs(|s| s.set_metaball_value("Radius", 200.0, false));
             assert!(app.session.outline_is_empty());
             assert_eq!(
                 app.session.metaball_data().unwrap().groups[0].balls.len(),
                 2
             );
             let before = projected_glyph(&app.session);
-            app.edit_metaballs(|s| s.set_metaball_value("Radius", "NaN".into()));
+            app.edit_metaballs(|s| s.set_metaball_value("Radius", f64::NAN, false));
             assert_eq!(
                 projected_glyph(&app.session),
                 before,

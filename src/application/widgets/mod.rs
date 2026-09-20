@@ -6,6 +6,7 @@
 
 pub(crate) mod context_menu;
 pub(crate) mod drag_region;
+pub(crate) mod gesture_slider;
 pub(crate) mod icon_button;
 pub(crate) mod menu_shell;
 pub(crate) mod quadrant_picker;

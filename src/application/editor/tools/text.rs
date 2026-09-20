@@ -151,6 +151,17 @@ impl TextInputs {
         self
     }
 
+    /// Substitute the editor's live draft without recompiling the shaping font.
+    pub(crate) fn with_live_outline(mut self, name: &str, outline: Arc<BezPath>) -> Self {
+        if let Some((_, path)) = Arc::make_mut(&mut self.outlines)
+            .iter_mut()
+            .find(|(glyph, _)| glyph == name)
+        {
+            *path = outline;
+        }
+        self
+    }
+
     /// Associate these inputs with one document tab's parked text buffer.
     pub(crate) fn with_context(mut self, context_id: (u64, u64)) -> Self {
         self.context_id = context_id;
