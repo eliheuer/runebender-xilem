@@ -1,19 +1,26 @@
 # Native Nodes, Python recipes and agent access
 
-Status: implementation authorized on 2026-09-20; the live native workflow is not yet complete.
+Status: integrated native testing candidate on 2026-09-20; remaining acceptance below is still open.
 This extends the [Python workflow](agent-scripting-workflow.md) and [agent acceptance plan](agent-interface-plan.md).
 The user asked for a coordinated Nodes pass, scheduled workers and lessons from ComfyUI while keeping the architecture small and organized.
 Python remains the only user scripting language in this phase.
 
 ## Current native boundary
 
-The engine has typed NodeGraph files, node definitions, source-scoped experimental versions and live.font/live.fork/live.proof/live.apply definitions.
-The native Xilem adapter currently removes live nodes from discovery and rejects them through its disk workflow runner.
-The agent nodes_run tool handles saved disk workflows, not guarded editing of the visible live graph.
-The native canvas has no real inline code-editor children or version-bound image output nodes.
-Compiled proof jobs, exact image delivery, atomic font edits, receipts and shared font undo already exist elsewhere and must be reused.
-The Python process runner and ScriptLibrary are under review in the current scripting worker wave.
-No worker should create a second script runner, font model, proof compiler or history system.
+The native Workspace owns one guarded GraphSession, shared by the canvas and nine live Nodes tools.
+The native runner captures one full-family baseline and stages validated Python edits into a derived family before compiling both specimen outputs.
+Real multiline TextArea children and immutable PNG children are integrated, including guarded code edits, presentation-only moves/resizing, Run/Cancel/Clear and separate Apply.
+The same shared Python queue, compiler queue, Project transaction boundary and ordinary font history serve the UI and agent calls.
+The disk workflow runner remains separate and cannot silently execute a live graph.
+
+At source checkpoint `8fa7e4c`, 925 native tests passed with four ignored, and strict all-target Clippy passed.
+An actual stdio MCP trial on a disposable full Virtua Grotesk designspace used every Nodes tool, verified exact PNG bytes and captured hashes, applied a 100-unit A width change, retried it, and undid it through ordinary Workspace history.
+All 1,744 family files remained unchanged in both input and copy, including after process cleanup.
+Evidence is `/private/tmp/runebender-nodes-virtua-full-family-20260920-1140/evidence.json`; this is transport and application evidence, not model interpretation or foreground interaction.
+
+Live comparison save/reopen, expansion into the shared Scripts editor and exposed graph Undo/Redo controls remain unfinished.
+The graph engine has guarded Undo/Redo, but text-local Undo is absent from the pinned TextArea and is blocked from falling through to font history.
+Native Gray/Light visual cleanup and the final combined browser/build checks remain in progress.
 
 ## ComfyUI evidence and lessons
 
@@ -62,7 +69,7 @@ Poll stable job status/results before adding another subscription protocol.
 
 The canonical model remains variable-family aware; the initial Python mutation scope is one explicit source within existing atomic limits.
 A derived family's compiled proof must preserve all other sources, features, kerning and component dependencies through a canonical overlay.
-Until that overlay exists, source-only results are labeled and unsupported variable/multilingual claims are rejected.
+That overlay is implemented; source and midpoint mark-attachment acceptance remains a separate required scenario.
 The existing compiled proof worker and Designbot adapter remain the first rendering path.
 Proof results carry the same revision/hash/recipe metadata to the canvas and agent image response.
 
@@ -92,14 +99,14 @@ Workers must ask for a coordinated seam change rather than independently editing
 
 ## Bounded first acceptance
 
-- [ ] One captured base version feeds unchanged and scripted specimen outputs with identical rendering settings.
+- [x] One captured base version feeds unchanged and scripted specimen outputs with identical rendering settings.
 - [ ] Code is visible and editable in the Python node with correct focus, selection, clipboard, multiline input and expansion into the shared editor.
 - [ ] Image nodes can be dragged/resized beside each other without rerunning or changing the font.
-- [ ] Native and agent calls discover/read/patch the same graph and reject stale patches.
+- [x] Native and agent calls discover/read/patch the same graph and reject stale patches.
 - [ ] Script exceptions, malformed output, cancellation and document replacement leave the original version and disk sources unchanged.
 - [ ] Source-scoped anchor changes are visible in an appropriate mark-attachment specimen with truthful compiled-family lineage.
 - [ ] Current/stale/error state matches across node previews, job status and MCP images.
-- [ ] Explicit Apply yields one existing receipt/history group and ordinary Undo restores the selected change.
+- [x] Explicit Apply yields one existing receipt/history group and ordinary Undo restores the selected change.
 - [ ] Graph save/reopen preserves code, settings and positions without persisting session handles or auto-running.
 - [ ] Native Gray/Light headless evidence, browser regression checks and a disposable real-font scenario pass.
 

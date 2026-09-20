@@ -115,3 +115,12 @@ The handles do not retain a reusable compiled-font object for arbitrary later sh
 Only queued proof work can be cancelled; a running compiler finishes on its original immutable inputs.
 A successful MCP image transport test does not prove that a particular desktop or CLI model received or interpreted the image.
 Native pointer, IME and foreground-window interaction remain separate from the headless Workspace trials.
+
+## Python recipes and native comparisons
+
+Python recipes use an optional external interpreter; the editor itself does not require Python.
+The subprocess boundary is not an operating-system sandbox, and cancellation terminates the direct child without claiming descendant containment.
+The first mutation scope is one explicit source, at most 64 guarded layers and 256 operations; cross-source and whole-font atomic recipes are not implemented.
+Live comparison graphs currently remain session-only, and expanding inline code into the shared Scripts editor is unfinished.
+The pinned text editor lacks local Undo/Redo; those shortcuts are consumed inside recipe editors so they cannot accidentally undo a font edit.
+Font Undo/Redo remains available outside focused recipe text while viewing Nodes; graph history is a separate engine operation whose native controls remain unfinished.

@@ -28,7 +28,8 @@ Code and image content must receive their own focused child-widget events before
 Canvas code changes should emit a distinct typed graph-value edit for `live.python` field `code`.
 `MoveNode` and resizing are presentation-only graph edits and must not change semantic hashes, invalidate output, or trigger execution.
 
-The Python child is Masonry's real multiline `TextArea`, preserving platform focus, selection, clipboard, newline and editor-local undo behavior.
+The Python child is Masonry's real multiline `TextArea`, preserving platform focus, selection, clipboard, newline behavior.
+Local text Undo/Redo is not implemented by the pinned TextArea; those keys are consumed to prevent accidental font-history changes.
 It emits the complete authoritative projected value as `NodesEvent::EditCode` without running the graph.
 PNG bytes are decoded only after their recorded dimensions match the image and are rendered by a clipped child widget.
 Pointer drag pans the proof, scroll zooms it from 25% to 800%, and double-click returns to its fitted 100% view.

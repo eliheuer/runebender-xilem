@@ -31,7 +31,7 @@ Retain the separate full-family, client-image, clean-checkout and native interac
 The user also requested sidebar and schedule cleanup.
 The completed cancellation, procedural/OMP harness, Python runtime and Python recipe tasks were archived with their committed work preserved on their named Git branches for central review.
 Archiving these handoffs does not imply integration.
-The completed metaball task was also archived; its implementation is already an ancestor of this branch.
+The metaball task was restored on user request on 2026-09-20 because that work is not finished; leave it open.
 Their obsolete schedules were already removed.
 At the initial cleanup, four schedules remained; the completed Scripts and Nodes execution schedules were subsequently removed as recorded below.
 The existing desktop Virtua trial remains open for testing.
@@ -45,21 +45,23 @@ The Nodes canvas content-layout seam is `642d710`, which does not yet establish 
 
 ## Noon candidate integration in progress
 
-At 10:10 Pacific, central integrated the Python runtime bounds corrections, recipe examples, live edit cancellation and queue ownership fix, guarded GraphSession, native graph execution adapter, Nodes request schemas, Scripts library/editor/run/proposal/Apply flow and the strict OMP proof harness.
-The Scripts and Nodes execution schedules are removed because their bounded implementation handoffs are complete; their tasks remain available until central validation finishes.
-The central ten-minute continuation and Nodes canvas twenty-minute continuation remain active.
+At approximately 11:00 Pacific, the coordinator has integrated the native Python runtime/library, Scripts flow, guarded live Nodes engine and canvas, full-family proof overlays, independent edit cancellation and direct MCP PNG delivery.
+Source checkpoint `8fa7e4c` passed 925 native tests with four explicitly ignored tests and strict all-target Clippy.
+The subsequent `ccdb370` phase keeps ordinary font Undo/Redo available while staying in Nodes and passes its focused Apply/Undo/Redo test.
+Scripts scrolling and shortcut isolation are integrated for final review; actual Gray/Light captures also identified Nodes layout defects now being corrected.
 
-The coordinator is connecting one Workspace graph to the shared Python queue and process-wide compiler queue.
-The unchanged and derived specimen inputs retain the whole variable family and exact captured hashes.
-The same native command handler serves graph authoring, run/status/cancel/release, immutable image retrieval and separate guarded Apply.
-New direct-application tests cover common receipt replay after ordinary Undo.
-Native graph retry, stale Apply and cancellation-race review fixes are integrated; their added tests await the combined run.
+The credential-free actual stdio MCP trial passed on a copied full Virtua Grotesk designspace.
+All nine Nodes tools were used, exact returned image bytes and hashes matched, A changed from 716 to 816, ordinary Undo restored 716, and retry after Undo did not reapply.
+All 1,744 files in both input and copy matched before, after and after cleanup.
+Evidence is `/private/tmp/runebender-nodes-virtua-full-family-20260920-1140/evidence.json`.
+This does not establish actual model image interpretation or foreground pointer/IME behavior.
 
-The first combined native attempt passed 511 library tests and 206 binary tests, with four explicitly ignored tests, but failed a new synthetic proof fixture's width assertion.
-The fixture now sets its intended starting width explicitly.
-Subsequent compilation exposed a Scripts sizing-wrapper error, corrected before the next run.
-These partial results do not constitute final native, browser, clean-checkout or interactive acceptance.
-Main and upstream remain the earlier validated checkpoint until the combined candidate passes its gates.
+The Nodes execution and canvas tasks are validated and archived, and all worker schedules are removed.
+The Scripts task remains open for final integration verification; only the central ten-minute continuation remains scheduled.
+The existing desktop trial remains available, and the metaball task is open at the user's request.
+Main and upstream remain `790702d7d0e00a5602aca30f49b72aef43b652c2` until the combined candidate passes remaining checks.
+Native release, warnings-denied docs, advisories, browser build/lint/quality and clean-checkout acceptance must not be inferred from the passing native subset.
+Live graph persistence, expanded script editing, graph-history UI and source/midpoint mark specimens remain tracked work.
 
 ## Agreed interfaces and remaining decisions
 

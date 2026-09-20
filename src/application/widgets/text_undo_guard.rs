@@ -112,7 +112,7 @@ impl<W: Widget + FromDynWidget + ?Sized> TextUndoGuard<W> {
 }
 
 impl<W: Widget + FromDynWidget + ?Sized> Widget for TextUndoGuard<W> {
-    type Action = W::Action;
+    type Action = ();
 
     fn register_children(&mut self, ctx: &mut RegisterCtx<'_>) {
         ctx.register_child(&mut self.child);

@@ -12,7 +12,7 @@ No release has been published yet.
 
 - Added the native Python recipe runtime and script-file library foundation, plus anchor report and move examples.
   Recipes receive immutable captures and return validated reports or proposals; applying an edit remains a separate guarded action.
-  Process deadlines, bounded result capture and observed file-conflict checks cover the runtime boundary; Nodes integration remains in progress.
+  Process deadlines, bounded result capture and observed file-conflict checks cover the runtime boundary.
 
 - Added full-family proof-input derivation for unpublished guarded edits.
   Changed specimen inputs preserve other masters, axes and features while the original document and baseline remain unchanged.
@@ -22,7 +22,7 @@ No release has been published yet.
   Script execution remains unavailable in the browser.
 
 - Added native Nodes content children for multiline Python editing and immutable PNG specimen comparison.
-  Code editing keeps platform focus, selection, clipboard, newline and local undo behavior without automatic execution; proof nodes retain prior images while running and support independent pan, zoom and presentation-only resizing.
+  Code editing keeps platform focus, selection, clipboard, newline behavior without automatic execution; unsupported text Undo/Redo shortcuts cannot change font history; proof nodes retain prior images while running and support independent pan, zoom and presentation-only resizing.
   Live comparisons expose their source and glyph scope, support guarded topology edits plus Run, Cancel, Clear and Apply controls, and reuse retained proof bytes by immutable artifact identity.
 
 - Added asynchronous native `proof_start`, `proof_status`, `proof_cancel` and `proof_release` tools.
@@ -38,7 +38,7 @@ No release has been published yet.
 
 - Added native live `agent_apply`, `agent_receipt` and `agent_history` tools with guarded width/point/anchor batches, bounded retry receipts, and shared ordinary/targeted undo.
   Exact retries do not repeat edits, view refreshes or history entries, including after a lost response or undo.
-  Independent edit cancellation and durable receipt recovery remain unsupported.
+  Independent cancellation distinguishes cancelled-before-commit, too-late and committed outcomes; durable receipt recovery remains unsupported.
 
 - Live context revisions now include the document epoch, preventing identical reopened state from reusing an earlier context token.
 

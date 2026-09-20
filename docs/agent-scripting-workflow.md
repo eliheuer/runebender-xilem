@@ -1,6 +1,6 @@
 # Native script authoring and execution
 
-Status: approved implementation direction, not completed functionality.
+Status: Python runtime, library, chat artifacts, Scripts panel and native graph integration are implemented; combined UI and client acceptance is in progress.
 On 2026-09-20 the user approved chat-generated scripts, a persistent Scripts panel, in-editor editing and running, and initially exploring Python and Rust against the same system.
 The user then explicitly narrowed this phase to Python only to keep it simple.
 This document defines the bounded first delivery and the interface shared by the parallel workers.
@@ -101,7 +101,7 @@ The latest user approval releases implementation and disposable local recipe tri
 The user next requested a ComfyUI-like graph with a base font branching into an unchanged specimen and a Python-transformed specimen.
 The Python node should show editable code inside its box, and image output nodes should be movable side by side for comparison.
 The user subsequently authorized implementation with scheduled Nodes workers; the [Nodes plan](agent-nodes-plan.md) defines that active phase.
-It is not yet an implemented capability and does not duplicate the current scripting workers.
+The native comparison is implemented on the same runner and guarded transaction boundary; persistence and editor expansion remain tracked acceptance work.
 
 The intended graph is captured base FontVersion → specimen A, and the same captured FontVersion → Python script → derived FontVersion → specimen B.
 Run captures one immutable baseline shared by both paths, including unsaved editor changes.
@@ -131,10 +131,9 @@ DrawBot is a possible later renderer adapter using a temporary compiled font art
 It is not a required dependency for the first Nodes comparison loop and is distinct from the existing Designbot adapter.
 Renderer differences must remain visible rather than being mistaken for script-induced font changes.
 
-The current engine declares live.font, live.fork, live.proof and live.apply, but native editor/tools/nodes.rs removes live types from the palette and rejects their execution through the disk runner.
-The custom native Nodes canvas currently has no registered child widgets for inline editing.
-Therefore this phase requires a native live-graph scheduler, derived-version recipe adapter, full-family proof overlay where needed, and real code/image node content; it is not just adding a node label.
-Engine/session and canvas/editor workers may progress independently on agreed interfaces while the shared runner is reviewed.
-Runtime integration remains dependent on that shared contract and the coordinator's review.
+The native Workspace now executes the live graph through the guarded graph service and shared queues.
+The canvas has real code and image children, and full-family proofs carry exact captured hashes through MCP.
+The separate disk runner still rejects live execution rather than inventing a second font owner.
+The actual full-family Virtua MCP trial is recorded in the Nodes plan; native input and model interpretation remain distinct acceptance checks.
 
 Acceptance must show the original branch unchanged, a visible scripted anchor difference in a suitable mark-attachment specimen, identical proof settings, correct stale/cancel behavior, graph save/reopen without live bindings, and an explicit Apply/Undo that changes only the chosen target.

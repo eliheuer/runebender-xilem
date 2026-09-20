@@ -43,7 +43,7 @@ Canonical live results include `document_revision` and `saved=false`.
 The socket envelope reports schema version 1 and the package version; this is not an executable hash.
 MCP input is bounded to 8 MiB and initialization chooses a supported version instead of echoing an arbitrary version.
 The native application now exposes strict receipt-backed atomic apply and shared ordinary/targeted grouped history through `agent_apply`, `agent_receipt` and `agent_history`.
-Full validation of legacy schemas and independent edit cancellation remain pending.
+Full validation of legacy schemas remains pending; independent edit cancellation is implemented and covered by socket and commit-race tests.
 Asynchronous compiled proof artifacts and direct MCP PNG delivery are implemented; actual model image receipt remains a separate gate.
 The engine transaction/proof primitives, real OMP proposal trials and the desktop receipt-backed edit trial are implemented.
 See [the live context wire notes](agent-live-context.md) for the implemented contract and its limits.
@@ -77,13 +77,13 @@ Reorder sources and change selection between read and mutation; the request stil
 - [x] Publish one guaranteed atomic bounded batch with one named history group; reject unsupported scope before editing.
 - [x] Return actor, operation ID, before/after revisions, changed IDs, history handle and `saved=false`.
 - [x] Add a bounded session receipt ledger with idempotency payload checks and status queries.
-- [ ] Reconcile timeout/disconnect by status; implement cancellation before commit and explicit too-late/committed outcomes.
+- [x] Reconcile timeout/disconnect by status; implement cancellation before commit and explicit too-late/committed outcomes.
 - [x] Carry already-granted scoped authorization through the sequence; do not ask repeatedly for the same authorized edit.
 - [x] Make targeted undo conflict-aware and integrate with ordinary editor undo so one operation cannot be undone twice.
 
 The [live transaction contract](agent-live-transactions.md) documents the implemented boundary.
 Real-socket tests cover a disconnected apply caller, exact receipt replay without duplicate refresh/history, stale dependencies, point/anchor identities, grouped history conflicts, source reorder, inactive-source refresh, overview ordering and active gestures.
-Independent cancellation remains unchecked; current receipts expose immutable changed layer addresses and changed width/point/anchor identities derived from final canonical deltas.
+Independent connection and commit-race tests cover cancellation; current receipts expose immutable changed layer addresses and changed width/point/anchor identities derived from final canonical deltas.
 
 Likely owners: canonical draft/history APIs, `edit_batch.rs`, `proposal.rs`, `experiments.rs`, plus the session adapter.
 Do not describe existing per-glyph installs as atomic or rebuild their geometry in an adapter.
@@ -113,7 +113,7 @@ An agent with a vision-capable client receives the PNG and identifies a visual-o
 The [OMP client trials](agent-client-trials.md) now pass real model read and bounded edit calls against the synthetic Workspace, including fixture-driven ordinary undo/redo.
 The Codex desktop task now passes a real Virtua Grotesk copy trial, including receipt lookup and exact retry, with independent ordinary application undo/redo.
 Compiled image transport now passes a real socket and stdio MCP process test.
-Actual model image receipt, independent edit cancellation and OMP trials of the new receipt tools remain pending.
+Actual model image receipt and OMP trials of the new receipt tools remain pending.
 
 - [ ] Run the bounded scenario through a local Codex/ChatGPT desktop task and OMP CLI with disposable fixtures and isolated configuration, as selected by the user.
 - [ ] Save redacted transport transcript, receipts, binary/client hashes, images and disk manifests.
