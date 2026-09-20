@@ -13,12 +13,8 @@ use kurbo::{BezPath, Rect};
 use runebender::analysis::category::GlyphCategory;
 use runebender::document::canonical_metadata::{CanonicalFontMetadata, KerningSide};
 use runebender::document::model::font_info::CanonicalFontInfo;
-#[cfg(test)]
-use runebender::document::project::Master;
 use runebender::document::project::{CanonicalGlyphEntry, DocumentEditOutcome, Project};
 use runebender::document::proposal;
-#[cfg(test)]
-use runebender::document::variable::{SourceEdit, SourceFontEdit};
 use runebender::outline::glyph_paths;
 
 pub(crate) use runebender::document::axis::Axis;
@@ -215,28 +211,13 @@ impl FontModel {
         self.glyphs[index] = GlyphEntry::from_core(&entry);
     }
 
-    // ---- the active master ----
-
+    /// Materialize the active source only for assertions at the UFO boundary.
     #[cfg(test)]
-    pub(crate) fn master(&self) -> &Master {
-        self.project.active_font()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn master_mut(&mut self) -> SourceEdit<'_> {
-        self.project.active_font_mut()
-    }
-
-    /// The active master's font, to read.
-    #[cfg(test)]
-    pub(crate) fn font(&self) -> &norad::Font {
-        &self.master().font
-    }
-
-    /// Test-only access to the active source projection for stale-state fixtures.
-    #[cfg(test)]
-    pub(crate) fn font_mut(&mut self) -> SourceFontEdit<'_> {
-        self.master_mut().into_font()
+    pub(crate) fn font_snapshot(&self) -> norad::Font {
+        self.project
+            .source_id(self.active())
+            .and_then(|source| self.project.source_snapshot(source))
+            .expect("the active source remains materializable")
     }
 
     pub(crate) fn source(&self) -> &FsPath {
@@ -758,6 +739,7 @@ fn save_target_is_writable(target: &FsPath) -> bool {
 mod tests {
     use super::*;
     use runebender::document::canonical_metadata::KerningParticipant;
+    use runebender::document::project::Master;
 
     fn two_master_model() -> (PathBuf, FontModel) {
         let dir = std::env::temp_dir().join(format!(
@@ -941,16 +923,16 @@ mod tests {
 
     #[test]
     fn save_targets_require_a_writable_directory() {
-        let (dir, mut model) = two_master_model();
-        assert!(model.is_writable());
-
-        model.master_mut().source_path = dir.join("New.ufo");
+        let (dir, model) = two_master_model();
         assert!(model.is_writable());
 
         let file = dir.join("not-a-directory");
         std::fs::write(&file, "fixture").expect("the ordinary file is created");
-        model.master_mut().source_path = file.join("New.ufo");
-        assert!(!model.is_writable());
+        let invalid = FontModel::from_project(Project::from_source(Master::from_font(
+            norad::Font::new(),
+            file.join("New.ufo"),
+        )));
+        assert!(!invalid.is_writable());
 
         std::fs::remove_dir_all(dir).expect("the fixture is removed");
     }

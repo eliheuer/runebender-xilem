@@ -685,16 +685,10 @@ mod tests {
         app.set_master(1);
         app.mode = Mode::Overview;
         app.selected = app.font.index_of("A");
-        let old_width = app.font.font().get_glyph("A").unwrap().width;
+        let old_width = app.font.font_snapshot().get_glyph("A").unwrap().width;
         app.overview_set_advance("750".into());
         let source = app.font.project.source_id(1).unwrap();
         let address = app.font.active_layer_address("A").unwrap();
-        assert_eq!(
-            app.font
-                .master()
-                .undo_depth(app.font.index_of("A").unwrap()),
-            0
-        );
         assert_eq!(
             app.font.project.document_layer_history_depth(
                 &address,
@@ -716,7 +710,10 @@ mod tests {
         assert_eq!(app.font.project.source_index(source), Some(0));
         app.mode = Mode::Overview;
         app.undo_active_edit(false);
-        assert_eq!(app.font.font().get_glyph("A").unwrap().width, old_width);
+        assert_eq!(
+            app.font.font_snapshot().get_glyph("A").unwrap().width,
+            old_width
+        );
         app.set_axis(0, 550.0);
         app.source_name_buf = "Medium".into();
         app.change_sources("add");
@@ -896,7 +893,7 @@ mod tests {
             let index = workspace.font.index_of(name).expect("the glyph is indexed");
             let source_glyph = workspace
                 .font
-                .font()
+                .font_snapshot()
                 .get_glyph(name)
                 .expect("the source glyph exists")
                 .clone();
@@ -981,11 +978,8 @@ mod tests {
         );
 
         let reopened = Workspace::open(&designspace).expect("the saved designspace reopens");
-        let reopened_r = reopened
-            .font
-            .font()
-            .get_glyph("R")
-            .expect("R survives reopening");
+        let reopened_font = reopened.font.font_snapshot();
+        let reopened_r = reopened_font.get_glyph("R").expect("R survives reopening");
         assert_eq!(reopened_r.contours[0].points[0].x, original_x + 2.0);
         assert_eq!(reopened_r.width, original_width + 4.0);
         assert_eq!(reopened_r.anchors.len(), original_anchor_count + 1);
@@ -1348,10 +1342,9 @@ mod tests {
         assert!(workspace.save());
 
         let reopened = Workspace::open(&path).expect("the saved metadata fixture reopens");
-        assert!(reopened.font.font().get_glyph("A").is_none());
-        let glyph = reopened
-            .font
-            .font()
+        let reopened_font = reopened.font.font_snapshot();
+        assert!(reopened_font.get_glyph("A").is_none());
+        let glyph = reopened_font
             .get_glyph("A.alt")
             .expect("the renamed glyph survives reopening");
         assert_eq!(glyph.width, 650.0);
@@ -1470,17 +1463,32 @@ mod tests {
         workspace.undo_active_edit(true);
         workspace.overview_set_advance("700".into());
         assert_eq!(
-            workspace.font.font().get_glyph("beh.test").unwrap().width,
+            workspace
+                .font
+                .font_snapshot()
+                .get_glyph("beh.test")
+                .unwrap()
+                .width,
             700.0
         );
         workspace.undo_active_edit(false);
         assert_eq!(
-            workspace.font.font().get_glyph("beh.test").unwrap().width,
+            workspace
+                .font
+                .font_snapshot()
+                .get_glyph("beh.test")
+                .unwrap()
+                .width,
             500.0
         );
         workspace.undo_active_edit(true);
         assert_eq!(
-            workspace.font.font().get_glyph("beh.test").unwrap().width,
+            workspace
+                .font
+                .font_snapshot()
+                .get_glyph("beh.test")
+                .unwrap()
+                .width,
             700.0
         );
 
@@ -1682,7 +1690,10 @@ mod tests {
             "Save As must not modify the original UFO"
         );
         let reopened = Workspace::open(&target).expect("the copied UFO reopens");
-        assert_eq!(reopened.font.font().get_glyph("A").unwrap().width, 543.0);
+        assert_eq!(
+            reopened.font.font_snapshot().get_glyph("A").unwrap().width,
+            543.0
+        );
         assert_eq!(reopened.font.feature_text(), "include(../shared.fea);");
         assert_eq!(
             std::fs::read_to_string(copy.join("shared.fea")).unwrap(),
@@ -1711,7 +1722,7 @@ mod tests {
         workspace.revert_features();
         workspace.set_master(1);
         assert_eq!(workspace.font.active(), 1);
-        assert_eq!(workspace.features_buf, workspace.font.font().features);
+        assert_eq!(workspace.features_buf, workspace.font.feature_text());
         std::fs::remove_dir_all(dir).expect("the designspace fixture is removed");
     }
 
@@ -1923,7 +1934,8 @@ mod tests {
         assert!(workspace.save());
 
         let reopened = Workspace::open(&path).expect("the edited component fixture reopens");
-        let component = &reopened.font.font().get_glyph("target").unwrap().components[0];
+        let reopened_font = reopened.font.font_snapshot();
+        let component = &reopened_font.get_glyph("target").unwrap().components[0];
         assert_eq!(component.base.as_str(), "base");
         assert_eq!(component.transform.x_offset, 30.0);
         assert_eq!(component.transform.y_offset, 40.0);
@@ -2172,26 +2184,19 @@ mod tests {
 
     #[test]
     fn save_reports_failure_for_an_unwritable_source() {
-        let path = std::env::temp_dir().join(format!(
-            "runebender-xilem-save-{}-{}.ufo",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("the system clock is after the Unix epoch")
-                .as_nanos(),
-        ));
-        norad::Font::new()
-            .save(&path)
-            .expect("the empty UFO fixture saves");
-        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        let project = runebender::document::project::Project::from_source(
+            runebender::document::project::Master::from_font(
+                norad::Font::new(),
+                "/dev/null/runebender-test.ufo".into(),
+            ),
+        );
+        let mut workspace = Workspace::from_model(FontModel::from_project(project))
+            .expect("the in-memory fixture opens");
         workspace.modified = true;
-        workspace.font.master_mut().source_path = "/dev/null/runebender-test.ufo".into();
 
         assert!(!workspace.save());
         assert!(workspace.modified, "a failed save must remain dirty");
         assert!(workspace.note.starts_with("Save failed:"));
-
-        std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
     }
 
     #[test]

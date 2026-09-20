@@ -862,7 +862,10 @@ mod tests {
             &serde_json::json!({"moved": 1, "points": 1, "advance_delta": 120}),
         );
 
-        assert_eq!(workspace.font.font().get_glyph("A"), Some(&original));
+        assert_eq!(
+            workspace.font.font_snapshot().get_glyph("A"),
+            Some(&original)
+        );
         assert!(workspace.ai.installed_order.is_empty());
         assert_eq!(workspace.ai.proposals.len(), 1);
         assert_eq!(workspace.ai.preview_task.as_deref(), Some("bolden"));
@@ -886,10 +889,12 @@ mod tests {
         installed
             .lib
             .remove(runebender::formats::lib_keys::PROPOSAL_BASE_KEY);
-        assert_eq!(workspace.font.font().get_glyph("A"), Some(&installed));
+        assert_eq!(
+            workspace.font.font_snapshot().get_glyph("A"),
+            Some(&installed)
+        );
         assert!(workspace.ai.preview_task.is_none());
         let address = workspace.font.active_layer_address("A").unwrap();
-        assert_eq!(workspace.font.master().undo_depth(0), 0);
         assert_eq!(
             workspace
                 .font
@@ -898,11 +903,20 @@ mod tests {
             1
         );
         workspace.undo_open_glyph(false);
-        assert_eq!(workspace.font.font().get_glyph("A"), Some(&original));
+        assert_eq!(
+            workspace.font.font_snapshot().get_glyph("A"),
+            Some(&original)
+        );
         workspace.undo_open_glyph(true);
-        assert_eq!(workspace.font.font().get_glyph("A"), Some(&installed));
+        assert_eq!(
+            workspace.font.font_snapshot().get_glyph("A"),
+            Some(&installed)
+        );
         workspace.undo_install();
-        assert_eq!(workspace.font.font().get_glyph("A"), Some(&original));
+        assert_eq!(
+            workspace.font.font_snapshot().get_glyph("A"),
+            Some(&original)
+        );
 
         std::fs::remove_dir_all(path).expect("the fixture is removed");
     }
@@ -966,7 +980,6 @@ mod tests {
         workspace.undo_open_glyph(false);
         assert_eq!(workspace.session.advance(), 500.0);
         assert!(workspace.metadata_undo.is_empty());
-        assert_eq!(workspace.font.master().undo_depth(0), 0);
 
         std::fs::remove_dir_all(path).expect("the fixture is removed");
     }
@@ -1004,16 +1017,28 @@ mod tests {
                 .expect("the foreground revision is captured"),
             ..AiJob::default()
         };
+        let address = workspace.font.active_layer_address("A").unwrap();
+        let mut transaction = workspace
+            .font
+            .project
+            .begin_document_layer_transaction(&address)
+            .unwrap();
+        transaction
+            .draft_mut()
+            .set_width(540.0)
+            .expect("the finite width is valid");
         workspace
             .font
-            .font_mut()
-            .get_glyph_mut("A")
-            .expect("A remains loaded")
-            .width = 540.0;
+            .project
+            .commit_document_layer_transaction(transaction)
+            .unwrap();
 
         workspace.task_finished(&job, &serde_json::json!({}));
 
-        assert_eq!(workspace.font.font().get_glyph("A").unwrap().width, 540.0);
+        assert_eq!(
+            workspace.font.font_snapshot().get_glyph("A").unwrap().width,
+            540.0
+        );
         assert_eq!(
             workspace.note,
             "font-ml result is stale after a document, master, glyph, or revision change"
@@ -1156,7 +1181,7 @@ mod tests {
         assert!(
             workspace
                 .font
-                .font()
+                .font_snapshot()
                 .layers
                 .iter()
                 .all(|layer| { !layer.name().as_str().starts_with(proposal::LAYER_PREFIX) })
@@ -1281,7 +1306,11 @@ mod tests {
 
         workspace.install_proposal("bolden", Some(vec!["R".into()]));
         assert_eq!(
-            workspace.font.font().get_glyph("R").expect("installed R"),
+            workspace
+                .font
+                .font_snapshot()
+                .get_glyph("R")
+                .expect("installed R"),
             &proposed
         );
         assert_eq!(workspace.ai.installed_order.len(), 1);
@@ -1289,7 +1318,11 @@ mod tests {
 
         workspace.undo_install();
         assert_eq!(
-            workspace.font.font().get_glyph("R").expect("restored R"),
+            workspace
+                .font
+                .font_snapshot()
+                .get_glyph("R")
+                .expect("restored R"),
             &original
         );
         assert!(workspace.ai.installed_order.is_empty());

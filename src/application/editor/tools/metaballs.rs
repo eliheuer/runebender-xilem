@@ -405,7 +405,7 @@ mod tests {
             assert!(!app.session.outline_is_empty());
             app.undo_open_glyph(false);
         }
-        app.font.font().save(&path).unwrap();
+        app.font.font_snapshot().save(&path).unwrap();
         let reopened = norad::Font::load(&path).unwrap();
         assert_eq!(
             runebender::formats::metaballs::read_metaballs(reopened.get_glyph("i").unwrap())
@@ -418,11 +418,25 @@ mod tests {
         app.back_to_overview();
         app.collapse_font_metaballs();
         for name in ["i", "j"] {
-            assert!(!app.font.font().get_glyph(name).unwrap().contours.is_empty());
+            assert!(
+                !app.font
+                    .font_snapshot()
+                    .get_glyph(name)
+                    .unwrap()
+                    .contours
+                    .is_empty()
+            );
         }
         app.undo_active_edit(false);
         for name in ["i", "j"] {
-            assert!(app.font.font().get_glyph(name).unwrap().contours.is_empty());
+            assert!(
+                app.font
+                    .font_snapshot()
+                    .get_glyph(name)
+                    .unwrap()
+                    .contours
+                    .is_empty()
+            );
         }
         app.undo_active_edit(true);
         app.open_glyph(app.font.index_of("i").unwrap());

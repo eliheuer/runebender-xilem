@@ -705,10 +705,21 @@ mod tests {
             .expect("the beh remains visible")
             .advance_width;
         let beh_index = font.index_of(&beh_name).expect("the shaped beh is indexed");
-        font.font_mut()
-            .get_glyph_mut(&beh_name)
-            .expect("the shaped beh remains in the live master")
-            .width += 17.0;
+        let address = font
+            .active_layer_address(&beh_name)
+            .expect("the shaped beh remains in the canonical source");
+        let mut transaction = font
+            .project
+            .begin_document_layer_transaction(&address)
+            .expect("the shaped beh remains editable");
+        let width = transaction.draft().view().width() + 17.0;
+        transaction
+            .draft_mut()
+            .set_width(width)
+            .expect("the finite width is valid");
+        font.project
+            .commit_document_layer_transaction(transaction)
+            .expect("the test edit commits");
         font.refresh_entry(beh_index);
         state.refresh(&TextInputs::new(&font));
         assert_eq!(

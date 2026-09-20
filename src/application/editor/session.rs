@@ -2854,7 +2854,6 @@ mod tests {
         assert_eq!(glyph.contours[0].points.len(), 7);
         assert_ne!(glyph.contours[0].points[0].typ, norad::PointType::Move);
         assert_eq!(workspace.metadata_undo.len(), 4);
-        assert_eq!(workspace.font.master().undo_depth(0), 0);
 
         std::fs::remove_dir_all(path).expect("the fixture is removed");
     }

@@ -168,7 +168,8 @@ Dropping an edit guard reconciles additions, removals, geometry and metadata int
 Use `edit_layer` and `undo_layer` for a specific glyph layer without switching the active editor source.
 Default-layer edits share the existing editor history, while auxiliary layers have independent histories.
 Do not introduce another mutable source-font accessor.
-The production application no longer reads this projection or its history; `FontModel::master`, `font`, `master_mut` and `font_mut` are test-only retirement fixtures.
+The application has no `FontModel::master`, `font`, `master_mut` or `font_mut` accessors.
+Format-boundary tests materialize detached source snapshots instead of borrowing or mutating the live compatibility projection.
 Application undo ordering and stale-task checks use stable canonical layer addresses, Project-owned history depths and canonical glyph revisions.
 
 Project save materializes UFOs from canonical Babelfont geometry and glyph-free source-format data, preserving font info, libs, layer order, features, kerning, groups, images and data.

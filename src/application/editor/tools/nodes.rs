@@ -904,7 +904,10 @@ mod tests {
 
         workspace.nodes_finished(&job, &report);
 
-        assert_eq!(workspace.font.font().get_glyph("A"), Some(&original));
+        assert_eq!(
+            workspace.font.font_snapshot().get_glyph("A"),
+            Some(&original)
+        );
         assert_eq!(workspace.ai.proposals.len(), 1);
         assert_eq!(
             workspace.ai.preview_task.as_deref(),
@@ -947,12 +950,21 @@ mod tests {
                 .expect("the foreground revision is captured"),
             ..NodeJob::default()
         };
+        let address = workspace.font.active_layer_address("A").unwrap();
+        let mut transaction = workspace
+            .font
+            .project
+            .begin_document_layer_transaction(&address)
+            .unwrap();
+        transaction
+            .draft_mut()
+            .set_width(540.0)
+            .expect("the finite width is valid");
         workspace
             .font
-            .font_mut()
-            .get_glyph_mut("A")
-            .expect("A remains loaded")
-            .width = 540.0;
+            .project
+            .commit_document_layer_transaction(transaction)
+            .unwrap();
         let report = RunReport {
             ok: true,
             nodes: vec![nodes_run::NodeResult {
@@ -968,7 +980,10 @@ mod tests {
 
         workspace.nodes_finished(&job, &report);
 
-        assert_eq!(workspace.font.font().get_glyph("A").unwrap().width, 540.0);
+        assert_eq!(
+            workspace.font.font_snapshot().get_glyph("A").unwrap().width,
+            540.0
+        );
         assert_eq!(
             workspace.note,
             "Node result is stale after a document, master, glyph, or revision change"
@@ -1030,7 +1045,7 @@ mod tests {
         assert_eq!(workspace.node_glyphs(), vec!["R", "S"]);
         let original = workspace
             .font
-            .font()
+            .font_snapshot()
             .get_glyph("R")
             .expect("the Regular master contains R")
             .clone();
@@ -1078,7 +1093,7 @@ mod tests {
 
         assert!(workspace.nodes.job.is_none(), "the bounded graph finishes");
         assert_eq!(
-            workspace.font.font().get_glyph("R"),
+            workspace.font.font_snapshot().get_glyph("R"),
             Some(&original),
             "the proposal-only graph must not change the foreground"
         );
@@ -1110,9 +1125,15 @@ mod tests {
             Some(RowState::Done(_, Some(summary))) if summary.contains("model")
         ));
         workspace.install_proposal("bolden", Some(vec!["R".into()]));
-        assert_ne!(workspace.font.font().get_glyph("R"), Some(&original));
+        assert_ne!(
+            workspace.font.font_snapshot().get_glyph("R"),
+            Some(&original)
+        );
         workspace.undo_install();
-        assert_eq!(workspace.font.font().get_glyph("R"), Some(&original));
+        assert_eq!(
+            workspace.font.font_snapshot().get_glyph("R"),
+            Some(&original)
+        );
 
         std::fs::remove_dir_all(root).expect("the disposable node fixture is removed");
     }

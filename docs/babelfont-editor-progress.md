@@ -307,7 +307,7 @@ git diff --check
 - Place Image installs bytes through a stable-source Project operation and attaches the image through the layer draft; it no longer mutates `FontModel::font_mut().images`.
 - Overview metaball conversion now commits guarded layer transactions and replays Project-owned layer history instead of calling `FontModel::replace_glyph` or recording `Master.history` snapshots.
 - No production application caller materializes or reconciles a whole glyph; compatibility projection helpers remain test-only while M13 removes the bridge itself.
-- Production application code no longer calls `FontModel::master_mut` or `font_mut`; the two accessors are confined to stale-state and persistence fixtures.
+- `FontModel::master_mut` and `font_mut` are deleted; stale-state fixtures publish canonical transactions.
 - Production metrics-formula, Unicode and Save As writes now use canonical Project operations; no production application caller mutates a source projection.
 - Pen, Rectangle, Ellipse and Knife Pointer Cancel paths now have real widget-event coverage.
 
@@ -585,7 +585,7 @@ Application `DocumentLayer` labels now carry their expected canonical history de
 The live-document proposal path records the same stable installed addresses.
 
 Production `undo_open_glyph`, overview undo, proposal workflows and overview advance no longer call legacy `Master` history.
-Production `FontModel::master_mut` and `font_mut` accessors are now test-only.
+Production `FontModel::master_mut` and `font_mut` callers were removed in this slice; the accessors are now deleted.
 
 Executed evidence:
 
@@ -667,7 +667,8 @@ Affected paths: `src/application/actions.rs`, editor commands, inspector, sessio
 Undo and Redo enablement, metadata ordering and session publication now query the active canonical layer and Project-owned history depth.
 `DocumentLayer` entries use their exact post-commit layer depth for Undo and the preceding depth for Redo, keeping rename and outline replay ordered on the same canonical stack.
 Local-AI and Nodes stale-result guards hash canonical default layers under stable source identity rather than reading the active UFO projection.
-Production application code no longer calls `FontModel::master` or `FontModel::font`; those accessors and the remaining mutable projection accessors are test-only until M13 removes their fixtures.
+`FontModel::master`, `font`, `master_mut` and `font_mut` are deleted.
+Application fixtures now use canonical transactions for stale-state edits and detached source snapshots only for format-boundary assertions.
 
 Executed evidence:
 

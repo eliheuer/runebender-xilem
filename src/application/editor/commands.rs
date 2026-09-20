@@ -1564,12 +1564,10 @@ mod tests {
             app.command_expand_stroke();
         }
         assert!(!app.modified);
-        assert_eq!(app.font.master().undo_depth(index), 0);
         app.stroke_buf = "20".into();
         app.command_expand_stroke();
         assert_ne!(projected_glyph(&app.session).contours, original);
         assert_eq!(app.session.advance(), 500.0);
-        assert_eq!(app.font.master().undo_depth(index), 0);
         assert_eq!(app.metadata_undo.len(), 1);
         app.undo_active_edit(false);
         assert_eq!(projected_glyph(&app.session).contours, original);
@@ -1695,7 +1693,6 @@ mod tests {
         assert_eq!(workspace.metadata_undo.len(), 2);
         workspace.swap_background();
         assert_eq!(workspace.metadata_undo.len(), 3);
-        assert_eq!(workspace.font.master().undo_depth(index), 0);
         let foreground_x = workspace
             .font
             .project
@@ -1819,8 +1816,6 @@ mod tests {
             .collect::<std::collections::HashSet<_>>();
         assert_eq!(workspace.session.selection, duplicate_ids);
         assert_eq!(workspace.metadata_undo.len(), 2);
-        assert_eq!(workspace.font.master().undo_depth(index), 0);
-
         workspace.undo_active_edit(false);
         assert_eq!(projected_glyph(&workspace.session).contours.len(), 2);
         workspace.undo_active_edit(true);
@@ -1882,8 +1877,6 @@ mod tests {
         assert_eq!(glyph.contours[1].points.len(), 3);
         assert_ne!(glyph.contours[1].points[0].typ, norad::PointType::Move);
         assert_eq!(workspace.metadata_undo.len(), 4);
-        assert_eq!(workspace.font.master().undo_depth(index), 0);
-
         std::fs::remove_dir_all(path).expect("the fixture is removed");
     }
 
@@ -1937,7 +1930,6 @@ mod tests {
             80.0
         );
         assert_eq!(workspace.metadata_undo.len(), 1);
-        assert_eq!(workspace.font.master().undo_depth(index), 0);
         workspace.undo_active_edit(false);
         assert_eq!(
             projected_glyph(&workspace.session).contours[0].points[0].x,
@@ -1976,7 +1968,6 @@ mod tests {
             .remove_document_glyph("A")
             .expect("the canonical glyph is removed before the stale edit commits");
         let undo_steps = workspace.metadata_undo.len();
-        let legacy_steps = workspace.font.master().undo_depth(index);
         assert!(!workspace.modified);
 
         let outcome = workspace.sync_session_from(&mut stale);
@@ -1986,10 +1977,9 @@ mod tests {
             SessionSyncOutcome::Rejected
         );
         assert_eq!(workspace.metadata_undo.len(), undo_steps);
-        assert_eq!(workspace.font.master().undo_depth(index), legacy_steps);
         assert!(!workspace.modified);
         assert!(workspace.font.project.document_glyph("A").is_none());
-        assert!(workspace.font.font().get_glyph("A").is_none());
+        assert!(workspace.font.font_snapshot().get_glyph("A").is_none());
         assert!(workspace.note.contains("could not be reloaded"));
 
         std::fs::remove_dir_all(path).expect("the fixture is removed");
@@ -2029,9 +2019,11 @@ mod tests {
         assert_eq!(workspace.selected_glyph_text(), "hn");
         workspace.command_update_metrics();
         let h = workspace.font.index_of("h").expect("h remains present");
-        assert_eq!(workspace.font.master().ink_bounds(h).unwrap().x0, 60.0);
-        assert_eq!(workspace.font.font().get_glyph("h").unwrap().width, 510.0);
-        assert_eq!(workspace.font.master().undo_depth(h), 0);
+        assert_eq!(workspace.font.glyphs[h].ink.x0, 60.0);
+        assert_eq!(
+            workspace.font.font_snapshot().get_glyph("h").unwrap().width,
+            510.0
+        );
         let address = workspace.font.active_layer_address("h").unwrap();
         assert_eq!(
             workspace.font.project.document_layer_history_depth(

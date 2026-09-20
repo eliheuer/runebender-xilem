@@ -120,7 +120,7 @@ FontModel source paths, source counts, writability, compatibility gating and exp
 Editor joining checks, SVG export, source-layer authoring, Unicode parsing, kerning/groups, related glyphs and overview points no longer read the active UFO projection.
 Local-AI and Nodes revision capture now hashes canonical default layers under stable source identities.
 Session construction reads canonical font information, and production `FontModel::master` and `FontModel::font` callers are gone.
-Both read accessors and the remaining mutable accessors are test-only retirement fixtures in the current integration tree.
+The read and mutable accessors themselves are deleted; application fixtures use canonical transactions and detached source snapshots.
 
 The remaining non-application consumers are:
 
