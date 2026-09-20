@@ -4,6 +4,7 @@
 //! Local Chat transcript, model selection, prompt, and process controls.
 
 use crate::application::editor::tools::chat::ChatEntry;
+use crate::application::editor::tools::scripts::ScriptArtifact;
 use crate::application::view::design::{
     Radius, Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
 };
@@ -38,12 +39,39 @@ fn transcript_text(entry: &ChatEntry) -> (String, TranscriptKind) {
             },
             TranscriptKind::Assistant,
         ),
+        ChatEntry::Script(_) => (String::new(), TranscriptKind::Assistant),
         ChatEntry::Tool { name, ok, note } => (
             format!("[{}] {name}: {note}", if *ok { "ok" } else { "error" }),
             TranscriptKind::Tool,
         ),
         ChatEntry::Error(text) => (format!("Error: {text}"), TranscriptKind::Error),
     }
+}
+
+fn script_artifact_row(
+    app: &Workspace,
+    artifact: &ScriptArtifact,
+) -> Box<xilem::AnyWidgetView<Workspace>> {
+    let pal = &app.palette;
+    let artifact = artifact.clone();
+    xcolumn(
+        Region::List,
+        (
+            label(format!("Python · {}", artifact.name)).color(pal.text),
+            label("Code artifact — opening does not save or run it.")
+                .text_size(TextSize::Caption.px())
+                .color(pal.text_muted),
+            recipes::toggle(pal, "Open".into(), false, move |app: &mut Workspace| {
+                app.open_script_artifact(artifact.clone());
+            }),
+        ),
+    )
+    .padding(Space::Sm)
+    .background_color(pal.control)
+    .border_color(pal.field_outline)
+    .border_width(Stroke::Hairline.length())
+    .corner_radius(Radius::Sm.length())
+    .boxed()
 }
 
 pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
@@ -68,69 +96,79 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             .color(pal.text_muted)
     });
 
-    let transcript: Vec<_> = app
+    let mut transcript: Vec<Box<xilem::AnyWidgetView<Workspace>>> = app
         .chat
         .entries
         .iter()
-        .map(|entry| {
-            let (text, kind) = transcript_text(entry);
-            let (color, background, border, radius, padding) = match kind {
-                TranscriptKind::User => (
-                    pal.selected_ink(),
-                    pal.selected_bg(),
-                    Color::TRANSPARENT,
-                    Radius::Sm,
-                    masonry::properties::Padding {
-                        left: Space::Md.length(),
-                        right: Space::Md.length(),
-                        top: Space::Sm.length(),
-                        bottom: Space::Sm.length(),
-                    },
-                ),
-                TranscriptKind::Assistant => (
-                    pal.text,
-                    Color::TRANSPARENT,
-                    Color::TRANSPARENT,
-                    Radius::None,
-                    Space::Sm.into(),
-                ),
-                TranscriptKind::Tool => (
-                    pal.text_muted,
-                    pal.control,
-                    pal.field_outline,
-                    Radius::Sm,
-                    masonry::properties::Padding {
-                        left: Space::Md.length(),
-                        right: Space::Md.length(),
-                        top: Space::Xs.length(),
-                        bottom: Space::Xs.length(),
-                    },
-                ),
-                TranscriptKind::Error => (
-                    pal.role("danger"),
-                    Color::TRANSPARENT,
-                    Color::TRANSPARENT,
-                    Radius::None,
-                    Space::Sm.into(),
-                ),
-            };
-            sized_box(
-                selectable_text::<Workspace, ()>(text)
-                    .color(color)
-                    .text_size(TextSize::Body.px()),
-            )
-            .padding(padding)
-            .background_color(background)
-            .border_color(border)
-            .border_width(if border == Color::TRANSPARENT {
-                Stroke::None.length()
-            } else {
-                Stroke::Hairline.length()
-            })
-            .corner_radius(radius.length())
-            .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
+        .map(|entry| match entry {
+            ChatEntry::Script(artifact) => script_artifact_row(app, artifact),
+            entry => {
+                let (text, kind) = transcript_text(entry);
+                let (color, background, border, radius, padding) = match kind {
+                    TranscriptKind::User => (
+                        pal.selected_ink(),
+                        pal.selected_bg(),
+                        Color::TRANSPARENT,
+                        Radius::Sm,
+                        masonry::properties::Padding {
+                            left: Space::Md.length(),
+                            right: Space::Md.length(),
+                            top: Space::Sm.length(),
+                            bottom: Space::Sm.length(),
+                        },
+                    ),
+                    TranscriptKind::Assistant => (
+                        pal.text,
+                        Color::TRANSPARENT,
+                        Color::TRANSPARENT,
+                        Radius::None,
+                        Space::Sm.into(),
+                    ),
+                    TranscriptKind::Tool => (
+                        pal.text_muted,
+                        pal.control,
+                        pal.field_outline,
+                        Radius::Sm,
+                        masonry::properties::Padding {
+                            left: Space::Md.length(),
+                            right: Space::Md.length(),
+                            top: Space::Xs.length(),
+                            bottom: Space::Xs.length(),
+                        },
+                    ),
+                    TranscriptKind::Error => (
+                        pal.role("danger"),
+                        Color::TRANSPARENT,
+                        Color::TRANSPARENT,
+                        Radius::None,
+                        Space::Sm.into(),
+                    ),
+                };
+                sized_box(
+                    selectable_text::<Workspace, ()>(text)
+                        .color(color)
+                        .text_size(TextSize::Body.px()),
+                )
+                .padding(padding)
+                .background_color(background)
+                .border_color(border)
+                .border_width(if border == Color::TRANSPARENT {
+                    Stroke::None.length()
+                } else {
+                    Stroke::Hairline.length()
+                })
+                .corner_radius(radius.length())
+                .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
+                .boxed()
+            }
         })
         .collect();
+    transcript.extend(
+        app.chat
+            .streaming_artifacts
+            .iter()
+            .map(|artifact| script_artifact_row(app, artifact)),
+    );
     let transcript =
         portal(xcolumn(Region::List, transcript).gap(Space::Sm)).constrain_horizontal(true);
 

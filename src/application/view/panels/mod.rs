@@ -10,6 +10,7 @@ pub(crate) mod info;
 pub(crate) mod local_ai;
 pub(crate) mod nodes;
 pub(crate) mod preview;
+pub(crate) mod scripts;
 pub(crate) mod sections;
 pub(crate) mod tabs;
 

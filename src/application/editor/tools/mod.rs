@@ -17,4 +17,5 @@ pub(crate) mod nodes;
     reason = "central Workspace and proof-queue integration consumes this focused adapter"
 )]
 pub(crate) mod nodes_execution;
+pub(crate) mod scripts;
 pub(crate) mod text;

@@ -4,7 +4,7 @@
 //! The editor's state: the `Workspace` struct and the types it is made of.
 
 use crate::application::editor::session::Session;
-use crate::application::editor::tools::{chat, local_ai, nodes};
+use crate::application::editor::tools::{chat, local_ai, nodes, scripts};
 use crate::application::font_model::FontModel;
 use crate::application::platform::{dialogs, export};
 use crate::application::view::canvas;
@@ -271,6 +271,8 @@ pub(crate) struct Workspace {
     pub(crate) ai: local_ai::LocalAiState,
     /// Local chat transcript, model choice, and current process.
     pub(crate) chat: chat::ChatState,
+    /// The non-executing script draft opened explicitly from Chat or the library.
+    pub(crate) scripts: scripts::ScriptsState,
     /// The Kerning section's fields: filter, then the pair being
     /// edited.
     pub(crate) kern_filter_buf: String,

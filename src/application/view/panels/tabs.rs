@@ -14,6 +14,7 @@ use crate::application::view::design::{
 };
 use crate::application::view::panels::chat::chat_panel;
 use crate::application::view::panels::local_ai::local_ai_panel;
+use crate::application::view::panels::scripts::scripts_panel;
 use crate::application::view::panels::sections::axes_section;
 use crate::application::view::recipes::button;
 use crate::application::view::render::top_keyline;
@@ -44,6 +45,8 @@ pub(crate) enum Rail {
     LocalAi,
     /// Chat availability, until the conversation backend is connected.
     Chat,
+    /// Saved Python scripts and their currently open draft.
+    Scripts,
 }
 
 /// Shared search controls keep filtering identical in overview and the editor rail.
@@ -288,6 +291,7 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
             has_axes.then(|| tab("measure", Rail::Axes).flex(1.0)),
             tab("preview", Rail::LocalAi).flex(1.0),
             tab("text", Rail::Chat).flex(1.0),
+            tab("save", Rail::Scripts).flex(1.0),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(Space::Sm)
@@ -382,6 +386,7 @@ pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                     (app.rail == Rail::LocalAi).then(|| local_ai_panel(app)),
                     (app.rail == Rail::Shapes).then(|| shapes_panel(app)),
                     (app.rail == Rail::Chat).then(|| chat_panel(app)),
+                    (app.rail == Rail::Scripts).then(|| scripts_panel(app)),
                 ),
             )
             .padding(Space::Md)
@@ -611,6 +616,7 @@ pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         Rail::Axes if !app.font.axes.is_empty() => flex_col((axes_section(app),)).boxed(),
         Rail::LocalAi => local_ai_panel(app).boxed(),
         Rail::Chat => chat_panel(app).boxed(),
+        Rail::Scripts => scripts_panel(app).boxed(),
         _ => category_sidebar(app).boxed(),
     };
     flex_col((rail_tabs(app, false), content.flex(1.0)))

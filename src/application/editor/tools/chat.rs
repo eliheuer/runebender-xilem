@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 
+use crate::application::editor::tools::scripts::{ScriptArtifact, python_artifacts};
 use crate::application::workspace::Workspace;
 
 /// One visible transcript row.
@@ -21,6 +22,8 @@ pub(crate) enum ChatEntry {
     User(String),
     /// Model prose, with tool-call markup removed.
     Assistant(String),
+    /// A complete Python block the user can explicitly open as a draft.
+    Script(ScriptArtifact),
     /// One tool invocation and its short result.
     Tool {
         name: String,
@@ -50,6 +53,11 @@ pub(crate) struct ChatState {
     pub(crate) busy: Option<String>,
     pub(crate) job: Option<ChatJob>,
     pub(crate) last_speed: Option<String>,
+    /// Complete artifacts observed during the current stream.
+    ///
+    /// These are previews only until the turn ends; they never alter the
+    /// Scripts buffer without an explicit Open action.
+    pub(crate) streaming_artifacts: Vec<ScriptArtifact>,
     raw_assistant: String,
 }
 
@@ -109,6 +117,7 @@ impl Workspace {
         self.chat.entries.clear();
         self.chat.messages.clear();
         self.chat.last_speed = None;
+        self.chat.streaming_artifacts.clear();
         self.chat.raw_assistant.clear();
     }
 
@@ -218,6 +227,10 @@ impl Workspace {
             if let Err(error) = result {
                 self.chat.entries.push(ChatEntry::Error(error));
             }
+            let streaming_artifacts = std::mem::take(&mut self.chat.streaming_artifacts);
+            self.chat
+                .entries
+                .extend(streaming_artifacts.into_iter().map(ChatEntry::Script));
             self.chat
                 .entries
                 .retain(|entry| !matches!(entry, ChatEntry::Assistant(text) if text.is_empty()));
@@ -239,6 +252,7 @@ impl Workspace {
                 if let Some(ChatEntry::Assistant(text)) = self.chat.entries.last_mut() {
                     *text = visible_text(&self.chat.raw_assistant);
                 }
+                self.chat.streaming_artifacts = python_artifacts(&self.chat.raw_assistant);
             }
             "tool_call" => {
                 let name = event.get("name").and_then(Value::as_str).unwrap_or("?");
@@ -269,6 +283,7 @@ impl Workspace {
                 }
                 self.chat.entries.push(ChatEntry::Assistant(String::new()));
                 self.chat.raw_assistant.clear();
+                self.chat.streaming_artifacts.clear();
                 self.chat.busy = Some("Thinking…".into());
             }
             "done" => {
@@ -278,11 +293,16 @@ impl Workspace {
                     .and_then(Value::as_f64)
                     .unwrap_or(0.0);
                 self.chat.last_speed = Some(format!("{tokens} tokens, {speed:.1} tok/s"));
-                if let Some(text) = event.get("text").and_then(Value::as_str)
-                    && let Some(ChatEntry::Assistant(current)) = self.chat.entries.last_mut()
-                {
-                    *current = visible_text(text);
+                if let Some(text) = event.get("text").and_then(Value::as_str) {
+                    let artifacts = python_artifacts(text);
+                    if let Some(ChatEntry::Assistant(current)) = self.chat.entries.last_mut() {
+                        *current = visible_text(text);
+                    }
+                    self.chat
+                        .entries
+                        .extend(artifacts.into_iter().map(ChatEntry::Script));
                 }
+                self.chat.streaming_artifacts.clear();
             }
             "messages" => {
                 if let Some(messages) = event.get("messages").and_then(Value::as_array) {
