@@ -63,7 +63,7 @@ The added compiler graph passes the RustSec advisory check; this is dependency s
 `document::babelfont` provides canonical layer views and transactions without exposing Norad through public editing APIs.
 Source-wide font information, feature text, groups and exact fractional kerning have canonical ownership by stable source identity.
 `SourceFormatData` retains only glyph-free serialization data and opaque source resources.
-The [migration checklist](babelfont-migration-checklist.md) records the completed editing-model cutover and the evidence still required for the final M14 proof.
+The [migration checklist](babelfont-migration-checklist.md) and [final proof](babelfont-migration-final-proof.md) record the completed editing-model cutover and its independent acceptance evidence.
 
 Norad remains the UFO and Designspace codec at explicit import, export and proposal boundaries.
 Save materializes detached UFO values from canonical geometry and preservation records without storing or reconciling a live source-font mirror.

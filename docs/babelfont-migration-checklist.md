@@ -1,7 +1,7 @@
 # Complete the Babelfont editing-model migration
 
 Audit date: 2026-09-19.
-Status: **M13 COMPLETE — independent M14 final proof pending**.
+Status: **COMPLETE — M00 through M14 validated**.
 This document is the implementation checklist and handoff for the completed editing-model cutover and its final validation pass.
 The M13 candidate was prepared in `/Users/eli/.codex/worktrees/c903/runebender-xilem` on branch `codex/babelfont-integration-rescue`.
 
@@ -14,7 +14,7 @@ It preserves the existing native editor, shared browser editor, headless tools, 
 It does not redesign the interface or require new competitor features.
 
 Editing, history, proposals, experiments, headless commands and application state now use the canonical document directly.
-M14 remains required before the overall migration status can change to complete.
+The final implementation and independent acceptance evidence are recorded in [the final proof](babelfont-migration-final-proof.md).
 
 ## Definition of complete
 
@@ -157,11 +157,11 @@ Shared Clippy, documentation and broader suites run at coherent integration chec
 | M11 headless and analysis | Complete: headless commands, analysis and file workflows use Project queries and canonical operations. | Recheck the full CLI and Nodes matrix in M14. |
 | M12 adapters and constructors | Complete: shared canonical new-font and in-memory UFO constructors are integrated; the browser and native New Font paths open canonical Projects, complete UFO/Designspace saves stage before publication while preserving exact custom GLIF paths and opaque filesystem payloads, external feature dependencies participate in native conflict detection, the reviewed source-format allowlist is enforced by whole-UFO and Designspace regressions, and source-bound `info`, `proof` and proposal commands use Project directly. | Keep the accepted adapter and preservation contracts intact during M14. |
 | M13 removal and enforcement | Complete: the Master shell, mutable source guards, legacy histories and production outline bridges are removed; item-level AST enforcement confines Norad to reviewed codecs and preservation records. | Hold the candidate stable for independent review. |
-| M14 final proof | Pending. | Run one coherent native, browser, preservation, visual, performance and clean-checkout proof on the stable M13 commit. |
+| M14 final proof | Complete at implementation `5bb0ccc`. | Native, browser, real-font preservation, visual, performance and clean-checkout evidence are recorded in the final proof. |
 
 Today's target is completion without changing the definition of complete.
-The remaining work is the independent M14 proof, not another editing-model cutover.
-Focused M13 checks belong with this candidate; the full native/browser matrix remains reserved for M14.
+The independent M14 proof is complete.
+All remaining feature and UX work is outside this editing-model migration.
 
 ## Ordered implementation checklist
 
@@ -359,14 +359,14 @@ A documented allowlist cannot exempt a live editor, geometry, history, interpola
 
 Depends on: M13.
 
-- [ ] Run the complete native gate below on the final implementation and record actual counts, ignored cases and any dependency notices.
-- [ ] Run a fresh optimized browser build, warning-denied browser lint and the full interaction/export matrix at 1×, 2× and 1.25×.
-- [ ] Inspect Gray and Light native/browser captures covering ordinary editing, variable proof text, sources and auxiliary layers; certify only what these checks exercise.
-- [ ] Run a disposable Virtua Grotesk edit → undo/redo → variable proof → export → source save → reopen workflow; compare supported data and confirm originals were untouched.
-- [ ] Measure edit cost and memory on a multi-source fixture, reporting methodology and values; verify removal of whole-source reconciliation rather than claiming improvement from intuition.
-- [ ] Clone or archive the final committed tree into a temporary clean checkout, run the documented native and browser gates, and resolve any dependence on local untracked files or path patches.
-- [ ] Review the final diff and the architecture inventory in a separate review pass; fix findings and rerun only the checks those fixes invalidate.
-- [ ] Verify every milestone has evidence, record the final commit and remaining product limitations, mark COMPLETE, and pause the scheduled heartbeat.
+- [x] Run the complete native gate below on the final implementation and record actual counts, ignored cases and any dependency notices.
+- [x] Run a fresh optimized browser build, warning-denied browser lint and the full interaction/export matrix at 1×, 2× and 1.25×.
+- [x] Inspect Gray and Light native/browser captures covering ordinary editing, variable proof text, sources and auxiliary layers; certify only what these checks exercise.
+- [x] Run a disposable Virtua Grotesk edit → undo/redo → variable proof → export → source save → reopen workflow; compare supported data and confirm originals were untouched.
+- [x] Measure edit cost and memory on a multi-source fixture, reporting methodology and values; verify removal of whole-source reconciliation rather than claiming improvement from intuition.
+- [x] Clone or archive the final committed tree into a temporary clean checkout, run the documented native and browser gates, and resolve any dependence on local untracked files or path patches.
+- [x] Review the final diff and the architecture inventory in a separate review pass; fix findings and rerun only the checks those fixes invalidate.
+- [x] Verify every milestone has evidence, record the final commit and remaining product limitations, mark COMPLETE, and retire the migration schedules.
 
 Acceptance: all definition-of-complete criteria hold together at the final recorded commit.
 Local macOS/browser proof is not a claim of Linux/Windows/native IME/accessibility certification; report unavailable platform coverage honestly.

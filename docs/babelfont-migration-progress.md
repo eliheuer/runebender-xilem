@@ -1,9 +1,10 @@
 # Babelfont migration progress
 
-Status: **M13 COMPLETE — independent M14 final proof in progress**.
+Status: **COMPLETE — independent M14 final proof passed**.
 The definition of complete and milestone dependencies remain in [the checklist](babelfont-migration-checklist.md).
 Canonical queries, layer and source-metadata edits, snapshots and auxiliary-layer structure now operate on Babelfont plus typed extensions.
-The editing-model cutover is complete; the remaining gate is independent validation and promotion.
+The editing-model cutover and independent validation are complete.
+See [the final proof](babelfont-migration-final-proof.md) for tested implementation `5bb0ccc`, 807 executed tests, browser checks, preservation, visual evidence and performance measurements.
 
 ## Final validation checkout
 

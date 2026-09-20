@@ -1,6 +1,8 @@
 # Babelfont editor/application migration lane
 
-Status: **ACTIVE — application ownership and canonical transaction integration in progress**.
+Status: **COMPLETE — application cutover integrated and independently validated**.
+This document retains the historical lane checkpoints.
+The current result is recorded in [the final migration proof](babelfont-migration-final-proof.md).
 
 This lane owns M06 application work under `src/application/`, focused application tests and this progress record.
 The integration lane retains the canonical Project implementation, shared module wiring and central migration documents.

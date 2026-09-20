@@ -1,7 +1,8 @@
 # Known limitations
 
 Runebender is experimental. This file states what the automated evidence does
-and does not establish as of 2026-09-15.
+and does not establish.
+The [2026-09-19 migration proof](babelfont-migration-final-proof.md) records the latest migration-specific checks.
 
 ## Native platforms
 
@@ -82,9 +83,10 @@ Babelfont owns geometry, with exact advances, affine coefficients, fractional ke
 Its axis conversion and fontdrasil variation backend are used through private adapters with editable-value rounding disabled.
 Rust Babelfont JSON is explicitly unsupported; Python directory packages have a separate checked import path that saves to new UFO/Designspace files.
 
-Unsupported Designspace extensions, discrete axes, cross-axis mappings, anisotropic coordinates and layer-only UFO sources fail explicitly.
+Unsupported Designspace extensions, discrete axes, cross-axis mappings, anisotropic coordinates and layer-only UFOs without a full source fail explicitly.
 Interpolation needs a default glyph layer, compatible contours/components/anchors and finite coordinates.
-Auxiliary layers are preserved and individually editable; they do not automatically participate in interpolation.
+Auxiliary layers are preserved and individually editable through canonical operations; they do not automatically participate in interpolation.
+The Layers panel offers name-based copy/remove controls; listing and selecting arbitrary auxiliary layers for direct canvas editing remains UI work.
 Glyph metadata and guides are retained from the default source rather than interpolated.
 Live preview/export compiles the whole font; Counterpunch's subset-compilation optimization is not implemented.
 Desktop compilation runs in a background worker, while the browser currently compiles synchronously.

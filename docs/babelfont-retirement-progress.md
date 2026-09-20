@@ -1,5 +1,8 @@
 # Babelfont compatibility retirement map
 
+Status: **COMPLETE**; the historical audit below describes the retirement work, not current outstanding tasks.
+See [the final proof](babelfont-migration-final-proof.md) and [current boundary inventory](babelfont-migration-inventory.md).
+
 This M13 audit is anchored to integration commit `1f99ed0225cccd1933e6787c1bbb89590b027e7d`.
 Line numbers below describe that commit and are not intended to float with later application work.
 The audit covers production callers of `Master`, legacy glyph history, mutable source guards, long-lived UFO templates and the temporary canonical transaction bridge.
