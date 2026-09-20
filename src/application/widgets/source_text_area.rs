@@ -119,7 +119,10 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
         _: Mut<'_, Self::Element>,
         state: &mut State,
     ) -> MessageResult<Action> {
-        debug_assert!(message.remaining_path().is_empty());
+        debug_assert!(
+            message.remaining_path().is_empty(),
+            "source editor is a leaf view"
+        );
         match message.take_message::<TextAction>() {
             Some(action) => match *action {
                 TextAction::Changed(text) => MessageResult::Action((self.on_changed)(state, text)),

@@ -399,26 +399,24 @@ mod tests {
         assert_eq!(saved_python.values["code"], "print('saved')\n");
         assert_eq!(saved_python.values["parameters"], json!({"weight": 725}));
         assert!(
-            saved
+            !saved
                 .graph
                 .nodes
                 .iter()
                 .find(|node| node.type_name == "live.font")
                 .unwrap()
                 .values
-                .get("source")
-                .is_none()
+                .contains_key("source")
         );
         assert!(
-            saved
+            !saved
                 .graph
                 .nodes
                 .iter()
                 .find(|node| node.type_name == "live.fork")
                 .unwrap()
                 .values
-                .get("branch")
-                .is_none()
+                .contains_key("branch")
         );
         let raw = fs::read_to_string(path).unwrap();
         assert!(!raw.contains("session_id"));

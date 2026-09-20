@@ -546,7 +546,7 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                     |source| {
                         source_name
                             .clone()
-                            .map_or_else(|| format!("Source {source}"), |name| name)
+                            .unwrap_or_else(|| format!("Source {source}"))
                     },
                 ))
                 .text_size(TextSize::Caption.px())
