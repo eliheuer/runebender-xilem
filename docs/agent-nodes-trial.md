@@ -3,6 +3,7 @@
 `scripts/agent_nodes_trial.py` is a credential-free acceptance trial for the native headless host and the real newline-delimited stdio MCP server.
 It creates a disposable UFO containing exactly `.notdef` and `A`, and it never opens or saves a user font.
 It requires an explicit absolute Runebender binary and a new evidence directory.
+An optional absolute `--source-font` designspace replaces the synthetic fixture with a temporary copy of that designspace and every same-directory UFO named by its source records.
 
 Run it after building the native binary elsewhere:
 
@@ -11,6 +12,16 @@ python3 scripts/agent_nodes_trial.py \
   --binary /absolute/path/to/runebender \
   --output-dir /absolute/path/to/new-evidence-directory \
   --evidence-label preliminary
+```
+
+Run a full-family trial without modifying the input family:
+
+```sh
+python3 scripts/agent_nodes_trial.py \
+  --binary /absolute/path/to/runebender \
+  --source-font /absolute/path/to/Family.designspace \
+  --output-dir /absolute/path/to/new-family-evidence-directory \
+  --evidence-label native-full-family
 ```
 
 The trial starts `agent serve`, reads its socket and document epoch, starts a separate `mcp --live` process, performs the MCP handshake and `tools/list`, and explicitly selects the returned socket with `editor_connect`.
@@ -25,7 +36,9 @@ It does not establish that any model viewed or interpreted an image because no m
 
 The trial applies the staged edit, performs an exact Apply retry, resolves the common `agent_receipt`, uses the headless host's ordinary Undo, and repeats the exact Apply request to prove that a replay does not reapply an undone edit.
 It also repeats the exact run request, observes stale status after Undo, records a terminal `nodes_cancel` as `too_late`, and releases the run.
-The source UFO manifest must remain byte-for-byte unchanged throughout.
+The disposable font-family manifest must remain byte-for-byte unchanged throughout.
+For a supplied designspace, the trial records and compares complete file manifests for both the input family and its temporary family copy before execution, after execution, and after process cleanup.
+The selected source identity and dynamically read initial `A` width are recorded, and the deterministic edit must produce exactly that width plus 100 units.
 
 The evidence directory contains `evidence.json`, `artifact-manifest.json`, `original.png`, and `changed.png` after a passing run.
 `artifact-manifest.json` hashes every other retained evidence artifact.

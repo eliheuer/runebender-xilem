@@ -17,13 +17,16 @@ import base64
 import binascii
 import hashlib
 import json
+import math
 from pathlib import Path
 import selectors
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
 from typing import Any, BinaryIO
+import xml.etree.ElementTree as ET
 import zlib
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -39,8 +42,6 @@ NODE_TOOLS = {
     "nodes_image",
 }
 ACTOR = "nodes-stdio-trial"
-INITIAL_WIDTH = 400.0
-CHANGED_WIDTH = 500.0
 SCRIPT = """import json, sys
 p=json.load(sys.stdin)
 edits=[{"target":layer["guard"],"operations":[{"op":"set_width","width":layer["width"]+100}]} for layer in p["layers"]]
@@ -144,6 +145,40 @@ def write_fixture(root: Path) -> Path:
         encoding="utf-8",
     )
     return ufo
+
+
+def copy_designspace_family(source: Path, root: Path) -> tuple[Path, Path, list[str]]:
+    """Copy one designspace and every referenced same-directory UFO."""
+    require(
+        source.is_file() and source.suffix == ".designspace", "source font is not a designspace"
+    )
+    source = source.resolve()
+    try:
+        document = ET.parse(source)
+    except ET.ParseError as error:
+        raise TrialError(f"source designspace is invalid XML: {error}") from error
+    filenames = [
+        value
+        for node in document.findall("./sources/source")
+        if (value := node.get("filename")) is not None
+    ]
+    require(filenames, "source designspace has no sources")
+    require(len(filenames) == len(set(filenames)), "source designspace repeats a source filename")
+    destination = root / "copied-family"
+    destination.mkdir(parents=True)
+    shutil.copy2(source, destination / source.name)
+    copied = [source.name]
+    for filename in filenames:
+        relative = Path(filename)
+        require(
+            not relative.is_absolute() and relative.parent == Path("."),
+            "every designspace source must be a same-directory UFO",
+        )
+        original = source.parent / relative
+        require(original.is_dir() and original.suffix == ".ufo", f"missing source UFO: {filename}")
+        shutil.copytree(original, destination / relative)
+        copied.append(filename)
+    return destination / source.name, destination, sorted(copied)
 
 
 def valid_png(data: bytes) -> bool:
@@ -409,28 +444,57 @@ def redact_socket(value: dict[str, Any]) -> dict[str, Any]:
     if "session" in result:
         result["session"] = "<headless-session>"
     if "font_path" in result:
-        result["font_path"] = "<disposable-ufo>"
+        result["font_path"] = "<disposable-font-copy>"
     return result
 
 
 def run_trial(
-    binary: Path, output: Path, timeout: float, evidence: dict[str, Any]
+    binary: Path,
+    output: Path,
+    timeout: float,
+    evidence: dict[str, Any],
+    source_font: Path | None,
 ) -> dict[str, Any]:
     host: Host | None = None
     mcp: McpClient | None = None
     with tempfile.TemporaryDirectory(prefix="runebender-nodes-trial-") as temporary:
         root = Path(temporary)
         session: str | None = None
-        ufo = write_fixture(root)
-        before = manifest(ufo)
-        evidence["fixture"] = {"glyphs": [".notdef", "A"], "manifest_before": before}
+        original_root: Path | None = None
+        original_before: dict[str, str] | None = None
+        if source_font is None:
+            trial_font = write_fixture(root)
+            family_root = trial_font
+            copied_inputs = [trial_font.name]
+            kind = "synthetic_ufo"
+        else:
+            source_font = source_font.resolve()
+            original_root = source_font.parent
+            original_before = manifest(original_root)
+            trial_font, family_root, copied_inputs = copy_designspace_family(source_font, root)
+            require(
+                manifest(family_root) == original_before,
+                "copied family manifest does not match the input family",
+            )
+            kind = "copied_designspace"
+        before = manifest(family_root)
+        evidence["fixture"] = {
+            "kind": kind,
+            "glyph_scope": ["A"],
+            "proof_text": "AA",
+            "copied_inputs": copied_inputs,
+            "family_file_count": len(before),
+            "manifest_before": before,
+        }
+        if original_before is not None:
+            evidence["fixture"]["input_manifest_before"] = original_before
         host_stderr_path = root / "host.stderr"
         mcp_stderr_path = root / "mcp.stderr"
         try:
             with host_stderr_path.open("w+b") as host_stderr, mcp_stderr_path.open(
                 "w+b"
             ) as mcp_stderr:
-                host = Host(binary, ufo, max(60, int(timeout * 4)), host_stderr)
+                host = Host(binary, trial_font, max(60, int(timeout * 4)), host_stderr)
                 ready = host.read(timeout)
                 require(ready.get("ok") is True, f"headless host failed: {ready}")
                 require(isinstance(ready.get("session"), str), "host returned no socket")
@@ -442,7 +506,22 @@ def run_trial(
                 evidence["claims"]["native_host_used"] = True
 
                 initial = host.control("state", timeout)
-                state_width(initial, INITIAL_WIDTH, "initial state")
+                initial_width = initial.get("canonical_advance")
+                require(
+                    isinstance(initial_width, (int, float))
+                    and not isinstance(initial_width, bool)
+                    and math.isfinite(initial_width),
+                    "host returned no finite initial A width",
+                )
+                changed_width = initial_width + 100.0
+                state_width(initial, initial_width, "initial state")
+                evidence["scope"] = {
+                    "glyphs": ["A"],
+                    "source_id": source,
+                    "initial_width": initial_width,
+                    "expected_changed_width": changed_width,
+                    "width_delta": 100.0,
+                }
 
                 mcp = McpClient(binary, mcp_stderr, timeout)
                 evidence["transcript"] = mcp.transcript
@@ -600,7 +679,7 @@ def run_trial(
                 receipt = applied.get("receipt")
                 require(isinstance(receipt, dict), "first Apply returned no receipt")
                 applied_state = host.control("state", timeout)
-                state_width(applied_state, CHANGED_WIDTH, "applied state")
+                state_width(applied_state, changed_width, "applied state")
 
                 exact_apply, _ = mcp.tool("nodes_apply", apply_args)
                 require(exact_apply.get("replayed") is True, "exact Apply retry was not replayed")
@@ -619,7 +698,7 @@ def run_trial(
                 require(receipt_result.get("history_state") == "applied", "receipt is not applied")
 
                 undone = host.control("undo", timeout)
-                state_width(undone, INITIAL_WIDTH, "undone state")
+                state_width(undone, initial_width, "undone state")
 
                 retry_after_undo, _ = mcp.tool("nodes_apply", apply_args)
                 require(
@@ -634,7 +713,7 @@ def run_trial(
                     "post-undo history state mismatch",
                 )
                 still_undone = host.control("state", timeout)
-                state_width(still_undone, INITIAL_WIDTH, "post-retry state")
+                state_width(still_undone, initial_width, "post-retry state")
 
                 run_retry, _ = mcp.tool("nodes_run", run_args)
                 require(run_retry.get("replayed") is True, "exact run retry was not replayed")
@@ -669,9 +748,13 @@ def run_trial(
                 released, _ = mcp.tool("nodes_release", status_args)
                 require(released.get("released") is True, "nodes_release did not release the run")
 
-                after = manifest(ufo)
-                require(after == before, "disposable source manifest changed")
+                after = manifest(family_root)
+                require(after == before, "disposable family manifest changed")
                 evidence["fixture"]["manifest_after"] = after
+                if original_root is not None:
+                    original_after = manifest(original_root)
+                    require(original_after == original_before, "input family manifest changed")
+                    evidence["fixture"]["input_manifest_after"] = original_after
                 evidence["host_states"] = {
                     "initial": initial,
                     "applied": applied_state,
@@ -688,6 +771,8 @@ def run_trial(
                     "all_nine_nodes_tools_listed_and_called": NODE_TOOLS
                     <= {entry["tool"] for entry in mcp.transcript},
                     "source_manifest_unchanged": after == before,
+                    "input_family_manifest_unchanged": original_root is None
+                    or original_after == original_before,
                     "mcp_png_bytes_match_published_output_hashes": True,
                     "compiled_images_differ": True,
                     "apply_exact_retry_is_idempotent": True,
@@ -720,9 +805,15 @@ def run_trial(
                 "host": host.process.returncode if host is not None else None,
                 "mcp": mcp.process.returncode if mcp is not None else None,
             }
-            after_cleanup = manifest(ufo)
+            after_cleanup = manifest(family_root)
             evidence["fixture"]["manifest_after_cleanup"] = after_cleanup
             evidence["checks"]["source_manifest_unchanged_after_cleanup"] = after_cleanup == before
+            if original_root is not None:
+                input_after_cleanup = manifest(original_root)
+                evidence["fixture"]["input_manifest_after_cleanup"] = input_after_cleanup
+                evidence["checks"]["input_family_unchanged_after_cleanup"] = (
+                    input_after_cleanup == original_before
+                )
     if evidence.get("result") == "passed":
         require(
             evidence["process_exit"] == {"host": 0, "mcp": 0},
@@ -730,7 +821,11 @@ def run_trial(
         )
         require(
             evidence["fixture"]["manifest_after_cleanup"] == before,
-            "disposable source manifest changed during cleanup",
+            "disposable family manifest changed during cleanup",
+        )
+        require(
+            evidence["checks"].get("input_family_unchanged_after_cleanup", True),
+            "input family manifest changed during cleanup",
         )
     return evidence
 
@@ -758,6 +853,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--output-dir", required=True, type=Path, help="new evidence directory")
     parser.add_argument(
+        "--source-font",
+        type=Path,
+        help="absolute designspace to copy with its same-directory UFO sources",
+    )
+    parser.add_argument(
         "--timeout-seconds", type=float, default=90.0, help="per-operation and run timeout"
     )
     parser.add_argument(
@@ -768,6 +868,8 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if not args.binary.is_absolute():
         parser.error("--binary must be an absolute path")
+    if args.source_font is not None and not args.source_font.is_absolute():
+        parser.error("--source-font must be an absolute path")
     if args.timeout_seconds < 5 or args.timeout_seconds > 300:
         parser.error("--timeout-seconds must be between 5 and 300")
     if (
@@ -797,7 +899,11 @@ def main() -> int:
             "native_host_used": False,
             "actual_stdio_mcp_used": False,
         },
-        "requested": {"binary": str(binary), "timeout_seconds": args.timeout_seconds},
+        "requested": {
+            "binary": str(binary),
+            "source_font": str(args.source_font) if args.source_font is not None else None,
+            "timeout_seconds": args.timeout_seconds,
+        },
         "transcript": [],
         "checks": {},
     }
@@ -816,7 +922,7 @@ def main() -> int:
             "sha256": sha256_file(binary),
             "version": version.stdout.strip(),
         }
-        run_trial(binary, args.output_dir, args.timeout_seconds, evidence)
+        run_trial(binary, args.output_dir, args.timeout_seconds, evidence, args.source_font)
     except (OSError, subprocess.SubprocessError, TrialError) as error:
         evidence["result"] = "failed"
         evidence["error"] = str(error)

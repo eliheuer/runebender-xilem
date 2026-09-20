@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
+import shutil
 import struct
 import tempfile
 import unittest
@@ -44,6 +45,30 @@ class TrialHelpersTest(unittest.TestCase):
             self.assertIn("<key>.notdef</key>", contents)
             self.assertIn("<key>A</key>", contents)
             self.assertEqual(first, trial.manifest(ufo))
+
+    def test_designspace_copy_includes_both_same_directory_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            source.mkdir()
+            regular = trial.write_fixture(source)
+            regular.rename(source / "Regular.ufo")
+            shutil.copytree(source / "Regular.ufo", source / "Bold.ufo")
+            designspace = source / "Family.designspace"
+            designspace.write_text(
+                """<?xml version="1.0" encoding="UTF-8"?>
+<designspace format="5"><sources>
+<source filename="Regular.ufo"/><source filename="Bold.ufo"/>
+</sources></designspace>
+""",
+                encoding="utf-8",
+            )
+            copied_font, copied_root, names = trial.copy_designspace_family(
+                designspace, root / "trial"
+            )
+            self.assertEqual(copied_font.name, "Family.designspace")
+            self.assertEqual(names, ["Bold.ufo", "Family.designspace", "Regular.ufo"])
+            self.assertEqual(trial.manifest(copied_root), trial.manifest(source))
 
     def test_parse_tool_content_preserves_actual_image_bytes(self) -> None:
         png = one_pixel_png()
