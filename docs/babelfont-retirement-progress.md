@@ -114,6 +114,7 @@ Canonical replacements already exist: `document_source`, `document_sources`, `do
 Project compatibility detail no longer joins this list: it compares canonical layer topology directly, and the unused `feature_source` Master accessor is deleted.
 `document_source_glyph_entries` now supplies the sorted paint-ready payload used by `FontModel::rebuild_cache` and `refresh_entry`, and FontModel owns the derived O(1) name index.
 The remaining `FontModel::master` and `font` reads no longer include application grid-cache construction.
+FontModel source paths, source counts, writability, compatibility gating and export counts now use canonical source views and source-glyph metadata rather than Master fields.
 
 The remaining non-application consumers are:
 

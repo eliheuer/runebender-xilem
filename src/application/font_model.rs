@@ -212,7 +212,11 @@ impl FontModel {
     }
 
     pub(crate) fn source(&self) -> &FsPath {
-        &self.master().source_path
+        self.project
+            .source_id(self.active())
+            .and_then(|source| self.project.document_source(source))
+            .expect("the active source remains in the document")
+            .path()
     }
 
     /// The source that defines the whole document: the designspace when this
@@ -227,9 +231,8 @@ impl FontModel {
     /// Whether every master source is writable according to its filesystem mode.
     pub(crate) fn is_writable(&self) -> bool {
         self.project
-            .sources()
-            .iter()
-            .all(|master| save_target_is_writable(&master.source_path))
+            .document_sources()
+            .all(|source| save_target_is_writable(source.path()))
     }
 
     pub(crate) fn active(&self) -> usize {
@@ -266,16 +269,15 @@ impl FontModel {
 
     pub(crate) fn master_paths(&self) -> Vec<PathBuf> {
         self.project
-            .sources()
-            .iter()
-            .map(|m| m.source_path.clone())
+            .document_sources()
+            .map(|source| source.path().to_owned())
             .collect()
     }
 
     /// Switch the active master. Each master keeps its own edits, so
     /// nothing is flushed; the cache is rebuilt for the new one.
     pub(crate) fn set_active(&mut self, index: usize) {
-        if index >= self.project.sources().len() || index == self.project.active {
+        if index >= self.project.document_sources().count() || index == self.project.active {
             return;
         }
         self.project.active = index;
@@ -409,7 +411,7 @@ impl FontModel {
 
     /// How many masters the family has.
     pub(crate) fn master_count(&self) -> usize {
-        self.project.sources().len()
+        self.project.document_sources().count()
     }
 
     /// Short display names for the masters: the common family prefix is
@@ -553,21 +555,23 @@ impl FontModel {
     /// A glyph is skipped when its lib says so, which is how both Glyphs
     /// and the UFO spec record it. The filter list shows the resulting count.
     pub(crate) fn exporting_count(&self) -> usize {
-        let font = self.font();
+        let source = self
+            .project
+            .source_id(self.active())
+            .expect("the active source has a stable identity");
         self.glyphs
             .iter()
             .filter(|entry| {
-                font.get_glyph(&entry.name)
-                    .and_then(|glyph| glyph.lib.get("public.skipExport"))
-                    .and_then(|value| value.as_boolean())
-                    != Some(true)
+                self.project
+                    .document_source_glyph_metadata(source, &entry.name)
+                    .is_none_or(|metadata| metadata.exported())
             })
             .count()
     }
 
     /// How many glyphs the masters disagree about, by the engine's check.
     pub(crate) fn incompatible_count(&self) -> usize {
-        if self.project.sources().len() < 2 {
+        if self.project.document_sources().count() < 2 {
             return 0;
         }
         self.glyphs

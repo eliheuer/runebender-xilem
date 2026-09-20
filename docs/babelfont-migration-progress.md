@@ -2675,3 +2675,13 @@ Malformed component references retain the glyph's intrinsic contours, matching t
 
 The six FontModel tests, two canonical-entry parity regressions and warning-denied binary Clippy passed.
 Formatting and whitespace checks passed.
+
+### Canonical application source summaries
+
+Evidence commit: `Read application source summaries canonically` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Read application source summaries canonically$' -1`.
+
+FontModel source paths, source count, writability checks, active-source switching bounds, incompatible-source gating and export participation now read `SourceView` plus canonical glyph metadata.
+These summary operations no longer inspect the compatibility Master collection or active UFO font.
+
+The six FontModel tests and warning-denied binary Clippy passed, together with formatting and whitespace checks.
