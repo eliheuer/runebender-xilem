@@ -753,6 +753,15 @@ mod tests {
         let expected = project.capture_document_layer(&address).unwrap();
         let revision = project.document_revision();
         let width = project.document_layer("n", &layer).unwrap().width();
+        let (anchor_id, anchor_position) = {
+            let anchor = project
+                .document_layer("n", &layer)
+                .unwrap()
+                .anchors()
+                .find(|anchor| anchor.name() == "top")
+                .expect("fixture n top anchor");
+            (anchor.id(), anchor.position())
+        };
         let baseline = capture(&project).unwrap();
         let original_hash = baseline.canonical_input_sha256().to_owned();
         let transaction = project
@@ -762,7 +771,13 @@ mod tests {
                 Vec::new(),
                 vec![DocumentLayerEdit::new(
                     expected.clone(),
-                    vec![DocumentEditOperation::SetWidth(width + 12.0)],
+                    vec![
+                        DocumentEditOperation::SetWidth(width + 12.0),
+                        DocumentEditOperation::SetAnchor {
+                            anchor: anchor_id,
+                            position: anchor_position + kurbo::Vec2::new(20.0, 10.0),
+                        },
+                    ],
                 )],
             )
             .unwrap();
@@ -798,6 +813,24 @@ mod tests {
         };
         assert_eq!(advance(&changed, 0.0) - advance(&old, 0.0), 12.0);
         assert_eq!(advance(&changed, 1.0), advance(&old, 1.0));
+        let specimen = recipe("n\u{030a}", 0.0, false, Some("latn"));
+        let before_proof = prove(&old, specimen.clone()).unwrap();
+        let after_proof = prove(&changed, specimen).unwrap();
+        let mark_position = |proof: &CompiledProof| {
+            let mut pen = 0.0;
+            for glyph in &proof.glyphs {
+                if glyph.glyph_name.as_deref() == Some("ringcomb") {
+                    return kurbo::Point::new(pen + glyph.x_offset, glyph.y_offset);
+                }
+                pen += glyph.x_advance;
+            }
+            panic!("fixture specimen must contain ringcomb");
+        };
+        assert_eq!(
+            mark_position(&after_proof) - mark_position(&before_proof),
+            kurbo::Vec2::new(20.0, 10.0)
+        );
+        assert_ne!(before_proof.png, after_proof.png);
         assert_eq!(project.document_revision(), revision);
     }
 

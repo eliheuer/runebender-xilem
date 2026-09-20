@@ -70,6 +70,55 @@ pub struct ScriptRecipeInput {
     pub layers: Vec<ScriptRecipeLayer>,
 }
 
+/// Capture an explicit glyph scope from one canonical source for any recipe client.
+/// No live font wrapper or mutable source object crosses the Python boundary.
+pub fn capture(
+    project: &super::project::Project,
+    source: super::variable::SourceId,
+    glyphs: &[String],
+    job_id: String,
+    parameters: BTreeMap<String, Value>,
+) -> Result<ScriptRecipeInput, String> {
+    if glyphs.is_empty() || glyphs.len() > MAX_LAYERS {
+        return Err(format!("select between one and {MAX_LAYERS} glyphs"));
+    }
+    let layer_id = project
+        .document_source(source)
+        .ok_or("source is unavailable")?
+        .default_layer();
+    let mut layers = Vec::with_capacity(glyphs.len());
+    for name in glyphs {
+        let glyph = project
+            .document_glyph(name)
+            .ok_or_else(|| format!("glyph {name} is unavailable"))?;
+        let layer = project
+            .document_layer(name, &layer_id)
+            .ok_or_else(|| format!("glyph {name} has no selected-source layer"))?;
+        layers.push(ScriptRecipeLayer {
+            guard: AgentLayerGuard {
+                glyph: name.clone(),
+                glyph_id: glyph.id().to_wire(),
+                layer: layer_id.name.clone(),
+                expected_revision: super::edit_batch::canonical_glyph_revision(layer)?,
+            },
+            width: layer.width(),
+            anchors: layer
+                .anchors()
+                .map(|anchor| {
+                    let position = anchor.position();
+                    ScriptRecipeAnchor {
+                        id: anchor.id().to_wire(),
+                        name: (!anchor.name().is_empty()).then(|| anchor.name().to_owned()),
+                        x: position.x,
+                        y: position.y,
+                    }
+                })
+                .collect(),
+        });
+    }
+    ScriptRecipeInput::new(job_id, source.0, parameters, layers).map_err(|error| error.to_string())
+}
+
 /// Strict recipe output read from one standard-output JSON value.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]

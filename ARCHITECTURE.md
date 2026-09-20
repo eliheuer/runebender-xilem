@@ -160,6 +160,10 @@ The application adapter owns document-epoch binding, asynchronous job dispatch, 
 `application/editor/agent_history.rs` creates one application entry per changed group and shares guarded replay and cache refresh with ordinary editor history.
 `document::agent_proof` defines strict proof requests and schemas.
 `application/platform/live_proofs.rs` binds bounded per-document handles to one process-wide proof worker across Workspace replacements.
+Native graph specimens share that worker and must release terminal handles or transfer abandoned running handles for later collection.
+`document::script_recipe` defines immutable Python recipe captures and validates bounded reports and guarded proposals.
+`application/platform/script_jobs.rs` runs the optional interpreter with monitored file-backed standard streams, deadlines and bounded retained results.
+`application/platform/script_library.rs` owns ordinary Python files and observed-revision conflict checks; application commands own capture, preview and explicit Apply through the existing font transaction path.
 The CLI forwards its completed PNG directly as MCP image content, preserving captured revision and font hash separately from the current document envelope.
 Multi-source glyph metadata uses staged layer drafts and one batch publication; Unicode replacement validates the complete source set before mutation and advances the revision once.
 `CanonicalSourceMetadataSnapshot` captures feature text, groups and exact kerning for the complete stable source set; guarded whole-snapshot restore ignores display reorder, rejects stale or changed source sets and publishes all affected canonical values in one revision.

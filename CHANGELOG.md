@@ -10,6 +10,10 @@ No release has been published yet.
 
 ### Added
 
+- Added the native Python recipe runtime and script-file library foundation, plus anchor report and move examples.
+  Recipes receive immutable captures and return validated reports or proposals; applying an edit remains a separate guarded action.
+  Process deadlines, bounded result capture and observed file-conflict checks cover the runtime boundary; Scripts panel and Nodes integration remain in progress.
+
 - Added full-family proof-input derivation for unpublished guarded edits.
   Changed specimen inputs preserve other masters, axes and features while the original document and baseline remain unchanged.
 

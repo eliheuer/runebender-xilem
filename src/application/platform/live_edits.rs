@@ -5,7 +5,7 @@
 
 use runebender::document::agent::ToolCall;
 use runebender::document::agent_cancellation::{
-    AgentCancellationIdentity, AgentCancellationTerminal, AgentCommitClaim,
+    AgentCancellationError, AgentCancellationIdentity, AgentCancellationTerminal, AgentCommitClaim,
 };
 use runebender::document::agent_edit::AgentEditRequest;
 use runebender::document::agent_session::{
@@ -143,6 +143,17 @@ impl Workspace {
                 "authorization_required",
                 "use user-approved only within the user's granted edit authorization",
             );
+        }
+        // Direct Scripts/Nodes commands use this same adapter without visiting the socket queue.
+        // Admission is idempotent: a transport reservation, including a prevented operation,
+        // retains its state and payload identity rather than being replaced here.
+        if let Err(error) = cancellations.admit(&cancellation_identity, payload_digest) {
+            let code = match error {
+                AgentCancellationError::PayloadMismatch => "payload_mismatch",
+                AgentCancellationError::CapacityExhausted { .. } => "cancellation_capacity",
+                _ => "cancellation_unavailable",
+            };
+            return failure(code, error.to_string());
         }
         if !self.agent_sessions.contains_key(&request.actor) {
             if self.agent_sessions.len() >= MAX_ACTORS {
@@ -474,6 +485,44 @@ mod tests {
             .document_layer(glyph, &layer)
             .unwrap()
             .width()
+    }
+
+    #[test]
+    fn direct_application_apply_shares_reservations_receipts_and_ordinary_undo() {
+        let mut app = workspace(project());
+        let payload = request(&app, "script-apply", 0, &[("A", 430.0)]);
+        let tool = ToolCall {
+            name: "agent_apply".into(),
+            arguments: payload,
+        };
+        let applied = app.call_agent_edit(&tool).unwrap();
+        assert_eq!(applied["receipt"]["outcome"]["status"], "committed");
+        assert_eq!(width(&app, 0, "A"), 430.0);
+        assert_eq!(app.metadata_undo.len(), 1);
+        app.undo_active_edit(false);
+        assert_eq!(width(&app, 0, "A"), 400.0);
+        let retried = app.call_agent_edit(&tool).unwrap();
+        assert_eq!(retried["replayed"], true);
+        assert_eq!(retried["receipt"], applied["receipt"]);
+        assert_eq!(width(&app, 0, "A"), 400.0);
+
+        let pending = request(&app, "cancel-script-apply", 0, &[("A", 440.0)]);
+        assert_eq!(
+            endpoint_call(&app, "agent_reserve", pending.clone())["ok"],
+            true
+        );
+        assert_eq!(
+            endpoint_call(&app, "agent_cancel", identity(&pending))["cancellation_status"],
+            "prevented"
+        );
+        let cancelled = app
+            .call_agent_edit(&ToolCall {
+                name: "agent_apply".into(),
+                arguments: pending,
+            })
+            .unwrap();
+        assert_eq!(cancelled["receipt"]["outcome"]["status"], "cancelled");
+        assert_eq!(width(&app, 0, "A"), 400.0);
     }
 
     #[test]
