@@ -20,14 +20,17 @@
 //! same points, in the same order, so a source stays interpolable
 //! with its siblings. [`compatible_layers`] checks that promise for canonical
 //! layers, and [`install_project`] refuses a glyph that breaks it when the caller
-//! asks for the check. [`compatible`] retains the standalone UFO contract.
+//! asks for the check. Standalone UFO serialization retains the same external layer contract in
+//! the explicit format adapter.
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt;
 
+#[cfg(test)]
 use norad::{Font, Glyph, Layer};
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
 use crate::document::font_ops::glyph_signature;
 use crate::document::project::{DocumentChange, DocumentEditOutcome, Project};
 use crate::document::variable::{GlyphLayerAddress, LayerId, SourceId};
@@ -146,6 +149,7 @@ pub struct Installed {
 }
 
 /// Whether a proposed glyph keeps the foreground's point structure.
+#[cfg(test)]
 pub fn compatible(foreground: &Glyph, proposed: &Glyph) -> bool {
     glyph_signature(foreground) == glyph_signature(proposed)
 }
@@ -619,6 +623,7 @@ pub fn adopt_external_project(
 /// Clone a font with the named layer overlaid on the foreground for proof rendering.
 /// Components resolve against the same overlaid glyphs; missing layer glyphs fall back
 /// to foreground. Returns an error for an unknown layer and never changes the source.
+#[cfg(test)]
 pub fn preview_font(font: &Font, layer: &str) -> Result<Font, String> {
     let proposed = font
         .layers
@@ -632,11 +637,13 @@ pub fn preview_font(font: &Font, layer: &str) -> Result<Font, String> {
 }
 
 /// Contour and point counts, for a message.
+#[cfg(test)]
 fn describe(glyph: &Glyph) -> String {
     let points: usize = glyph.contours.iter().map(|c| c.points.len()).sum();
     format!("{}c · {}pt", glyph.contours.len(), points)
 }
 
+#[cfg(test)]
 fn summarize(font: &Font, layer: &Layer) -> Option<ProposalSummary> {
     let task = task_of_layer(layer.name())?.to_string();
     let mut summary = ProposalSummary {
@@ -667,6 +674,7 @@ fn summarize(font: &Font, layer: &Layer) -> Option<ProposalSummary> {
 }
 
 /// Every proposal in the font, in layer order.
+#[cfg(test)]
 pub fn list(font: &Font) -> Vec<ProposalSummary> {
     font.iter_layers()
         .filter_map(|layer| summarize(font, layer))
@@ -674,6 +682,7 @@ pub fn list(font: &Font) -> Vec<ProposalSummary> {
 }
 
 /// The proposal for one task.
+#[cfg(test)]
 pub fn find(font: &Font, task: &str) -> Result<ProposalSummary, ProposalError> {
     font.layers
         .get(&layer_name(task))
@@ -686,6 +695,7 @@ pub fn find(font: &Font, task: &str) -> Result<ProposalSummary, ProposalError> {
 /// Writes glyphs into the task's proposal layer, replacing any glyph
 /// of the same name already proposed. This is what a tool calls, or
 /// what it imitates with its own UFO writer.
+#[cfg(test)]
 pub fn write(
     font: &mut Font,
     task: &str,
@@ -716,6 +726,7 @@ pub fn write(
 ///
 /// This standalone-UFO install remains the external format-contract helper.
 /// Live documents use [`install_project`] and Project-owned history.
+#[cfg(test)]
 pub fn install(
     font: &mut Font,
     task: &str,
@@ -744,7 +755,7 @@ pub fn install(
         if let Some(base) = crate::formats::lib_keys::read_proposal_base(&proposed) {
             let current = font
                 .get_glyph(name.as_str())
-                .and_then(|g| crate::document::edit_batch::glyph_revision(g).ok());
+                .and_then(|glyph| crate::formats::ufo::glyph_revision(glyph).ok());
             if current.as_deref() != Some(base) {
                 skipped.push((
                     name.clone(),
@@ -781,6 +792,7 @@ pub fn install(
 }
 
 /// Removes the task's proposal layer. Returns how many glyphs it held.
+#[cfg(test)]
 pub fn discard(font: &mut Font, task: &str) -> Result<usize, ProposalError> {
     font.layers
         .remove(&layer_name(task))
@@ -791,6 +803,7 @@ pub fn discard(font: &mut Font, task: &str) -> Result<usize, ProposalError> {
 }
 
 /// Copies what a proposal carries onto a foreground glyph.
+#[cfg(test)]
 pub(crate) fn apply(foreground: &mut Glyph, proposed: &Glyph) {
     foreground.contours = proposed.contours.clone();
     foreground.components = proposed.components.clone();

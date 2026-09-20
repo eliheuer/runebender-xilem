@@ -212,7 +212,7 @@ impl LayerEditDraft {
             .metadata
             .lib
             .is_some()
-            .then(norad::Identifier::from_uuidv4);
+            .then(super::fresh_object_identifier);
         Ok(())
     }
 }

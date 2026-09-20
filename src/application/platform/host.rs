@@ -1875,11 +1875,7 @@ mod tests {
         workspace.undo_active_edit(true);
         assert_eq!(projected_glyph(&workspace.session).components.len(), 1);
         workspace.undo_active_edit(true);
-        assert!(
-            runebender::document::composites::component_alignment_disabled(
-                &projected_glyph(&workspace.session).components[0]
-            )
-        );
+        assert_eq!(workspace.session.selected_component_aligned(), Some(false));
         workspace.undo_active_edit(true);
         assert_eq!(
             projected_glyph(&workspace.session).components[0]
@@ -2014,7 +2010,14 @@ mod tests {
             norad::AffineTransform::default(),
             None,
         );
-        runebender::document::composites::set_component_alignment_disabled(&mut component, true);
+        let mut lib = component.lib().cloned().unwrap_or_default();
+        let mut alignment =
+            runebender::document::model::glyph_metadata::ComponentAlignment::take_from_lib(
+                &mut lib,
+            );
+        assert!(alignment.set_disabled(true));
+        alignment.write_to_lib(&mut lib);
+        component.replace_lib(lib);
         target.components.push(component);
         font.default_layer_mut().insert_glyph(target);
         font.save(&path).expect("the attachment fixture saves");
@@ -2049,7 +2052,13 @@ mod tests {
         let component = &glyph.components[0];
         assert_eq!(component.transform.x_offset, 0.0);
         assert_eq!(component.transform.y_offset, 0.0);
-        assert!(runebender::document::composites::component_alignment_disabled(component));
+        let mut lib = component.lib().cloned().unwrap_or_default();
+        assert!(
+            runebender::document::model::glyph_metadata::ComponentAlignment::take_from_lib(
+                &mut lib,
+            )
+            .is_disabled()
+        );
         std::fs::remove_dir_all(path).expect("the attachment fixture is removed");
     }
 

@@ -8,7 +8,7 @@ use kurbo::{Affine, BezPath, PathEl};
 use crate::document::experiments::Experiment;
 use crate::document::project::Project;
 use crate::document::variable::{GlyphLayerAddress, LayerId, SourceId};
-use crate::outline::glyph_ops::bezpath_to_contour;
+use crate::formats::ufo::bezpath_to_contour;
 #[cfg(test)]
 use crate::outline::glyph_paths;
 

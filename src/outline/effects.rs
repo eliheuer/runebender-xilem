@@ -4,16 +4,20 @@
 //! Outline effects: operations that produce a new shape from a contour.
 //!
 //! Expand a stroke, offset, extrude, roughen, apply a corner component,
-//! and bolden by a learned per-point offset. Geometry helpers operate on
-//! Kurbo paths so the canonical document and legacy UFO adapter share the
-//! same algorithms.
+//! and bolden by a learned per-point offset.
+//! Geometry helpers operate on Kurbo paths so canonical edits and test-only UFO behavior oracles
+//! share the same algorithms.
 
+#[cfg(test)]
 use std::collections::{HashMap, HashSet};
 
 use kurbo::{Affine, BezPath, PathEl};
 
-use crate::outline::glyph_ops::bezpath_to_contour;
-use crate::outline::glyph_paths::{contour_to_bezpath, point_key, round_units};
+#[cfg(test)]
+use crate::formats::ufo::bezpath_to_contour;
+use crate::outline::glyph_paths::round_units;
+#[cfg(test)]
+use crate::outline::glyph_paths::{contour_to_bezpath, point_key};
 
 fn split_subpaths(path: &BezPath) -> Vec<BezPath> {
     let mut paths = Vec::new();
@@ -235,6 +239,7 @@ pub fn roughened_path(
 ///
 /// If `selected` is empty, every contour is targeted. Returns false
 /// when nothing changed.
+#[cfg(test)]
 pub fn expand_stroke_contours(
     glyph: &mut norad::Glyph,
     selected: &HashSet<usize>,
@@ -279,6 +284,7 @@ pub fn expand_stroke_contours(
 /// in Glyphs.
 ///
 /// Returns false when nothing changed.
+#[cfg(test)]
 pub fn offset_glyph_contours(glyph: &mut norad::Glyph, delta: f64) -> bool {
     let paths: Vec<_> = glyph.contours.iter().map(contour_to_bezpath).collect();
     let Some(result) = offset_paths(&paths, delta) else {
@@ -311,6 +317,7 @@ pub fn offset_glyph_contours(glyph: &mut norad::Glyph, delta: f64) -> bool {
 /// face is then cut away. Angle 0 extrudes right; 30 gives the
 /// downward-right shadow of the Glyphs default. This is the Extrude
 /// filter in Glyphs.
+#[cfg(test)]
 pub fn extrude_glyph_contours(
     glyph: &mut norad::Glyph,
     offset: f64,
@@ -342,6 +349,7 @@ pub fn extrude_glyph_contours(
 /// up to ±`h` horizontally and ±`v` vertically. `seed` varies run
 /// to run, so applying twice gives a different rough. This is the
 /// Roughen filter in Glyphs.
+#[cfg(test)]
 pub fn roughen_glyph_contours(
     glyph: &mut norad::Glyph,
     selected: &HashSet<usize>,
@@ -382,6 +390,7 @@ pub fn roughen_glyph_contours(
 /// Both neighbors must be on-curve, so this first slice handles
 /// line corners only. The result is a plain outline: pipelines see
 /// baked points.
+#[cfg(test)]
 pub fn apply_corner_at(
     glyph: &mut norad::Glyph,
     corner: &norad::Glyph,
@@ -446,6 +455,7 @@ pub fn apply_corner_at(
 /// so offset *n* lands on the point it was predicted for. Point types
 /// and smooth flags are left alone: this moves points and nothing
 /// else.
+#[cfg(test)]
 pub fn bolden_contours(
     glyph: &norad::Glyph,
     deltas: &[(i32, i32)],

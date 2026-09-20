@@ -9,9 +9,12 @@
 
 use std::collections::HashSet;
 
+#[cfg(test)]
 use kurbo::BezPath;
 
-use crate::outline::glyph_ops::bezpath_to_contour;
+#[cfg(test)]
+use crate::formats::ufo::bezpath_to_contour;
+#[cfg(test)]
 use crate::outline::glyph_paths::contour_to_bezpath;
 
 /// Original Python Babelfont layer identity retained when importing into UFO.
@@ -111,6 +114,7 @@ pub fn write_masks(glyph: &mut norad::Glyph, masks: &HashSet<usize>) {
 ///
 /// The result is the final outline every compiler understands.
 /// Returns false when the glyph has no masks or the boolean fails.
+#[cfg(test)]
 pub fn bake_masks(glyph: &mut norad::Glyph) -> bool {
     let masks = read_masks(glyph);
     if masks.is_empty() || masks.len() >= glyph.contours.len() {

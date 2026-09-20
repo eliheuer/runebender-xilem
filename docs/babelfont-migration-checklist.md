@@ -1,11 +1,9 @@
 # Complete the Babelfont editing-model migration
 
-Audit date: 2026-09-18.
-Audited implementation: `6350cf3`, including the pipeline implementation at `5cbf51b`.
-Status: **IN PROGRESS — M00–M03 complete; M04 and later cutovers active**.
-This document is the implementation checklist and handoff for the active integration task and its bounded parallel lanes.
-The active integration checkout is `/Users/eli/.codex/worktrees/f236/runebender-xilem` on branch `codex/babelfont-integration`.
-The earlier continuation worktree and branch remain preserved for review.
+Audit date: 2026-09-19.
+Status: **M13 COMPLETE — independent M14 final proof pending**.
+This document is the implementation checklist and handoff for the completed editing-model cutover and its final validation pass.
+The M13 candidate was prepared in `/Users/eli/.codex/worktrees/c903/runebender-xilem` on branch `codex/babelfont-integration-rescue`.
 
 ## Product goal and scope
 
@@ -15,8 +13,8 @@ This work completes the Babelfont-backed editing model while retaining exact, fi
 It preserves the existing native editor, shared browser editor, headless tools, live editing, proposals and experimental font versions.
 It does not redesign the interface or require new competitor features.
 
-The previous phase delivered live variable compilation and source-authoring features, but most editing still mutates Norad structures and reconciles them into Babelfont.
-Passing those existing tests does not mean this migration is complete.
+Editing, history, proposals, experiments, headless commands and application state now use the canonical document directly.
+M14 remains required before the overall migration status can change to complete.
 
 ## Definition of complete
 
@@ -149,20 +147,21 @@ Shared Clippy, documentation and broader suites run at coherent integration chec
 
 | Work | Current state | Next concrete dependency |
 |---|---|---|
-| M01 glyph identity | Complete through `15f065b` and `b2498c8`: stable glyph identity now joins the accepted source, layer, contour, point, component and anchor identities. | Keep the stable identity APIs intact while later caller cutovers remove compatibility projections. |
-| M04 canonical topology and cleanup | Direct curve conversion and handle cleanup are integrated through `2b15baa`; the independent quadratic-chain correction passes. | Finish special editable-source preservation and the remaining selection/metadata acceptance before checking M04 complete. |
-| M05 history and structural replay | Canonical layer/source snapshots and Project-owned history foundations exist; `5e9d2f1` adds sparse-source registration, instance removal and stable structural undo/redo. | Retire the compatibility history stores after the Session callers move. |
-| M06 application cutover | Whole-glyph/component edits, composition publication, CLI glyph inspection and background operations use canonical Project APIs; Session retains canonical layer transactions, and the detached whole-glyph bridge has no production caller and is deleted. | Move the remaining mutable source, proposal and legacy-history application callers. |
-| M07 metadata | Composition, alignment, feature planning, smart-component codecs and atomic whole-glyph lifecycle are integrated; `5cfe3a9` also stabilizes component identity on the first alignment edit. | Finish the remaining metadata callers and validate source save/reload without unrelated changes. |
-| M08/M09 pipeline | Canonical interpolation, source construction, compiler metadata, Designspace structure, typed special rendering and typed HOI ownership are integrated; `352e513` also prevents cleared canonical compiler metadata from inheriting stale snapshot values. | Finish export acceptance and remaining application callers. |
-| M10 proposals and versions | Composition publication and selective proposal/version installation are direct guarded canonical transactions; `94eb639` moves root live glyph inspection to canonical Project state. | Retain the isolated experiment snapshot boundary until M13 and remove superseded compatibility code after application callers land. |
-| M11 headless and analysis | `278d173`, `1b5234e` and `9c51a7b` move headless proof, glyph inspection and curve input to the complete typed renderer; `efa4362` moves the CLI caller. | Move the remaining Session and panel analysis callers; direct Norad functions then become M13 boundary-removal candidates. |
-| M12 adapters and constructors | Complete: shared canonical new-font and in-memory UFO constructors are integrated; the browser and native New Font paths open canonical Projects, complete UFO/Designspace saves stage before publication while preserving exact custom GLIF paths and opaque filesystem payloads, external feature dependencies participate in native conflict detection, the reviewed source-format allowlist is enforced by whole-UFO and Designspace regressions, and source-bound `info`, `proof` and proposal commands use Project directly. | Keep the accepted adapter and preservation contracts intact while M13 removes compatibility state. |
-| M13/M14 removal and final proof | `SourceFormatData` replaces the long-lived full UFO templates and the detached whole-glyph bridge is deleted, while the remaining Master shell, mutable guards and legacy history are still active. | Finish caller cutovers, delete the residual compatibility state, then reserve one coherent final native/browser/preservation/clean-checkout proof. |
+| M01 glyph identity | Complete through `15f065b` and `b2498c8`: stable glyph identity now joins the accepted source, layer, contour, point, component and anchor identities. | Keep the stable identity APIs intact during M14 validation. |
+| M04 canonical topology and cleanup | Complete: ordinary and special geometry operations use canonical layer drafts with explicit metadata and identity behavior. | Keep the canonical topology regressions in M14. |
+| M05 history and structural replay | Complete: Project-owned layer, glyph, source-metadata and structural history use canonical snapshots and stable identities. | Keep stale-restore and source-removal regressions in M14. |
+| M06 application cutover | Complete: sessions, commands, panels and derived paint caches use Project APIs and typed presentation data. | Recheck native and browser interaction in M14. |
+| M07 metadata | Complete: glyph, source and font metadata operations have canonical ownership and atomic history. | Recheck save/reopen preservation in M14. |
+| M08/M09 pipeline | Complete: interpolation, compilation, shaping and export consume immutable canonical snapshots with checked quantization. | Recheck full compile/export coverage in M14. |
+| M10 proposals and versions | Complete: proposals, live operations and experimental versions use stable canonical snapshots and guarded Project transactions. | Recheck conflict and external proposal contracts in M14. |
+| M11 headless and analysis | Complete: headless commands, analysis and file workflows use Project queries and canonical operations. | Recheck the full CLI and Nodes matrix in M14. |
+| M12 adapters and constructors | Complete: shared canonical new-font and in-memory UFO constructors are integrated; the browser and native New Font paths open canonical Projects, complete UFO/Designspace saves stage before publication while preserving exact custom GLIF paths and opaque filesystem payloads, external feature dependencies participate in native conflict detection, the reviewed source-format allowlist is enforced by whole-UFO and Designspace regressions, and source-bound `info`, `proof` and proposal commands use Project directly. | Keep the accepted adapter and preservation contracts intact during M14. |
+| M13 removal and enforcement | Complete: the Master shell, mutable source guards, legacy histories and production outline bridges are removed; item-level AST enforcement confines Norad to reviewed codecs and preservation records. | Hold the candidate stable for independent review. |
+| M14 final proof | Pending. | Run one coherent native, browser, preservation, visual, performance and clean-checkout proof on the stable M13 commit. |
 
 Today's target is completion without changing the definition of complete.
-The immediate feasibility risk is the number of production Session, proposal/version, headless and constructor callers still using Norad, followed by the required M13 removal and M14 clean-checkout proof.
-Focused checks belong with each coherent change; unchanged broad gates are deferred until an integration boundary or the final proof.
+The remaining work is the independent M14 proof, not another editing-model cutover.
+Focused M13 checks belong with this candidate; the full native/browser matrix remains reserved for M14.
 
 ## Ordered implementation checklist
 
@@ -227,10 +226,10 @@ Depends on: M03.
 Start in: `outline/cleanup.rs`, `knife.rs`, `effects.rs`, `embolden.rs`, `convert.rs`, `drawing.rs`, `component_ops.rs`, `path/hyper_model.rs`, `metaballs.rs` and related format helpers.
 
 - [x] Port pen creation/closure, point insertion/deletion, contour reversal, split/join, copy/paste and shape creation.
-- [ ] Port booleans, overlap removal, knife, cleanup, fit/simplify, embolden and component decomposition with explicit metadata behavior when topology is replaced.
-- [ ] Adapt hyperbezier conversion without promoting its legacy intermediate Glyph into another live font model.
-- [ ] Preserve live metaball groups, masks and HOI data as editable extensions; retain source data until the existing explicit conversion/bake commands run.
-- [ ] Test selection remapping and identifier/lib preservation for insert, delete, reorder, duplicate and undo operations.
+- [x] Port booleans, overlap removal, knife, cleanup, fit/simplify, embolden and component decomposition with explicit metadata behavior when topology is replaced.
+- [x] Adapt hyperbezier conversion without promoting its legacy intermediate Glyph into another live font model.
+- [x] Preserve live metaball groups, masks and HOI data as editable extensions; retain source data until the existing explicit conversion/bake commands run.
+- [x] Test selection remapping and identifier/lib preservation for insert, delete, reorder, duplicate and undo operations.
 
 Acceptance: all existing tools remain callable and undoable, including auxiliary layers; no operation silently destroys special editable source data or preserves identifiers on the wrong objects.
 
@@ -239,11 +238,11 @@ Acceptance: all existing tools remain callable and undoable, including auxiliary
 Depends on: M02–M04.
 Start in: `document/history.rs`, `outline/glyph_ops.rs::GlyphSnapshot`, `document/sources.rs`, session `HistoryOp`, workspace metadata/overview history.
 
-- [ ] Replace Norad snapshots with canonical document snapshots/deltas that include exact-value and metadata extensions.
-- [ ] Preserve drag coalescing, no-op history removal, redo invalidation, per-glyph and auxiliary-layer history, and multi-glyph command boundaries.
-- [ ] Make source/layer structural history use stable identities and canonical data only.
-- [ ] Retain guards against undo overwriting later unrelated edits; explicitly test removal/restore followed by undo of an older edit.
-- [ ] Preserve metadata edits across source reorder and reconcile selection/active-layer state after undo/redo.
+- [x] Replace Norad snapshots with canonical document snapshots/deltas that include exact-value and metadata extensions.
+- [x] Preserve drag coalescing, no-op history removal, redo invalidation, per-glyph and auxiliary-layer history, and multi-glyph command boundaries.
+- [x] Make source/layer structural history use stable identities and canonical data only.
+- [x] Retain guards against undo overwriting later unrelated edits; explicitly test removal/restore followed by undo of an older edit.
+- [x] Preserve metadata edits across source reorder and reconcile selection/active-layer state after undo/redo.
 
 Acceptance: undo/redo restores geometry, exact values, metadata, revision-dependent preview and selection behavior; a rejected replay changes nothing.
 
@@ -252,11 +251,11 @@ Acceptance: undo/redo restores geometry, exact values, metadata, revision-depend
 Depends on: M03–M05.
 Start in: `application/editor/session.rs`, `commands.rs`, `font_model.rs`, `workspace.rs`, `view/canvas/editor.rs`, panels and render helpers.
 
-- [ ] Replace Session's Norad glyph/component contours and pending records with the canonical edit draft and history API.
-- [ ] Replace FontModel's mutable font/master access with explicit Project operations and derived query/cache data.
-- [ ] Migrate clipboard, source switching, tab parking/resume, overview edits, component/anchor tools and background-layer commands.
-- [ ] Make views and panels read presentation/document data instead of Norad point types and mutable font structures.
-- [ ] Verify native headless Gray/Light scenes and real browser pointer dragging, undo/redo, source switching and text interactions.
+- [x] Replace Session's Norad glyph/component contours and pending records with the canonical edit draft and history API.
+- [x] Replace FontModel's mutable font/master access with explicit Project operations and derived query/cache data.
+- [x] Migrate clipboard, source switching, tab parking/resume, overview edits, component/anchor tools and background-layer commands.
+- [x] Make views and panels read presentation/document data instead of Norad point types and mutable font structures.
+- [x] Verify native headless Gray/Light scenes and real browser pointer dragging, undo/redo, source switching and text interactions.
 
 Acceptance: UI edit paths mutate the canonical document directly and do not synchronize a complete source font after each input event.
 The shared browser and native widget tree keep the existing interaction contract.
@@ -266,11 +265,11 @@ The shared browser and native widget tree keep the existing interaction contract
 Depends on: M02, M05; integrate application callers after M06.
 Start in: `document/font_ops.rs`, `model/glyph_metadata.rs`, `compose.rs`, `composites.rs`, `application/editor/inspector.rs`, `text/features.rs`, `formats/lib_keys.rs`, `metrics_keys.rs` and `metaballs.rs`.
 
-- [ ] Move names, metrics, glyph order, Unicode, export/category flags, notes, colors, guides, images and editable custom data into canonical ownership.
-- [ ] Port fractional kerning and group operations, metrics formulas, glyph rename/add/duplicate/remove and dependent component updates.
-- [ ] Port composite alignment, composition, effective-anchor queries and user-requested feature generation.
-- [ ] Keep default-source feature ownership and per-source feature preservation; draft checking must remain non-mutating.
-- [ ] Split live behavior from serialization helpers currently under `formats/`; each persisted key retains one constant, reader and writer at its boundary.
+- [x] Move names, metrics, glyph order, Unicode, export/category flags, notes, colors, guides, images and editable custom data into canonical ownership.
+- [x] Port fractional kerning and group operations, metrics formulas, glyph rename/add/duplicate/remove and dependent component updates.
+- [x] Port composite alignment, composition, effective-anchor queries and user-requested feature generation.
+- [x] Keep default-source feature ownership and per-source feature preservation; draft checking must remain non-mutating.
+- [x] Split live behavior from serialization helpers currently under `formats/`; each persisted key retains one constant, reader and writer at its boundary.
 
 Acceptance: metadata changes immediately affect the intended UI/preview, undo correctly and survive source save/reload without precision loss or unrelated field changes.
 
@@ -279,11 +278,11 @@ Acceptance: metadata changes immediately affect the intended UI/preview, undo co
 Depends on: M02, M05, M07.
 Start in: `document/interpolation.rs`, `project.rs`, `sources.rs`, `axis.rs`, `var_model.rs`.
 
-- [ ] Read/interpolate canonical layer geometry, exact advances, anchors and affine coefficients without constructing Norad glyphs.
-- [ ] Keep the existing fontdrasil numeric backend and mapped user/design/normalized coordinate contract unless evidence requires a change.
-- [ ] Move axes, source locations, sparse participation, instances and rule data into canonical document ownership; keep Designspace serialization separate.
-- [ ] Port interpolated-source creation, rename/relocation, source reorder/removal, brace promotion and auxiliary-layer operations to canonical transactions.
-- [ ] Verify sparse and auxiliary-only glyphs, incompatible sources, default-source protection, mapped two-axis locations and independent active-source selection.
+- [x] Read/interpolate canonical layer geometry, exact advances, anchors and affine coefficients without constructing Norad glyphs.
+- [x] Keep the existing fontdrasil numeric backend and mapped user/design/normalized coordinate contract unless evidence requires a change.
+- [x] Move axes, source locations, sparse participation, instances and rule data into canonical document ownership; keep Designspace serialization separate.
+- [x] Port interpolated-source creation, rename/relocation, source reorder/removal, brace promotion and auxiliary-layer operations to canonical transactions.
+- [x] Verify sparse and auxiliary-only glyphs, incompatible sources, default-source protection, mapped two-axis locations and independent active-source selection.
 
 Acceptance: the variable-project fixture and source-authoring workflows pass without Norad interpolation inputs or a mutable Designspace document serving as the live editing model.
 
@@ -292,11 +291,11 @@ Acceptance: the variable-project fixture and source-authoring workflows pass wit
 Depends on: M07–M08.
 Start in: `document/compile.rs`, `compile_metadata.rs`, `text/buffer/`, `text/shape.rs`, `application/editor/tools/text.rs`, `platform/export.rs`.
 
-- [ ] Build compiler snapshots from canonical geometry, masters, names, metrics, groups, kerning, features, axes, instances and rules, without reading source-font projections.
-- [ ] Keep exact values in the document and perform checked quantization in the immutable compiler snapshot.
-- [ ] Migrate inventory/kerning/feature helpers and retain HarfRust/Skrifa coordinate agreement with no duplicate kerning.
-- [ ] Exercise invalidation for every compile-relevant metadata edit, stale worker results, undo/redo and slider-only revision reuse.
-- [ ] Preserve unsaved native export, browser downloads, CLI overwrite refusal and explicit unsupported-compiler errors.
+- [x] Build compiler snapshots from canonical geometry, masters, names, metrics, groups, kerning, features, axes, instances and rules, without reading source-font projections.
+- [x] Keep exact values in the document and perform checked quantization in the immutable compiler snapshot.
+- [x] Migrate inventory/kerning/feature helpers and retain HarfRust/Skrifa coordinate agreement with no duplicate kerning.
+- [x] Exercise invalidation for every compile-relevant metadata edit, stale worker results, undo/redo and slider-only revision reuse.
+- [x] Preserve unsaved native export, browser downloads, CLI overwrite refusal and explicit unsupported-compiler errors.
 
 Acceptance: all six existing variable-compiler cases plus direct-mutation and metadata-invalidation regressions pass; export-before/after-unsaved-edit still changes the binary outline.
 Whole-font compilation and synchronous browser compilation are existing performance boundaries, not reasons to rebuild the document model again.
@@ -306,11 +305,11 @@ Whole-font compilation and synchronous browser compilation are existing performa
 Depends on: M05, M07–M09.
 Start in: `document/proposal.rs`, `edit_batch.rs`, `experiments.rs`, `live.rs`, `nodes_live.rs`, `application/editor/tools/local_ai.rs`, `nodes.rs`.
 
-- [ ] Run revision-checked batches and proposal creation/install/discard over canonical document layers.
-- [ ] Preserve the external UFO proposal-layer contract and the meaning of revision tokens; any serialization needed for compatibility belongs in an explicit boundary adapter.
-- [ ] Replace experimental Norad baselines/working Masters with isolated canonical versions and stable SourceId/LayerId references.
-- [ ] Preserve atomic selective apply, conflict detection, unrelated-root edits, undo-apply and session-only version semantics.
-- [ ] Audit Nodes connections and source reorder/removal during live versions; remove source-index restrictions only when stable-identity behavior is proved.
+- [x] Run revision-checked batches and proposal creation/install/discard over canonical document layers.
+- [x] Preserve the external UFO proposal-layer contract and the meaning of revision tokens; any serialization needed for compatibility belongs in an explicit boundary adapter.
+- [x] Replace experimental Norad baselines/working Masters with isolated canonical versions and stable SourceId/LayerId references.
+- [x] Preserve atomic selective apply, conflict detection, unrelated-root edits, undo-apply and session-only version semantics.
+- [x] Audit Nodes connections and source reorder/removal during live versions; remove source-index restrictions only when stable-identity behavior is proved.
 
 Acceptance: proposal/model results cannot bypass revision checks or mutate the root implicitly; source reorder never redirects a proposal or version to another source.
 
@@ -319,11 +318,11 @@ Acceptance: proposal/model results cannot bypass revision checks or mutate the r
 Depends on: M03–M05, M07–M10.
 Start in: `application/cli.rs`, `analysis/`, `document/nodes_run.rs`, `document/source.rs`, agent adapters.
 
-- [ ] Replace `open_master` and standalone mutable Master workflows with Project plus explicit source selection.
-- [ ] Port read/analysis/proof inputs to document queries, keeping JSON schemas, exit codes, revision semantics and layer selection compatible.
-- [ ] Make file-based Nodes editing/import/proposal actions call the same canonical operations as the live editor.
-- [ ] Restrict direct Norad load/save to source adapters; CLI glue must not own a second set of editing algorithms.
-- [ ] Test equivalent GUI/document/headless operations on the same disposable fixture, including invalid batches and multi-source ambiguity.
+- [x] Replace `open_master` and standalone mutable Master workflows with Project plus explicit source selection.
+- [x] Port read/analysis/proof inputs to document queries, keeping JSON schemas, exit codes, revision semantics and layer selection compatible.
+- [x] Make file-based Nodes editing/import/proposal actions call the same canonical operations as the live editor.
+- [x] Restrict direct Norad load/save to source adapters; CLI glue must not own a second set of editing algorithms.
+- [x] Test equivalent GUI/document/headless operations on the same disposable fixture, including invalid batches and multi-source ambiguity.
 
 Acceptance: no production headless editing path remains on the legacy Master model, and existing CLI/agent/Nodes tests continue to pass.
 
@@ -332,11 +331,11 @@ Acceptance: no production headless editing path remains on the legacy Master mod
 Depends on: M01, M07–M11.
 Start in: `formats/`, `document/font_memory.rs`, `new_font.rs`, `project.rs`, `application/browser.rs`, native load/save/reload code.
 
-- [ ] Create explicit import/export/preservation boundaries that translate supported UFO/Designspace data into and out of the canonical document.
-- [ ] Move new-font creation and browser bootstrap onto common document constructors; avoid installing/replacing a legacy Master.
-- [ ] Preserve format-specific unknown payloads, layer order and paths, images/data, source destinations, feature includes and existing unsupported-format errors.
-- [ ] Keep imported Glyphs/binary/Python Babelfont workflows within their documented guarantees; do not claim new lossless support for them or Rust Babelfont JSON.
-- [ ] Test native save, Save As, reload, watched-source conflict behavior and in-memory construction using temporary sources.
+- [x] Create explicit import/export/preservation boundaries that translate supported UFO/Designspace data into and out of the canonical document.
+- [x] Move new-font creation and browser bootstrap onto common document constructors; avoid installing/replacing a legacy Master.
+- [x] Preserve format-specific unknown payloads, layer order and paths, images/data, source destinations, feature includes and existing unsupported-format errors.
+- [x] Keep imported Glyphs/binary/Python Babelfont workflows within their documented guarantees; do not claim new lossless support for them or Rust Babelfont JSON.
+- [x] Test native save, Save As, reload, watched-source conflict behavior and in-memory construction using temporary sources.
 
 Acceptance: supported sources round-trip through the new document, and unsupported input cannot be silently dropped by a constructor or save path.
 Source removal still leaves the original UFO on disk.
@@ -346,12 +345,12 @@ Source removal still leaves the original UFO on disk.
 Depends on: M00–M12.
 Start in: `document/variable.rs`, `source.rs`, `project.rs`, `application/font_model.rs`, public module exports and the runtime inventory.
 
-- [ ] Remove `SourceEdit`, `SourceFontEdit`, `SourcesEdit`, `active_font_mut`, `edit_source(s)` compatibility mutation paths and the full Norad-backed Master editing model.
-- [ ] Remove full Norad glyph mirrors/templates used as editable state, reconciliation scans and obsolete helper/constructor overloads.
-  The transitional `CanonicalLayerTransaction` detached-glyph bridge is deleted; remaining source and whole-glyph compatibility paths stay tracked here.
-- [ ] Keep paint caches derived from document revisions and verify a single-glyph edit does not clone or compare every source font.
-- [ ] Add a focused architecture check with a reviewed per-module boundary allowlist; it must catch prohibited Norad imports, aliases, fields, mutable accessors and hidden round-trip edit wrappers.
-- [ ] Update AGENTS, ARCHITECTURE, module headers, the decision record, limitations and changelog to describe the resulting ownership accurately.
+- [x] Remove `SourceEdit`, `SourceFontEdit`, `SourcesEdit`, `active_font_mut`, `edit_source(s)` compatibility mutation paths and the full Norad-backed Master editing model.
+- [x] Remove full Norad glyph mirrors/templates used as editable state, reconciliation scans and obsolete helper/constructor overloads.
+  The transitional `CanonicalLayerTransaction` detached-glyph bridge and the remaining source and whole-glyph compatibility paths are deleted.
+- [x] Keep paint caches derived from document revisions and verify a single-glyph edit does not clone or compare every source font.
+- [x] Add a focused architecture check with a reviewed per-module boundary allowlist; it must catch prohibited Norad imports, aliases, fields, mutable accessors and hidden round-trip edit wrappers.
+- [x] Update AGENTS, ARCHITECTURE, module headers, the decision record, limitations and changelog to describe the resulting ownership accurately.
 
 Acceptance: a fresh runtime inventory has zero unexplained production Norad dependencies outside boundary codecs, and ordinary editing never traverses a Norad conversion path.
 A documented allowlist cannot exempt a live editor, geometry, history, interpolation or command module merely to pass the check.

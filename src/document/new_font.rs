@@ -4,8 +4,7 @@
 //! Canonical File > New Font input data.
 //!
 //! The GF Latin Core template is decoded into typed font information and empty glyph-layer
-//! records. Project constructs the canonical document first and derives its temporary UFO
-//! compatibility projection afterwards.
+//! records, then installed directly into a canonical Project.
 
 use std::sync::OnceLock;
 

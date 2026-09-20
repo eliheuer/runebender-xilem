@@ -868,7 +868,12 @@ mod tests {
         font.default_layer_mut().insert_glyph(original.clone());
         let mut proposed = original.clone();
         proposed.width = 620.0;
-        proposal::write(&mut font, "bolden", vec![proposed]).expect("the proposal is valid");
+        runebender::formats::proposal_ufo::write_proposal_layer(
+            &mut font,
+            "bolden",
+            vec![proposed],
+        )
+        .expect("the proposal is valid");
         font.save(&path).expect("the proposal fixture saves");
         let mut workspace = Workspace::open(&path).expect("the fixture opens");
         assert!(workspace.node_glyphs().is_empty());

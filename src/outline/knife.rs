@@ -1233,6 +1233,7 @@ mod tests {
 /// Hyperbezier contours, detected through the workspace conversion
 /// by the shared identifier convention, become explicit cubics when
 /// sliced. Returns false when nothing was cut.
+#[cfg(test)]
 pub fn knife_cut_glyph(glyph: &mut norad::Glyph, p0: Point, p1: Point) -> bool {
     let paths: Vec<Path> = glyph
         .contours
@@ -1304,6 +1305,7 @@ mod norad_tests {
 
 /// Where the knife line crosses a glyph's contours, for the drag
 /// preview. Points come back in design space, ordered along the line.
+#[cfg(test)]
 pub fn knife_hit_points(glyph: &norad::Glyph, p0: Point, p1: Point) -> Vec<Point> {
     let paths: Vec<_> = glyph
         .contours

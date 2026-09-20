@@ -15,6 +15,7 @@ pub mod image_trace;
 pub mod lib_keys;
 pub mod mark_color;
 pub mod metrics_keys;
+pub mod proposal_ufo;
 pub mod svg;
 pub mod ufo;
 

@@ -9,14 +9,19 @@
 //! enumerate a segment's points for selection. Shared by the select
 //! and pen tools of every Runebender editor.
 
-use kurbo::{CubicBez, Line, ParamCurve, ParamCurveNearest, PathSeg, Point, QuadBez};
+#[cfg(test)]
+use kurbo::ParamCurve;
+use kurbo::{CubicBez, Line, ParamCurveNearest, PathSeg, Point, QuadBez};
+#[cfg(test)]
 use norad::{ContourPoint, Glyph, PointType};
 
 pub use crate::document::DocumentSegmentEndpoint;
 use crate::document::{LayerPointType, LayerView, PointId as DocumentPointId};
+#[cfg(test)]
 use crate::outline::glyph_ops::PointId;
 
 /// One segment of a contour, addressed by its on-curve endpoints.
+#[cfg(test)]
 #[derive(Debug, Clone)]
 pub struct SegmentHit {
     /// Index of the contour that holds the segment.
@@ -32,6 +37,7 @@ pub struct SegmentHit {
     pub seg: PathSeg,
 }
 
+#[cfg(test)]
 impl SegmentHit {
     /// Every point of the segment, for selection.
     pub fn point_ids(&self) -> Vec<PointId> {
@@ -274,10 +280,12 @@ pub fn nearest_ordinary_layer_segment_with_t(
     best.map(|(hit, parameter, _)| (hit, parameter))
 }
 
+#[cfg(test)]
 fn pt(p: &ContourPoint) -> Point {
     Point::new(p.x, p.y)
 }
 
+#[cfg(test)]
 fn is_on(p: &ContourPoint) -> bool {
     p.typ != PointType::OffCurve
 }
@@ -285,6 +293,7 @@ fn is_on(p: &ContourPoint) -> bool {
 /// Enumerate a glyph's segments. Hyperbezier contours are skipped:
 /// their on-screen segments come from the spline solver and are not
 /// editable at the norad point level.
+#[cfg(test)]
 pub fn segments(glyph: &Glyph) -> Vec<SegmentHit> {
     let mut out = Vec::new();
     for (ci, contour) in glyph.contours.iter().enumerate() {
@@ -348,6 +357,7 @@ pub fn segments(glyph: &Glyph) -> Vec<SegmentHit> {
 
 /// The segment nearest to `pt` within `radius`, with the curve
 /// parameter of the nearest point on it.
+#[cfg(test)]
 pub fn nearest_segment_with_t(
     glyph: &Glyph,
     design_pt: Point,
@@ -370,6 +380,7 @@ pub fn nearest_segment_with_t(
     best.map(|(hit, t, _)| (hit, t))
 }
 
+#[cfg(test)]
 fn off_point(p: Point) -> ContourPoint {
     let (x, y) = snapped(p);
     ContourPoint::new(x, y, PointType::OffCurve, false, None, None)
@@ -379,6 +390,7 @@ fn off_point(p: Point) -> ContourPoint {
 ///
 /// Generated points land on the grid like every other point the
 /// editors create or move; see `point_ops`.
+#[cfg(test)]
 fn snapped(p: Point) -> (f64, f64) {
     use crate::outline::point_ops::snap_coord;
     (snap_coord(p.x), snap_coord(p.y))
@@ -388,6 +400,7 @@ fn snapped(p: Point) -> (f64, f64) {
 ///
 /// This is the web select tool's alt-click. Returns the control
 /// point ids.
+#[cfg(test)]
 pub fn convert_line_to_curve(glyph: &mut Glyph, hit: &SegmentHit) -> Option<[PointId; 2]> {
     let PathSeg::Line(line) = hit.seg else {
         return None;
@@ -423,6 +436,7 @@ pub fn convert_line_to_curve(glyph: &mut Glyph, hit: &SegmentHit) -> Option<[Poi
 ///
 /// Curves split exactly. This is the web pen tool's
 /// click-on-segment. Returns the new point's id.
+#[cfg(test)]
 pub fn insert_point_on_segment(glyph: &mut Glyph, hit: &SegmentHit, t: f64) -> Option<PointId> {
     let t = t.clamp(0.0, 1.0);
     let contour = glyph.contours.get_mut(hit.contour)?;
@@ -498,6 +512,7 @@ pub fn insert_point_on_segment(glyph: &mut Glyph, hit: &SegmentHit, t: f64) -> O
 ///
 /// The trailing on-curve point goes, along with any off-curves that
 /// led to it. Returns the number of points remaining.
+#[cfg(test)]
 pub fn delete_last_pen_point(glyph: &mut Glyph, contour: usize) -> Option<usize> {
     let c = glyph.contours.get_mut(contour)?;
     if c.points.is_empty() {

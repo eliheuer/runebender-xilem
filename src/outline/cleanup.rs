@@ -6,10 +6,13 @@
 //! Tidy duplicate points, correct contour direction, round coordinates,
 //! add extremes, refit handles, open or close a contour.
 
+#[cfg(test)]
 use std::collections::HashSet;
 
+#[cfg(test)]
 use kurbo::BezPath;
 
+#[cfg(test)]
 use crate::outline::glyph_paths::contour_to_bezpath;
 
 /// Scale each curve segment's handles to a fraction of their
@@ -25,6 +28,7 @@ use crate::outline::glyph_paths::contour_to_bezpath;
 /// selection is empty, every segment is in scope. Otherwise, only
 /// segments with a selected point are. Returns true when any
 /// handle moved.
+#[cfg(test)]
 pub fn fit_curve_handles(
     glyph: &mut norad::Glyph,
     selected: &HashSet<(usize, usize)>,
@@ -109,6 +113,7 @@ pub fn fit_curve_handles(
 /// Glyphs. If the selection is empty, every segment is in scope.
 /// Otherwise, only segments with a selected point are. Returns
 /// true when any point was added.
+#[cfg(test)]
 pub fn add_extreme_points(glyph: &mut norad::Glyph, selected: &HashSet<(usize, usize)>) -> bool {
     use kurbo::ParamCurveExtrema as _;
     let mut changed = false;
@@ -154,6 +159,7 @@ pub fn add_extreme_points(glyph: &mut norad::Glyph, selected: &HashSet<(usize, u
 /// the `Move` start becomes a `Line` and `pi` is ignored. This is
 /// how Glyphs opens and closes paths. Returns true when the
 /// contour changed.
+#[cfg(test)]
 pub fn toggle_contour_open(glyph: &mut norad::Glyph, ci: usize, pi: usize) -> bool {
     use norad::PointType;
     let Some(contour) = glyph.contours.get_mut(ci) else {
@@ -190,6 +196,7 @@ pub fn toggle_contour_open(glyph: &mut norad::Glyph, ci: usize, pi: usize) -> bo
 /// purpose: simplifying curves is Simplify's job, not Tidy's. This
 /// is Path > Tidy up Paths in Glyphs. Returns the number of points
 /// removed.
+#[cfg(test)]
 pub fn tidy_contours(glyph: &mut norad::Glyph) -> usize {
     use norad::PointType;
     let mut removed = 0_usize;
@@ -243,6 +250,7 @@ pub fn tidy_contours(glyph: &mut norad::Glyph) -> usize {
 /// as a hole when an odd number of other contours contain its
 /// first on-curve point. This is Path > Correct Path Direction in
 /// Glyphs. Returns the number of contours reversed.
+#[cfg(test)]
 pub fn correct_path_directions(glyph: &mut norad::Glyph) -> usize {
     use kurbo::Shape as _;
     let paths: Vec<BezPath> = glyph.contours.iter().map(contour_to_bezpath).collect();
@@ -279,6 +287,7 @@ pub fn correct_path_directions(glyph: &mut norad::Glyph) -> usize {
 ///
 /// This is Path > Round Coordinates in Glyphs. Returns the number
 /// of points that moved.
+#[cfg(test)]
 pub fn round_glyph_coordinates(glyph: &mut norad::Glyph) -> usize {
     let mut moved = 0_usize;
     for contour in glyph.contours.iter_mut() {

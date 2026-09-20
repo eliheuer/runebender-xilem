@@ -16,8 +16,8 @@
 //!   It also handles interpolation, edit history, proposed changes, and node workflows.
 //! - [`formats`] interprets UFO lib keys and reads or writes data at the document boundary.
 //!   Its converters cover Glyphs sources, OpenType binaries, SVG, and traced images.
-//! - [`outline`] converts UFO contours to editable paths and performs geometric operations.
-//!   Edited paths are written back to a `norad::Glyph`.
+//! - [`outline`] reads and mutates canonical paths and contains representation-neutral geometry
+//!   algorithms.
 //! - [`text`] builds layout from the source's glyphs, metrics, anchors, and OpenType feature code.
 //!   It also owns the editable text buffer used by the Text tool.
 //! - [`ui`] contains selection, undo, viewport, theme, sidebar, and node-layout data.

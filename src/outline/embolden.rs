@@ -21,6 +21,7 @@
 //! horizontal bar do not gain the same weight. Virtua Grotesk grows
 //! its verticals by 96 units and its bars by 72.
 
+#[cfg(test)]
 use norad::{Contour, Glyph};
 
 use crate::document::LayerView;
@@ -49,6 +50,7 @@ pub struct Offset {
 /// The tangent comes from the neighbouring points rather than the
 /// curve, so an off-curve control moves with the shape around it
 /// instead of being treated as if it sat on the outline.
+#[cfg(test)]
 pub fn outward_normals(c: &Contour) -> Vec<(f64, f64)> {
     outward_normals_for_points(
         &c.points
@@ -125,6 +127,7 @@ pub fn learn_layer_offset(pairs: &[(LayerView<'_>, LayerView<'_>)]) -> Option<Of
 /// drawn reference from setting the weight for a whole master.
 ///
 /// `None` when no pair is compatible, or when nothing moved.
+#[cfg(test)]
 pub fn learn_offset(pairs: &[(&Glyph, &Glyph)]) -> Option<Offset> {
     // Least squares per axis: the move at each point is modelled as
     // `nx * x`, so the best x is sum(nx*dx) / sum(nx*nx).
@@ -170,6 +173,7 @@ pub fn learn_offset(pairs: &[(&Glyph, &Glyph)]) -> Option<Offset> {
 ///
 /// Point count, order and types are untouched, so the result stays
 /// compatible with the glyph it came from.
+#[cfg(test)]
 pub fn embolden(glyph: &Glyph, offset: Offset) -> Glyph {
     let mut out = glyph.clone();
     for contour in out.contours.iter_mut() {

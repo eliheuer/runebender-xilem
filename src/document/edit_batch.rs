@@ -5,9 +5,11 @@
 
 use std::collections::HashSet;
 
-use norad::{Font, Glyph};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest as _, Sha256};
+
+use crate::formats::ufo::{glyph_from_layer, glyph_revision};
+#[cfg(test)]
+use norad::{Font, Glyph};
 
 use crate::document::babelfont::{LayerEditDraft, LayerPointType, LayerView};
 use crate::document::project::Project;
@@ -18,14 +20,7 @@ use crate::document::variable::{LayerId, SourceId};
 ///
 /// The UFO value is a transient compatibility codec result, never editable document state.
 pub fn canonical_glyph_revision(layer: LayerView<'_>) -> Result<String, String> {
-    glyph_revision(&crate::formats::ufo::glyph_from_layer(layer))
-}
-
-/// Opaque SHA-256 revision of a glyph's canonical GLIF, including its metadata.
-/// Returns an error if the glyph cannot be serialized. Re-read after a core upgrade.
-pub fn glyph_revision(glyph: &Glyph) -> Result<String, String> {
-    let bytes = glyph.encode_xml().map_err(|e| e.to_string())?;
-    Ok(format!("glif-sha256:{:x}", Sha256::digest(bytes)))
+    glyph_revision(&glyph_from_layer(layer))
 }
 
 /// A batch starts from the foreground and writes a new, uniquely named proposal.
@@ -117,7 +112,7 @@ fn finite(values: &[f64]) -> Result<(), String> {
     }
 }
 
-pub(super) fn validate_batch(batch: &EditBatch) -> Result<(), String> {
+pub(crate) fn validate_batch(batch: &EditBatch) -> Result<(), String> {
     if batch.task.is_empty()
         || !batch
             .task
@@ -338,6 +333,7 @@ pub(super) fn proposal_draft(
     Ok(draft)
 }
 
+#[cfg(test)]
 fn apply(glyph: &mut Glyph, operation: &Operation) -> Result<(), String> {
     match operation {
         Operation::SetOutline {
@@ -438,6 +434,7 @@ fn apply(glyph: &mut Glyph, operation: &Operation) -> Result<(), String> {
 /// Validate every edit on private glyph copies, then create a proposal layer.
 /// Errors leave `font` unchanged. Never edits the foreground or saves files.
 /// Existing proposal tasks, duplicate glyphs, stale revisions, and empty edits fail.
+#[cfg(test)]
 pub fn propose(font: &mut Font, batch: &EditBatch) -> Result<ProposalSummary, String> {
     validate_batch(batch)?;
     if font
@@ -534,6 +531,7 @@ pub fn propose_project(
 /// `layercontents.plist`. Rechecks glyph revisions and the layer index before publication.
 /// Other applications do not participate in this writer's lock: callers must coordinate
 /// external saves. The revision checks do not provide a cross-process filesystem transaction.
+#[cfg(test)]
 pub fn save_proposal(
     source: &std::path::Path,
     batch: &EditBatch,

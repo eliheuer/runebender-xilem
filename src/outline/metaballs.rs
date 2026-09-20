@@ -3,11 +3,15 @@
 
 //! Samples compact metaball fields and explicitly converts their boundaries to cubic contours.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
+#[cfg(test)]
+use std::collections::HashSet;
 
 use kurbo::{BezPath, Point, Vec2};
 
-use crate::formats::metaballs::{MetaballGroup, Metaballs, read_metaballs, write_metaballs};
+use crate::formats::metaballs::{MetaballGroup, Metaballs};
+#[cfg(test)]
+use crate::formats::metaballs::{read_metaballs, write_metaballs};
 
 /// Sampling and curve fitting settings, both in font units.
 #[derive(Clone, Copy, Debug)]
@@ -224,6 +228,7 @@ pub fn preview(group: &MetaballGroup, options: OutlineOptions) -> Result<Vec<Bez
     Ok(paths)
 }
 
+#[cfg(test)]
 fn contours(paths: &[BezPath]) -> Vec<norad::Contour> {
     paths
         .iter()
@@ -248,6 +253,7 @@ fn contours(paths: &[BezPath]) -> Vec<norad::Contour> {
 /// Converts every metaball group in every layer of a font, returning groups converted.
 /// All changes are prepared on a clone first; an error leaves the entire font untouched.
 /// This does not write files. A live editor must supply a font-wide undo transaction.
+#[cfg(test)]
 pub fn collapse_font(font: &mut norad::Font, options: OutlineOptions) -> Result<usize, String> {
     let mut candidate = font.clone();
     let mut count = 0;
@@ -269,6 +275,7 @@ pub fn collapse_font(font: &mut norad::Font, options: OutlineOptions) -> Result<
 /// Empty sampled outlines are rejected to avoid silently discarding live sources.
 /// Existing contours, anchors, components, lib keys and fractional coordinates are preserved.
 /// The editor must wrap this operation in its normal undo transaction.
+#[cfg(test)]
 pub fn collapse(
     glyph: &mut norad::Glyph,
     groups: Option<&[u32]>,
@@ -300,6 +307,7 @@ pub fn collapse(
 
 /// Builds the live metaball preview without changing the glyph or adding contours.
 /// Invalid source or a preview beyond the sampling budget returns an error.
+#[cfg(test)]
 pub fn glyph_preview(glyph: &norad::Glyph) -> Result<BezPath, String> {
     let source = read_metaballs(glyph)?;
     let mut path = BezPath::new();

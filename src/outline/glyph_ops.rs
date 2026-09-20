@@ -1,9 +1,12 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! UI-free editing operations on norad glyphs, shared by all
-//! Runebender editors. Everything here takes plain norad types; the
-//! UI shells own caching, selection state, and rendering.
+#![cfg(test)]
+
+//! Test-only UFO editing operations retained as behavior oracles.
+//!
+//! Production editors use canonical layer drafts; these helpers keep the historical geometry
+//! expectations available to parity tests without exposing another live editing model.
 //!
 //! Point addressing: `(contour_index, point_index)` pairs into
 //! `glyph.contours[c].points[p]`.

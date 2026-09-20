@@ -52,7 +52,7 @@ pub(in crate::document) fn empty_layer(
             name: name.to_owned(),
             width,
             height: 0.0,
-            codepoints: norad::Codepoints::new(codepoints),
+            codepoints,
             note: None,
             guidelines: Vec::new(),
             image: None,
@@ -114,7 +114,7 @@ pub(in crate::document) fn clone_layer(
     };
     preserved.name = name.to_owned();
     if options.clear_codepoints {
-        preserved.codepoints = norad::Codepoints::new([]);
+        preserved.codepoints.clear();
     }
 
     for (path, contour) in layer
@@ -625,7 +625,7 @@ fn copied_metadata(metadata: &ObjectMetadata, hyper: bool) -> ObjectMetadata {
             Some(super::fresh_hyper_identifier())
         } else {
             (metadata.identifier.is_some() || metadata.lib.is_some())
-                .then(norad::Identifier::from_uuidv4)
+                .then(super::fresh_object_identifier)
         },
         lib: metadata.lib.clone(),
     }

@@ -1,9 +1,37 @@
 # Babelfont migration baseline inventory
 
+M13 review date: 2026-09-19.
+The original M00 inventory remains below as historical evidence.
+
+## M13 production boundary allowlist
+
+`tests/norad_boundary_allowlist.rs` parses every Rust source item instead of relying on text counts.
+It ignores only exact `#[cfg(test)]` items and files, so `#[cfg(not(test))]`, mixed cfg expressions, dedicated test filenames without a file cfg, and production code following test modules remain visible.
+An import alias is still reported at its `use` item.
+The same gate rejects the retired mutable accessors and round-trip editing entrypoints by identifier.
+
+The reviewed whole-file boundaries are:
+
+- persistence and source loading: `document/filesystem.rs`, `document/font_memory.rs`, `document/project/constructors.rs`, `document/project/save_as.rs`, `document/source.rs`, `document/source_format.rs`, and `document/ufo_codec.rs`;
+- typed source-format metadata conversion: `document/model/designspace.rs`, `document/model/font_info.rs`, and `document/model/glyph_metadata.rs`;
+- import/export codecs: `formats/babelfont_import.rs`, `formats/binary_import.rs`, `formats/color_font.rs`, `formats/designspace.rs`, `formats/glyphs_import.rs`, `formats/image_trace.rs`, `formats/lib_keys.rs`, `formats/metaballs.rs`, `formats/metrics_keys.rs`, `formats/proposal_ufo.rs`, `formats/svg.rs`, and `formats/ufo.rs`.
+
+`document/babelfont.rs` is intentionally not a whole-file exemption because it also owns live canonical layer transactions.
+Its allowlist names only private exact-value preservation records, explicit layer import/export functions, and the small canonical edit methods that update those private records without exposing Norad in their API.
+`document/project.rs` permits only its two checked Designspace construction methods.
+
+There is no whole-file exemption for application, analysis, history, interpolation, text, UI, outline geometry, live commands or experiments.
+Legacy Norad geometry helpers remain compiled only as test fixtures where they provide comparison coverage.
+The raw whole-word search still finds Norad in 73 `src/` files because it includes those cfg-test fixtures, comments and codec boundaries; the AST gate is the production inventory.
+
+The forbidden production identifiers include the retired Master accessors, `SourceEdit`, `SourceFontEdit`, `SourcesEdit`, `active_font`, `active_font_mut`, `edit_source`, `edit_sources`, `editing_parts`, `glyph_layer`, `source_snapshot`, `reconcile_layer_from_ufo`, compatibility reconciliation helpers and projection refresh helpers.
+The gate's own regressions prove that exact test items are excluded while `not(test)`, mixed cfgs and production after a test module are inspected.
+
+## M00 baseline
+
 Reviewed at `624879a1c447d3e9f012c34f4b5cb091bb0df6cb` on 2026-09-18.
-This is the M00 baseline, not the M13 codec allowlist.
-The milestone assignments cover runtime behavior even when a module has no literal Norad import.
-No existing editing module is exempted by its directory or by a type alias.
+The milestone assignments covered runtime behavior even when a module had no literal Norad import.
+No editing module was exempted by its directory or by a type alias.
 
 ## Production families
 
@@ -78,4 +106,4 @@ The `web/` workspace reuses these sources and must be checked when shared APIs c
 | `Master::snapshot_contours`, `restore_contours` | In-tree uses found in tests; public compatibility methods still expose full snapshots. Their names understate the fields preserved. | M05/M13; retain equivalent complete-state testing. |
 
 No candidate above was deleted in M00.
-M13 must repeat the inventory against the final tree, inspect aliases and conversion wrappers, and justify individual codec boundaries with executed checks.
+At M00, M13 still had to repeat the inventory against the final tree, inspect aliases and conversion wrappers, and justify individual codec boundaries with executed checks.

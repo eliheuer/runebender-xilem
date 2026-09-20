@@ -1655,7 +1655,7 @@ fn agent_call_source(
                 .remove("master");
             match serde_json::from_value::<runebender::document::edit_batch::EditBatch>(batch) {
                 Ok(batch) => {
-                    match runebender::document::edit_batch::save_proposal(source, &batch) {
+                    match runebender::formats::proposal_ufo::save_proposal(source, &batch) {
                         Ok(summary) => json!({"ok": true, "proposal": summary}),
                         Err(e) => json!({"ok": false, "error": e}),
                     }

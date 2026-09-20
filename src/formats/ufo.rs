@@ -3,9 +3,109 @@
 
 //! Explicit transient UFO codec values.
 
+use sha2::{Digest as _, Sha256};
+
 use crate::document::project::Project;
 use crate::document::variable::{LayerId, SourceId};
 use crate::document::{ImportedContours, LayerView};
+
+/// Convert one closed path into a detached UFO contour at a format boundary.
+pub(crate) fn bezpath_to_contour(
+    path: &kurbo::BezPath,
+    smooth_at: &std::collections::HashMap<(i64, i64), bool>,
+) -> Option<norad::Contour> {
+    use kurbo::PathEl;
+
+    let mut points = Vec::new();
+    let mut start = None;
+    let smooth = |x: f64, y: f64| {
+        smooth_at
+            .get(&crate::outline::glyph_paths::point_key(x, y))
+            .copied()
+            .unwrap_or(false)
+    };
+    let on = |x: f64, y: f64, curve: bool, smooth: bool| {
+        norad::ContourPoint::new(
+            x.round(),
+            y.round(),
+            if curve {
+                norad::PointType::Curve
+            } else {
+                norad::PointType::Line
+            },
+            smooth,
+            None,
+            None,
+        )
+    };
+    let off = |point: kurbo::Point| {
+        norad::ContourPoint::new(
+            point.x.round(),
+            point.y.round(),
+            norad::PointType::OffCurve,
+            false,
+            None,
+            None,
+        )
+    };
+    for element in path.elements() {
+        match element {
+            PathEl::MoveTo(point) => start = Some(*point),
+            PathEl::LineTo(point) => {
+                points.push(on(point.x, point.y, false, smooth(point.x, point.y)));
+            }
+            PathEl::CurveTo(first, second, point) => {
+                points.push(off(*first));
+                points.push(off(*second));
+                points.push(on(point.x, point.y, true, smooth(point.x, point.y)));
+            }
+            PathEl::QuadTo(control, point) => {
+                let segment_start = points
+                    .iter()
+                    .rev()
+                    .find(|candidate: &&norad::ContourPoint| {
+                        candidate.typ != norad::PointType::OffCurve
+                    })
+                    .map(|candidate| kurbo::Point::new(candidate.x, candidate.y))
+                    .or(start)?;
+                let first =
+                    segment_start + (control.to_vec2() - segment_start.to_vec2()) * (2.0 / 3.0);
+                let second = *point + (control.to_vec2() - point.to_vec2()) * (2.0 / 3.0);
+                points.push(off(first));
+                points.push(off(second));
+                points.push(on(point.x, point.y, true, smooth(point.x, point.y)));
+            }
+            PathEl::ClosePath => {}
+        }
+    }
+    let start = start?;
+    let last_on = points
+        .iter()
+        .rposition(|point| point.typ != norad::PointType::OffCurve)?;
+    let point = &points[last_on];
+    if (point.x - start.x.round()).abs() < 0.51 && (point.y - start.y.round()).abs() < 0.51 {
+        let tail: Vec<_> = points.drain(last_on..).collect();
+        let (controls, on_point) = tail.split_at(tail.len() - 1);
+        let mut rotated = vec![on_point[0].clone()];
+        rotated.extend(points);
+        rotated.extend(controls.iter().cloned());
+        points = rotated;
+    } else {
+        points.insert(0, on(start.x, start.y, false, smooth(start.x, start.y)));
+    }
+    (points
+        .iter()
+        .filter(|point| point.typ != norad::PointType::OffCurve)
+        .count()
+        >= 2)
+        .then(|| norad::Contour::new(points, None))
+}
+
+/// Opaque SHA-256 revision of one serialized GLIF value.
+pub fn glyph_revision(glyph: &norad::Glyph) -> Result<String, String> {
+    let bytes = glyph.encode_xml().map_err(|error| error.to_string())?;
+    Ok(format!("glif-sha256:{:x}", Sha256::digest(bytes)))
+}
 
 /// Decode UFO contours once into canonical Babelfont paths plus exact object metadata.
 pub fn decode_contours(contours: &[norad::Contour]) -> Result<ImportedContours, String> {
@@ -116,7 +216,7 @@ impl crate::document::experiments::Experiment {
                 .map_err(|error| error.to_string())?;
             layer.insert_glyph(glyph_from_layer(draft.view()));
         }
-        crate::document::font_ops::write_canonical_metadata_to_ufo(&mut font, self.font_metadata())
+        crate::document::ufo_codec::encode_font_metadata(&mut font, self.font_metadata())
             .map_err(|error| error.to_string())?;
         Ok(font)
     }

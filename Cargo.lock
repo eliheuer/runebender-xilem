@@ -4649,6 +4649,7 @@ dependencies = [
  "sha2",
  "skrifa 0.44.0",
  "spline",
+ "syn 2.0.119",
  "tokio",
  "unicode-bidi",
  "unicode-general-category",

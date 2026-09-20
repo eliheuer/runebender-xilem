@@ -40,6 +40,8 @@ No release has been published yet.
 
 ### Changed
 
+- Completed the canonical editing-model cutover by removing persistent Norad source/glyph projections, mutable source guards and legacy source-local history.
+  Norad now remains behind reviewed source-format and proposal codecs, enforced by an item-aware architecture test.
 - Headless font information, SVG proofs and proposal list/install/discard now read and edit the canonical Project document and save through the shared persistence boundary.
 - Removed the editable Master wrapper from transient SVG, Designbot and live-experiment proof rendering.
 - Read interpolation compatibility diagnostics from canonical source layers instead of Master projections.
@@ -48,7 +50,7 @@ No release has been published yet.
 - Read editor joining checks, SVG export, source-layer commands, Unicode parsing, kerning/groups, related glyphs and overview points from canonical caches and views.
 - Moved application undo/redo enablement, mixed metadata ordering and asynchronous foreground revision checks onto Project-owned canonical layer history and revisions.
 - Removed the application's active-Master and mutable-Norad accessors; format-boundary assertions materialize detached source snapshots.
-- Python Babelfont package imports now construct canonical single- and multi-source documents before deriving temporary UFO compatibility projections.
+- Python Babelfont package imports now construct canonical single- and multi-source documents through the checked source-format boundary.
 - Built interpolated sources as atomic canonical document transactions, preserving exact metadata and undo while assigning fresh object identities to the new source.
 - Moved Designspace structure, font information, component alignment, mark color, metrics keys and formulas, metaball payloads, and HOI intermediate points into typed canonical document storage with guarded edits and UFO boundary projection.
 - Added failure-atomic Unicode replacement across every canonical source layer with one document revision and exact save/reopen persistence.

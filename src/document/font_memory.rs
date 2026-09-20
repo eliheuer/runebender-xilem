@@ -36,7 +36,7 @@ pub struct UfoFiles {
 /// Canonical imported project plus the host's glyph-to-file save bookkeeping.
 #[derive(Debug)]
 pub struct UfoProjectFiles {
-    /// Canonical single-source project; its compatibility Master is derived after import.
+    /// Canonical single-source project decoded at the UFO boundary.
     pub project: crate::document::project::Project,
     /// Glyph name to path relative to the UFO root, exactly as declared by `contents.plist`.
     pub glif_paths: HashMap<String, String>,

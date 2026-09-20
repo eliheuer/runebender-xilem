@@ -843,15 +843,19 @@ mod tests {
         let mut proposed = original.clone();
         proposed.width = 620.0;
         proposed.contours[0].points[1].x += 20.0;
-        let revision = runebender::document::edit_batch::glyph_revision(&original)
+        let revision = runebender::formats::ufo::glyph_revision(&original)
             .expect("the foreground revision is available");
         runebender::formats::lib_keys::write_proposal_base(
             &mut proposed,
             &revision,
             "test canonical proposal install",
         );
-        proposal::write(&mut font, "bolden", vec![proposed.clone()])
-            .expect("the proposal is valid");
+        runebender::formats::proposal_ufo::write_proposal_layer(
+            &mut font,
+            "bolden",
+            vec![proposed.clone()],
+        )
+        .expect("the proposal is valid");
         font.save(&path).expect("the proposal fixture saves");
 
         let mut workspace = Workspace::open(&path).expect("the fixture opens");
@@ -1010,7 +1014,12 @@ mod tests {
         font.default_layer_mut().insert_glyph(original);
         let mut proposed = norad::Glyph::new("A");
         proposed.width = 620.0;
-        proposal::write(&mut font, "bolden", vec![proposed]).expect("the proposal is valid");
+        runebender::formats::proposal_ufo::write_proposal_layer(
+            &mut font,
+            "bolden",
+            vec![proposed],
+        )
+        .expect("the proposal is valid");
         font.save(&path).expect("the fixture saves");
 
         let mut workspace = Workspace::open(&path).expect("the fixture opens");

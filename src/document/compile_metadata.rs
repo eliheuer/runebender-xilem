@@ -57,8 +57,8 @@ pub(super) fn kerning(value: f64) -> Result<i16, String> {
 
 /// Copy source groups into Babelfont's two compiler-side kerning-group maps.
 ///
-/// The iterator uses owned strings so both canonical metadata and temporary UFO projections can
-/// feed this immutable snapshot boundary without exposing either storage model here.
+/// The iterator uses owned strings so canonical metadata can feed this immutable snapshot without
+/// coupling the compiler adapter to document storage.
 pub(super) fn apply_groups(
     font: &mut babelfont::Font,
     groups: impl IntoIterator<Item = (String, Vec<String>)>,

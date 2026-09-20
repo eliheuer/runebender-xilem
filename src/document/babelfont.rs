@@ -209,7 +209,7 @@ pub(super) struct LayerPreservation {
     name: String,
     width: f64,
     height: f64,
-    codepoints: norad::Codepoints,
+    codepoints: Vec<char>,
     note: Option<String>,
     guidelines: Vec<norad::Guideline>,
     image: Option<LayerImage>,
@@ -362,6 +362,34 @@ impl ImportedContours {
                             .zip(&imported.preserved.points)
                             .all(|(a, b)| a.name == b.name && a.metadata == b.metadata)
                 })
+    }
+
+    fn into_fresh_parts(self) -> (Vec<Shape>, Vec<PreservedContour>, PastedContours) {
+        let mut shapes = Vec::with_capacity(self.contours.len());
+        let mut preserved = Vec::with_capacity(self.contours.len());
+        let mut inserted = PastedContours::default();
+        for contour in self.contours {
+            debug_assert_eq!(
+                contour.path.nodes.len(),
+                contour.preserved.points.len(),
+                "imported contour geometry and preservation records stay aligned"
+            );
+            let mut path = contour.path;
+            let mut contour_preserved = contour.preserved;
+            let contour_id = ContourId::next();
+            write_id(&mut path.format_specific, contour_id.0);
+            contour_preserved.id = contour_id;
+            inserted.contours.push(contour_id);
+            for (node, point) in path.nodes.iter_mut().zip(&mut contour_preserved.points) {
+                let point_id = PointId::next();
+                write_id(&mut node.format_specific, point_id.0);
+                point.id = point_id;
+                inserted.points.push(point_id);
+            }
+            shapes.push(Shape::Path(path));
+            preserved.push(contour_preserved);
+        }
+        (shapes, preserved, inserted)
     }
 }
 
@@ -578,7 +606,7 @@ impl<'a> LayerView<'a> {
 
     /// Unicode scalar values attached to this glyph layer.
     pub fn codepoints(self) -> impl Iterator<Item = char> + 'a {
-        self.preserved.codepoints.iter()
+        self.preserved.codepoints.iter().copied()
     }
 
     /// Canonical contours in storage order.
@@ -960,7 +988,9 @@ impl LayerEditDraft {
 
     /// Replace the Unicode scalar values, retaining order and removing later duplicates.
     pub fn set_codepoints(&mut self, codepoints: impl IntoIterator<Item = char>) -> bool {
-        let codepoints = norad::Codepoints::new(codepoints);
+        let mut codepoints = codepoints.into_iter().collect::<Vec<_>>();
+        let mut seen = HashSet::new();
+        codepoints.retain(|codepoint| seen.insert(*codepoint));
         if self.preserved.codepoints == codepoints {
             return false;
         }
@@ -1483,31 +1513,10 @@ impl LayerEditDraft {
         imported: ImportedContours,
     ) -> Result<PastedContours, DocumentEditError> {
         self.validate_imported_contours(&imported, true)?;
-        let result = PastedContours {
-            contours: imported
-                .contours
-                .iter()
-                .map(|contour| contour.preserved.id)
-                .collect(),
-            points: imported
-                .contours
-                .iter()
-                .flat_map(|contour| contour.preserved.points.iter().map(|point| point.id))
-                .collect(),
-        };
-        self.layer.shapes.extend(
-            imported
-                .contours
-                .iter()
-                .map(|contour| Shape::Path(contour.path.clone())),
-        );
-        self.preserved.contours.extend(
-            imported
-                .contours
-                .into_iter()
-                .map(|contour| contour.preserved),
-        );
-        Ok(result)
+        let (shapes, preserved, inserted) = imported.into_fresh_parts();
+        self.layer.shapes.extend(shapes);
+        self.preserved.contours.extend(preserved);
+        Ok(inserted)
     }
 
     /// Replace only the contours from an explicit UFO boundary.
@@ -1522,11 +1531,7 @@ impl LayerEditDraft {
             return Ok(false);
         }
         self.validate_imported_contours(&imported, false)?;
-        let (shapes, preserved): (Vec<_>, Vec<_>) = imported
-            .contours
-            .into_iter()
-            .map(|contour| (Shape::Path(contour.path), contour.preserved))
-            .unzip();
+        let (shapes, preserved, _) = imported.into_fresh_parts();
         replace_path_shapes_preserving_slots(&mut self.layer.shapes, shapes);
         self.preserved.contours = preserved;
         Ok(true)
@@ -1538,6 +1543,14 @@ impl LayerEditDraft {
         append: bool,
     ) -> Result<(), DocumentEditError> {
         let mut identifiers = HashSet::new();
+        for guideline in &self.preserved.guidelines {
+            if guideline
+                .identifier()
+                .is_some_and(|identifier| !identifiers.insert(identifier.as_ref().to_owned()))
+            {
+                return Err(DocumentEditError::InvalidLayerMetadata);
+            }
+        }
         let mut insert = |metadata: &ObjectMetadata| {
             metadata
                 .identifier
@@ -4745,7 +4758,7 @@ fn decode_imported_contours(
         shapes.push(Shape::Path(path));
         preserved.push(PreservedContour {
             id: contour_id,
-            hyper: crate::outline::path::hyper_model::norad_contour_is_hyper(contour),
+            hyper: ufo_contour_is_hyper(contour),
             metadata: ObjectMetadata::new(contour.identifier(), contour.lib()),
             points,
         });
@@ -4994,6 +5007,16 @@ fn fresh_hyper_identifier() -> norad::Identifier {
     norad::Identifier::new(&identifier).expect("generated hyperbezier identifier is valid")
 }
 
+fn fresh_object_identifier() -> norad::Identifier {
+    norad::Identifier::from_uuidv4()
+}
+
+fn ufo_contour_is_hyper(contour: &norad::Contour) -> bool {
+    contour
+        .identifier()
+        .is_some_and(|identifier| identifier.as_ref().contains("hyper"))
+}
+
 #[expect(
     clippy::cast_possible_truncation,
     reason = "the UFO projection retains the exact advance"
@@ -5053,7 +5076,7 @@ pub(super) fn layer_from_ufo(
         layer.shapes.push(Shape::Path(path));
         contours.push(PreservedContour {
             id: contour_id,
-            hyper: crate::outline::path::hyper_model::norad_contour_is_hyper(contour),
+            hyper: ufo_contour_is_hyper(contour),
             metadata: ObjectMetadata::new(contour.identifier(), contour.lib()),
             points,
         });
@@ -5129,7 +5152,7 @@ pub(super) fn layer_from_ufo(
             name: glyph.name().to_string(),
             width: glyph.width,
             height: glyph.height,
-            codepoints: glyph.codepoints.clone(),
+            codepoints: glyph.codepoints.iter().collect(),
             note: glyph.note.clone(),
             guidelines: glyph.guidelines.clone(),
             image: glyph.image.as_ref().map(LayerImage::from_ufo),
@@ -5226,7 +5249,7 @@ pub(super) fn copy_contours_only(
     layer.shapes.retain(|shape| matches!(shape, Shape::Path(_)));
     layer.anchors.clear();
     preserved.height = 0.0;
-    preserved.codepoints = norad::Codepoints::default();
+    preserved.codepoints.clear();
     preserved.note = None;
     preserved.guidelines.clear();
     preserved.image = None;
@@ -5306,7 +5329,7 @@ pub(super) fn project_layer(layer: &Layer, preserved: &LayerPreservation) -> nor
     let mut glyph = norad::Glyph::new(&preserved.name);
     glyph.width = preserved.width;
     glyph.height = preserved.height;
-    glyph.codepoints.clone_from(&preserved.codepoints);
+    glyph.codepoints = norad::Codepoints::new(preserved.codepoints.iter().copied());
     glyph.note.clone_from(&preserved.note);
     glyph.guidelines.clone_from(&preserved.guidelines);
     glyph.image = preserved.image.as_ref().map(LayerImage::to_ufo);

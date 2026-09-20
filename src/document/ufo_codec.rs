@@ -9,6 +9,72 @@
 
 use super::variable::{LayerId, SourceId, SourceMetadata, VariableData};
 
+pub(crate) fn decode_font_metadata(
+    font: &norad::Font,
+) -> Result<super::font_ops::CanonicalFontMetadata, super::font_ops::CanonicalMetadataError> {
+    let groups = font
+        .groups
+        .iter()
+        .map(|(name, members)| {
+            (
+                name.to_string(),
+                members.iter().map(ToString::to_string).collect(),
+            )
+        })
+        .collect();
+    let kerning = font
+        .kerning
+        .iter()
+        .map(|(left, row)| {
+            (
+                left.to_string(),
+                row.iter()
+                    .map(|(right, value)| (right.to_string(), *value))
+                    .collect(),
+            )
+        })
+        .collect();
+    super::font_ops::CanonicalFontMetadata::from_raw(groups, kerning)
+}
+
+pub(crate) fn encode_font_metadata(
+    font: &mut norad::Font,
+    metadata: &super::font_ops::CanonicalFontMetadata,
+) -> Result<bool, super::font_ops::CanonicalMetadataError> {
+    let mut groups = norad::Groups::default();
+    for (name, members) in metadata.groups() {
+        let name = norad::Name::new(name)
+            .map_err(|_| super::font_ops::CanonicalMetadataError::InvalidName(name.clone()))?;
+        let members = members
+            .iter()
+            .map(|member| {
+                norad::Name::new(member).map_err(|_| {
+                    super::font_ops::CanonicalMetadataError::InvalidName(member.clone())
+                })
+            })
+            .collect::<Result<_, _>>()?;
+        groups.insert(name, members);
+    }
+    let mut kerning = norad::Kerning::default();
+    for (left, row) in metadata.raw_kerning() {
+        let left_name = norad::Name::new(&left)
+            .map_err(|_| super::font_ops::CanonicalMetadataError::InvalidName(left.clone()))?;
+        let mut output_row = std::collections::BTreeMap::new();
+        for (right, value) in row {
+            let right_name = norad::Name::new(&right)
+                .map_err(|_| super::font_ops::CanonicalMetadataError::InvalidName(right.clone()))?;
+            output_row.insert(right_name, value);
+        }
+        kerning.insert(left_name, output_row);
+    }
+    if font.groups == groups && font.kerning == kerning {
+        return Ok(false);
+    }
+    font.groups = groups;
+    font.kerning = kerning;
+    Ok(true)
+}
+
 pub(super) fn decode_source(font: &norad::Font) -> Result<VariableData, String> {
     decode_sources([font])
 }
@@ -25,8 +91,7 @@ pub(super) fn decode_sources<'a>(
             source,
             SourceMetadata {
                 feature_text: font.features.clone(),
-                font_metadata: super::font_ops::canonical_metadata_from_ufo(font)
-                    .map_err(|error| error.to_string())?,
+                font_metadata: decode_font_metadata(font).map_err(|error| error.to_string())?,
                 font_info: super::model::font_info::CanonicalFontInfo::from_ufo(&font.font_info)
                     .map_err(|error| error.to_string())?,
             },
@@ -75,7 +140,7 @@ pub(super) fn decode_sources<'a>(
 }
 
 fn validate_source(font: &norad::Font) -> Result<(), String> {
-    super::font_ops::canonical_metadata_from_ufo(font).map_err(|error| error.to_string())?;
+    decode_font_metadata(font).map_err(|error| error.to_string())?;
     super::model::font_info::CanonicalFontInfo::from_ufo(&font.font_info)
         .map_err(|error| error.to_string())?;
     for name in font
@@ -93,11 +158,8 @@ pub(crate) fn encode_source(data: &VariableData, source: SourceId) -> Option<nor
     let mut font = data.source_formats.get(&source)?.to_ufo_template();
     font.features
         .clone_from(&data.source_metadata.get(&source)?.feature_text);
-    super::font_ops::write_canonical_metadata_to_ufo(
-        &mut font,
-        &data.source_metadata.get(&source)?.font_metadata,
-    )
-    .expect("canonical source metadata must remain writable as UFO");
+    encode_font_metadata(&mut font, &data.source_metadata.get(&source)?.font_metadata)
+        .expect("canonical source metadata must remain writable as UFO");
     data.source_metadata
         .get(&source)?
         .font_info

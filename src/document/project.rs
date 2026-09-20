@@ -2040,9 +2040,9 @@ impl Project {
 
     /// Restore a canonical layer only when its live state still equals `expected`.
     ///
-    /// Missing, stale and address-mismatched snapshots leave document contents, revisions,
-    /// compatibility projections and history unchanged. A changed restore advances the canonical
-    /// revision once and refreshes the transitional projection and invalidation scope.
+    /// Missing, stale and address-mismatched snapshots leave document contents, revisions and
+    /// history unchanged. A changed restore advances the canonical revision once and publishes
+    /// its normal invalidation scope.
     pub fn restore_document_layer_if_current(
         &mut self,
         address: &GlyphLayerAddress,
@@ -2137,7 +2137,7 @@ impl Project {
     /// Replace one glyph's Unicode values across every document source atomically.
     ///
     /// The values are paired with full sources in document order. A count mismatch or missing
-    /// default-layer glyph leaves every layer, compatibility projection and revision unchanged.
+    /// default-layer glyph leaves every layer and revision unchanged.
     pub fn set_document_glyph_codepoints(
         &mut self,
         name: &str,

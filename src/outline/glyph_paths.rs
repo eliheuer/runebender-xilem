@@ -9,11 +9,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use kurbo::{Affine, BezPath, Point};
+#[cfg(test)]
 use norad::{Contour, ContourPoint, Font, Glyph, PointType};
 
+use crate::document::model::smart_components::SmartComponentAxes;
+#[cfg(test)]
 use crate::document::model::smart_components::{
     SMART_COMPONENT_AXES_KEY, SMART_COMPONENT_POLE_KEY, SMART_COMPONENT_VALUES_KEY,
-    SmartComponentAxes, SmartComponentPole, SmartComponentValues,
+    SmartComponentPole, SmartComponentValues,
 };
 use crate::document::{ComponentView, ContourView, LayerPointType, LayerShapeView, LayerView};
 
@@ -75,6 +78,7 @@ pub fn point_key(x: f64, y: f64) -> (i64, i64) {
 ///
 /// Component transforms apply in full. A missing base glyph
 /// contributes nothing.
+#[cfg(test)]
 pub fn glyph_to_bezpath(glyph: &Glyph, font: &Font) -> BezPath {
     let mut path = BezPath::new();
     for contour in &glyph.contours {
@@ -88,6 +92,7 @@ pub fn glyph_to_bezpath(glyph: &Glyph, font: &Font) -> BezPath {
 }
 
 /// Only the glyph's own contours (no components).
+#[cfg(test)]
 pub fn contours_to_bezpath(glyph: &Glyph) -> BezPath {
     let mut path = BezPath::new();
     for contour in &glyph.contours {
@@ -211,6 +216,7 @@ pub fn ordinary_component_to_bezpath<'a>(
 }
 
 /// One contour as a `BezPath`.
+#[cfg(test)]
 pub fn contour_to_bezpath(contour: &Contour) -> BezPath {
     let mut path = BezPath::new();
     append_contour(&mut path, contour);
@@ -218,6 +224,7 @@ pub fn contour_to_bezpath(contour: &Contour) -> BezPath {
 }
 
 /// Only the glyph's components, recursively resolved.
+#[cfg(test)]
 pub fn components_to_bezpath(glyph: &Glyph, font: &Font) -> BezPath {
     let mut path = BezPath::new();
     append_components(&mut path, glyph, font, Affine::IDENTITY, 0);
@@ -229,6 +236,7 @@ pub fn components_to_bezpath(glyph: &Glyph, font: &Font) -> BezPath {
 type Pole = (BTreeSet<String>, Vec<(f64, f64)>);
 
 /// The affine of a norad component transform.
+#[cfg(test)]
 pub fn component_affine(t: &norad::AffineTransform) -> Affine {
     Affine::new([
         t.x_scale, t.xy_scale, t.yx_scale, t.y_scale, t.x_offset, t.y_offset,
@@ -250,6 +258,7 @@ pub fn component_affine(t: &norad::AffineTransform) -> Affine {
 ///
 /// Only point-compatible layers take part. Anything else falls
 /// back to the default outline.
+#[cfg(test)]
 fn smart_contours(
     base: &Glyph,
     font: &Font,
@@ -457,6 +466,7 @@ fn canonical_smart_contours(
     Some(contours)
 }
 
+#[cfg(test)]
 fn append_components(
     path: &mut BezPath,
     glyph: &Glyph,
@@ -526,6 +536,7 @@ fn append_components(
     }
 }
 
+#[cfg(test)]
 fn pt(p: &ContourPoint) -> Point {
     Point::new(p.x, p.y)
 }
@@ -757,6 +768,7 @@ fn path_element_is_finite(element: &kurbo::PathEl) -> bool {
     }
 }
 
+#[cfg(test)]
 fn append_contour(path: &mut BezPath, contour: &Contour) {
     let points = &contour.points;
     if points.is_empty() {

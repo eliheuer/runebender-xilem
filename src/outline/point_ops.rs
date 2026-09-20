@@ -20,8 +20,10 @@
 
 use std::collections::{HashMap, HashSet};
 
+#[cfg(test)]
 use norad::{ContourPoint, Glyph, PointType};
 
+#[cfg(test)]
 use crate::outline::glyph_ops::PointId;
 
 /// Representation-neutral point input for canonical and compatibility drags.
@@ -46,10 +48,12 @@ fn snap_pt(p: kurbo::Point) -> kurbo::Point {
     kurbo::Point::new(snap_coord(p.x), snap_coord(p.y))
 }
 
+#[cfg(test)]
 fn is_off(p: &ContourPoint) -> bool {
     p.typ == PointType::OffCurve
 }
 
+#[cfg(test)]
 fn pos(p: &ContourPoint) -> kurbo::Point {
     kurbo::Point::new(p.x, p.y)
 }
@@ -79,11 +83,13 @@ pub(crate) fn step_index(index: usize, len: usize, closed: bool, d: isize) -> Op
 }
 
 /// `step_index` on a contour known to be closed and non-empty.
+#[cfg(test)]
 pub(crate) fn wrap_index(index: usize, len: usize, d: isize) -> usize {
     step_index(index, len, true, d).unwrap_or(0)
 }
 
 /// A closed contour is one that does not open with a `move` point.
+#[cfg(test)]
 fn contour_is_closed(points: &[ContourPoint]) -> bool {
     points.first().is_none_or(|p| p.typ != PointType::Move)
 }
@@ -140,6 +146,7 @@ fn projected_smooth_handle(
 /// neighbours.
 ///
 /// This is `append_smooth_handle_updates` in the web editor.
+#[cfg(test)]
 fn smooth_handle_updates(
     points: &[ContourPoint],
     selected_here: &HashSet<usize>,
@@ -327,6 +334,7 @@ pub(crate) fn translated_positions(
 }
 
 /// Capture every point position needed to replay total-delta drag events.
+#[cfg(test)]
 pub fn drag_origins(
     glyph: &Glyph,
     selected: &HashSet<PointId>,
@@ -374,6 +382,7 @@ pub fn drag_origins(
 /// nudge can pass an empty map.
 ///
 /// Returns true when any coordinate changed.
+#[cfg(test)]
 pub fn translate_points(
     glyph: &mut Glyph,
     selected: &HashSet<PointId>,
@@ -464,6 +473,7 @@ pub fn translate_points(
 /// Snap the selected off-curve points onto the design grid, then
 /// re-aim the smooth tangents they belong to. The web select tool runs
 /// this when a drag ends, so handles never settle between gridlines.
+#[cfg(test)]
 pub fn snap_selected_offcurves(glyph: &mut Glyph, selected: &HashSet<PointId>) -> bool {
     if selected.is_empty() {
         return false;
