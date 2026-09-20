@@ -18,8 +18,9 @@ An actual stdio MCP trial on a disposable full Virtua Grotesk designspace used e
 All 1,744 family files remained unchanged in both input and copy, including after process cleanup.
 Evidence is `/private/tmp/runebender-nodes-virtua-full-family-20260920-1140/evidence.json`; this is transport and application evidence, not model interpretation or foreground interaction.
 
-Live comparison save/reopen, expansion into the shared Scripts editor and exposed graph Undo/Redo controls remain unfinished.
-The graph engine has guarded Undo/Redo, but text-local Undo is absent from the pinned TextArea and is blocked from falling through to font history.
+Live comparison save/reopen is integrated for final validation, with source binding chosen explicitly at Open and no persisted session authority.
+Expansion into the shared Scripts editor and exposed graph Undo/Redo controls remain unfinished.
+The graph engine has guarded Undo/Redo; the shared source editor now implements bounded local text history independently from graph and font history.
 Native Gray/Light visual cleanup and the final combined browser/build checks remain in progress.
 
 ## ComfyUI evidence and lessons

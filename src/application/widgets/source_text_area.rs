@@ -507,7 +507,8 @@ mod tests {
         assert!(harness.pop_action_erased().is_none(), "branch cleared redo");
 
         harness.edit_root_widget(|mut root| {
-            let mut area = ShortcutHost::child_mut(&mut root).downcast::<SourceTextArea>();
+            let mut child = ShortcutHost::child_mut(&mut root);
+            let mut area = child.downcast::<SourceTextArea>();
             SourceTextArea::replace_external_content(&mut area, "external");
         });
         harness.process_text_event(key(Key::Character("z".into()), modifiers));

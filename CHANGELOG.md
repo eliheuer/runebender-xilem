@@ -22,8 +22,9 @@ No release has been published yet.
   Script execution remains unavailable in the browser.
 
 - Added native Nodes content children for multiline Python editing and immutable PNG specimen comparison.
-  Code editing keeps platform focus, selection, clipboard, newline behavior without automatic execution; unsupported text Undo/Redo shortcuts cannot change font history; proof nodes retain prior images while running and support independent pan, zoom and presentation-only resizing.
+  Code editing keeps focus, selection, clipboard, multiline input and bounded local Undo/Redo without automatic execution; proof nodes retain prior images while running and support independent pan, zoom and presentation-only resizing.
   Live comparisons expose their source and glyph scope, support guarded topology edits plus Run, Cancel, Clear and Apply controls, and reuse retained proof bytes by immutable artifact identity.
+  Comparison files preserve authoring intent without live handles or authority; Open binds an explicitly named source and never runs the graph.
 
 - Added asynchronous native `proof_start`, `proof_status`, `proof_cancel` and `proof_release` tools.
   Completed proofs return compiled PNG images through MCP with immutable font hashes, captured revisions and explicit stale-result labels.

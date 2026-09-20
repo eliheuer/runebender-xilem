@@ -121,6 +121,9 @@ Native pointer, IME and foreground-window interaction remain separate from the h
 Python recipes use an optional external interpreter; the editor itself does not require Python.
 The subprocess boundary is not an operating-system sandbox, and cancellation terminates the direct child without claiming descendant containment.
 The first mutation scope is one explicit source, at most 64 guarded layers and 256 operations; cross-source and whole-font atomic recipes are not implemented.
-Live comparison graphs currently remain session-only, and expanding inline code into the shared Scripts editor is unfinished.
-The pinned text editor lacks local Undo/Redo; those shortcuts are consumed inside recipe editors so they cannot accidentally undo a font edit.
+Live comparison files preserve code, parameters, proof recipes, positions and links; opening requires an explicitly named current source and creates a fresh session without running it.
+Retained results must be released before replacement, and observed external file conflicts are rejected.
+Inline editor expansion into the shared Scripts panel remains unfinished.
+Source editors keep bounded local Undo/Redo independently from font history, with at most 64 snapshots and 1 MiB retained per editor.
+History restoration resets the caret, and a genuinely external code replacement clears local history.
 Font Undo/Redo remains available outside focused recipe text while viewing Nodes; graph history is a separate engine operation whose native controls remain unfinished.
