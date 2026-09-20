@@ -45,6 +45,10 @@ The remaining CLI-generated live prompt also needs review alongside server-side 
 Active workers have ten-minute continuations in their existing tasks, shortened at the user's request.
 Sol's bounded engine phase is committed at `de184bc25eaf2fbb4e33304bb49b275b8515b467` and its completed continuation has been removed; integration remains pending here.
 Terra's bounded proof phase is committed at `1b8cc22` with five focused tests and strict Clippy passing, and its completed continuation has also been removed.
+Luna's bounded harness phase is committed at `8a88aaeb599e3ca5a7c2674bd8deb324a75cf63d`, and its completed continuation has been removed.
+Its final fixture evidence is `/private/tmp/runebender-agent-client-fixture-20260920-run5/report.json`, against coordinator fixture commit `999e6db`.
+The report verifies unsaved width 412, authorized width 430, the specific authorization/stale rejection reasons, application cache/session agreement, ordinary undo/redo and no source write.
+Actual desktop and OMP model-client trials remain pending, and all worker commits remain subject to coordinator integration.
 The coordinator's existing ten-minute continuation was updated to respect this ownership split and review worker progress without duplicating their work.
 Continuations stay quiet when unchanged or non-actionable, report meaningful results or blockers, and are removed when their bounded work is complete.
 
