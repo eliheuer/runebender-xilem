@@ -49,6 +49,7 @@ pub mod project;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod proof_jobs;
 pub mod proposal;
+pub mod script_recipe;
 pub mod source;
 mod source_format;
 pub(crate) mod ufo_codec;
