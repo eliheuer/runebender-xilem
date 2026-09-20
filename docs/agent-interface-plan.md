@@ -1,6 +1,7 @@
 # Implementation gates and acceptance plan
 
 This plan accompanies the [research report](agent-interface-research.md) and [client matrix](agent-client-matrix.md).
+The [coordination record](agent-interface-coordination.md) assigns the active implementation work.
 The original research phase changed documentation only.
 Implementation began after the explicit migration release recorded below.
 Milestone 1 remains incomplete; its first context and identity checkpoint is implemented and validated.
