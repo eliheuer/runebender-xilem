@@ -14,6 +14,9 @@
 //! Canvas units are Y-down, like the file. Core's [`ViewPort`] is
 //! Y-up, so [`canvas_affine`] and [`to_canvas`] carry the flip.
 
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
 use kurbo::{Affine, BezPath, Point, Rect, Shape as _};
 use serde_json::Value;
 
@@ -36,6 +39,91 @@ pub const PORT_R: f64 = 4.5;
 pub const PAD: f64 = 8.0;
 /// The grid ring radius.
 pub const RING_R: f64 = 1.75;
+/// The smallest useful inline code editor height.
+pub const CODE_H: f64 = 112.0;
+/// The smallest useful embedded image height.
+pub const IMAGE_H: f64 = 144.0;
+/// The corner square used for resizing a content node.
+pub const RESIZE_HANDLE: f64 = 12.0;
+
+/// Session-only presentation for content embedded in a graph node.
+///
+/// The graph file remains responsible for connections and positions.
+/// This projection deliberately carries no executable or mutable font handle:
+/// an application scheduler publishes immutable script and proof output here,
+/// and the canvas only presents it.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct NodeContentMap {
+    /// Content by graph node identity.
+    pub by_node: BTreeMap<u32, NodeContent>,
+}
+
+impl NodeContentMap {
+    /// Returns the content currently projected for `node`.
+    pub fn get(&self, node: u32) -> Option<&NodeContent> {
+        self.by_node.get(&node)
+    }
+}
+
+/// Presentation content a canvas node can host.
+#[derive(Debug, Clone, PartialEq)]
+pub enum NodeContent {
+    /// A Python source view backed by the shared script-artifact buffer.
+    Script(ScriptContent),
+    /// An immutable PNG proof image and its visible run state.
+    Image(ImageContent),
+}
+
+/// The source and execution state shown inside a script node.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScriptContent {
+    /// The source text from the shared script buffer.
+    pub text: String,
+    /// Stable content identity captured with the run.
+    pub content_hash: String,
+    /// Current status and bounded diagnostic for the node.
+    pub state: ContentState,
+}
+
+/// The image state shown inside a specimen node.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImageContent {
+    /// The latest accepted image, if a renderer has produced one.
+    pub image: Option<ImmutablePng>,
+    /// The last accepted image retained while a replacement is running.
+    pub previous_image: Option<ImmutablePng>,
+    /// Current status and bounded diagnostic for the node.
+    pub state: ContentState,
+}
+
+/// Immutable proof pixels and the identity that makes them comparable.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImmutablePng {
+    /// PNG bytes captured from a completed renderer result.
+    pub bytes: Arc<[u8]>,
+    /// Pixel width recorded by the renderer.
+    pub width: u32,
+    /// Pixel height recorded by the renderer.
+    pub height: u32,
+    /// Renderer and input identity visible in the canvas metadata.
+    pub output_hash: String,
+}
+
+/// A content node's visible lifecycle.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum ContentState {
+    /// No run has supplied output yet.
+    #[default]
+    Idle,
+    /// A run is in flight; the previous image, if any, remains visible.
+    Running,
+    /// The projected output matches the current captured input.
+    Current,
+    /// The projected output belongs to an older script, parameter, or font capture.
+    Stale,
+    /// The last run failed or was cancelled; the message is bounded by the scheduler.
+    Error(String),
+}
 
 /// A canvas coordinate moved to the nearest dot.
 pub fn snap(v: f64) -> f64 {
@@ -70,6 +158,8 @@ pub struct NodeBox {
     pub title: String,
     /// The box, in canvas units.
     pub rect: Rect,
+    /// Session-only content embedded below the ports, when present.
+    pub content: Option<NodeContent>,
     /// Ports down the left edge.
     pub inputs: Vec<PortBox>,
     /// Ports down the right edge.
@@ -96,6 +186,34 @@ impl NodeBox {
     pub fn row_top(&self, row: usize) -> f64 {
         self.rect.y0 + HEADER_H + PAD / 2.0 + ROW_H * row as f64
     }
+
+    /// The rectangle reserved for an embedded child widget.
+    pub fn content_rect(&self) -> Option<Rect> {
+        self.content.as_ref().map(|content| {
+            let height = match content {
+                NodeContent::Script(_) => CODE_H,
+                NodeContent::Image(_) => IMAGE_H,
+            };
+            Rect::new(
+                self.rect.x0 + PAD,
+                self.rect.y1 - height - PAD,
+                self.rect.x1 - PAD,
+                self.rect.y1 - PAD,
+            )
+        })
+    }
+
+    /// The bottom-right affordance for resizing an embedded node.
+    pub fn resize_rect(&self) -> Option<Rect> {
+        self.content_rect().map(|_| {
+            Rect::new(
+                self.rect.x1 - RESIZE_HANDLE,
+                self.rect.y1 - RESIZE_HANDLE,
+                self.rect.x1,
+                self.rect.y1,
+            )
+        })
+    }
 }
 
 /// A typed value as the box shows it: a whole number without its
@@ -115,6 +233,16 @@ pub fn value_text(v: &Value) -> String {
 /// edges. Outputs take the top rows, inputs the rows under them, so a
 /// long typed value never runs into an output's name.
 pub fn node_box(graph: &NodeGraph, registry: &Registry, node: &Node) -> NodeBox {
+    node_box_with_content(graph, registry, node, None)
+}
+
+/// Lays out one node with optional session-only embedded content.
+pub fn node_box_with_content(
+    graph: &NodeGraph,
+    registry: &Registry,
+    node: &Node,
+    content: Option<NodeContent>,
+) -> NodeBox {
     let ty = registry.get(&node.type_name);
     let title = ty
         .map(|t| t.title.clone())
@@ -126,6 +254,11 @@ pub fn node_box(graph: &NodeGraph, registry: &Registry, node: &Node) -> NodeBox 
     let y = f64::from(node.pos[1]);
     let live = node.type_name.starts_with("live.");
     let width = if live { LIVE_W } else { NODE_W };
+    let content_height = match &content {
+        Some(NodeContent::Script(_)) => CODE_H + PAD * 2.0,
+        Some(NodeContent::Image(_)) => IMAGE_H + PAD * 2.0,
+        None => 0.0,
+    };
     let h = HEADER_H
         + PAD
         + ROW_H * rows as f64
@@ -139,7 +272,8 @@ pub fn node_box(graph: &NodeGraph, registry: &Registry, node: &Node) -> NodeBox 
                 }
         } else {
             0.0
-        };
+        }
+        + content_height;
     let rect = Rect::new(x, y, x + width, y + h);
     let row_y = |i: usize| y + HEADER_H + PAD / 2.0 + ROW_H * (i as f64 + 0.5);
     let first_input = outputs.len();
@@ -175,6 +309,7 @@ pub fn node_box(graph: &NodeGraph, registry: &Registry, node: &Node) -> NodeBox 
         type_name: node.type_name.clone(),
         title,
         rect,
+        content,
         inputs,
         outputs,
     }
@@ -182,10 +317,19 @@ pub fn node_box(graph: &NodeGraph, registry: &Registry, node: &Node) -> NodeBox 
 
 /// Every node laid out, in file order, which is also paint order.
 pub fn layout(graph: &NodeGraph, registry: &Registry) -> Vec<NodeBox> {
+    layout_with_content(graph, registry, &NodeContentMap::default())
+}
+
+/// Lays out every node with the session-only content supplied by a scheduler.
+pub fn layout_with_content(
+    graph: &NodeGraph,
+    registry: &Registry,
+    content: &NodeContentMap,
+) -> Vec<NodeBox> {
     graph
         .nodes
         .iter()
-        .map(|n| node_box(graph, registry, n))
+        .map(|n| node_box_with_content(graph, registry, n, content.get(n.id).cloned()))
         .collect()
 }
 
@@ -299,6 +443,32 @@ pub enum Hit {
     Empty,
 }
 
+/// The non-port region under a pointer within a node.
+///
+/// Headers are the only regions that begin a graph move.
+/// Content bodies belong to their child widgets, so ordinary text selection
+/// and image interaction cannot accidentally move a node.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NodeRegion {
+    /// The title strip; graph dragging starts here.
+    Header,
+    /// Ordinary noninteractive node chrome.
+    Body,
+    /// Embedded code or image content.
+    Content,
+    /// The resize affordance of an embedded-content node.
+    Resize,
+}
+
+/// A node and its non-port region under a point.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NodeRegionHit {
+    /// The graph node identity.
+    pub node: u32,
+    /// The node region at the point.
+    pub region: NodeRegion,
+}
+
 /// What sits under a canvas point, top box first. A dot reaches twice
 /// its radius, so it is easier to land on than it looks.
 pub fn hit(boxes: &[NodeBox], at: Point) -> Hit {
@@ -319,6 +489,38 @@ pub fn hit(boxes: &[NodeBox], at: Point) -> Hit {
         }
     }
     Hit::Empty
+}
+
+/// Finds a node's interaction region without changing the established port hit
+/// priority in [`hit`].
+pub fn node_region_hit(boxes: &[NodeBox], at: Point) -> Option<NodeRegionHit> {
+    for node in boxes.iter().rev() {
+        if node.resize_rect().is_some_and(|rect| rect.contains(at)) {
+            return Some(NodeRegionHit {
+                node: node.id,
+                region: NodeRegion::Resize,
+            });
+        }
+        if node.header().contains(at) {
+            return Some(NodeRegionHit {
+                node: node.id,
+                region: NodeRegion::Header,
+            });
+        }
+        if node.content_rect().is_some_and(|rect| rect.contains(at)) {
+            return Some(NodeRegionHit {
+                node: node.id,
+                region: NodeRegion::Content,
+            });
+        }
+        if node.rect.contains(at) {
+            return Some(NodeRegionHit {
+                node: node.id,
+                region: NodeRegion::Body,
+            });
+        }
+    }
+    None
 }
 
 /// Live nodes have room for a proof and explicit actions inside the canvas.
@@ -464,5 +666,63 @@ mod tests {
         assert!((back - p).hypot() < 1e-9);
         assert_eq!(snap(23.0), 16.0);
         assert_eq!(value_text(&serde_json::json!(200.0)), "200");
+    }
+
+    #[test]
+    fn embedded_content_reserves_a_child_region_and_header_only_drag_target() {
+        let (mut graph, registry) = graph();
+        let node = graph.add("core.note", [320.0, 0.0]);
+        let mut content = NodeContentMap::default();
+        content.by_node.insert(
+            node,
+            NodeContent::Script(ScriptContent {
+                text: "print('specimen')\n".into(),
+                content_hash: "script-1".into(),
+                state: ContentState::Current,
+            }),
+        );
+        let boxes = layout_with_content(&graph, &registry, &content);
+        let node = boxes.iter().find(|box_| box_.id == node).unwrap();
+        let content_rect = node.content_rect().unwrap();
+        assert!(node.rect.height() >= CODE_H + HEADER_H + PAD * 2.0);
+        assert_eq!(
+            node_region_hit(&boxes, node.header().center()),
+            Some(NodeRegionHit {
+                node: node.id,
+                region: NodeRegion::Header,
+            })
+        );
+        assert_eq!(
+            node_region_hit(&boxes, content_rect.center()),
+            Some(NodeRegionHit {
+                node: node.id,
+                region: NodeRegion::Content,
+            })
+        );
+        assert_eq!(
+            node_region_hit(&boxes, node.resize_rect().unwrap().center()),
+            Some(NodeRegionHit {
+                node: node.id,
+                region: NodeRegion::Resize,
+            })
+        );
+        assert_eq!(hit(&boxes, content_rect.center()), Hit::Node(node.id));
+    }
+
+    #[test]
+    fn image_projection_keeps_a_previous_proof_while_current_output_runs() {
+        let image = ImmutablePng {
+            bytes: Arc::from([137, 80, 78, 71]),
+            width: 4,
+            height: 1,
+            output_hash: "proof-1".into(),
+        };
+        let content = ImageContent {
+            image: None,
+            previous_image: Some(image.clone()),
+            state: ContentState::Running,
+        };
+        assert_eq!(content.previous_image, Some(image));
+        assert_eq!(content.state, ContentState::Running);
     }
 }
