@@ -10,7 +10,6 @@
 //! The live-session adapter owns snapshot handles, epochs and late-result
 //! rejection around these values.
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -23,6 +22,8 @@ use crate::text::shape::ShapingFont;
 
 const MAX_TEXT_BYTES: usize = 4 * 1024;
 const MAX_SHAPED_GLYPHS: usize = 1024;
+const MAX_FEATURES: usize = 64;
+const MAX_LANGUAGE_BYTES: usize = 35;
 const PROOF_WIDTH: u32 = 1024;
 const PROOF_HEIGHT: u32 = 1024;
 const PROOF_MARGIN: f64 = 32.0;
@@ -35,7 +36,7 @@ const PROOF_LINE_HEIGHT: f64 = 180.0;
 /// stronger process identity when one is available.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CompilerIdentity {
-    /// Stable label for the source versions in this Cargo build.
+    /// Stable label for this Cargo build and its resolved `Cargo.lock`.
     pub label: String,
     /// SHA-256 digest of [`Self::label`].
     pub sha256: String,
@@ -43,9 +44,11 @@ pub struct CompilerIdentity {
 
 impl CompilerIdentity {
     fn current() -> Self {
+        let lock_sha256 =
+            sha256(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.lock")).as_bytes());
         let label = format!(
-            "runebender={};fontc=1.0.0;babelfont=29bdedbbfa7d3150b651dbd7c94fce6b79677ca4",
-            env!("CARGO_PKG_VERSION")
+            "runebender={};cargo-lock={lock_sha256}",
+            env!("CARGO_PKG_VERSION"),
         );
         let sha256 = sha256(label.as_bytes());
         Self { label, sha256 }
@@ -179,9 +182,16 @@ impl CompiledProofRecipe {
         if !self
             .normalized_location
             .iter()
-            .all(|value| value.is_finite())
+            .all(|value| value.is_finite() && (-1.0..=1.0).contains(value))
         {
-            return Err("proof location must contain only finite values".into());
+            return Err(
+                "proof location must contain finite normalized values from -1 through 1".into(),
+            );
+        }
+        if self.features.len() > MAX_FEATURES {
+            return Err(format!(
+                "proof accepts at most {MAX_FEATURES} feature overrides"
+            ));
         }
         if self
             .features
@@ -197,6 +207,17 @@ impl CompiledProofRecipe {
         {
             return Err("proof script must be a four-byte ISO 15924 tag".into());
         }
+        if self.language.as_deref().is_some_and(|language| {
+            language.is_empty()
+                || language.len() > MAX_LANGUAGE_BYTES
+                || !language
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        }) {
+            return Err(format!(
+                "proof language must be 1 to {MAX_LANGUAGE_BYTES} ASCII BCP 47 bytes"
+            ));
+        }
         Ok(())
     }
 }
@@ -206,7 +227,7 @@ impl CompiledProofRecipe {
 pub struct CompiledProofGlyph {
     /// OpenType glyph ID in the compiled snapshot.
     pub glyph_id: u16,
-    /// Compiler glyph name when the compiled `post` table resolves it.
+    /// Compiler glyph name resolved from the snapshot glyph order by glyph ID.
     pub glyph_name: Option<String>,
     /// UTF-8 byte offset of the source cluster.
     pub cluster: u32,
@@ -270,15 +291,23 @@ pub fn prove(
         .iter()
         .map(|glyph| CompiledProofGlyph {
             glyph_id: glyph.glyph_id,
-            glyph_name: shaper.glyph_name(glyph.glyph_id).map(str::to_owned),
+            glyph_name: snapshot
+                .font
+                .glyph_order
+                .get(usize::from(glyph.glyph_id))
+                .cloned(),
             cluster: glyph.cluster,
             x_advance: glyph.x_advance,
             x_offset: glyph.x_offset,
             y_offset: glyph.y_offset,
         })
         .collect::<Vec<_>>();
-    let outlines = snapshot.font.outlines(&recipe.normalized_location)?;
-    let outlines: HashMap<_, _> = outlines.into_iter().collect();
+    let outlines = snapshot
+        .font
+        .outlines(&recipe.normalized_location)?
+        .into_iter()
+        .map(|(_, outline)| outline)
+        .collect::<Vec<_>>();
     let units_per_em = units_per_em(&snapshot.font.bytes)?;
     let scene = scene(&glyphs, &outlines, units_per_em, recipe.right_to_left)?;
     let png = crate::formats::designbot::render(&scene, false)?;
@@ -300,15 +329,19 @@ fn captured_font(project: &Project) -> Result<babelfont::Font, String> {
     use babelfont::filters::{FontFilter as _, ResolveIncludes};
 
     let mut font = project.babelfont_snapshot()?;
-    if font.features.to_fea().contains("include(") {
-        let base = font
-            .source
-            .as_ref()
-            .and_then(|source| source.parent())
-            .map(PathBuf::from);
-        ResolveIncludes::new(base)
-            .apply(&mut font)
-            .map_err(|error| format!("could not capture feature includes: {error}"))?;
+    let base = font
+        .source
+        .as_ref()
+        .and_then(|source| source.parent())
+        .map(PathBuf::from);
+    ResolveIncludes::new(base)
+        .apply(&mut font)
+        .map_err(|error| format!("could not capture feature includes: {error}"))?;
+    if has_unresolved_feature_include(&font.features.to_fea()) {
+        return Err(
+            "could not capture feature includes: unresolved include directive remains after resolution"
+                .into(),
+        );
     }
     // No compiler work after this capture may read a live feature source or include path.
     font.source = None;
@@ -316,13 +349,33 @@ fn captured_font(project: &Project) -> Result<babelfont::Font, String> {
     Ok(font)
 }
 
+fn has_unresolved_feature_include(features: &str) -> bool {
+    for line in features.lines() {
+        let code = line.split_once('#').map_or(line, |(code, _)| code);
+        let mut remaining = code;
+        while let Some(index) = remaining.find("include") {
+            let (prefix, after_prefix) = remaining.split_at(index);
+            let suffix = &after_prefix["include".len()..];
+            let starts_identifier = prefix
+                .as_bytes()
+                .last()
+                .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_');
+            if !starts_identifier && suffix.trim_start().starts_with('(') {
+                return true;
+            }
+            remaining = suffix;
+        }
+    }
+    false
+}
+
 fn scene(
     glyphs: &[CompiledProofGlyph],
-    outlines: &HashMap<String, Arc<kurbo::BezPath>>,
+    outlines: &[Arc<kurbo::BezPath>],
     units_per_em: f64,
     right_to_left: bool,
 ) -> Result<serde_json::Value, String> {
-    use kurbo::Affine;
+    use kurbo::{Affine, Shape as _};
     use serde_json::json;
 
     if !units_per_em.is_finite() || units_per_em <= 0.0 {
@@ -337,13 +390,9 @@ fn scene(
     };
     let mut baseline = 180.0;
     for glyph in glyphs {
-        let name = glyph
-            .glyph_name
-            .as_deref()
-            .ok_or_else(|| format!("compiled glyph {} has no name", glyph.glyph_id))?;
         let path = outlines
-            .get(name)
-            .ok_or_else(|| format!("compiled outline missing for glyph {name:?}"))?;
+            .get(usize::from(glyph.glyph_id))
+            .ok_or_else(|| format!("compiled outline missing for glyph {}", glyph.glyph_id))?;
         if !glyph.x_advance.is_finite()
             || !glyph.x_offset.is_finite()
             || !glyph.y_offset.is_finite()
@@ -378,6 +427,15 @@ fn scene(
             baseline + glyph.y_offset * scale,
         )) * Affine::scale(scale)
             * path.as_ref();
+        let bounds = translated.bounding_box();
+        if !translated.is_empty()
+            && (bounds.x0 < 0.0
+                || bounds.y0 < 0.0
+                || bounds.x1 > f64::from(PROOF_WIDTH)
+                || bounds.y1 > f64::from(PROOF_HEIGHT))
+        {
+            return Err("proof outline would be clipped by the bounded image".into());
+        }
         paths.push(json!({"d": translated.to_svg()}));
         if !right_to_left {
             x += advance;
@@ -440,6 +498,38 @@ mod tests {
     }
 
     #[test]
+    fn recipe_rejects_unbounded_location_features_and_language() {
+        let mut recipe = recipe("A", 1.1, false, Some("latn"));
+        assert!(recipe.validate().is_err());
+
+        recipe.normalized_location = vec![0.0];
+        recipe.features = vec![("kern".into(), true); MAX_FEATURES + 1];
+        assert!(recipe.validate().is_err());
+
+        recipe.features.clear();
+        recipe.language = Some("x".repeat(MAX_LANGUAGE_BYTES + 1));
+        assert!(recipe.validate().is_err());
+    }
+
+    #[test]
+    fn scene_rejects_missing_or_clipped_outlines() {
+        use kurbo::{Rect, Shape as _};
+
+        let glyph = CompiledProofGlyph {
+            glyph_id: 0,
+            glyph_name: Some("A".into()),
+            cluster: 0,
+            x_advance: 500.0,
+            x_offset: 0.0,
+            y_offset: 0.0,
+        };
+        assert!(scene(std::slice::from_ref(&glyph), &[], 1000.0, false).is_err());
+
+        let too_wide = Arc::new(Rect::new(0.0, 0.0, 10_000.0, 1.0).to_path(0.1));
+        assert!(scene(&[glyph], &[too_wide], 1000.0, false).is_err());
+    }
+
+    #[test]
     fn capture_freezes_feature_include_content_before_worker_compilation() {
         let root = std::env::temp_dir().join(format!(
             "runebender-compiled-proof-features-{}",
@@ -467,6 +557,34 @@ mod tests {
     }
 
     #[test]
+    fn capture_rejects_whitespace_feature_include_that_resolver_cannot_freeze() {
+        assert!(!has_unresolved_feature_include(
+            "# include (commented.fea);"
+        ));
+        assert!(!has_unresolved_feature_include(
+            "myinclude (identifier.fea);"
+        ));
+        assert!(has_unresolved_feature_include("include (live.fea);"));
+
+        let root = std::env::temp_dir().join(format!(
+            "runebender-compiled-proof-whitespace-features-{}",
+            std::process::id()
+        ));
+        let ufo = root.join("Test.ufo");
+        let include = ufo.join("includes/captured.fea");
+        fs::create_dir_all(include.parent().unwrap()).unwrap();
+        fs::write(&include, "# captured include\n").unwrap();
+        let mut font = norad::Font::new();
+        font.features = "include (includes/captured.fea);\n".into();
+        let project =
+            Project::from_source(super::super::project::SourceInput::from_font(font, ufo));
+
+        let error = capture(&project).unwrap_err();
+        assert!(error.contains("unresolved include directive"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn compiled_proof_uses_one_immutable_byte_snapshot_for_multilingual_text() {
         let project = project();
         let snapshot = compile(capture(&project).unwrap()).unwrap();
@@ -477,7 +595,9 @@ mod tests {
         .unwrap();
         let hebrew = prove(&snapshot, recipe("שָׁלוֹם", 0.0, true, Some("hebr"))).unwrap();
         let arabic = prove(&snapshot, recipe("سلام", 0.0, true, Some("arab"))).unwrap();
-        for proof in [&latin, &hebrew, &arabic] {
+        let unencoded = prove(&snapshot, recipe("\u{10ffff}", 0.0, false, Some("latn"))).unwrap();
+        assert!(unencoded.glyphs.iter().all(|glyph| glyph.glyph_id == 0));
+        for proof in [&latin, &hebrew, &arabic, &unencoded] {
             assert_eq!(proof.font_sha256, snapshot.font_sha256());
             assert_eq!(proof.document_revision, snapshot.document_revision());
             assert_eq!(
@@ -486,6 +606,13 @@ mod tests {
             );
             assert!(proof.png.starts_with(b"\x89PNG\r\n\x1a\n"));
             assert!(!proof.glyphs.is_empty());
+            assert!(proof.glyphs.iter().all(|glyph| {
+                glyph.glyph_name.as_deref()
+                    == snapshot
+                        .glyph_order()
+                        .get(usize::from(glyph.glyph_id))
+                        .map(String::as_str)
+            }));
         }
         assert!(
             hebrew
