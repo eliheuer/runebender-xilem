@@ -578,14 +578,14 @@ impl FontModel {
             .count()
     }
 
-    /// How many glyphs the masters disagree about, by the engine's check.
+    /// Count the engine's cached compatibility results without interpolating during view rebuilds.
     pub(crate) fn incompatible_count(&self) -> usize {
         if self.project.document_sources().count() < 2 {
             return 0;
         }
         self.glyphs
             .iter()
-            .filter(|entry| !self.project.check_compat(&entry.name))
+            .filter(|entry| self.project.compat.get(&entry.name) == Some(&false))
             .count()
     }
 
@@ -916,6 +916,46 @@ mod tests {
             .expect("A is deliberately incompatible");
         assert!(detail.contains("Regular 0c"));
         assert!(detail.contains("Bold 1c"));
+    }
+
+    #[test]
+    fn cached_incompatible_count_tracks_edits_and_history() {
+        use runebender::document::history::HistoryDirection;
+        use runebender::document::variable::GlyphLayerAddress;
+
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/incompatible/Test.designspace");
+        let mut model = FontModel::open(&path).unwrap();
+        let source = model.project.source_id(1).unwrap();
+        let address = GlyphLayerAddress {
+            glyph: "A".into(),
+            layer: model
+                .project
+                .document_source(source)
+                .unwrap()
+                .default_layer(),
+        };
+        assert_eq!(model.incompatible_count(), 1);
+        let mut transaction = model
+            .project
+            .begin_document_layer_transaction(&address)
+            .unwrap();
+        assert!(transaction.draft_mut().clear_contours());
+        model
+            .project
+            .commit_document_layer_transaction(transaction)
+            .unwrap();
+        assert_eq!(model.incompatible_count(), 0);
+        model
+            .project
+            .replay_document_layer_history(&address, HistoryDirection::Undo)
+            .unwrap();
+        assert_eq!(model.incompatible_count(), 1);
+        model
+            .project
+            .replay_document_layer_history(&address, HistoryDirection::Redo)
+            .unwrap();
+        assert_eq!(model.incompatible_count(), 0);
     }
 
     #[test]

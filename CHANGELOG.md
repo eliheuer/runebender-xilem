@@ -146,6 +146,8 @@ No release has been published yet.
 
 ### Fixed
 
+- Read cached master compatibility counts during view rebuilds, avoiding repeated whole-font interpolation on the UI thread.
+
 - Metaball conversion now fits across inflections to reduce unnecessary nodes, while preserving extrema and the fitting tolerance.
   Converted contours start at their bottommost node.
 
