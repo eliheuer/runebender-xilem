@@ -690,49 +690,22 @@ impl FontModel {
         true
     }
 
-    /// Exact codepoint lists for `name`, one per master.
+    /// Exact codepoint lists for `name`, one per document source.
     pub(crate) fn glyph_codepoints(&self, name: &str) -> Option<Vec<Vec<char>>> {
-        self.project
-            .sources()
-            .iter()
-            .map(|master| {
-                master
-                    .font
-                    .get_glyph(name)
-                    .map(|glyph| glyph.codepoints.iter().collect())
-            })
-            .collect()
+        self.project.document_glyph_codepoints(name)
     }
 
-    /// Replace `name`'s codepoints in every master from an exact snapshot.
+    /// Replace `name`'s codepoints in every document source from an exact snapshot.
     pub(crate) fn set_glyph_codepoints(&mut self, name: &str, values: &[Vec<char>]) -> bool {
-        if values.len() != self.project.sources().len()
-            || self
-                .project
-                .sources()
-                .iter()
-                .any(|master| !master.name_map.contains_key(name))
-        {
+        let changed = matches!(
+            self.project.set_document_glyph_codepoints(name, values),
+            Ok(DocumentEditOutcome::Changed { .. })
+        );
+        if !changed {
             return false;
         }
-        let mut changed = false;
-        for (master, codepoints) in self.project.edit_sources().iter_mut().zip(values) {
-            let index = master.name_map[name];
-            let different = master
-                .font
-                .get_glyph(name)
-                .is_some_and(|glyph| glyph.codepoints.iter().ne(codepoints.iter().copied()));
-            if different {
-                master.edit_glyph(index, |glyph| {
-                    glyph.codepoints = norad::Codepoints::new(codepoints.iter().copied());
-                });
-                changed = true;
-            }
-        }
-        if changed {
-            self.rebuild_cache();
-        }
-        changed
+        self.rebuild_cache();
+        true
     }
 }
 
