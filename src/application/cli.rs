@@ -1964,10 +1964,12 @@ fn mcp_serve(font: Option<&Path>, session: Option<&Path>, live: bool, tool: Opti
         }
         let cancellation = mcp_cancellation_arguments(method, &params);
         let apply_arguments = mcp_apply_arguments(method, &params).cloned();
-        let semantic_reserved = apply_arguments
+        let reservation = apply_arguments
             .as_ref()
-            .map(|arguments| live_client_call("agent_reserve", arguments, &connected)["ok"] == true)
-            .unwrap_or(false);
+            .map(|arguments| live_client_call("agent_reserve", arguments, &connected))
+            .unwrap_or_else(|| json!({"ok":false}));
+        let semantic_reserved = reservation["ok"] == true;
+        let reservation_owned = reservation["reservation_status"] == "new";
         let state = std::sync::Arc::new(McpInFlight {
             cancelled: std::sync::atomic::AtomicBool::new(false),
             semantic_cancelled: std::sync::atomic::AtomicBool::new(false),
@@ -1995,7 +1997,7 @@ fn mcp_serve(font: Option<&Path>, session: Option<&Path>, live: bool, tool: Opti
                 .lock()
                 .expect("MCP inflight mutex poisoned")
                 .remove(&key);
-            if semantic_reserved && let Some(arguments) = apply_arguments.as_ref() {
+            if reservation_owned && let Some(arguments) = apply_arguments.as_ref() {
                 let _ = live_client_call("agent_release", arguments, &connected);
             }
             write_mcp(

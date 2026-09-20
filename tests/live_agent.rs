@@ -5,7 +5,16 @@
 
 #![cfg(unix)]
 
-use runebender::document::{live, live_socket::Server, project::Project};
+use runebender::document::{
+    agent_cancellation::{
+        AgentCancellationAdmission, AgentCancellationIdentity, AgentCancellationTerminal,
+        AgentCommitClaim,
+    },
+    agent_edit::AgentEditRequest,
+    live,
+    live_socket::Server,
+    project::Project,
+};
 use serde_json::{Value, json};
 use std::io::{BufRead as _, Write};
 use std::process::{Command, Stdio};
@@ -318,6 +327,192 @@ fn mcp_reserves_cancellation_before_apply_admission_and_preserves_framing() {
     input.flush().unwrap();
     let ping = read();
     assert_eq!(ping["id"], 5, "cancelled request must not emit a reply");
+    drop(input);
+    assert!(mcp.wait().unwrap().success());
+}
+
+#[test]
+fn mcp_exact_retry_queue_full_keeps_pending_cancellation_identity() {
+    let server = Server::start().unwrap();
+    let endpoint = server.path().to_owned();
+    let epoch = server.document_epoch().to_owned();
+    let mut mcp = Command::new(env!("CARGO_BIN_EXE_runebender"))
+        .args(["mcp", "--session"])
+        .arg(&endpoint)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut input = mcp.stdin.take().unwrap();
+    let mut output = std::io::BufReader::new(mcp.stdout.take().unwrap());
+    let mut read = || {
+        let mut line = String::new();
+        assert_ne!(output.read_line(&mut line).unwrap(), 0, "MCP stdout closed");
+        serde_json::from_str::<Value>(&line).unwrap()
+    };
+    let wait_pending = || {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(pending) = server.try_recv() {
+                break pending;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "request did not enter socket mailbox"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    };
+
+    writeln!(
+        input,
+        "{}",
+        json!({"jsonrpc":"2.0","id":1,"method":"initialize",
+            "params":{"protocolVersion":"2025-11-25","capabilities":{},
+                "clientInfo":{"name":"retry-capacity-test","version":"1"}}})
+    )
+    .unwrap();
+    input.flush().unwrap();
+    assert_eq!(read()["id"], 1);
+
+    writeln!(
+        input,
+        "{}",
+        json!({"jsonrpc":"2.0","id":2,"method":"tools/call",
+            "params":{"name":"read_glyph","arguments":{"glyph":"blocker"}}})
+    )
+    .unwrap();
+    input.flush().unwrap();
+    let blocker = wait_pending();
+
+    let identity = json!({
+        "expected_document_epoch": epoch.clone(),
+        "actor": "stdio-retry",
+        "operation_key": "same-apply",
+    });
+    let mut apply_arguments = identity.clone();
+    apply_arguments["authorization"] = json!("user-approved");
+    apply_arguments["source"] = json!(0);
+    apply_arguments["history_name"] = json!("stdio retry capacity fixture");
+    apply_arguments["edits"] = json!([{
+        "target": {"glyph":"A", "glyph_id":"fixture", "layer":"public.default",
+            "expected_revision":"fixture"},
+        "operations": [{"op":"set_width", "width":500.0}]
+    }]);
+
+    // The ordered worker is blocked on request 2. Thirty-one fillers plus request 3
+    // fill its capacity, so request 4 exercises the queue-full cleanup path while
+    // request 3 is still pending and cancellable.
+    for id in 100..131 {
+        writeln!(
+            input,
+            "{}",
+            json!({"jsonrpc":"2.0","id":id,"method":"tools/call",
+                "params":{"name":"read_glyph","arguments":{"glyph":"filler"}}})
+        )
+        .unwrap();
+    }
+    writeln!(
+        input,
+        "{}",
+        json!({"jsonrpc":"2.0","id":3,"method":"tools/call",
+            "params":{"name":"agent_apply","arguments":apply_arguments.clone()}})
+    )
+    .unwrap();
+    writeln!(
+        input,
+        "{}",
+        json!({"jsonrpc":"2.0","id":4,"method":"tools/call",
+            "params":{"name":"agent_apply","arguments":apply_arguments.clone()}})
+    )
+    .unwrap();
+    writeln!(
+        input,
+        "{}",
+        json!({"jsonrpc":"2.0","method":"notifications/cancelled",
+            "params":{"requestId":3,"reason":"test cancellation"}})
+    )
+    .unwrap();
+    writeln!(
+        input,
+        "{}",
+        json!({"jsonrpc":"2.0","id":5,"method":"tools/call",
+            "params":{"name":"agent_cancel","arguments":identity.clone()}})
+    )
+    .unwrap();
+    input.flush().unwrap();
+
+    let mut capacity_error = None;
+    let mut cancellation = None;
+    while capacity_error.is_none() || cancellation.is_none() {
+        let reply = read();
+        match reply["id"].as_i64() {
+            Some(4) => capacity_error = Some(reply),
+            Some(5) => cancellation = Some(reply),
+            id => panic!("unexpected reply while queue is full: {id:?}"),
+        }
+    }
+    assert_eq!(capacity_error.unwrap()["error"]["code"], -32000);
+    let cancellation = cancellation.unwrap();
+    let cancellation: Value = serde_json::from_str(
+        cancellation["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(cancellation["cancellation_status"], "already_prevented");
+    let cancellation_identity =
+        AgentCancellationIdentity::new(epoch.clone(), "stdio-retry", "same-apply").unwrap();
+    assert_eq!(
+        server
+            .cancellations()
+            .claim_commit(&cancellation_identity)
+            .unwrap(),
+        AgentCommitClaim::Prevented
+    );
+    let typed_request: AgentEditRequest = serde_json::from_value(apply_arguments.clone()).unwrap();
+    assert_eq!(
+        server
+            .cancellations()
+            .admit(&cancellation_identity, typed_request.payload_digest())
+            .unwrap(),
+        AgentCancellationAdmission::Existing
+    );
+
+    blocker.respond(|_| json!({"ok":true,"glyph":"blocker"}));
+    assert_eq!(read()["id"], 2);
+    for id in 100..131 {
+        let pending = wait_pending();
+        pending.respond(|_| json!({"ok":true,"glyph":"filler"}));
+        assert_eq!(read()["id"], id);
+    }
+    let pending = wait_pending();
+    pending.respond(|_| json!({"ok":false,"cancellation_status":"prevented"}));
+    server
+        .cancellations()
+        .finish(&cancellation_identity, AgentCancellationTerminal::Prevented)
+        .unwrap();
+
+    writeln!(input, "{}", json!({"jsonrpc":"2.0","id":7,"method":"ping"})).unwrap();
+    input.flush().unwrap();
+    assert_eq!(read()["id"], 7);
+
+    writeln!(
+        input,
+        "{}",
+        json!({"jsonrpc":"2.0","id":6,"method":"tools/call",
+            "params":{"name":"agent_apply","arguments":apply_arguments.clone()}})
+    )
+    .unwrap();
+    input.flush().unwrap();
+    let pending = wait_pending();
+    pending.respond(|_| json!({"ok":false,"cancellation_status":"prevented"}));
+    let replay = read();
+    assert_eq!(replay["id"], 6);
+    let replay: Value =
+        serde_json::from_str(replay["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(replay["cancellation_status"], "prevented");
+
     drop(input);
     assert!(mcp.wait().unwrap().success());
 }
