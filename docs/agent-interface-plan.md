@@ -110,11 +110,13 @@ An agent with a vision-capable client receives the PNG and identifies a visual-o
 ### 1D. Real client end to end
 
 The [OMP client trials](agent-client-trials.md) now pass real model read and bounded edit calls against the synthetic Workspace, including fixture-driven ordinary undo/redo.
-The Codex desktop task trial, compiled image delivery and receipt/recovery portions remain pending.
+The Codex desktop task now passes a real Virtua Grotesk copy trial, including receipt lookup and exact retry, with independent ordinary application undo/redo.
+Compiled image delivery, independent cancellation and OMP trials of the new receipt tools remain pending.
 
 - [ ] Run the bounded scenario through a local Codex/ChatGPT desktop task and OMP CLI with disposable fixtures and isolated configuration, as selected by the user.
 - [ ] Save redacted transport transcript, receipts, binary/client hashes, images and disk manifests.
-- [ ] Test via the real document/UI adapter; an in-process `live::call` test alone is insufficient.
+- [x] Test via the real document/UI adapter; an in-process `live::call` test alone is insufficient.
+  The native Workspace-backed desktop trial and file-backed host tests cover application dispatch, cache refresh and history; native pointer/IME behavior remains separate.
 - [ ] If a client is unavailable or needs interactive login, report it as not tested and retain the ready harness instead of claiming success.
 
 Milestone 1 is complete only when the unsaved-edit → read → proposal → proof → authorized apply → UI update → undo chain works, plus a stale-write and disconnect-after-commit case.
@@ -136,7 +138,8 @@ Two agents making disjoint edits can succeed; overlapping or dependency-conflict
 
 ## Milestone 3: repeatable procedures and local jobs
 
-- [ ] Add a thin live Python example using session/schema/receipt APIs, with no editable font wrapper or duplicated geometry.
+- [x] Add a thin live Python example using session/schema/receipt APIs, with no editable font wrapper or duplicated geometry.
+  `scripts/live_spacing.py` prepares an explicit guarded width batch and supports apply, receipt reconciliation and undo without source-file edits.
 - [ ] Make deterministic operation recipes reusable from CLI and nodes with explicit parameters and inputs.
 - [ ] Connect live snapshot exports to existing isolated model workers, preserving the no-live-root-path boundary.
 - [ ] Add job queue/status, progress, cancellation, timeout, bounded logs and worker exit classification.
