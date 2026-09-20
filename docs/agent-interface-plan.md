@@ -101,12 +101,16 @@ Restart the editor and report old receipts as unknown under the new epoch rather
 - [x] Produce actual PNG content plus glyph IDs/names, clusters, advances and offsets from the same snapshot.
 - [x] Make rendering/compilation asynchronous where required so the UI thread only captures and commits.
 - [x] Keep source-only branch proof limits explicit until a full canonical family overlay exists.
-- [ ] Validate before/after source edits in a variable family at source and midpoint locations where supported by the first implementation.
+- [x] Validate before/after source edits in a variable family at source and midpoint locations where supported by the first implementation.
 
 Acceptance: a changed unsaved advance/anchor appears in shaping and image from the same bytes as export.
 An older compilation finishing late cannot overwrite current proof identity.
 A failed compile gives an error and no falsely current image.
 An agent with a vision-capable client receives the PNG and identifies a visual-only synthetic marker.
+
+The full-family Virtua anchor trial at `/private/tmp/runebender-nodes-virtua-anchor-20260920-1250/evidence.json` validates a 100-unit Regular anchor change at the source and a 50-unit change at the midpoint, in both shaped offsets and returned PNGs.
+It also verifies ordinary Undo, immutable retry receipts and unchanged source files.
+This closes the source/midpoint scenario only; reusable compiled-font handles and actual model interpretation remain open.
 
 ### 1D. Real client end to end
 

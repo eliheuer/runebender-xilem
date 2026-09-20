@@ -67,7 +67,9 @@ The Nodes execution and canvas tasks are validated and archived, and all worker 
 The Scripts task remains open for final integration verification; only the central ten-minute continuation remains scheduled.
 The existing desktop trial remains available, and the metaball task is open at the user's request.
 Main and upstream remain `790702d7d0e00a5602aca30f49b72aef43b652c2` until the combined candidate passes remaining checks.
-The native optimized release build and latest-source browser build/lint/quality are still pending at this checkpoint.
+The native optimized release build and a separate full-family stdio MCP trial of that optimized executable passed.
+The latest-source browser release build, strict browser Clippy and quality checks at DPR 1, 2 and 1.25 passed.
+The combined evidence manifest is `/private/tmp/runebender-noon-candidate/candidate-evidence.json`.
 Advisories and Python harness checks passed with the unchanged dependencies.
 Clean-checkout acceptance, actual desktop/OMP model image interpretation, expanded shared script editing and exposed graph-history controls remain open.
 

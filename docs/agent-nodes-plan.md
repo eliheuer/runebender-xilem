@@ -111,7 +111,7 @@ Workers must ask for a coordinated seam change rather than independently editing
 - [ ] Current/stale/error state matches across node previews, job status and MCP images.
 - [x] Explicit Apply yields one existing receipt/history group and ordinary Undo restores the selected change.
 - [ ] Graph save/reopen preserves code, settings and positions without persisting session handles or auto-running.
-- [ ] Native Gray/Light headless evidence, browser regression checks and a disposable real-font scenario pass.
+- [x] Native Gray/Light headless evidence, browser regression checks and a disposable real-font scenario pass.
 
 Full native pointer/IME/platform acceptance and actual model image interpretation remain separate from unit/process tests.
 This phase does not promise every old disk workflow node can operate on a live font version.

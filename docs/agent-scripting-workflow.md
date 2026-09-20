@@ -81,6 +81,13 @@ The coordinator reviews and integrates completed work, runs combined gates, push
 
 ## Acceptance and remaining work
 
+The integrated `edb5e3e` candidate passed 932 native tests with four explicitly ignored tests.
+Adjacent tests cover closed chat-fence extraction, artifact path rejection, library save/load/rename and external-change conflicts, scoped input capture, obsolete preview rejection, guarded Apply and ordinary Undo, bounded worker failures, and independent text-editor history.
+The Python harness suite passed 26 tests and the anchor recipe suite passed 12 tests.
+The native Gray/Light captures are `/private/tmp/runebender-noon-candidate/ui-final/scripts-gray.png` and `scripts-light.png`.
+The full-family actual stdio MCP trial and source/midpoint anchor scenario are recorded in [coordination evidence](agent-interface-coordination.md#noon-candidate-integration-in-progress).
+These automated checks support the implementation but do not complete every combined user workflow below: foreground streaming, file dialogs, text interaction and actual client model image interpretation still need direct acceptance.
+
 - [ ] Chat code artifact survives streaming completion and opens without executing.
 - [ ] Save, reopen, rename and manual code edits persist; external changes cannot silently overwrite a draft.
 - [ ] Anchor report includes exact glyph/source/layer/name/position and leaves document history unchanged.
@@ -101,7 +108,8 @@ The latest user approval releases implementation and disposable local recipe tri
 The user next requested a ComfyUI-like graph with a base font branching into an unchanged specimen and a Python-transformed specimen.
 The Python node should show editable code inside its box, and image output nodes should be movable side by side for comparison.
 The user subsequently authorized implementation with scheduled Nodes workers; the [Nodes plan](agent-nodes-plan.md) defines that active phase.
-The native comparison is implemented on the same runner and guarded transaction boundary; persistence and editor expansion remain tracked acceptance work.
+The native comparison is implemented on the same runner and guarded transaction boundary.
+Comparison persistence has passing native tests; foreground save/reopen and expansion into the shared script editor remain tracked acceptance work.
 
 The intended graph is captured base FontVersion → specimen A, and the same captured FontVersion → Python script → derived FontVersion → specimen B.
 Run captures one immutable baseline shared by both paths, including unsaved editor changes.
