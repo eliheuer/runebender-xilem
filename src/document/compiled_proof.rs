@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
 use super::compile::CompiledFont;
-use super::project::Project;
+use super::project::{CanonicalDocumentEditTransaction, Project};
 use crate::text::shape::ShapingFont;
 
 const MAX_TEXT_BYTES: usize = 4 * 1024;
@@ -81,6 +81,52 @@ impl CompileProofInput {
     /// SHA-256 of the captured canonical compiler source, including resolved features.
     pub fn canonical_input_sha256(&self) -> &str {
         &self.canonical_input_sha256
+    }
+
+    /// Derive a complete family proof input from one guarded, unpublished edit transaction.
+    ///
+    /// The original input remains the baseline for both branches.
+    /// All sources, axes, features and compiler metadata remain captured; only the transaction's
+    /// existing widths, points and anchors change in this private compilation projection.
+    /// The application must also bind this operation to the captured document epoch.
+    /// A fresh capture is used only to reject changed inputs, including external feature includes;
+    /// it never replaces the retained baseline or supplies the derived proof's compiler source.
+    pub fn with_staged_edit(
+        &self,
+        project: &Project,
+        transaction: &CanonicalDocumentEditTransaction,
+    ) -> Result<Self, String> {
+        if project.document_revision() != self.document_revision {
+            return Err("document changed after the baseline proof capture".into());
+        }
+        let replacements = project
+            .preview_document_edit_transaction(transaction)
+            .map_err(|error| error.to_string())?;
+        if capture(project)?.canonical_input_sha256 != self.canonical_input_sha256 {
+            return Err("compiler inputs changed after the baseline proof capture".into());
+        }
+        let mut derived = self.clone();
+        for replacement in replacements {
+            let address = replacement.address().clone();
+            let key = super::babelfont::layer_key(&address.layer);
+            let target = derived
+                .font
+                .glyphs
+                .0
+                .iter_mut()
+                .find(|glyph| glyph.name.as_str() == address.glyph)
+                .and_then(|glyph| glyph.get_layer_mut(&key))
+                .ok_or("staged layer is absent from the captured compiler input")?;
+            let (layer, _) = replacement.into_parts();
+            target.width = layer.width;
+            target.shapes = layer.shapes;
+            target.anchors = layer.anchors;
+        }
+        derived.canonical_input_sha256 = sha256(
+            &serde_json::to_vec(&derived.font)
+                .map_err(|error| format!("could not encode derived compiler input: {error}"))?,
+        );
+        Ok(derived)
     }
 }
 
@@ -557,6 +603,9 @@ mod tests {
 
     #[test]
     fn capture_freezes_feature_include_content_before_worker_compilation() {
+        use super::super::project::{DocumentEditOperation, DocumentLayerEdit};
+        use super::super::variable::GlyphLayerAddress;
+
         let root = std::env::temp_dir().join(format!(
             "runebender-compiled-proof-features-{}",
             std::process::id()
@@ -567,11 +616,36 @@ mod tests {
         fs::write(&include, "# captured include\n").unwrap();
         let mut font = norad::Font::new();
         font.features = "include(includes/captured.fea);\n".into();
+        font.default_layer_mut()
+            .insert_glyph(norad::Glyph::new("A"));
         let project =
             Project::from_source(super::super::project::SourceInput::from_font(font, ufo));
 
         let input = capture(&project).unwrap();
+        let source = project.document_sources().next().unwrap();
+        let address = GlyphLayerAddress {
+            glyph: "A".into(),
+            layer: source.default_layer(),
+        };
+        let transaction = project
+            .begin_document_edit_transaction(
+                source.id(),
+                "Preview",
+                Vec::new(),
+                vec![DocumentLayerEdit::new(
+                    project.capture_document_layer(&address).unwrap(),
+                    vec![DocumentEditOperation::SetWidth(100.0)],
+                )],
+            )
+            .unwrap();
         fs::write(&include, "# changed after capture\n").unwrap();
+        assert_eq!(project.document_revision(), input.document_revision());
+        assert!(
+            input
+                .with_staged_edit(&project, &transaction)
+                .unwrap_err()
+                .contains("compiler inputs changed")
+        );
 
         let captured = input.font.features.to_fea();
         assert!(captured.contains("captured include"));
@@ -661,6 +735,108 @@ mod tests {
                 .iter()
                 .all(|glyph| glyph.glyph_name.as_deref() != Some(".notdef"))
         );
+    }
+
+    #[test]
+    fn staged_edit_proofs_preserve_the_family_and_do_not_publish() {
+        use super::super::project::{DocumentEditOperation, DocumentLayerEdit};
+        use super::super::variable::GlyphLayerAddress;
+
+        let project = project();
+        let source = project.document_sources().next().unwrap();
+        let source_id = source.id();
+        let layer = source.default_layer();
+        let address = GlyphLayerAddress {
+            glyph: "n".into(),
+            layer: layer.clone(),
+        };
+        let expected = project.capture_document_layer(&address).unwrap();
+        let revision = project.document_revision();
+        let width = project.document_layer("n", &layer).unwrap().width();
+        let baseline = capture(&project).unwrap();
+        let original_hash = baseline.canonical_input_sha256().to_owned();
+        let transaction = project
+            .begin_document_edit_transaction(
+                source_id,
+                "Preview width",
+                Vec::new(),
+                vec![DocumentLayerEdit::new(
+                    expected.clone(),
+                    vec![DocumentEditOperation::SetWidth(width + 12.0)],
+                )],
+            )
+            .unwrap();
+        let derived = baseline.with_staged_edit(&project, &transaction).unwrap();
+        assert_eq!(project.document_revision(), revision);
+        assert_eq!(project.capture_document_layer(&address).unwrap(), expected);
+        assert_eq!(baseline.canonical_input_sha256(), original_hash);
+        assert_ne!(derived.canonical_input_sha256(), original_hash);
+        assert_eq!(derived.document_revision(), baseline.document_revision());
+        assert_eq!(
+            serde_json::to_value(&derived.font.masters).unwrap(),
+            serde_json::to_value(&baseline.font.masters).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(&derived.font.axes).unwrap(),
+            serde_json::to_value(&baseline.font.axes).unwrap()
+        );
+        assert_eq!(
+            derived.font.features.to_fea(),
+            baseline.font.features.to_fea()
+        );
+        let old = compile(baseline).unwrap();
+        let changed = compile(derived).unwrap();
+        assert_ne!(old.font_sha256(), changed.font_sha256());
+        let advance = |font: &CompiledProofSnapshot, location: f64| {
+            font.font
+                .advances(&[location])
+                .unwrap()
+                .into_iter()
+                .find(|(name, _)| name == "n")
+                .unwrap()
+                .1
+        };
+        assert_eq!(advance(&changed, 0.0) - advance(&old, 0.0), 12.0);
+        assert_eq!(advance(&changed, 1.0), advance(&old, 1.0));
+        assert_eq!(project.document_revision(), revision);
+    }
+
+    #[test]
+    fn staged_edit_proof_rejects_a_changed_baseline() {
+        use super::super::project::{DocumentEditOperation, DocumentLayerEdit};
+        use super::super::variable::GlyphLayerAddress;
+
+        let mut project = project();
+        let source = project.document_sources().next().unwrap();
+        let source_id = source.id();
+        let layer = source.default_layer();
+        let address = GlyphLayerAddress {
+            glyph: "n".into(),
+            layer: layer.clone(),
+        };
+        let expected = project.capture_document_layer(&address).unwrap();
+        let baseline = capture(&project).unwrap();
+        let transaction = project
+            .begin_document_edit_transaction(
+                source_id,
+                "Preview width",
+                Vec::new(),
+                vec![DocumentLayerEdit::new(
+                    expected,
+                    vec![DocumentEditOperation::SetWidth(777.0)],
+                )],
+            )
+            .unwrap();
+        project
+            .edit_document_layer("n", &layer, |draft| draft.set_width(888.0).map(|_| ()))
+            .unwrap();
+        assert!(baseline.with_staged_edit(&project, &transaction).is_err());
+        assert!(
+            project
+                .preview_document_edit_transaction(&transaction)
+                .is_err()
+        );
+        assert_eq!(project.document_layer("n", &layer).unwrap().width(), 888.0);
     }
 
     #[test]

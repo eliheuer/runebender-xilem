@@ -10,6 +10,9 @@ No release has been published yet.
 
 ### Added
 
+- Added full-family proof-input derivation for unpublished guarded edits.
+  Changed specimen inputs preserve other masters, axes and features while the original document and baseline remain unchanged.
+
 - Added asynchronous native `proof_start`, `proof_status`, `proof_cancel` and `proof_release` tools.
   Completed proofs return compiled PNG images through MCP with immutable font hashes, captured revisions and explicit stale-result labels.
   Proof jobs share a bounded process-wide worker and release their document-scoped artifacts explicitly.

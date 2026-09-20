@@ -518,6 +518,24 @@ impl Project {
         })
     }
 
+    /// Read the proposed canonical layers after rechecking every transaction dependency.
+    ///
+    /// This does not publish changes, advance the document revision, or record history.
+    /// An empty result means every staged operation was unchanged.
+    pub fn preview_document_edit_transaction(
+        &self,
+        transaction: &CanonicalDocumentEditTransaction,
+    ) -> Result<Vec<CanonicalLayerSnapshot>, DocumentEditTransactionError> {
+        for expected in &transaction.reads {
+            self.validate_edit_snapshot(expected)?;
+        }
+        Ok(transaction
+            .writes
+            .iter()
+            .map(|edit| edit.after.clone())
+            .collect())
+    }
+
     /// Publish a fully staged transaction as one revision and one named history group.
     pub fn commit_document_edit_transaction(
         &mut self,

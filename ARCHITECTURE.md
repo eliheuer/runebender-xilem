@@ -150,6 +150,8 @@ Interpolation compatibility diagnostics compare canonical contour and point topo
 `document::project::edit_transactions` stages bounded nonstructural edits and read dependencies across layers of one source, publishes once and records a Project-owned history group.
 Targeted and ordinary application undo must route through the same group handle; the engine primitive does not by itself connect application history or live receipts.
 `document::compiled_proof` captures owned canonical compiler inputs and produces immutable OpenType snapshots for shaping and PNG proofing on workers.
+Its staged-edit projection derives a full-family compiler input from the retained baseline and a guard-checked canonical transaction without publishing a document edit or recording history.
+All unrelated source layers, axes and feature inputs remain captured, and a changed document or compiler input rejects the derivation.
 The application adapter owns document-epoch binding, asynchronous job dispatch, stale-result handling and client image delivery around those primitives.
 `document::agent_session` retains bounded, immutable operation receipts without owning font data; the application supplies the socket epoch and complete semantic payload identity.
 `document::proof_jobs` provides a bounded native worker queue for owned compiled-proof captures, preserving exact epoch/revision lineage across cancellation, failure and late completion.

@@ -29,18 +29,20 @@ const MAX_PNG_BYTES: usize = 5 * 1024 * 1024;
 
 static SERVICE: OnceLock<Mutex<ProofService>> = OnceLock::new();
 
-struct ProofService {
-    queue: ProofJobQueue,
-    abandoned: BTreeSet<ProofJobHandle>,
+/// One shared compiler worker for live tools and native graph specimens.
+/// Callers must bound their retained handles and transfer running work to `abandoned` on drop.
+pub(crate) struct ProofService {
+    pub(crate) queue: ProofJobQueue,
+    pub(crate) abandoned: BTreeSet<ProofJobHandle>,
 }
 
 impl ProofService {
-    fn collect(&mut self) {
+    pub(crate) fn collect(&mut self) {
         self.abandoned.retain(|handle| !self.queue.discard(*handle));
     }
 }
 
-fn service() -> &'static Mutex<ProofService> {
+pub(crate) fn service() -> &'static Mutex<ProofService> {
     SERVICE.get_or_init(|| {
         Mutex::new(ProofService {
             queue: ProofJobQueue::new(16, 32).expect("fixed proof queue limits are valid"),
