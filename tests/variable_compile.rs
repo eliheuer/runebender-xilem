@@ -417,7 +417,7 @@ fn canonical_source_metadata_transaction_is_atomic_and_invalidates_compile() {
         "canonical feature text was not committed"
     );
     assert_eq!(
-        project.feature_source().font.features,
+        project.sources()[0].font.features,
         feature_text,
         "compatibility projection was not refreshed"
     );
@@ -538,7 +538,7 @@ fn shared_feature_edits_and_variable_drafts_do_not_depend_on_selected_master() {
         "checking must not apply a draft"
     );
     assert!(project.set_feature_text(draft.into()));
-    assert_eq!(project.feature_source().font.features, draft);
+    assert_eq!(project.document_feature_text(SourceId(0)), Some(draft));
     assert_eq!(
         project.sources()[1].font.features,
         other_features,
