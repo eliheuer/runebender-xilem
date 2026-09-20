@@ -26,13 +26,13 @@ use masonry::imaging::Painter;
 use masonry::kurbo::{Axis, BezPath, Line, Point, Rect, Shape as _, Size, Stroke, Vec2};
 use masonry::layout::{LenReq, Length};
 use masonry::peniko::{Blob, ImageAlphaType, ImageData, ImageFormat};
-use masonry::widgets::{Image as MasonryImage, TextAction, TextArea, TextInput};
+use masonry::widgets::{Image as MasonryImage, Portal, TextAction, TextArea, TextInput};
 use runebender::document::nodes::{Kind, NodeGraph, Registry};
 use runebender::document::nodes_run::Status;
 use runebender::ui::editing::viewport::ViewPort;
 use runebender::ui::nodes::{self as nl, Hit, NodeBox, NodeContentMap, NodeRegion};
 use xilem::Color;
-use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
+use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewId, ViewMarker, ViewPathTracker};
 use xilem::{InsertNewline, Pod, ViewCtx};
 
 use crate::application::editor::tools::nodes::RowState;
@@ -101,7 +101,8 @@ pub(crate) struct NodesWidget {
     palette: Arc<Palette>,
     rows: Arc<BTreeMap<u32, RowState>>,
     content: Arc<NodeContentMap>,
-    code_editors: BTreeMap<u32, WidgetPod<TextInput>>,
+    code_editors: BTreeMap<u32, WidgetPod<Portal<TextInput>>>,
+    code_area_ids: BTreeMap<u32, WidgetId>,
     preview_images: BTreeMap<u32, WidgetPod<SpecimenPreview>>,
     boxes: Vec<NodeBox>,
     viewport: ViewPort,
@@ -111,9 +112,10 @@ pub(crate) struct NodesWidget {
     drag: Option<Drag>,
     /// The right-click menu's layer, while it is up.
     menu: Option<WidgetId>,
+    code_font_size: f32,
 }
 
-fn code_editor(text: &str) -> (WidgetPod<TextInput>, WidgetId) {
+fn code_editor(text: &str) -> (WidgetPod<Portal<TextInput>>, WidgetId) {
     let area = TextArea::new_editable(text)
         .with_style(StyleProperty::FontFamily(
             crate::application::view::UI_FONT_FAMILY.into(),
@@ -121,25 +123,51 @@ fn code_editor(text: &str) -> (WidgetPod<TextInput>, WidgetId) {
         .with_style(StyleProperty::FontSize(
             crate::application::view::design::TextSize::Caption.px(),
         ))
-        .with_insert_newline(InsertNewline::OnEnter);
+        .with_insert_newline(InsertNewline::OnEnter)
+        .with_word_wrap(false);
     let input = TextInput::from_text_area(NewWidget::new(area)).with_clip(true);
     let area_id = input.area_pod().id();
-    (NewWidget::new(input).to_pod(), area_id)
+    let portal = Portal::new(NewWidget::new(input)).content_must_fill(true);
+    (NewWidget::new(portal).to_pod(), area_id)
+}
+
+fn png_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
+    const SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
+    if bytes.len() < 24 || &bytes[..8] != SIGNATURE || &bytes[12..16] != b"IHDR" {
+        return None;
+    }
+    Some((
+        u32::from_be_bytes(bytes[16..20].try_into().ok()?),
+        u32::from_be_bytes(bytes[20..24].try_into().ok()?),
+    ))
 }
 
 fn decode_png(png: &nl::ImmutablePng) -> Option<ImageData> {
+    const MAX_PNG_BYTES: usize = 5 * 1024 * 1024;
+    const MAX_PNG_PIXELS: u64 = 16 * 1024 * 1024;
+    if png.bytes.len() > MAX_PNG_BYTES {
+        return None;
+    }
+    let (width, height) = png_dimensions(&png.bytes)?;
+    if (width, height) != (png.width, png.height) {
+        return None;
+    }
+    let pixels = u64::from(width).checked_mul(u64::from(height))?;
+    if pixels == 0 || pixels > MAX_PNG_PIXELS {
+        return None;
+    }
     let rgba = image::load_from_memory_with_format(&png.bytes, image::ImageFormat::Png)
         .ok()?
         .to_rgba8();
-    if rgba.width() != png.width || rgba.height() != png.height {
+    if rgba.width() != width || rgba.height() != height {
         return None;
     }
     Some(ImageData {
         data: Blob::new(Arc::new(rgba.into_raw())),
         format: ImageFormat::Rgba8,
         alpha_type: ImageAlphaType::Alpha,
-        width: png.width,
-        height: png.height,
+        width,
+        height,
     })
 }
 
@@ -270,13 +298,13 @@ impl Widget for SpecimenPreview {
     }
 }
 
-fn content_children(
-    content: &NodeContentMap,
-) -> (
-    BTreeMap<u32, WidgetPod<TextInput>>,
+type ContentChildren = (
+    BTreeMap<u32, WidgetPod<Portal<TextInput>>>,
     BTreeMap<u32, WidgetId>,
     BTreeMap<u32, WidgetPod<SpecimenPreview>>,
-) {
+);
+
+fn content_children(content: &NodeContentMap) -> ContentChildren {
     let mut editors = BTreeMap::new();
     let mut area_ids = BTreeMap::new();
     let mut images = BTreeMap::new();
@@ -298,7 +326,9 @@ fn content_children(
     (editors, area_ids, images)
 }
 
-fn projected_images(content: &NodeContentMap) -> Vec<(u32, Option<(String, u32, u32)>)> {
+type ProjectedImage = (u32, Option<(String, u32, u32)>);
+
+fn projected_images(content: &NodeContentMap) -> Vec<ProjectedImage> {
     content
         .by_node
         .iter()
@@ -314,6 +344,11 @@ fn projected_images(content: &NodeContentMap) -> Vec<(u32, Option<(String, u32, 
             nl::NodeContent::Script(_) => None,
         })
         .collect()
+}
+
+fn editor_node_from_path(path: &[ViewId]) -> Option<u32> {
+    path.first()
+        .and_then(|id| u32::try_from(id.routing_id()).ok())
 }
 
 impl NodesWidget {
@@ -355,6 +390,14 @@ impl NodesWidget {
 
     fn to_canvas(&self, local: Point) -> Point {
         nl::to_canvas(&self.viewport, local)
+    }
+
+    fn editor_target(&self, target: WidgetId) -> bool {
+        self.code_area_ids.values().any(|&id| id == target)
+            || self
+                .code_editors
+                .values()
+                .any(|editor| editor.id() == target)
     }
 
     fn emit_changed(&self, ctx: &mut EventCtx<'_>) {
@@ -427,6 +470,19 @@ impl Widget for NodesWidget {
                 self.viewport.offset = Vec2::new(FIT_MARGIN, FIT_MARGIN);
             }
             self.fitted = true;
+        }
+        let zoom = f32::try_from(self.viewport.zoom).unwrap_or(1.0);
+        let code_font_size =
+            (crate::application::view::design::TextSize::Caption.px() * zoom).clamp(6.0, 40.0);
+        if (self.code_font_size - code_font_size).abs() > f32::EPSILON {
+            self.code_font_size = code_font_size;
+            for editor in self.code_editors.values_mut() {
+                ctx.mutate_child_later(editor, move |mut portal| {
+                    let mut input = Portal::child_mut(&mut portal);
+                    let mut area = TextInput::text_mut(&mut input);
+                    TextArea::insert_style(&mut area, StyleProperty::FontSize(code_font_size));
+                });
+            }
         }
         let transform = nl::canvas_affine(&self.viewport);
         for node in &self.boxes {
@@ -752,8 +808,10 @@ impl Widget for NodesWidget {
                 state,
                 ..
             }) => {
-                ctx.request_focus();
-                ctx.capture_pointer();
+                if !self.editor_target(ctx.target()) {
+                    ctx.request_focus();
+                    ctx.capture_pointer();
+                }
                 let local = ctx.local_position(state.position);
                 let at = self.to_canvas(local);
                 let drag = match nl::hit(&self.boxes, at) {
@@ -773,7 +831,10 @@ impl Widget for NodesWidget {
                                 let origin = match self.content.get(id) {
                                     Some(nl::NodeContent::Script(content)) => content.size,
                                     Some(nl::NodeContent::Image(content)) => content.size,
-                                    None => [nl::LIVE_W as f32, nl::IMAGE_H as f32],
+                                    None => [
+                                        crate::application::view::render::px32(nl::LIVE_W),
+                                        crate::application::view::render::px32(nl::IMAGE_H),
+                                    ],
                                 };
                                 Drag::Resize {
                                     id,
@@ -841,19 +902,17 @@ impl Widget for NodesWidget {
                             ];
                         }
                         self.relayout();
+                        ctx.request_layout();
                         ctx.request_render();
                     }
                     Some(Drag::Resize { id, start, origin }) => {
                         let size = [
                             crate::application::view::render::px32(
-                                (f64::from(origin[0]) + at.x - start.x)
-                                    .max(nl::NODE_W)
-                                    .min(1024.0),
+                                (f64::from(origin[0]) + at.x - start.x).clamp(nl::NODE_W, 1024.0),
                             ),
                             crate::application::view::render::px32(
                                 (f64::from(origin[1]) + at.y - start.y)
-                                    .max(nl::ROW_H * 3.0)
-                                    .min(768.0),
+                                    .clamp(nl::ROW_H * 3.0, 768.0),
                             ),
                         ];
                         if let Some(content) = Arc::make_mut(&mut self.content).by_node.get_mut(id)
@@ -871,6 +930,7 @@ impl Widget for NodesWidget {
                         let d = local - *last;
                         *last = local;
                         self.viewport.pan(d.x, d.y);
+                        ctx.request_layout();
                         ctx.request_render();
                     }
                     Some(Drag::Wire { to, .. }) => {
@@ -930,6 +990,7 @@ impl Widget for NodesWidget {
                 };
                 let factor = (dy * 0.0015).exp();
                 self.viewport.zoom_about(at, factor, 0.25, 4.0);
+                ctx.request_layout();
                 ctx.request_render();
                 ctx.set_handled();
             }
@@ -947,6 +1008,17 @@ impl Widget for NodesWidget {
             return;
         };
         if key.state != KeyState::Down {
+            return;
+        }
+        if self.editor_target(ctx.target()) {
+            if (key.modifiers.meta() || key.modifiers.ctrl())
+                && matches!(&key.key, Key::Character(c) if c.eq_ignore_ascii_case("z") || c.eq_ignore_ascii_case("y"))
+            {
+                // TextArea has no local history. Consume these shortcuts here so
+                // typing in a node cannot undo an unrelated font edit.
+                ctx.set_handled();
+            }
+            // Do not let an unhandled Backspace/Delete reach canvas node removal.
             return;
         }
         if matches!(
@@ -1026,7 +1098,12 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
     type ViewState = ();
 
     fn build(&self, ctx: &mut ViewCtx, _: &mut Workspace) -> (Self::Element, Self::ViewState) {
-        let (code_editors, _, preview_images) = content_children(&self.content);
+        let (code_editors, code_area_ids, preview_images) = content_children(&self.content);
+        for (&node, &area_id) in &code_area_ids {
+            ctx.with_id(ViewId::new(u64::from(node)), |ctx| {
+                ctx.record_action_source(area_id);
+            });
+        }
         let mut widget = NodesWidget {
             graph: (*self.graph).clone(),
             registry: self.registry.clone(),
@@ -1034,6 +1111,7 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
             rows: self.rows.clone(),
             content: self.content.clone(),
             code_editors,
+            code_area_ids,
             preview_images,
             boxes: Vec::new(),
             viewport: ViewPort::new(),
@@ -1042,6 +1120,7 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
             selected: self.selected,
             drag: None,
             menu: None,
+            code_font_size: 0.0,
         };
         widget.relayout();
         (ctx.with_action_widget(|ctx| ctx.create_pod(widget)), ())
@@ -1051,7 +1130,7 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
         &self,
         prev: &Self,
         (): &mut Self::ViewState,
-        _ctx: &mut ViewCtx,
+        ctx: &mut ViewCtx,
         mut element: Mut<'_, Self::Element>,
         _: &mut Workspace,
     ) {
@@ -1090,8 +1169,14 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
                 for (_, editor) in std::mem::take(&mut element.widget.code_editors) {
                     element.ctx.remove_child(editor);
                 }
-                let (editors, _, _) = content_children(&self.content);
+                let (editors, area_ids, _) = content_children(&self.content);
                 element.widget.code_editors = editors;
+                element.widget.code_area_ids = area_ids;
+                for (&node, &area_id) in &element.widget.code_area_ids {
+                    ctx.with_id(ViewId::new(u64::from(node)), |ctx| {
+                        ctx.record_action_source(area_id);
+                    });
+                }
                 element.ctx.children_changed();
             } else {
                 for (&node, content) in &self.content.by_node {
@@ -1104,7 +1189,8 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
                         .get_mut(&node)
                         .expect("script node has an editor child");
                     let mut editor = element.ctx.get_mut(editor);
-                    let mut area = TextInput::text_mut(&mut editor);
+                    let mut input = Portal::child_mut(&mut editor);
+                    let mut area = TextInput::text_mut(&mut input);
                     if area.widget.text().to_string() != script.text {
                         TextArea::reset_text(&mut area, &script.text);
                     }
@@ -1143,6 +1229,7 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
         _element: Mut<'_, Self::Element>,
         app: &mut Workspace,
     ) -> MessageResult<()> {
+        let editor_node = editor_node_from_path(message.remaining_path());
         match message.take_message::<NodesEvent>() {
             Some(event) => {
                 (self.on_event)(app, *event);
@@ -1151,10 +1238,7 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
             None => match message.take_message::<TextAction>() {
                 Some(action) => match *action {
                     TextAction::Changed(code) | TextAction::Entered(code) => {
-                        let node = self.content.by_node.iter().find_map(|(&node, content)| {
-                            matches!(content, nl::NodeContent::Script(_)).then_some(node)
-                        });
-                        if let Some(node) = node {
+                        if let Some(node) = editor_node {
                             (self.on_event)(app, NodesEvent::EditCode { node, code });
                             MessageResult::Action(())
                         } else {
@@ -1256,6 +1340,7 @@ mod tests {
             rows: Arc::new(BTreeMap::new()),
             content,
             code_editors,
+            code_area_ids,
             preview_images,
             boxes: Vec::new(),
             viewport: ViewPort::new(),
@@ -1264,6 +1349,7 @@ mod tests {
             selected: None,
             drag: None,
             menu: None,
+            code_font_size: 0.0,
         };
         widget.relayout();
         (widget, editor_id)
@@ -1295,5 +1381,24 @@ mod tests {
             harness.pop_action::<TextAction>(),
             Some((TextAction::Changed(text), _)) if text.contains("pass")
         ));
+    }
+
+    #[test]
+    fn editor_action_paths_keep_distinct_node_ids() {
+        let first = [ViewId::new(3)];
+        let second = [ViewId::new(4)];
+        assert_eq!(editor_node_from_path(&first), Some(3));
+        assert_eq!(editor_node_from_path(&second), Some(4));
+    }
+
+    #[test]
+    fn png_dimensions_are_read_from_the_encoded_header() {
+        let mut bytes = vec![
+            0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, b'I', b'H', b'D', b'R', 0,
+            0, 0, 2, 0, 0, 0, 3,
+        ];
+        assert_eq!(png_dimensions(&bytes), Some((2, 3)));
+        bytes[12] = b't';
+        assert_eq!(png_dimensions(&bytes), None);
     }
 }
