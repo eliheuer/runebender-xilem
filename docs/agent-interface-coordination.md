@@ -1,7 +1,7 @@
 # Live agent implementation coordination
 
 The user requested that the original task retain core work, planning and delegation, with parallel Sol, Terra and Luna tasks following the Babelfont migration pattern.
-The validated shared checkpoint is `170d14a756af58a041caa44878447c0fb03adbc8` on the isolated research branch.
+The current worker checkpoint is `ef08043034d3f9b090cde1ecbad2c67eee5ccc0e` on the isolated research branch.
 The released migration baseline is `e40bd4ce338cb8270f2356a515946e52d2b6b21b`; no automatic merge or push is authorized by this coordination plan.
 The [implementation checklist](agent-interface-plan.md) remains the acceptance authority, and [live context notes](agent-live-context.md) describe what is currently implemented.
 
@@ -10,11 +10,11 @@ The [implementation checklist](agent-interface-plan.md) remains the acceptance a
 | Owner | Task ID | Scope |
 |---|---|---|
 | Coordinator | `01a0bc97-ee49-7cd0-a4a7-013a7973feb9` | Core session protocol and receipts, application integration, fixture endpoint, shared schemas/adapters, review and final acceptance |
-| Sol | `01a0bd20-95e1-75a1-9f37-3064db712235` | Canonical bounded atomic edits and Project-owned grouped history |
-| Terra | `01a0bd20-a303-7e83-bda0-3d42ab5b7dfd` | Immutable compiled proof inputs/bytes, shaping, outlines, PNG and lineage evidence |
-| Luna | `01a0bd20-b84e-7232-aedb-a18c1b9559b6` | Client capability inventory, isolated connection setup and conformance harness |
+| Sol | `01a0bd66-eefd-7723-ae8b-abaa492918c1` | Typed session receipts, bounded retry ledger and atomic transaction boundary in `agent_session.rs` |
+| Terra | `01a0bd66-f64c-7911-b0d7-20a3f095f58d` | Bounded background immutable compiled proof jobs in `proof_jobs.rs` |
 
-All three requested model assignments were verified in their task contexts.
+The new bounded tasks use Sol and Terra with high reasoning effort.
+The three original worker tasks are complete and archived; their engine, proof and client harness commits remain integrated.
 Workers operate in separate worktrees at the shared checkpoint and commit their own validated phases.
 They report exact commits, interfaces, evidence and blockers to the coordinator, who reviews before integration.
 Workers do not create more tasks, change central checklist/changelog files, or expand into another owner's adapter files.
@@ -35,30 +35,36 @@ The coordinator owns epoch binding, proof-handle lifetime, asynchronous applicat
 Source-only experiment proofs cannot masquerade as full variable-family proofs.
 
 Luna's harness takes an explicit executable path and Unix endpoint.
-The coordinator still needs to supply the real Workspace-backed headless fixture command and freeze receipt/proof tool names.
-Until those exist, the harness records pending capabilities rather than simulating successes or treating passing skips as coverage.
+The real Workspace-backed headless fixture and model-driven OMP trials now pass.
+Receipt/proof tool names still need to be frozen; the harness records missing capabilities rather than treating skips as coverage.
 Actual model image delivery and model interpretation require separate evidence.
 CLI-generated live prompts and MCP initialization now share live source, session and authorization guidance; complete server-side schema validation remains pending.
 
 ## Scheduled continuation and build coordination
 
 Active workers have ten-minute continuations in their existing tasks, shortened at the user's request.
-Sol's bounded engine phase is committed at `de184bc25eaf2fbb4e33304bb49b275b8515b467` and its completed continuation has been removed; integration remains pending here.
+Sol's original engine phase is committed at `de184bc25eaf2fbb4e33304bb49b275b8515b467` and its completed continuation has been removed.
 Terra's bounded proof phase is committed at `1b8cc22` with five focused tests and strict Clippy passing, and its completed continuation has also been removed.
 Luna's bounded harness phase is committed at `8a88aaeb599e3ca5a7c2674bd8deb324a75cf63d`, and its completed continuation has been removed.
 Its final fixture evidence is `/private/tmp/runebender-agent-client-fixture-20260920-run5/report.json`, against coordinator fixture commit `999e6db`.
 The report verifies unsaved width 412, authorized width 430, the specific authorization/stale rejection reasons, application cache/session agreement, ordinary undo/redo and no source write.
 The three worker commits are integrated as `7fe9376`, `f3c3ff7` and `ef1dcb8` on this isolated branch.
-The combined base passed the serial workspace tests using disposable fonts; proof review corrections and final integration validation remain pending.
+The combined base passed 818 serial workspace tests using disposable fonts, with four tests ignored.
+Proof review fixes are integrated through `ef08043`; eight focused proof tests and strict native Clippy pass.
+The browser release build, strict browser Clippy and interaction quality at DPR 1, 2 and 1.25 also pass.
+Evidence is retained in `/private/tmp/runebender-agent-integration-20260920`; the final complete acceptance matrix remains pending.
 The [OMP model-client read/edit trials](agent-client-trials.md) now pass against fixture `999e6db`; the desktop task trial remains pending.
-The coordinator's existing ten-minute continuation was updated to respect this ownership split and review worker progress without duplicating their work.
+The original three tasks were archived at the user's request, and their schedules are deleted.
+The new Sol and Terra tasks have ten-minute continuations named `continue-live-session-receipts` and `continue-background-compiled-proof-jobs`.
+The coordinator's existing ten-minute continuation remains the central integration schedule.
 Continuations stay quiet when unchanged or non-actionable, report meaningful results or blockers, and are removed when their bounded work is complete.
 
 Before any shared-cache build, exclusively create `/private/tmp/runebender-agent-build-lease` and write an owner record with task ID, worktree and process/command.
 If occupied, inspect/coordinate and continue other useful work; never delete another task's lease or kill its build.
 Use at most two Cargo jobs and hold the lease through build and test execution.
 Copy executables required after lease release into a task-specific evidence directory, then release only the owned lease.
-Approved caches are `/Users/eli/.codex/worktrees/5d82/runebender-xilem/target` and its `web/target`.
+Approved caches are `/Users/eli/.codex/worktrees/5d82/runebender-xilem/target` for native checks and `/Users/eli/GH/repos/runebender-xilem/web/target` for browser checks.
+The old `5d82` browser cache no longer exists; do not recreate it.
 Do not overwrite the pinned final migration executable or evidence directory.
 
 Tests use synthetic or disposable copied fonts; original font sources remain untouched.
