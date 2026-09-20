@@ -19,25 +19,25 @@ use masonry::core::keyboard::{Key, KeyState, NamedKey};
 use masonry::core::{
     AccessCtx, ChildrenIds, EventCtx, LayerType, LayoutCtx, MeasureCtx, NewWidget, PaintCtx,
     PointerButton, PointerButtonEvent, PointerEvent, PointerScrollEvent, PointerUpdate,
-    PropertiesMut, PropertiesRef, RegisterCtx, ScrollDelta, StyleProperty, TextEvent, Widget,
-    WidgetId, WidgetPod,
+    PropertiesMut, PropertiesRef, RegisterCtx, ScrollDelta, TextEvent, Widget, WidgetId, WidgetPod,
 };
 use masonry::imaging::Painter;
 use masonry::kurbo::{Axis, BezPath, Line, Point, Rect, Shape as _, Size, Stroke, Vec2};
 use masonry::layout::{LenReq, Length};
 use masonry::peniko::{Blob, ImageAlphaType, ImageData, ImageFormat};
-use masonry::widgets::{Image as MasonryImage, Portal, TextAction, TextArea, TextInput};
+use masonry::widgets::{Image as MasonryImage, Portal, TextAction};
 use runebender::document::nodes::{Kind, NodeGraph, Registry};
 use runebender::document::nodes_run::Status;
 use runebender::ui::editing::viewport::ViewPort;
 use runebender::ui::nodes::{self as nl, Hit, NodeBox, NodeContentMap, NodeRegion};
 use xilem::Color;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewId, ViewMarker, ViewPathTracker};
-use xilem::{InsertNewline, Pod, ViewCtx};
+use xilem::{Pod, ViewCtx};
 
 use crate::application::editor::tools::nodes::RowState;
 use crate::application::view::theme::Palette;
 use crate::application::widgets::context_menu::{ContextMenu, MenuAction, MenuRow, MenuTarget};
+use crate::application::widgets::source_text_area::SourceTextArea;
 use crate::application::widgets::text_label::{self, Anchor};
 use crate::application::workspace::Workspace;
 
@@ -101,7 +101,7 @@ pub(crate) struct NodesWidget {
     palette: Arc<Palette>,
     rows: Arc<BTreeMap<u32, RowState>>,
     content: Arc<NodeContentMap>,
-    code_editors: BTreeMap<u32, WidgetPod<Portal<TextInput>>>,
+    code_editors: BTreeMap<u32, WidgetPod<Portal<SourceTextArea>>>,
     code_area_ids: BTreeMap<u32, WidgetId>,
     preview_images: BTreeMap<u32, WidgetPod<SpecimenPreview>>,
     boxes: Vec<NodeBox>,
@@ -115,19 +115,13 @@ pub(crate) struct NodesWidget {
     code_font_size: f32,
 }
 
-fn code_editor(text: &str) -> (WidgetPod<Portal<TextInput>>, WidgetId) {
-    let area = TextArea::new_editable(text)
-        .with_style(StyleProperty::FontFamily(
-            crate::application::view::UI_FONT_FAMILY.into(),
-        ))
-        .with_style(StyleProperty::FontSize(
-            crate::application::view::design::TextSize::Caption.px(),
-        ))
-        .with_insert_newline(InsertNewline::OnEnter)
-        .with_word_wrap(false);
-    let input = TextInput::from_text_area(NewWidget::new(area)).with_clip(true);
-    let area_id = input.area_pod().id();
-    let portal = Portal::new(NewWidget::new(input)).content_must_fill(true);
+fn code_editor(text: &str) -> (WidgetPod<Portal<SourceTextArea>>, WidgetId) {
+    let source = NewWidget::new(
+        SourceTextArea::new(text)
+            .with_text_size(crate::application::view::design::TextSize::Caption.px()),
+    );
+    let area_id = source.id();
+    let portal = Portal::new(source).content_must_fill(true);
     (NewWidget::new(portal).to_pod(), area_id)
 }
 
@@ -299,7 +293,7 @@ impl Widget for SpecimenPreview {
 }
 
 type ContentChildren = (
-    BTreeMap<u32, WidgetPod<Portal<TextInput>>>,
+    BTreeMap<u32, WidgetPod<Portal<SourceTextArea>>>,
     BTreeMap<u32, WidgetId>,
     BTreeMap<u32, WidgetPod<SpecimenPreview>>,
 );
@@ -478,9 +472,8 @@ impl Widget for NodesWidget {
             self.code_font_size = code_font_size;
             for editor in self.code_editors.values_mut() {
                 ctx.mutate_child_later(editor, move |mut portal| {
-                    let mut input = Portal::child_mut(&mut portal);
-                    let mut area = TextInput::text_mut(&mut input);
-                    TextArea::insert_style(&mut area, StyleProperty::FontSize(code_font_size));
+                    let mut source = Portal::child_mut(&mut portal);
+                    SourceTextArea::set_text_size(&mut source, code_font_size);
                 });
             }
         }
@@ -1202,11 +1195,8 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
                         .get_mut(&node)
                         .expect("script node has an editor child");
                     let mut editor = element.ctx.get_mut(editor);
-                    let mut input = Portal::child_mut(&mut editor);
-                    let mut area = TextInput::text_mut(&mut input);
-                    if area.widget.text().to_string() != script.text {
-                        TextArea::reset_text(&mut area, &script.text);
-                    }
+                    let mut source = Portal::child_mut(&mut editor);
+                    SourceTextArea::replace_external_content(&mut source, &script.text);
                 }
             }
             if projected_images(&self.content) != projected_images(&prev.content) {
@@ -1281,6 +1271,7 @@ fn mix(a: Color, b: Color, t: f32) -> Color {
 mod tests {
     use super::*;
     use image::{DynamicImage, Rgba, RgbaImage};
+    use masonry::core::keyboard::{Code, Key, KeyState, KeyboardEvent, Modifiers};
     use masonry::core::{Ime, TextEvent};
     use masonry_testing::TestHarness;
     use runebender::document::nodes_live;
@@ -1434,6 +1425,24 @@ mod tests {
             editor_node_from_path(&[ViewId::new(u64::from(second_node))]),
             Some(second_node)
         );
+
+        let mut modifiers = Modifiers::empty();
+        modifiers.set(
+            if cfg!(target_os = "macos") {
+                Modifiers::META
+            } else {
+                Modifiers::CONTROL
+            },
+            true,
+        );
+        harness.process_text_event(TextEvent::Keyboard(KeyboardEvent {
+            state: KeyState::Down,
+            key: Key::Character("z".into()),
+            code: Code::Unidentified,
+            modifiers,
+            ..KeyboardEvent::default()
+        }));
+        assert!(harness.pop_action::<TextAction>().is_none());
     }
 
     #[test]
