@@ -231,10 +231,10 @@ impl NodesRunRequest {
 
     /// Validate the explicit stable source against the current host Project.
     pub fn validate_source(&self, project: &Project) -> Result<(), String> {
-        project
-            .document_source(SourceId(self.source))
-            .map(|_| ())
-            .ok_or_else(|| "source is unknown or was removed from the current Project".into())
+        if project.document_source(SourceId(self.source)).is_none() {
+            return Err("source is unknown or was removed from the current Project".into());
+        }
+        Ok(())
     }
 }
 
