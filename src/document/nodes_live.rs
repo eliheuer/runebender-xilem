@@ -12,6 +12,18 @@ use super::{
 use serde_json::{Value, json};
 use std::collections::HashSet;
 
+/// Default compiled specimen recipe used by both comparison branches.
+pub fn default_proof_recipe() -> Value {
+    json!({
+        "text": "Hamburgefontsiv",
+        "normalized_location": [],
+        "right_to_left": false,
+        "features": [],
+        "script": null,
+        "language": null
+    })
+}
+
 /// Node types executed against an open editor, rather than the disk runner.
 pub fn types() -> Vec<NodeType> {
     let port = |name: &str, input: bool| Port {
@@ -83,7 +95,7 @@ pub fn types() -> Vec<NodeType> {
                     name: "recipe".into(),
                     kind: Kind::Parameters,
                     required: false,
-                    default: Some(json!({"text":"Hamburgefontsiv"})),
+                    default: Some(default_proof_recipe()),
                     help: "Structured specimen settings shared by both comparison proofs.".into(),
                 });
             }
@@ -139,7 +151,7 @@ pub fn comparison_starter(source_id: SourceId) -> NodeGraph {
         .node_mut(unchanged)
         .unwrap()
         .values
-        .insert("recipe".into(), json!({"text":"Hamburgefontsiv"}));
+        .insert("recipe".into(), default_proof_recipe());
     graph.connect(source, "font", unchanged, "font");
     let python = graph.add("live.python", [336.0, 416.0]);
     graph
@@ -158,7 +170,7 @@ pub fn comparison_starter(source_id: SourceId) -> NodeGraph {
         .node_mut(changed)
         .unwrap()
         .values
-        .insert("recipe".into(), json!({"text":"Hamburgefontsiv"}));
+        .insert("recipe".into(), default_proof_recipe());
     graph.connect(python, "font", changed, "font");
     graph
 }

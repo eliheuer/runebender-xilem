@@ -23,6 +23,9 @@ pub const GRAPH_SESSION_SCHEMA_VERSION: u32 = 1;
 
 const MAX_GRAPH_NODES: usize = 64;
 const MAX_GRAPH_LINKS: usize = 128;
+const MAX_GRAPH_BYTES: usize = 1024 * 1024;
+const MAX_PATCH_EDITS: usize = 128;
+const MAX_MUTATION_BYTES: usize = 1024 * 1024;
 const MAX_GRAPH_HISTORY: usize = 32;
 const MAX_GRAPH_RECEIPTS: usize = 64;
 const MAX_ACTIVE_RUNS: usize = 16;
@@ -33,6 +36,8 @@ const MAX_ID_BYTES: usize = 128;
 const MAX_OPERATION_KEY_BYTES: usize = 128;
 const MAX_OUTPUT_TEXT_BYTES: usize = 64 * 1024;
 const MAX_ERROR_BYTES: usize = 4 * 1024;
+const MAX_CODE_BYTES: usize = 256 * 1024;
+const MAX_PARAMETERS_BYTES: usize = 64 * 1024;
 
 /// Discoverable bounds shared by native UI and agent adapters.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -41,6 +46,24 @@ pub struct GraphSessionLimits {
     pub nodes: usize,
     /// Maximum links in one graph.
     pub links: usize,
+    /// Maximum serialized bytes in one canonical graph.
+    pub graph_bytes: usize,
+    /// Maximum edits in one atomic patch.
+    pub patch_edits: usize,
+    /// Maximum serialized bytes in one mutation request.
+    pub mutation_bytes: usize,
+    /// Maximum UTF-8 bytes in one Python node's code field.
+    pub code_bytes: usize,
+    /// Maximum serialized bytes in one Python node's parameter object.
+    pub parameters_bytes: usize,
+    /// Maximum UTF-8 bytes in one identity or field name.
+    pub identity_bytes: usize,
+    /// Maximum UTF-8 bytes in one operation key.
+    pub operation_key_bytes: usize,
+    /// Maximum UTF-8 bytes in one retained report.
+    pub output_text_bytes: usize,
+    /// Maximum UTF-8 bytes in one retained run error.
+    pub error_bytes: usize,
     /// Maximum graph-only undo snapshots.
     pub history: usize,
     /// Maximum retained graph mutation receipts.
@@ -60,6 +83,15 @@ impl GraphSessionLimits {
         Self {
             nodes: MAX_GRAPH_NODES,
             links: MAX_GRAPH_LINKS,
+            graph_bytes: MAX_GRAPH_BYTES,
+            patch_edits: MAX_PATCH_EDITS,
+            mutation_bytes: MAX_MUTATION_BYTES,
+            code_bytes: MAX_CODE_BYTES,
+            parameters_bytes: MAX_PARAMETERS_BYTES,
+            identity_bytes: MAX_ID_BYTES,
+            operation_key_bytes: MAX_OPERATION_KEY_BYTES,
+            output_text_bytes: MAX_OUTPUT_TEXT_BYTES,
+            error_bytes: MAX_ERROR_BYTES,
             history: MAX_GRAPH_HISTORY,
             graph_receipts: MAX_GRAPH_RECEIPTS,
             active_runs: MAX_ACTIVE_RUNS,
@@ -79,10 +111,25 @@ pub struct GraphDiscovery {
     pub node_types: Vec<NodeType>,
     /// Hard authoring and retention limits.
     pub limits: GraphSessionLimits,
+    /// JSON Schemas for authoring, run and cancellation requests.
+    pub request_schemas: GraphRequestSchemas,
+}
+
+/// Discoverable JSON Schemas for graph commands.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct GraphRequestSchemas {
+    /// [`GraphInteractiveMutationRequest`] schema.
+    pub interactive: Value,
+    /// [`GraphMutationRequest`] schema.
+    pub mutation: Value,
+    /// [`GraphRunRequest`] schema.
+    pub run: Value,
+    /// [`GraphCancelRequest`] schema.
+    pub cancel: Value,
 }
 
 /// Exact identity of one graph within one open document lifetime.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GraphIdentity {
     /// Host-generated graph identity.
@@ -92,7 +139,7 @@ pub struct GraphIdentity {
 }
 
 /// Guard for an authoring mutation.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GraphGuard {
     /// Exact graph and document lifetime.
@@ -102,7 +149,7 @@ pub struct GraphGuard {
 }
 
 /// Guard for execution, intentionally independent of layout changes.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphSemanticGuard {
     /// Exact graph and document lifetime.
     pub identity: GraphIdentity,
@@ -273,7 +320,7 @@ impl From<&Problem> for GraphDiagnostic {
 }
 
 /// One atomic graph edit.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "edit", rename_all = "snake_case", deny_unknown_fields)]
 pub enum GraphEdit {
     /// Add one caller-identified node.
@@ -324,7 +371,7 @@ pub enum GraphEdit {
 }
 
 /// A graph-only mutation, independent of code-editor and font history.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "mutation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum GraphMutation {
     /// Apply every edit or none of them.
@@ -339,7 +386,7 @@ pub enum GraphMutation {
 }
 
 /// One actor-scoped, revision-guarded mutation request.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GraphMutationRequest {
     /// Exact session and full graph revision.
@@ -350,6 +397,31 @@ pub struct GraphMutationRequest {
     pub operation_key: String,
     /// Atomic graph-only operation.
     pub mutation: GraphMutation,
+}
+
+/// Direct synchronous UI mutation without a network retry receipt.
+///
+/// Text widgets retain their own typing undo.
+/// Committed code changes and drag completion call this boundary so ordinary interaction does not
+/// exhaust the agent idempotency ledger.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GraphInteractiveMutationRequest {
+    /// Exact session and full graph revision.
+    pub guard: GraphGuard,
+    /// Atomic graph-only operation.
+    pub mutation: GraphMutation,
+}
+
+/// Result of one direct synchronous UI mutation.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct GraphInteractiveMutationResult {
+    /// Whether the graph changed.
+    pub changed: bool,
+    /// Whether execution semantics changed.
+    pub semantic_changed: bool,
+    /// Exact graph state after the request.
+    pub snapshot: GraphSnapshot,
 }
 
 /// Immutable result retained for exact mutation retries.
@@ -442,7 +514,7 @@ pub struct GraphSessionError {
     /// Field most directly responsible, when known.
     pub field: Option<String>,
     /// Graph diagnostics blocking execution.
-    pub diagnostics: Vec<GraphDiagnostic>,
+    pub diagnostics: Box<[GraphDiagnostic]>,
 }
 
 impl GraphSessionError {
@@ -454,7 +526,7 @@ impl GraphSessionError {
             node: None,
             port: None,
             field: None,
-            diagnostics: Vec::new(),
+            diagnostics: Box::default(),
         }
     }
 
@@ -466,7 +538,7 @@ impl GraphSessionError {
             node,
             port: None,
             field: None,
-            diagnostics: Vec::new(),
+            diagnostics: Box::default(),
         }
     }
 }
@@ -486,7 +558,7 @@ struct StoredGraphReceipt {
 }
 
 /// Host-captured identity of the one immutable base font.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphFontCapture {
     /// Stable source identity.
     pub source: usize,
@@ -497,7 +569,7 @@ pub struct GraphFontCapture {
 }
 
 /// Host-captured identity of one Python recipe job.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphScriptCapture {
     /// `live.python` node.
     pub node: u32,
@@ -510,7 +582,7 @@ pub struct GraphScriptCapture {
 }
 
 /// Host-captured identity of one proof request.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphProofCapture {
     /// `live.proof` node.
     pub node: u32,
@@ -522,7 +594,7 @@ pub struct GraphProofCapture {
 ///
 /// Agent transports must ask the application to create this from captured state rather than
 /// accepting these hashes as client assertions.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphRunCapture {
     /// One shared immutable base.
     pub font: GraphFontCapture,
@@ -533,7 +605,7 @@ pub struct GraphRunCapture {
 }
 
 /// Start one explicit live graph run.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphRunRequest {
     /// Layout-independent graph guard.
     pub guard: GraphSemanticGuard,
@@ -546,7 +618,9 @@ pub struct GraphRunRequest {
 }
 
 /// Opaque session-local run handle.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, schemars::JsonSchema,
+)]
 pub struct GraphRunHandle(u64);
 
 impl GraphRunHandle {
@@ -557,7 +631,7 @@ impl GraphRunHandle {
 }
 
 /// The only automatically executable topology in schema version 1.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphExecutionPlan {
     /// One `live.font` source node.
     pub source_node: u32,
@@ -570,7 +644,7 @@ pub struct GraphExecutionPlan {
 }
 
 /// Complete immutable identity a worker must echo on completion.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphRunIdentity {
     /// Exact graph and document lifetime.
     pub graph: GraphIdentity,
@@ -657,6 +731,10 @@ pub enum GraphNodeOutputValue {
         artifact_id: String,
         /// SHA-256 of exact image bytes.
         content_sha256: String,
+        /// SHA-256 of the canonical whole-family compiler input.
+        canonical_input_sha256: String,
+        /// SHA-256 of the exact compiled font bytes rendered into the image.
+        font_sha256: String,
         /// Exact proof recipe hash from the run identity.
         recipe_sha256: String,
         /// Source-only or compiled-family lineage.
@@ -755,7 +833,7 @@ pub struct GraphRunResponse {
 }
 
 /// Actor-scoped cancellation request for one exact run.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphCancelRequest {
     /// Exact graph and document lifetime.
     pub identity: GraphIdentity,
@@ -875,6 +953,18 @@ impl GraphSession {
             schema_version: GRAPH_SESSION_SCHEMA_VERSION,
             node_types: self.registry.types.clone(),
             limits: GraphSessionLimits::current(),
+            request_schemas: GraphRequestSchemas {
+                interactive: serde_json::to_value(schemars::schema_for!(
+                    GraphInteractiveMutationRequest
+                ))
+                .unwrap_or_default(),
+                mutation: serde_json::to_value(schemars::schema_for!(GraphMutationRequest))
+                    .unwrap_or_default(),
+                run: serde_json::to_value(schemars::schema_for!(GraphRunRequest))
+                    .unwrap_or_default(),
+                cancel: serde_json::to_value(schemars::schema_for!(GraphCancelRequest))
+                    .unwrap_or_default(),
+            },
         }
     }
 
@@ -909,7 +999,7 @@ impl GraphSession {
                 GraphSessionErrorCode::InvalidGraph,
                 "graph validation failed; run capture is unavailable",
             );
-            error.diagnostics = graph_diagnostics;
+            error.diagnostics = graph_diagnostics.into_boxed_slice();
             return Err(error);
         }
         let plan = execution_plan(&self.graph)?;
@@ -945,7 +1035,7 @@ impl GraphSession {
                 .node(node)
                 .and_then(|proof| proof.values.get("recipe"))
                 .cloned()
-                .unwrap_or_else(|| serde_json::json!({"text":"Hamburgefontsiv"}));
+                .unwrap_or_else(super::nodes_live::default_proof_recipe);
             if !recipe.is_object() {
                 return Err(GraphSessionError::new(
                     GraphSessionErrorCode::CaptureMismatch,
@@ -981,6 +1071,7 @@ impl GraphSession {
     ) -> Result<GraphMutationResponse, GraphSessionError> {
         self.check_identity(&request.guard.identity)?;
         validate_actor_key(&request.actor, &request.operation_key)?;
+        validate_mutation_bounds(&request)?;
         let payload_sha256 = digest_json(&(request.guard.clone(), &request.mutation))?;
         let ledger_key = (request.actor.clone(), request.operation_key.clone());
         if let Some(stored) = self.graph_receipts.get(&ledger_key) {
@@ -1001,62 +1092,15 @@ impl GraphSession {
                 "graph mutation receipt limit reached for this document session",
             ));
         }
-        if request.guard.revision != self.revision {
-            return Err(GraphSessionError::new(
-                GraphSessionErrorCode::StaleRevision,
-                format!(
-                    "stale graph revision {}; current revision is {}",
-                    request.guard.revision, self.revision
-                ),
-            ));
-        }
-
-        let before = self.graph.clone();
-        let old_hash = self.semantic_hash.clone();
-        let candidate = match &request.mutation {
-            GraphMutation::Patch { edits } => apply_patch(&self.graph, edits)?,
-            GraphMutation::Undo => self.undo.last().cloned().ok_or_else(|| {
-                GraphSessionError::new(GraphSessionErrorCode::HistoryEmpty, "graph undo is empty")
-            })?,
-            GraphMutation::Redo => self.redo.last().cloned().ok_or_else(|| {
-                GraphSessionError::new(GraphSessionErrorCode::HistoryEmpty, "graph redo is empty")
-            })?,
-        };
-        validate_graph_limits(&candidate)?;
-        let changed = candidate != self.graph;
-        let new_hash = semantic_hash(&candidate)?;
-        let semantic_changed = changed && new_hash != old_hash;
-
-        if changed {
-            match request.mutation {
-                GraphMutation::Patch { .. } => {
-                    push_bounded(&mut self.undo, before);
-                    self.redo.clear();
-                }
-                GraphMutation::Undo => {
-                    self.undo.pop();
-                    push_bounded(&mut self.redo, before);
-                }
-                GraphMutation::Redo => {
-                    self.redo.pop();
-                    push_bounded(&mut self.undo, before);
-                }
-            }
-            self.graph = candidate;
-            self.revision = self.revision.wrapping_add(1);
-            if semantic_changed {
-                self.semantic_revision = self.semantic_revision.wrapping_add(1);
-                self.semantic_hash = new_hash;
-            }
-        }
+        let result = self.apply_mutation(&request.guard, request.mutation)?;
 
         let receipt = GraphMutationReceipt {
             actor: request.actor,
             operation_key: request.operation_key,
             payload_sha256: payload_sha256.clone(),
-            changed,
-            semantic_changed,
-            snapshot: self.snapshot(),
+            changed: result.changed,
+            semantic_changed: result.semantic_changed,
+            snapshot: result.snapshot,
         };
         self.graph_receipts.insert(
             ledger_key,
@@ -1069,6 +1113,15 @@ impl GraphSession {
             disposition: GraphReceiptDisposition::Applied,
             receipt,
         })
+    }
+
+    /// Apply one direct synchronous UI mutation without retaining a retry receipt.
+    pub fn mutate_interactive(
+        &mut self,
+        request: GraphInteractiveMutationRequest,
+    ) -> Result<GraphInteractiveMutationResult, GraphSessionError> {
+        validate_interactive_mutation_bounds(&request)?;
+        self.apply_mutation(&request.guard, request.mutation)
     }
 
     /// Validate and retain one explicit run without starting a worker.
@@ -1105,7 +1158,7 @@ impl GraphSession {
                 GraphSessionErrorCode::InvalidGraph,
                 "graph validation failed; no execution was queued",
             );
-            error.diagnostics = graph_diagnostics;
+            error.diagnostics = graph_diagnostics.into_boxed_slice();
             return Err(error);
         }
         if self.active_run_count() >= MAX_ACTIVE_RUNS {
@@ -1240,6 +1293,7 @@ impl GraphSession {
         completion: GraphRunCompletion,
         current: &GraphDocumentState,
     ) -> Result<GraphRunInspection, GraphSessionError> {
+        let semantic_revision = self.semantic_revision;
         let semantic_hash = self.semantic_hash.clone();
         let record = self.run_mut(completion.handle)?;
         if record.identity != completion.identity {
@@ -1265,6 +1319,7 @@ impl GraphSession {
         }
         if current.document_epoch != record.identity.graph.document_epoch
             || current.document_revision != record.identity.capture.font.document_revision
+            || semantic_revision != record.identity.semantic_revision
             || semantic_hash != record.identity.semantic_hash
         {
             record.status = GraphRunStatus::Stale;
@@ -1280,13 +1335,19 @@ impl GraphSession {
         }
         match completion.outcome {
             GraphRunOutcome::Completed(outputs) => {
-                validate_outputs(record, &outputs)?;
+                if let Err(error) = validate_outputs(record, &outputs) {
+                    terminalize_invalid_completion(record, error);
+                    return Ok(inspection(completion.handle, record));
+                }
                 record.status = GraphRunStatus::Completed;
                 record.outputs = outputs;
                 record.errors.clear();
             }
             GraphRunOutcome::Failed(errors) => {
-                validate_run_errors(&errors)?;
+                if let Err(error) = validate_run_errors(&errors) {
+                    terminalize_invalid_completion(record, error);
+                    return Ok(inspection(completion.handle, record));
+                }
                 record.status = GraphRunStatus::Failed;
                 record.outputs.clear();
                 record.errors = errors;
@@ -1341,6 +1402,65 @@ impl GraphSession {
             ));
         }
         Ok(())
+    }
+
+    fn apply_mutation(
+        &mut self,
+        guard: &GraphGuard,
+        mutation: GraphMutation,
+    ) -> Result<GraphInteractiveMutationResult, GraphSessionError> {
+        self.check_identity(&guard.identity)?;
+        if guard.revision != self.revision {
+            return Err(GraphSessionError::new(
+                GraphSessionErrorCode::StaleRevision,
+                format!(
+                    "stale graph revision {}; current revision is {}",
+                    guard.revision, self.revision
+                ),
+            ));
+        }
+        let before = self.graph.clone();
+        let old_hash = self.semantic_hash.clone();
+        let candidate = match &mutation {
+            GraphMutation::Patch { edits } => apply_patch(&self.graph, edits)?,
+            GraphMutation::Undo => self.undo.last().cloned().ok_or_else(|| {
+                GraphSessionError::new(GraphSessionErrorCode::HistoryEmpty, "graph undo is empty")
+            })?,
+            GraphMutation::Redo => self.redo.last().cloned().ok_or_else(|| {
+                GraphSessionError::new(GraphSessionErrorCode::HistoryEmpty, "graph redo is empty")
+            })?,
+        };
+        validate_graph_limits(&candidate)?;
+        let changed = candidate != self.graph;
+        let new_hash = semantic_hash(&candidate)?;
+        let semantic_changed = changed && new_hash != old_hash;
+        if changed {
+            match mutation {
+                GraphMutation::Patch { .. } => {
+                    push_bounded(&mut self.undo, before);
+                    self.redo.clear();
+                }
+                GraphMutation::Undo => {
+                    self.undo.pop();
+                    push_bounded(&mut self.redo, before);
+                }
+                GraphMutation::Redo => {
+                    self.redo.pop();
+                    push_bounded(&mut self.undo, before);
+                }
+            }
+            self.graph = candidate;
+            self.revision = self.revision.wrapping_add(1);
+            if semantic_changed {
+                self.semantic_revision = self.semantic_revision.wrapping_add(1);
+                self.semantic_hash = new_hash;
+            }
+        }
+        Ok(GraphInteractiveMutationResult {
+            changed,
+            semantic_changed,
+            snapshot: self.snapshot(),
+        })
     }
 
     fn check_semantics(&self, guard: &GraphSemanticGuard) -> Result<(), GraphSessionError> {
@@ -1486,6 +1606,99 @@ fn validate_graph_limits(graph: &NodeGraph) -> Result<(), GraphSessionError> {
         return Err(GraphSessionError::new(
             GraphSessionErrorCode::GraphLimit,
             format!("graph exceeds {MAX_GRAPH_LINKS} links"),
+        ));
+    }
+    let bytes = serde_json::to_vec(graph).map_err(|error| {
+        GraphSessionError::new(
+            GraphSessionErrorCode::GraphLimit,
+            format!("could not measure graph: {error}"),
+        )
+    })?;
+    if bytes.len() > MAX_GRAPH_BYTES {
+        return Err(GraphSessionError::new(
+            GraphSessionErrorCode::GraphLimit,
+            format!("graph exceeds {MAX_GRAPH_BYTES} serialized bytes"),
+        ));
+    }
+    for node in &graph.nodes {
+        if node.type_name.is_empty() || node.type_name.len() > MAX_ID_BYTES {
+            return Err(GraphSessionError::new(
+                GraphSessionErrorCode::GraphLimit,
+                "node type names must contain 1..=128 UTF-8 bytes",
+            ));
+        }
+        for (field, value) in &node.values {
+            if field.is_empty() || field.len() > MAX_ID_BYTES {
+                return Err(GraphSessionError::new(
+                    GraphSessionErrorCode::GraphLimit,
+                    "node field names must contain 1..=128 UTF-8 bytes",
+                ));
+            }
+            if node.type_name == "live.python" && field == "code" {
+                let Some(code) = value.as_str() else {
+                    continue;
+                };
+                if code.len() > MAX_CODE_BYTES {
+                    return Err(GraphSessionError::new(
+                        GraphSessionErrorCode::GraphLimit,
+                        format!("Python code exceeds {MAX_CODE_BYTES} UTF-8 bytes"),
+                    ));
+                }
+            }
+            if node.type_name == "live.python" && field == "parameters" {
+                let parameter_bytes = serde_json::to_vec(value).map_err(|error| {
+                    GraphSessionError::new(
+                        GraphSessionErrorCode::GraphLimit,
+                        format!("could not measure Python parameters: {error}"),
+                    )
+                })?;
+                if parameter_bytes.len() > MAX_PARAMETERS_BYTES {
+                    return Err(GraphSessionError::new(
+                        GraphSessionErrorCode::GraphLimit,
+                        format!("Python parameters exceed {MAX_PARAMETERS_BYTES} serialized bytes"),
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_mutation_bounds(request: &GraphMutationRequest) -> Result<(), GraphSessionError> {
+    validate_mutation_shape(&request.mutation)?;
+    validate_serialized_mutation(request)
+}
+
+fn validate_interactive_mutation_bounds(
+    request: &GraphInteractiveMutationRequest,
+) -> Result<(), GraphSessionError> {
+    validate_mutation_shape(&request.mutation)?;
+    validate_serialized_mutation(request)
+}
+
+fn validate_mutation_shape(mutation: &GraphMutation) -> Result<(), GraphSessionError> {
+    if let GraphMutation::Patch { edits } = mutation
+        && edits.len() > MAX_PATCH_EDITS
+    {
+        return Err(GraphSessionError::new(
+            GraphSessionErrorCode::GraphLimit,
+            format!("graph patch exceeds {MAX_PATCH_EDITS} edits"),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_serialized_mutation(value: &impl Serialize) -> Result<(), GraphSessionError> {
+    let bytes = serde_json::to_vec(value).map_err(|error| {
+        GraphSessionError::new(
+            GraphSessionErrorCode::GraphLimit,
+            format!("could not measure graph mutation: {error}"),
+        )
+    })?;
+    if bytes.len() > MAX_MUTATION_BYTES {
+        return Err(GraphSessionError::new(
+            GraphSessionErrorCode::GraphLimit,
+            format!("graph mutation exceeds {MAX_MUTATION_BYTES} serialized bytes"),
         ));
     }
     Ok(())
@@ -1753,7 +1966,7 @@ fn validate_capture(
             .node(proof.node)
             .and_then(|node| node.values.get("recipe"))
             .cloned()
-            .unwrap_or_else(|| serde_json::json!({"text":"Hamburgefontsiv"}));
+            .unwrap_or_else(super::nodes_live::default_proof_recipe);
         if !recipe.is_object() || digest_json(&recipe)? != proof.recipe_sha256 {
             return Err(GraphSessionError::new(
                 GraphSessionErrorCode::CaptureMismatch,
@@ -1771,8 +1984,9 @@ fn validate_capture(
 }
 
 fn validate_digest(name: &str, value: &str) -> Result<(), GraphSessionError> {
-    if value.len() != 64
-        || !value
+    let digest = value.strip_prefix("sha256:").unwrap_or(value);
+    if digest.len() != 64
+        || !digest
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     {
@@ -1798,12 +2012,25 @@ fn validate_outputs(
             format!("run exceeds {MAX_RUN_OUTPUTS} retained outputs"),
         ));
     }
+    let derived_input_sha256 = outputs.iter().find_map(|output| match &output.value {
+        GraphNodeOutputValue::FontVersion { content_sha256, .. }
+            if output.node == record.plan.python_node =>
+        {
+            Some(content_sha256.as_str())
+        }
+        _ => None,
+    });
     let mut unique = BTreeSet::new();
     for output in outputs {
-        if !unique.insert(output.node) {
+        let kind = match &output.value {
+            GraphNodeOutputValue::FontVersion { .. } => 0_u8,
+            GraphNodeOutputValue::Proof { .. } => 1,
+            GraphNodeOutputValue::Report { .. } => 2,
+        };
+        if !unique.insert((output.node, kind)) {
             return Err(GraphSessionError::new(
                 GraphSessionErrorCode::InvalidOutput,
-                "run repeats an output node",
+                "run repeats an output kind for one node",
             ));
         }
         match &output.value {
@@ -1827,8 +2054,10 @@ fn validate_outputs(
             GraphNodeOutputValue::Proof {
                 artifact_id,
                 content_sha256,
+                canonical_input_sha256,
+                font_sha256,
                 recipe_sha256,
-                ..
+                scope,
             } => {
                 let Some(capture) = record
                     .identity
@@ -1844,10 +2073,39 @@ fn validate_outputs(
                 };
                 validate_bounded("artifact_id", artifact_id, MAX_ID_BYTES)?;
                 validate_digest("proof artifact", content_sha256)?;
+                validate_digest("proof canonical input", canonical_input_sha256)?;
+                validate_digest("proof compiled font", font_sha256)?;
                 if recipe_sha256 != &capture.recipe_sha256 {
                     return Err(GraphSessionError::new(
                         GraphSessionErrorCode::InvalidOutput,
                         "proof output recipe does not match the captured run",
+                    ));
+                }
+                if *scope != GraphProofScope::CompiledFamily {
+                    return Err(GraphSessionError::new(
+                        GraphSessionErrorCode::InvalidOutput,
+                        "comparison proof must come from the canonical compiled-family path",
+                    ));
+                }
+                let expected_input = if output.node == record.plan.unchanged_proof {
+                    record.identity.capture.font.capture_sha256.as_str()
+                } else if output.node == record.plan.changed_proof {
+                    derived_input_sha256.ok_or_else(|| {
+                        GraphSessionError::new(
+                            GraphSessionErrorCode::InvalidOutput,
+                            "derived proof has no matching font-version identity",
+                        )
+                    })?
+                } else {
+                    return Err(GraphSessionError::new(
+                        GraphSessionErrorCode::InvalidOutput,
+                        "proof output does not belong to either comparison branch",
+                    ));
+                };
+                if canonical_input_sha256 != expected_input {
+                    return Err(GraphSessionError::new(
+                        GraphSessionErrorCode::InvalidOutput,
+                        "proof canonical input does not match its comparison branch",
                     ));
                 }
             }
@@ -1880,6 +2138,22 @@ fn validate_outputs(
         ));
     }
     Ok(())
+}
+
+fn terminalize_invalid_completion(record: &mut GraphRunRecord, error: GraphSessionError) {
+    let mut message = error.message;
+    while message.len() > MAX_ERROR_BYTES {
+        message.pop();
+    }
+    record.status = GraphRunStatus::Failed;
+    record.outputs.clear();
+    record.errors = vec![GraphRunError {
+        code: "invalid_worker_output".into(),
+        message,
+        node: error.node,
+        port: error.port,
+        field: error.field,
+    }];
 }
 
 fn validate_run_errors(errors: &[GraphRunError]) -> Result<(), GraphSessionError> {
@@ -1992,6 +2266,7 @@ mod tests {
 
     fn outputs(identity: &GraphRunIdentity) -> Vec<GraphNodeOutput> {
         let recipe = identity.capture.proofs[0].recipe_sha256.clone();
+        let derived_input_sha256 = sha256(b"derived-input");
         vec![
             GraphNodeOutput {
                 node: 3,
@@ -1999,7 +2274,7 @@ mod tests {
                     source: 3,
                     version_id: "version-1".into(),
                     version_revision: 1,
-                    content_sha256: sha256(b"derived"),
+                    content_sha256: derived_input_sha256.clone(),
                 },
             },
             GraphNodeOutput {
@@ -2007,8 +2282,10 @@ mod tests {
                 value: GraphNodeOutputValue::Proof {
                     artifact_id: "proof-base".into(),
                     content_sha256: sha256(b"base-png"),
+                    canonical_input_sha256: identity.capture.font.capture_sha256.clone(),
+                    font_sha256: sha256(b"base-font"),
                     recipe_sha256: recipe.clone(),
-                    scope: GraphProofScope::SourceOnly,
+                    scope: GraphProofScope::CompiledFamily,
                 },
             },
             GraphNodeOutput {
@@ -2016,8 +2293,10 @@ mod tests {
                 value: GraphNodeOutputValue::Proof {
                     artifact_id: "proof-derived".into(),
                     content_sha256: sha256(b"derived-png"),
+                    canonical_input_sha256: derived_input_sha256,
+                    font_sha256: sha256(b"derived-font"),
                     recipe_sha256: recipe,
-                    scope: GraphProofScope::SourceOnly,
+                    scope: GraphProofScope::CompiledFamily,
                 },
             },
         ]
@@ -2167,6 +2446,62 @@ mod tests {
             .unwrap_err();
         assert_eq!(error.edit_index, Some(1));
         assert_eq!(session.snapshot(), before);
+    }
+
+    #[test]
+    fn oversized_code_and_patch_reject_without_consuming_receipts() {
+        let mut session = new_session();
+        let before = session.snapshot();
+        let oversized = session
+            .mutate(mutation(
+                &session,
+                "agent",
+                "oversized-code",
+                vec![GraphEdit::SetValue {
+                    node: 3,
+                    field: "code".into(),
+                    value: json!("x".repeat(MAX_CODE_BYTES + 1)),
+                }],
+            ))
+            .unwrap_err();
+        assert_eq!(oversized.code, GraphSessionErrorCode::GraphLimit);
+        assert_eq!(session.snapshot(), before);
+        assert!(session.graph_receipts.is_empty());
+
+        let edits = (0..=MAX_PATCH_EDITS)
+            .map(|index| GraphEdit::MoveNode {
+                node: 2,
+                pos: [index as f32, 0.0],
+            })
+            .collect();
+        let oversized = session
+            .mutate(mutation(&session, "agent", "oversized-patch", edits))
+            .unwrap_err();
+        assert_eq!(oversized.code, GraphSessionErrorCode::GraphLimit);
+        assert_eq!(session.snapshot(), before);
+        assert!(session.graph_receipts.is_empty());
+    }
+
+    #[test]
+    fn interactive_edits_do_not_consume_agent_retry_capacity() {
+        let mut session = new_session();
+        for index in 0..100 {
+            let result = session
+                .mutate_interactive(GraphInteractiveMutationRequest {
+                    guard: guard(&session),
+                    mutation: GraphMutation::Patch {
+                        edits: vec![GraphEdit::MoveNode {
+                            node: 2,
+                            pos: [index as f32, 32.0],
+                        }],
+                    },
+                })
+                .unwrap();
+            assert!(!result.semantic_changed);
+        }
+        assert!(session.graph_receipts.is_empty());
+        assert_eq!(session.snapshot().semantic_revision, 0);
+        assert_eq!(session.snapshot().revision, 100);
     }
 
     #[test]
@@ -2320,6 +2655,178 @@ mod tests {
             .unwrap();
         assert_eq!(stale.status, GraphRunStatus::Stale);
         assert!(stale.outputs.is_empty());
+    }
+
+    #[test]
+    fn edit_then_undo_cannot_publish_an_aba_completion() {
+        let mut session = new_session();
+        let start = session
+            .start_run(run_request(&session, "agent", "aba-run"))
+            .unwrap();
+        let work = session.claim_run(start.receipt.handle).unwrap();
+        session
+            .mutate(mutation(
+                &session,
+                "human",
+                "aba-edit",
+                vec![GraphEdit::SetValue {
+                    node: 3,
+                    field: "code".into(),
+                    value: json!("print('temporary')"),
+                }],
+            ))
+            .unwrap();
+        session
+            .mutate(GraphMutationRequest {
+                guard: guard(&session),
+                actor: "human".into(),
+                operation_key: "aba-undo".into(),
+                mutation: GraphMutation::Undo,
+            })
+            .unwrap();
+        assert_eq!(session.semantic_hash, work.identity.semantic_hash);
+        assert_ne!(session.semantic_revision, work.identity.semantic_revision);
+
+        let stale = session
+            .complete_run(
+                GraphRunCompletion {
+                    handle: work.handle,
+                    identity: work.identity.clone(),
+                    outcome: GraphRunOutcome::Completed(outputs(&work.identity)),
+                },
+                &GraphDocumentState {
+                    document_epoch: "document-1".into(),
+                    document_revision: 12,
+                },
+            )
+            .unwrap();
+        assert_eq!(stale.status, GraphRunStatus::Stale);
+        assert!(stale.outputs.is_empty());
+    }
+
+    #[test]
+    fn invalid_proof_lineage_terminalizes_the_run() {
+        let mut session = new_session();
+        let start = session
+            .start_run(run_request(&session, "agent", "bad-lineage"))
+            .unwrap();
+        let work = session.claim_run(start.receipt.handle).unwrap();
+        let mut malformed = outputs(&work.identity);
+        let derived_hash = match &malformed[2].value {
+            GraphNodeOutputValue::Proof {
+                canonical_input_sha256,
+                ..
+            } => canonical_input_sha256.clone(),
+            _ => unreachable!(),
+        };
+        if let GraphNodeOutputValue::Proof {
+            canonical_input_sha256,
+            ..
+        } = &mut malformed[1].value
+        {
+            *canonical_input_sha256 = derived_hash;
+        }
+        let failed = session
+            .complete_run(
+                GraphRunCompletion {
+                    handle: work.handle,
+                    identity: work.identity,
+                    outcome: GraphRunOutcome::Completed(malformed),
+                },
+                &GraphDocumentState {
+                    document_epoch: "document-1".into(),
+                    document_revision: 12,
+                },
+            )
+            .unwrap();
+        assert_eq!(failed.status, GraphRunStatus::Failed);
+        assert!(failed.outputs.is_empty());
+        assert_eq!(failed.errors[0].code, "invalid_worker_output");
+    }
+
+    #[test]
+    fn source_only_scope_cannot_claim_a_completed_comparison() {
+        let mut session = new_session();
+        let start = session
+            .start_run(run_request(&session, "agent", "source-only"))
+            .unwrap();
+        let work = session.claim_run(start.receipt.handle).unwrap();
+        let mut malformed = outputs(&work.identity);
+        if let GraphNodeOutputValue::Proof { scope, .. } = &mut malformed[1].value {
+            *scope = GraphProofScope::SourceOnly;
+        }
+        let failed = session
+            .complete_run(
+                GraphRunCompletion {
+                    handle: work.handle,
+                    identity: work.identity,
+                    outcome: GraphRunOutcome::Completed(malformed),
+                },
+                &GraphDocumentState {
+                    document_epoch: "document-1".into(),
+                    document_revision: 12,
+                },
+            )
+            .unwrap();
+        assert_eq!(failed.status, GraphRunStatus::Failed);
+        assert_eq!(failed.errors[0].code, "invalid_worker_output");
+    }
+
+    #[test]
+    fn malformed_failure_terminalizes_with_bounded_error() {
+        let mut session = new_session();
+        let start = session
+            .start_run(run_request(&session, "agent", "bad-failure"))
+            .unwrap();
+        let work = session.claim_run(start.receipt.handle).unwrap();
+        let failed = session
+            .complete_run(
+                GraphRunCompletion {
+                    handle: work.handle,
+                    identity: work.identity,
+                    outcome: GraphRunOutcome::Failed(Vec::new()),
+                },
+                &GraphDocumentState {
+                    document_epoch: "document-1".into(),
+                    document_revision: 12,
+                },
+            )
+            .unwrap();
+        assert_eq!(failed.status, GraphRunStatus::Failed);
+        assert_eq!(failed.errors.len(), 1);
+        assert_eq!(failed.errors[0].code, "invalid_worker_output");
+        assert!(failed.errors[0].message.len() <= MAX_ERROR_BYTES);
+    }
+
+    #[test]
+    fn python_report_can_share_a_node_with_the_derived_version() {
+        let mut session = new_session();
+        let start = session
+            .start_run(run_request(&session, "agent", "report-and-version"))
+            .unwrap();
+        let work = session.claim_run(start.receipt.handle).unwrap();
+        let mut completed = outputs(&work.identity);
+        completed.push(GraphNodeOutput {
+            node: work.plan.python_node,
+            value: GraphNodeOutputValue::Report {
+                text: "bounded report".into(),
+            },
+        });
+        let inspection = session
+            .complete_run(
+                GraphRunCompletion {
+                    handle: work.handle,
+                    identity: work.identity,
+                    outcome: GraphRunOutcome::Completed(completed),
+                },
+                &GraphDocumentState {
+                    document_epoch: "document-1".into(),
+                    document_revision: 12,
+                },
+            )
+            .unwrap();
+        assert_eq!(inspection.status, GraphRunStatus::Completed);
+        assert_eq!(inspection.outputs.len(), 4);
     }
 
     #[test]

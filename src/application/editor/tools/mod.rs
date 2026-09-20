@@ -12,4 +12,9 @@ pub(crate) mod chat;
 pub(crate) mod local_ai;
 pub(crate) mod metaballs;
 pub(crate) mod nodes;
+#[allow(
+    dead_code,
+    reason = "central Workspace and proof-queue integration consumes this focused adapter"
+)]
+pub(crate) mod nodes_execution;
 pub(crate) mod text;
