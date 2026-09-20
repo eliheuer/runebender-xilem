@@ -10,6 +10,8 @@ No release has been published yet.
 
 ### Added
 
+- Documented the proposed [live agent-editing architecture](docs/agent-interface-research.md), client connection matrix, source audit, and gated acceptance plan.
+  This is research only; it adds no runtime capability.
 - Added live Rust compilation for shaped variable-font previews and TTF export, including unsaved edits, variable kerning and mark positioning.
   Desktop preview compiles in the background and discards stale revisions.
   Shared feature edits follow the default source and drafts are checked against all masters and axes.

@@ -1,0 +1,433 @@
+{
+  "research_date_local": "2026-09-19",
+  "research_date_utc": "2026-09-20",
+  "status": "research_complete_implementation_gated",
+  "implementation_release_received": false,
+  "gate_owner_task": "01a0b6c4-c0a7-7951-917f-7ed2ccda4428",
+  "method": "Primary source documentation and pinned source inspection; test code inspected, not executed. No runtime client connections, benchmarks, GUI launches, model downloads or font mutations.",
+  "repositories": {
+    "runebender": {
+      "revision": "9f55a21f231f6ed18a6137cbcf100adf2527dc25",
+      "url": "https://github.com/eliheuer/runebender-xilem",
+      "local_checkout": "/Users/eli/.codex/worktrees/e08d/runebender-xilem",
+      "remote_head_verified_during_research": false,
+      "files": [
+        {
+          "path": "ARCHITECTURE.md",
+          "sha256": "f1d1a1fde4db83aed12081dac43bd55e4de97d922c2a55c361f74d6a39a6dc04",
+          "lines": 233,
+          "url": "https://github.com/eliheuer/runebender-xilem/blob/9f55a21f231f6ed18a6137cbcf100adf2527dc25/ARCHITECTURE.md"
+        },
+        {
+          "path": "DESIGN.md",
+          "sha256": "2e67476e6660d92c941aa1d170e72ef8894316cb72f68ded262dd7a8c2a7087e",
+          "lines": 121,
+          "url": "https://github.com/eliheuer/runebender-xilem/blob/9f55a21f231f6ed18a6137cbcf100adf2527dc25/DESIGN.md"
+        },
+        {
+          "path": "docs/ai-type-design.md",
+          "sha256": "8c1b680edcf8c4caeb86bfc96f0ffc32f86f90797ec51f0df403669431d1efd3",
+          "lines": 291,
+          "url": "https://github.com/eliheuer/runebender-xilem/blob/9f55a21f231f6ed18a6137cbcf100adf2527dc25/docs/ai-type-design.md"
+        },
+        {
+          "path": "src/document/live.rs",
+          "sha256": "bfd0bce5004e52ac6b2389345307d30c5f079604bdb02b4f6b578b85587f1082",
+          "lines": 803,
+          "url": "https://github.com/eliheuer/runebender-xilem/blob/9f55a21f231f6ed18a6137cbcf100adf2527dc25/src/document/live.rs"
+        },
+        {
+          "path": "src/document/live_socket.rs",
+          "sha256": "8aff55ab7a058db3bec683165e82d7e59982debe2a365319006af268b2b08123",
+          "lines": 249,
+          "url": "https://github.com/eliheuer/runebender-xilem/blob/9f55a21f231f6ed18a6137cbcf100adf2527dc25/src/document/live_socket.rs"
+        },
+        {
+          "path": "src/document/agent.rs",
+          "sha256": "a30a7b73d68a6217ceb03531a3a7145e6309fb68f7afb56cd505c868383653db",
+          "lines": 407,
+          "url": "https://github.com/eliheuer/runebender-xilem/blob/9f55a21f231f6ed18a6137cbcf100adf2527dc25/src/document/agent.rs"
+        },
+        {
+          "path": "src/application/platform/live.rs",
+          "sha256": "26d3e0913f8063ebba4977683f47d74cca866c9228a3885e762d30eed7520354",
+          "lines": 69,
+          "url": "https://github.com/eliheuer/runebender-xilem/blob/9f55a21f231f6ed18a6137cbcf100adf2527dc25/src/application/platform/live.rs"
+        },
+        {
+          "path": "src/application/cli.rs",
+          "sha256": "ecaf4c6f01d4a7a40fe2902872156d45951e34491ab82217222fdd0cbb2a445d",
+          "lines": 2456,
+          "url": "https://github.com/eliheuer/runebender-xilem/blob/9f55a21f231f6ed18a6137cbcf100adf2527dc25/src/application/cli.rs"
+        },
+        {
+          "path": "src/document/variable.rs",
+          "sha256": "720afc371a2b3e3fbdd476b49366c465f0cc0aad5a9dd6b4daff1d9c0548eea9",
+          "lines": 1130,
+          "url": "https://github.com/eliheuer/runebender-xilem/blob/9f55a21f231f6ed18a6137cbcf100adf2527dc25/src/document/variable.rs"
+        },
+        {
+          "path": "src/document/edit_batch.rs",
+          "sha256": "95cd3ba8478b95b6673b260d76f3d80abe7d9a02c927c84d06f203de40761dc7",
+          "lines": 1227,
+          "url": "https://github.com/eliheuer/runebender-xilem/blob/9f55a21f231f6ed18a6137cbcf100adf2527dc25/src/document/edit_batch.rs"
+        },
+        {
+          "path": "src/document/experiments.rs",
+          "sha256": "ef90e31a6e5df3eba4eba33819c9517a464f85e03adecc4d43058b462596d3bd",
+          "lines": 973,
+          "url": "https://github.com/eliheuer/runebender-xilem/blob/9f55a21f231f6ed18a6137cbcf100adf2527dc25/src/document/experiments.rs"
+        },
+        {
+          "path": "src/document/nodes_live.rs",
+          "sha256": "f5c06b2808a8fa00b7deb67610cac870a78be112e48ab68c47e2cac388d992bf",
+          "lines": 462,
+          "url": "https://github.com/eliheuer/runebender-xilem/blob/9f55a21f231f6ed18a6137cbcf100adf2527dc25/src/document/nodes_live.rs"
+        },
+        {
+          "path": "src/document/compile.rs",
+          "sha256": "002d82e30d574dde8b82d3c17f9dc61a42db9447822bec094ea9022e144d0139",
+          "lines": 559,
+          "url": "https://github.com/eliheuer/runebender-xilem/blob/9f55a21f231f6ed18a6137cbcf100adf2527dc25/src/document/compile.rs"
+        },
+        {
+          "path": "src/formats/designbot.rs",
+          "sha256": "ee7226714bf0f45af5ea75a055d2995aa505b0b68649956c3c12dfea7785aa7d",
+          "lines": 294,
+          "url": "https://github.com/eliheuer/runebender-xilem/blob/9f55a21f231f6ed18a6137cbcf100adf2527dc25/src/formats/designbot.rs"
+        },
+        {
+          "path": "src/text/shape.rs",
+          "sha256": "02a5203985a591ea9a5985d86eeab3c686e1e26f2bc678e5b9b311df126d91c3",
+          "lines": 522,
+          "url": "https://github.com/eliheuer/runebender-xilem/blob/9f55a21f231f6ed18a6137cbcf100adf2527dc25/src/text/shape.rs"
+        },
+        {
+          "path": "examples/propose_spacing.py",
+          "sha256": "d3f4d7797ab9c2714b709f85dea4d5cbb08beef5489a092fef6cef298bd81a9b",
+          "lines": 54,
+          "url": "https://github.com/eliheuer/runebender-xilem/blob/9f55a21f231f6ed18a6137cbcf100adf2527dc25/examples/propose_spacing.py"
+        },
+        {
+          "path": "web/README.md",
+          "sha256": "f8b44a4d19cbbebe6f42558d99436a1197b2111b1dbad06068a7083a95d63ab1",
+          "lines": 79,
+          "url": "https://github.com/eliheuer/runebender-xilem/blob/9f55a21f231f6ed18a6137cbcf100adf2527dc25/web/README.md"
+        },
+        {
+          "path": ".mcp.json",
+          "sha256": "b51f4e1e378890a94f252eaf2b9a43e34e8a2e506dc2f5b8b6530cd0364f5fb5",
+          "lines": 8,
+          "url": "https://github.com/eliheuer/runebender-xilem/blob/9f55a21f231f6ed18a6137cbcf100adf2527dc25/.mcp.json"
+        },
+        {
+          "path": ".codex/config.toml",
+          "sha256": "a11174d1dd18d5daccfe58f70f96b2bec9b0217345de84f0a21a7345da18f50f",
+          "lines": 3,
+          "url": "https://github.com/eliheuer/runebender-xilem/blob/9f55a21f231f6ed18a6137cbcf100adf2527dc25/.codex/config.toml"
+        }
+      ]
+    },
+    "counterpunch": {
+      "revision": "1cc976ae88de2f7b95c823796b39040fede30188",
+      "url": "https://github.com/counterpunchspace/editor",
+      "local_checkout": "/private/tmp/counterpunch-review-20260919-source",
+      "remote_head_verified_during_research": true,
+      "files": [
+        {
+          "path": "documentation/python/01-python-in-counterpunch.md",
+          "sha256": "e0969d6619fe598a747d710b18e7e902c48ea0369d61b545ac7d609125140bfb",
+          "lines": 21,
+          "url": "https://github.com/counterpunchspace/editor/blob/1cc976ae88de2f7b95c823796b39040fede30188/documentation/python/01-python-in-counterpunch.md"
+        },
+        {
+          "path": "documentation/python/07-installing-plugins-and-packages.md",
+          "sha256": "59a56852d137c967bf83237be5ef2276b6ca61c574c8cc7e8269bca8e9250c68",
+          "lines": 34,
+          "url": "https://github.com/counterpunchspace/editor/blob/1cc976ae88de2f7b95c823796b39040fede30188/documentation/python/07-installing-plugins-and-packages.md"
+        },
+        {
+          "path": "webapp/js/python-post-execution.ts",
+          "sha256": "b3996c2bd19e9832b7126554ae8321b846bde834ad46a4102438d51ada8e0ad6",
+          "lines": 317,
+          "url": "https://github.com/counterpunchspace/editor/blob/1cc976ae88de2f7b95c823796b39040fede30188/webapp/js/python-post-execution.ts"
+        },
+        {
+          "path": "webapp/js/ai-assistant.ts",
+          "sha256": "a936bf45d507a93aaa88226d51a1c9012cfad4e1144b5437d90507486f3948a0",
+          "lines": 4783,
+          "url": "https://github.com/counterpunchspace/editor/blob/1cc976ae88de2f7b95c823796b39040fede30188/webapp/js/ai-assistant.ts"
+        },
+        {
+          "path": "webapp/js/assistant-config.ts",
+          "sha256": "6469a1ce547e69ffeecb19e539c9eb1874bcbf5d153558b61141e9d77c7d9692",
+          "lines": 763,
+          "url": "https://github.com/counterpunchspace/editor/blob/1cc976ae88de2f7b95c823796b39040fede30188/webapp/js/assistant-config.ts"
+        },
+        {
+          "path": "webapp/tests/python-post-execution.test.js",
+          "sha256": "ece8dd93aba1eba8e5931d3e6106c6f51cbf29a529718eff2865c0301751f1e2",
+          "lines": 1018,
+          "url": "https://github.com/counterpunchspace/editor/blob/1cc976ae88de2f7b95c823796b39040fede30188/webapp/tests/python-post-execution.test.js"
+        }
+      ]
+    },
+    "fontra": {
+      "revision": "65eb043dbac9e41482ab40034b26757e2541e39d",
+      "url": "https://github.com/fontra/fontra",
+      "local_checkout": "/private/tmp/runebender-fontra-model-review",
+      "remote_head_verified_during_research": true,
+      "files": [
+        {
+          "path": "src/fontra/core/fonthandler.py",
+          "sha256": "cfb9a9b3d3aee172c44d636fad6d7b93c12807294b9a935522de36e128591c14",
+          "lines": 735,
+          "url": "https://github.com/fontra/fontra/blob/65eb043dbac9e41482ab40034b26757e2541e39d/src/fontra/core/fonthandler.py"
+        },
+        {
+          "path": "src/fontra/core/remote.py",
+          "sha256": "9914e478c331c10c3a33abc98a41b0edc123bf8b647e8c12b5c90660ea7ee853",
+          "lines": 168,
+          "url": "https://github.com/fontra/fontra/blob/65eb043dbac9e41482ab40034b26757e2541e39d/src/fontra/core/remote.py"
+        },
+        {
+          "path": "src/fontra/core/server.py",
+          "sha256": "10959a0421ef8ab604d3e96dd3ddc9fce9671fbdaea9d2ca55b13b0f1b7da739",
+          "lines": 323,
+          "url": "https://github.com/fontra/fontra/blob/65eb043dbac9e41482ab40034b26757e2541e39d/src/fontra/core/server.py"
+        },
+        {
+          "path": "src-js/fontra-core/src/font-controller.js",
+          "sha256": "2ad7683656a58737bb8205f9b65e9fc9a791ac792a49f3347342193b196c61de",
+          "lines": 1492,
+          "url": "https://github.com/fontra/fontra/blob/65eb043dbac9e41482ab40034b26757e2541e39d/src-js/fontra-core/src/font-controller.js"
+        },
+        {
+          "path": "test-py/test_fonthandler.py",
+          "sha256": "f503a43c55d2008975564b7db26cb759bf1df9fe2d9e74879661fad097f9c2e6",
+          "lines": 373,
+          "url": "https://github.com/fontra/fontra/blob/65eb043dbac9e41482ab40034b26757e2541e39d/test-py/test_fonthandler.py"
+        }
+      ]
+    },
+    "pi": {
+      "revision": "d1230ea2000d876b479a69b8b061f9d670f262f5",
+      "url": "https://github.com/earendil-works/pi",
+      "local_checkout": "/private/tmp/runebender-agent-interface-research-20260920/pi",
+      "remote_head_verified_during_research": true,
+      "files": [
+        {
+          "path": "packages/coding-agent/README.md",
+          "sha256": "4474edd1e6d8b9393a094937ae4be67fb6a51c703ffcd9821f499799fe5d7f14",
+          "lines": 719,
+          "url": "https://github.com/earendil-works/pi/blob/d1230ea2000d876b479a69b8b061f9d670f262f5/packages/coding-agent/README.md"
+        },
+        {
+          "path": "packages/coding-agent/docs/models.md",
+          "sha256": "1a07c5fe385842ae4f301cc28b53b0115207b7cb8627c5ee290078f5f247daa4",
+          "lines": 605,
+          "url": "https://github.com/earendil-works/pi/blob/d1230ea2000d876b479a69b8b061f9d670f262f5/packages/coding-agent/docs/models.md"
+        }
+      ]
+    },
+    "omp": {
+      "revision": "10b867cb2eeb7809b883a88dfebe1919ff0c2764",
+      "url": "https://github.com/can1357/oh-my-pi",
+      "local_checkout": "/private/tmp/runebender-agent-interface-research-20260920/omp",
+      "remote_head_verified_during_research": true,
+      "files": [
+        {
+          "path": "docs/mcp-config.md",
+          "sha256": "0c8db2c8a986a48448e753f9d022167257b49e305de4a3c7a3f41ce639b59660",
+          "lines": 538,
+          "url": "https://github.com/can1357/oh-my-pi/blob/10b867cb2eeb7809b883a88dfebe1919ff0c2764/docs/mcp-config.md"
+        },
+        {
+          "path": "packages/coding-agent/src/discovery/mcp-json.ts",
+          "sha256": "0e20f90f81162605efebf1ee5764c05353e94c521edbf729816bd8156452d192",
+          "lines": 182,
+          "url": "https://github.com/can1357/oh-my-pi/blob/10b867cb2eeb7809b883a88dfebe1919ff0c2764/packages/coding-agent/src/discovery/mcp-json.ts"
+        },
+        {
+          "path": "packages/coding-agent/src/mcp/tool-bridge.ts",
+          "sha256": "a076152296042fa695c7015901ea3640749160196484420be0bd2cedb74cd1dc",
+          "lines": 904,
+          "url": "https://github.com/can1357/oh-my-pi/blob/10b867cb2eeb7809b883a88dfebe1919ff0c2764/packages/coding-agent/src/mcp/tool-bridge.ts"
+        },
+        {
+          "path": "README.md",
+          "sha256": "10079595592acd542484aee676712a463414d22b0ea48cdb3e4a8c1c4a1d292e",
+          "lines": 698,
+          "url": "https://github.com/can1357/oh-my-pi/blob/10b867cb2eeb7809b883a88dfebe1919ff0c2764/README.md"
+        }
+      ]
+    },
+    "pi-mcp-adapter": {
+      "revision": "97435aabf74e5fbcf1112e7244f931172b9db624",
+      "url": "https://github.com/nicobailon/pi-mcp-adapter",
+      "local_checkout": "/private/tmp/runebender-agent-interface-research-20260920/pi-mcp-adapter",
+      "remote_head_verified_during_research": true,
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "3b55aca2ff4b3c51bb1a0cd0a2f2482fc539e7b656513b35733e4d6fcc1acbe6",
+          "lines": 912,
+          "url": "https://github.com/nicobailon/pi-mcp-adapter/blob/97435aabf74e5fbcf1112e7244f931172b9db624/README.md"
+        }
+      ]
+    }
+  },
+  "prior_review": [
+    {
+      "path": "/private/tmp/runebender-counterpunch-review-20260919/REVIEW.md",
+      "sha256": "68fd0d0cce91909c14657f2bafff957e0120bf1829f822b947c06787f02ef87f"
+    },
+    {
+      "path": "/private/tmp/runebender-counterpunch-review-20260919/EVIDENCE.json",
+      "sha256": "f55663365b6adb5086e90e2111be82c21548bbc991939207e9fb31fc91bbd291"
+    }
+  ],
+  "web_sources": [
+    {
+      "url": "https://linebender.org/wiki/formatting-scheme/",
+      "retrieved_utc_date": "2026-09-20",
+      "evidence_type": "official documentation; not runtime verification"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/mcp",
+      "retrieved_utc_date": "2026-09-20",
+      "evidence_type": "official documentation; not runtime verification"
+    },
+    {
+      "url": "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+      "retrieved_utc_date": "2026-09-20",
+      "evidence_type": "official documentation; not runtime verification"
+    },
+    {
+      "url": "https://developers.openai.com/api/docs/guides/developer-mode",
+      "retrieved_utc_date": "2026-09-20",
+      "evidence_type": "official documentation; not runtime verification"
+    },
+    {
+      "url": "https://developers.openai.com/plugins/deploy/connect-chatgpt",
+      "retrieved_utc_date": "2026-09-20",
+      "evidence_type": "official documentation; not runtime verification"
+    },
+    {
+      "url": "https://developers.openai.com/api/docs/guides/secure-mcp-tunnels",
+      "retrieved_utc_date": "2026-09-20",
+      "evidence_type": "official documentation; not runtime verification"
+    },
+    {
+      "url": "https://modelcontextprotocol.io/specification/2025-11-25/basic/transports",
+      "retrieved_utc_date": "2026-09-20",
+      "evidence_type": "official documentation; not runtime verification"
+    },
+    {
+      "url": "https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation",
+      "retrieved_utc_date": "2026-09-20",
+      "evidence_type": "official documentation; not runtime verification"
+    },
+    {
+      "url": "https://modelcontextprotocol.io/specification/2025-11-25/server/tools",
+      "retrieved_utc_date": "2026-09-20",
+      "evidence_type": "official documentation; not runtime verification"
+    },
+    {
+      "url": "https://developers.figma.com/docs/figma-mcp-server/write-to-canvas/",
+      "retrieved_utc_date": "2026-09-20",
+      "evidence_type": "official documentation; not runtime verification"
+    },
+    {
+      "url": "https://docs.comfy.org/development/comfyui-server/comms_routes",
+      "retrieved_utc_date": "2026-09-20",
+      "evidence_type": "official documentation; not runtime verification"
+    },
+    {
+      "url": "https://docs.ollama.com/capabilities/tool-calling",
+      "retrieved_utc_date": "2026-09-20",
+      "evidence_type": "official documentation; not runtime verification"
+    },
+    {
+      "url": "https://learn.chatgpt.com/docs/auth",
+      "retrieved_utc_date": "2026-09-20",
+      "evidence_type": "official documentation; not runtime verification"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/authentication",
+      "retrieved_utc_date": "2026-09-20",
+      "evidence_type": "official documentation; not runtime verification"
+    }
+  ],
+  "findings": [
+    {
+      "id": "RB-01",
+      "kind": "source_observed_integration_mismatch",
+      "summary": "UI callback checks legacy master field; live results use source_id/source.",
+      "evidence": [
+        "src/application/platform/live.rs:38",
+        "src/document/live.rs:565",
+        "src/document/live.rs:195"
+      ],
+      "status": "Routed by orchestration to migration owner; recheck final main."
+    },
+    {
+      "id": "RB-02",
+      "kind": "source_observed_proof_metadata_mismatch",
+      "summary": "Branch specimen renders branch font but returns root kerning revision.",
+      "evidence": [
+        "src/document/live.rs:270",
+        "src/document/live.rs:291"
+      ],
+      "status": "Routed by orchestration to migration owner; recheck final main."
+    },
+    {
+      "id": "RB-03",
+      "kind": "source_observed_protocol_gap",
+      "summary": "MCP version echoed; notifications ignored; synchronous tool loop.",
+      "evidence": [
+        "src/application/cli.rs:1764"
+      ],
+      "status": "Re-audit final main; no change in research phase."
+    },
+    {
+      "id": "RB-04",
+      "kind": "source_observed_proof_limit",
+      "summary": "Specimen requires ASCII and shapes single-source data rather than the variable compiled font.",
+      "evidence": [
+        "src/formats/designbot.rs:129",
+        "src/document/compile.rs:95"
+      ],
+      "status": "Re-audit final main."
+    },
+    {
+      "id": "RB-05",
+      "kind": "unproven_failure_atomicity",
+      "summary": "Experiment apply preflights conflicts but subsequently uses fallible sequential restore/history/metadata publication.",
+      "evidence": [
+        "src/document/experiments.rs:550"
+      ],
+      "status": "Failure injection required; not a demonstrated runtime failure."
+    },
+    {
+      "id": "RB-06",
+      "kind": "source_observed_docs_schema_drift",
+      "summary": "Live source IDs coexist with inherited master schemas and old instructions.",
+      "evidence": [
+        "src/document/agent.rs:170",
+        "src/document/live.rs:125",
+        "src/application/cli.rs:1813"
+      ],
+      "status": "Re-audit final main."
+    }
+  ],
+  "client_runtime_results": "Not tested in this research; historical OMP 18.1.10 evidence is labeled separately in matrix.",
+  "validation": {
+    "documentation_links": "passed: all relative file targets exist",
+    "json_parse": "passed: manifest and JSON examples parse",
+    "source_hashes": "passed: all recorded inspected file hashes match",
+    "whitespace": "passed: new Markdown has no trailing whitespace",
+    "git_diff_check": "passed: tracked and explicitly staged documentation changes",
+    "production_tests": "not run; documentation-only changes"
+  }
+}
