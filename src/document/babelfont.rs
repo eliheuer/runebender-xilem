@@ -427,6 +427,28 @@ impl CanonicalLayerSnapshot {
         &self.address
     }
 
+    /// The exact horizontal advance retained by this snapshot.
+    pub(crate) fn width(&self) -> f64 {
+        self.preserved.width
+    }
+
+    /// Position of one stable point in this snapshot.
+    pub(crate) fn point_position(&self, id: PointId) -> Option<kurbo::Point> {
+        LayerView::new(&self.layer, &self.preserved)
+            .contours()
+            .flat_map(ContourView::points)
+            .find(|point| point.id() == id)
+            .map(PointView::position)
+    }
+
+    /// Position of one stable anchor in this snapshot.
+    pub(crate) fn anchor_position(&self, id: AnchorId) -> Option<kurbo::Point> {
+        LayerView::new(&self.layer, &self.preserved)
+            .anchors()
+            .find(|anchor| anchor.id() == id)
+            .map(AnchorView::position)
+    }
+
     pub(super) fn delta_from(&self, previous: &Self) -> Option<LayerDelta> {
         if self.address != previous.address {
             return None;

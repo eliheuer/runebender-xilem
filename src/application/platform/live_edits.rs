@@ -10,7 +10,7 @@ use runebender::document::agent_session::{
     AgentReceiptDisposition, AgentSession, AgentSessionError, AgentSessionMetadata,
 };
 use runebender::document::history::HistoryDirection;
-use runebender::document::project::{EditHistoryGroupState, Project};
+use runebender::document::project::{DocumentEditObjectKind, EditHistoryGroupState, Project};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -253,14 +253,30 @@ fn receipt_result(receipt: &AgentOperationReceipt, project: &Project) -> Value {
             before_revision,
             after_revision,
             change,
+            changed_objects,
             history_group,
         } => json!({
             "status":"committed", "before_revision":before_revision,"after_revision":after_revision,
             "history_group":history_group.to_wire(),
-            "changed_layers":change.affected_layers().iter().map(|address| json!({"glyph":address.glyph,"source":address.layer.source.0,"layer":address.layer.name})).collect::<Vec<_>>()
+            "changed_layers":change.affected_layers().iter().map(|address| json!({"glyph":address.glyph,"source":address.layer.source.0,"layer":address.layer.name})).collect::<Vec<_>>(),
+            "changed_objects":changed_objects.iter().map(|changed| {
+                let mut result = json!({"glyph":changed.glyph,"glyph_id":changed.glyph_id.to_wire(),"source":changed.layer.source.0,"layer":changed.layer.name});
+                match changed.object {
+                    DocumentEditObjectKind::Width => result["kind"] = json!("width"),
+                    DocumentEditObjectKind::Point(point_id) => {
+                        result["kind"] = json!("point");
+                        result["point_id"] = json!(point_id.to_wire());
+                    }
+                    DocumentEditObjectKind::Anchor(anchor_id) => {
+                        result["kind"] = json!("anchor");
+                        result["anchor_id"] = json!(anchor_id.to_wire());
+                    }
+                }
+                result
+            }).collect::<Vec<_>>()
         }),
         AgentOperationOutcome::Unchanged { revision } => {
-            json!({"status":"unchanged","revision":revision})
+            json!({"status":"unchanged","revision":revision,"changed_objects":[]})
         }
         AgentOperationOutcome::Rejected {
             revision,
@@ -270,7 +286,7 @@ fn receipt_result(receipt: &AgentOperationReceipt, project: &Project) -> Value {
                 AgentOperationRejection::InvalidRequest(message) => message.clone(),
                 AgentOperationRejection::Transaction(error) => error.to_string(),
             };
-            json!({"status":"rejected","revision":revision,"error":message})
+            json!({"status":"rejected","revision":revision,"error":message,"changed_objects":[]})
         }
     };
     let history_state = receipt.history_group().map(|group| {
@@ -519,7 +535,10 @@ mod tests {
             })
             .unwrap();
         let revision = app.font.project.document_revision();
-        assert_eq!(call(&mut app, "agent_apply", stale)["ok"], false);
+        let stale = call(&mut app, "agent_apply", stale);
+        assert_eq!(stale["ok"], false);
+        assert_eq!(stale["receipt"]["outcome"]["status"], "rejected");
+        assert_eq!(stale["receipt"]["outcome"]["changed_objects"], json!([]));
         assert_eq!(app.font.project.document_revision(), revision);
         assert_eq!(width(&app, 0, "A"), 400.0);
     }
@@ -550,7 +569,20 @@ mod tests {
                 json!({"op":"set_point","point_id":point.to_wire(),"x":25.0,"y":5.0}),
                 json!({"op":"set_anchor","anchor_id":anchor.to_wire(),"x":170.0,"y":725.0}),
             ]);
-        assert_eq!(call(&mut app, "agent_apply", payload.clone())["ok"], true);
+        let applied = call(&mut app, "agent_apply", payload.clone());
+        assert_eq!(applied["ok"], true);
+        assert_eq!(
+            applied["receipt"]["outcome"]["changed_objects"],
+            json!([
+                {"glyph":"A","glyph_id":app.font.project.document_glyph("A").unwrap().id().to_wire(),"source":0,"layer":address.layer.name,"kind":"width"},
+                {"glyph":"A","glyph_id":app.font.project.document_glyph("A").unwrap().id().to_wire(),"source":0,"layer":address.layer.name,"kind":"point","point_id":point.to_wire()},
+                {"glyph":"A","glyph_id":app.font.project.document_glyph("A").unwrap().id().to_wire(),"source":0,"layer":address.layer.name,"kind":"anchor","anchor_id":anchor.to_wire()}
+            ])
+        );
+        assert_eq!(
+            call(&mut app, "agent_receipt", identity(&payload))["receipt"]["outcome"]["changed_objects"],
+            applied["receipt"]["outcome"]["changed_objects"]
+        );
         let layer = app
             .font
             .project
@@ -741,6 +773,7 @@ mod tests {
         let pending = request(&app, "during-gesture", 0, &[("A", 460.0)]);
         let rejected = call(&mut app, "agent_apply", pending);
         assert_eq!(rejected["receipt"]["outcome"]["status"], "rejected");
+        assert_eq!(rejected["receipt"]["outcome"]["changed_objects"], json!([]));
         assert_eq!(replay(&mut app, &payload, "undo")["ok"], false);
         assert_eq!(app.font.project.document_revision(), revision);
         assert!(app.session.gesture_in_progress());

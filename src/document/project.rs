@@ -34,9 +34,9 @@ mod constructors;
 #[path = "project/edit_transactions.rs"]
 mod edit_transactions;
 pub use edit_transactions::{
-    CanonicalDocumentEditTransaction, DocumentEditHistoryReplayOutcome, DocumentEditOperation,
-    DocumentEditTransactionError, DocumentEditTransactionOutcome, DocumentLayerEdit,
-    EditHistoryGroupId, EditHistoryGroupState,
+    CanonicalDocumentEditTransaction, DocumentEditChangedObject, DocumentEditHistoryReplayOutcome,
+    DocumentEditObjectKind, DocumentEditOperation, DocumentEditTransactionError,
+    DocumentEditTransactionOutcome, DocumentLayerEdit, EditHistoryGroupId, EditHistoryGroupState,
 };
 #[path = "project/proposal_transactions.rs"]
 mod proposal_transactions;

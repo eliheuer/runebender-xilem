@@ -15,8 +15,8 @@ use std::fmt::Write as _;
 use sha2::{Digest as _, Sha256};
 
 use super::project::{
-    CanonicalDocumentEditTransaction, DocumentChange, DocumentEditTransactionError,
-    DocumentEditTransactionOutcome, EditHistoryGroupId, Project,
+    CanonicalDocumentEditTransaction, DocumentChange, DocumentEditChangedObject,
+    DocumentEditTransactionError, DocumentEditTransactionOutcome, EditHistoryGroupId, Project,
 };
 
 const MAX_SESSION_ID_BYTES: usize = 256;
@@ -127,6 +127,8 @@ pub enum AgentOperationOutcome {
         after_revision: u64,
         /// Canonical invalidation scope produced by the commit.
         change: DocumentChange,
+        /// Stable identities of the existing canonical objects that changed.
+        changed_objects: Vec<DocumentEditChangedObject>,
         /// Project-owned handle shared by ordinary and targeted history replay.
         history_group: EditHistoryGroupId,
     },
@@ -369,11 +371,13 @@ impl AgentSession {
                     before_revision,
                     after_revision,
                     change,
+                    changed_objects,
                     history_group,
                 }) => AgentOperationOutcome::Committed {
                     before_revision,
                     after_revision,
                     change,
+                    changed_objects,
                     history_group,
                 },
                 Ok(DocumentEditTransactionOutcome::Unchanged { revision }) => {
@@ -519,6 +523,23 @@ mod tests {
             })
             .unwrap();
         let revision_after_first = project.document_revision();
+        let changed_objects = match first.receipt().outcome() {
+            AgentOperationOutcome::Committed {
+                changed_objects, ..
+            } => changed_objects,
+            AgentOperationOutcome::Unchanged { .. } | AgentOperationOutcome::Rejected { .. } => {
+                panic!("the width edit must commit")
+            }
+        };
+        assert_eq!(
+            changed_objects,
+            &[DocumentEditChangedObject {
+                glyph: "A".into(),
+                glyph_id: project.document_glyph("A").unwrap().id(),
+                layer: a.layer.clone(),
+                object: crate::document::project::DocumentEditObjectKind::Width,
+            }]
+        );
         let replay = session
             .apply_document_edit(&mut project, operation_key, payload, |_| {
                 panic!("an exact retry must not stage again")

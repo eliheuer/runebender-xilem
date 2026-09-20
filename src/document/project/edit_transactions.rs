@@ -9,6 +9,7 @@ use kurbo::Point;
 
 use super::*;
 use crate::document::history::HistoryDirection;
+use crate::document::variable::GlyphId;
 use crate::document::{AnchorId, CanonicalLayerSnapshot, DocumentEditError, PointId};
 
 const MAX_EDIT_LAYERS: usize = 64;
@@ -37,6 +38,33 @@ pub enum DocumentEditOperation {
     },
 }
 
+/// One existing object that changed in a committed canonical edit transaction.
+///
+/// This limited transaction surface supports only the exact advance and existing points or
+/// anchors, so its receipt can retain stable identities without implying structural edits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DocumentEditObjectKind {
+    /// The exact horizontal advance changed.
+    Width,
+    /// One existing point moved.
+    Point(PointId),
+    /// One existing anchor moved.
+    Anchor(AnchorId),
+}
+
+/// Stable canonical identity of one object changed by a committed transaction.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DocumentEditChangedObject {
+    /// Glyph name at the committed canonical address.
+    pub glyph: String,
+    /// Stable glyph identity retained by the source transaction guard.
+    pub glyph_id: GlyphId,
+    /// Stable source and layer identity at the committed canonical address.
+    pub layer: LayerId,
+    /// Existing object that changed.
+    pub object: DocumentEditObjectKind,
+}
+
 impl DocumentEditOperation {
     fn apply(&self, draft: &mut super::super::LayerEditDraft) -> Result<(), DocumentEditError> {
         match *self {
@@ -52,6 +80,48 @@ impl DocumentEditOperation {
         }
         Ok(())
     }
+}
+
+fn changed_objects(
+    before: &CanonicalLayerSnapshot,
+    after: &CanonicalLayerSnapshot,
+    operations: &[DocumentEditOperation],
+    glyph_id: GlyphId,
+) -> Vec<DocumentEditChangedObject> {
+    let address = before.address();
+    let mut changed = Vec::new();
+    let mut push = |object| {
+        let candidate = DocumentEditChangedObject {
+            glyph: address.glyph.clone(),
+            glyph_id,
+            layer: address.layer.clone(),
+            object,
+        };
+        if !changed.contains(&candidate) {
+            changed.push(candidate);
+        }
+    };
+    for operation in operations {
+        match *operation {
+            DocumentEditOperation::SetWidth(_) if before.width() != after.width() => {
+                push(DocumentEditObjectKind::Width);
+            }
+            DocumentEditOperation::SetPoint { point, .. }
+                if before.point_position(point) != after.point_position(point) =>
+            {
+                push(DocumentEditObjectKind::Point(point));
+            }
+            DocumentEditOperation::SetAnchor { anchor, .. }
+                if before.anchor_position(anchor) != after.anchor_position(anchor) =>
+            {
+                push(DocumentEditObjectKind::Anchor(anchor));
+            }
+            DocumentEditOperation::SetWidth(_)
+            | DocumentEditOperation::SetPoint { .. }
+            | DocumentEditOperation::SetAnchor { .. } => {}
+        }
+    }
+    changed
 }
 
 /// Ordered edits to one layer, guarded by the exact canonical state the caller read.
@@ -199,6 +269,7 @@ pub struct CanonicalDocumentEditTransaction {
 struct SnapshotEdit {
     before: CanonicalLayerSnapshot,
     after: CanonicalLayerSnapshot,
+    changed_objects: Vec<DocumentEditChangedObject>,
 }
 
 /// Result of committing a bounded canonical document edit transaction.
@@ -217,6 +288,8 @@ pub enum DocumentEditTransactionOutcome {
         after_revision: u64,
         /// Exact invalidation scope of the complete group.
         change: DocumentChange,
+        /// Stable identities of the existing objects that actually changed.
+        changed_objects: Vec<DocumentEditChangedObject>,
         /// Stable handle shared by targeted and ordinary grouped undo.
         history_group: EditHistoryGroupId,
     },
@@ -420,7 +493,20 @@ impl Project {
             let (layer, preserved) = draft.into_parts();
             let after = CanonicalLayerSnapshot::new(address, layer, preserved);
             if before != after {
-                writes.push(SnapshotEdit { before, after });
+                let glyph_id = self
+                    .document_glyph(&before.address().glyph)
+                    .expect("an edit guard retains an existing canonical glyph")
+                    .id();
+                let changed_objects = changed_objects(&before, &after, &edit.operations, glyph_id);
+                debug_assert!(
+                    !changed_objects.is_empty(),
+                    "the limited edit transaction reports every changed draft object"
+                );
+                writes.push(SnapshotEdit {
+                    before,
+                    after,
+                    changed_objects,
+                });
             }
         }
 
@@ -453,6 +539,10 @@ impl Project {
             "every staged edit must retain the validated transaction source"
         );
         let edits = transaction.writes;
+        let changed_objects = edits
+            .iter()
+            .flat_map(|edit| edit.changed_objects.iter().cloned())
+            .collect();
         let replacements = edits
             .iter()
             .map(|edit| edit.after.clone())
@@ -466,6 +556,7 @@ impl Project {
             before_revision,
             after_revision: self.variable.revision,
             change,
+            changed_objects,
             history_group,
         })
     }
@@ -730,6 +821,80 @@ mod tests {
     }
 
     #[test]
+    fn changed_object_receipt_excludes_noops_and_deduplicates_final_delta() {
+        let mut project = project();
+        let source = project.source_id(0).unwrap();
+        let a = address(&project, "A");
+        let glyph_id = project.document_glyph("A").unwrap().id();
+        let layer = project.document_layer(&a.glyph, &a.layer).unwrap();
+        let point = layer.contours().next().unwrap().points().next().unwrap();
+        let point_id = point.id();
+        let point_position = point.position();
+        let anchor = layer.anchors().next().unwrap();
+        let anchor_id = anchor.id();
+        let transaction = project
+            .begin_document_edit_transaction(
+                source,
+                "agent: final object delta",
+                Vec::new(),
+                vec![DocumentLayerEdit::new(
+                    project.capture_document_layer(&a).unwrap(),
+                    vec![
+                        DocumentEditOperation::SetWidth(600.0),
+                        DocumentEditOperation::SetWidth(500.0),
+                        DocumentEditOperation::SetPoint {
+                            point: point_id,
+                            position: Point::new(12.0, 6.0),
+                        },
+                        DocumentEditOperation::SetPoint {
+                            point: point_id,
+                            position: point_position,
+                        },
+                        DocumentEditOperation::SetAnchor {
+                            anchor: anchor_id,
+                            position: Point::new(70.0, 150.0),
+                        },
+                        DocumentEditOperation::SetAnchor {
+                            anchor: anchor_id,
+                            position: Point::new(75.0, 155.0),
+                        },
+                    ],
+                )],
+            )
+            .unwrap();
+
+        let DocumentEditTransactionOutcome::Changed {
+            changed_objects, ..
+        } = project
+            .commit_document_edit_transaction(transaction)
+            .unwrap()
+        else {
+            panic!("the anchor must change");
+        };
+
+        assert_eq!(
+            changed_objects,
+            vec![DocumentEditChangedObject {
+                glyph: "A".into(),
+                glyph_id,
+                layer: a.layer.clone(),
+                object: DocumentEditObjectKind::Anchor(anchor_id),
+            }]
+        );
+        assert_eq!(width(&project, &a), 500.0);
+        assert_eq!(
+            project
+                .document_layer("A", &a.layer)
+                .unwrap()
+                .anchors()
+                .next()
+                .unwrap()
+                .position(),
+            Point::new(75.0, 155.0)
+        );
+    }
+
+    #[test]
     fn invalid_third_operation_leaves_document_dirty_state_and_histories_untouched() {
         let project = project();
         let source = project.source_id(0).unwrap();
@@ -861,6 +1026,8 @@ mod tests {
         let (a_point, a_anchor) = point_and_anchor(&project, &a);
         let point_id_before = a_point;
         let anchor_id_before = a_anchor;
+        let a_glyph_id = project.document_glyph("A").unwrap().id();
+        let b_glyph_id = project.document_glyph("B").unwrap().id();
         let before_revision = project.document_revision();
         let transaction = project
             .begin_document_edit_transaction(
@@ -896,6 +1063,7 @@ mod tests {
             before_revision: committed_before,
             after_revision: committed_after,
             change,
+            changed_objects,
             history_group,
         } = committed
         else {
@@ -905,6 +1073,35 @@ mod tests {
         assert_eq!(committed_before, before_revision);
         assert_eq!(committed_after, before_revision + 1);
         assert_eq!(change.affected_layers(), [a.clone(), b.clone()]);
+        assert_eq!(
+            changed_objects,
+            vec![
+                DocumentEditChangedObject {
+                    glyph: "A".into(),
+                    glyph_id: a_glyph_id,
+                    layer: a.layer.clone(),
+                    object: DocumentEditObjectKind::Width,
+                },
+                DocumentEditChangedObject {
+                    glyph: "A".into(),
+                    glyph_id: a_glyph_id,
+                    layer: a.layer.clone(),
+                    object: DocumentEditObjectKind::Point(a_point),
+                },
+                DocumentEditChangedObject {
+                    glyph: "A".into(),
+                    glyph_id: a_glyph_id,
+                    layer: a.layer.clone(),
+                    object: DocumentEditObjectKind::Anchor(a_anchor),
+                },
+                DocumentEditChangedObject {
+                    glyph: "B".into(),
+                    glyph_id: b_glyph_id,
+                    layer: b.layer.clone(),
+                    object: DocumentEditObjectKind::Width,
+                },
+            ]
+        );
         assert_eq!(
             project.document_edit_history_group_name(history_group),
             Some("agent: widen A and B")
