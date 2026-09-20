@@ -10,11 +10,10 @@ use crate::application::view::recipes;
 use crate::application::view::{label, text_input};
 use crate::application::widgets::scroll_viewport::portal;
 use crate::application::widgets::selectable_text::selectable_text;
-use crate::application::widgets::text_undo_guard::guard_text_undo;
+use crate::application::widgets::source_text_area::source_text_area;
 use crate::application::workspace::Workspace;
 use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
-use xilem::InsertNewline;
 use xilem::WidgetView;
 use xilem::style::Style;
 use xilem::view::sized_box;
@@ -30,7 +29,7 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
         } else {
             "Not saved"
         };
-        guard_text_undo(xcolumn(
+        xcolumn(
             Region::List,
             (
                 label(dirty)
@@ -52,53 +51,45 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
                 .corner_radius(crate::application::view::design::Radius::None.length()),
                 sized_box(
                     portal(
-                        text_input(draft.content, |app: &mut Workspace, value| {
+                        source_text_area(draft.content, |app: &mut Workspace, value| {
                             app.script_content_changed(value);
                         })
-                        .font(masonry::parley::GenericFamily::Monospace)
-                        .insert_newline(InsertNewline::OnEnter)
-                        .clip(true)
-                        .placeholder("Python recipe source")
-                        .text_color(pal.text)
-                        .placeholder_color(pal.text_muted)
-                        .background_color(pal.field())
-                        .border_color(pal.field_outline)
-                        .border_width(Stroke::Hairline.length())
-                        .corner_radius(crate::application::view::design::Radius::None.length()),
+                        .text_color(pal.text),
                     )
                     .must_fill(true),
                 )
-                .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(280.0)))),
+                .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(280.0))))
+                .padding(Space::Sm)
+                .background_color(pal.field())
+                .border_color(pal.field_outline)
+                .border_width(Stroke::Hairline.length())
+                .corner_radius(crate::application::view::design::Radius::None.length()),
                 label("Parameters · JSON object")
                     .text_size(TextSize::Caption.px())
                     .color(pal.text_muted),
                 sized_box(
                     portal(
-                        text_input(
+                        source_text_area(
                             app.scripts.parameters.clone(),
                             |app: &mut Workspace, value| {
                                 app.script_parameters_changed(value);
                             },
                         )
-                        .font(masonry::parley::GenericFamily::Monospace)
-                        .insert_newline(InsertNewline::OnEnter)
-                        .clip(true)
-                        .placeholder("{\"recipe\":\"list\"}")
-                        .text_color(pal.text)
-                        .placeholder_color(pal.text_muted)
-                        .background_color(pal.field())
-                        .border_color(pal.field_outline)
-                        .border_width(Stroke::Hairline.length())
-                        .corner_radius(crate::application::view::design::Radius::None.length()),
+                        .text_color(pal.text),
                     )
                     .must_fill(true),
                 )
-                .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(88.0)))),
+                .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(88.0))))
+                .padding(Space::Sm)
+                .background_color(pal.field())
+                .border_color(pal.field_outline)
+                .border_width(Stroke::Hairline.length())
+                .corner_radius(crate::application::view::design::Radius::None.length()),
                 selectable_text::<Workspace, ()>(app.script_scope_label())
                     .text_size(TextSize::Body.px())
                     .color(pal.text_muted),
             ),
-        ))
+        )
     });
     let notice = app
         .scripts
@@ -301,7 +292,7 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
                     .text_size(TextSize::Body.px())
                     .color(pal.text_muted),
                 editor,
-                app.scripts.draft.is_none().then(|| {
+                (!app.scripts.draft.is_some()).then(|| {
                     selectable_text::<Workspace, ()>(
                         "Open a completed Python artifact from Chat to begin editing.",
                     )
