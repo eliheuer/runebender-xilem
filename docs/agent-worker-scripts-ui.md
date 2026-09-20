@@ -24,6 +24,7 @@ Cross-source and all-master mutation must remain unavailable until an engine-bac
 
 The UI was designed with existing Xilem and Masonry controls, palette tokens, and the shared text-input behavior.
 The multiline editor uses the framework's `InsertNewline::OnEnter` behavior and carries no promise of source-code syntax support.
+The shared draggable rail splitter lets users widen the editor for longer source lines.
 The Scripts rail is reachable for a headless native capture with `RUNEBENDER_RAIL=scripts`.
 The expected visual proof is an idle Gray and Light capture with an unsaved draft, editable parameters, and the explicit glyph/source scope visible.
 That capture does not prove foreground pointer, IME, GPU, or browser-process behavior.

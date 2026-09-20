@@ -3,7 +3,9 @@
 
 //! The non-executing Scripts rail: draft editing and runtime availability.
 
-use crate::application::view::design::{Region, Space, Stroke, TextSize, column as xcolumn};
+use crate::application::view::design::{
+    ControlSize, Region, Space, Stroke, TextSize, column as xcolumn,
+};
 use crate::application::view::recipes;
 use crate::application::view::{label, text_input};
 use crate::application::widgets::scroll_viewport::portal;
@@ -82,7 +84,7 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
                     .corner_radius(crate::application::view::design::Radius::None.length()),
                 )
                 .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(88.0)))),
-                label(app.script_scope_label())
+                selectable_text::<Workspace, ()>(app.script_scope_label())
                     .text_size(TextSize::Body.px())
                     .color(pal.text_muted),
             ),
@@ -92,7 +94,7 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
         .scripts
         .notice
         .clone()
-        .map(|text| label(text).color(pal.text_muted));
+        .map(|text| selectable_text::<Workspace, ()>(text).color(pal.text_muted));
     #[cfg(not(target_arch = "wasm32"))]
     let saved_rows = app
         .scripts
@@ -138,21 +140,30 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
     let library_controls = xcolumn(
         Region::List,
         (
-            recipes::toggle(
-                pal,
-                "Choose Scripts folder".into(),
-                false,
-                |app: &mut Workspace| app.choose_script_library(),
-            ),
+            recipes::toggle(pal, "Choose folder".into(), false, |app: &mut Workspace| {
+                app.choose_script_library();
+            })
+            .dims(Dimensions::new(
+                Dim::Stretch,
+                Dim::from(ControlSize::Control),
+            )),
             app.scripts.draft.is_some().then(|| {
                 recipes::toggle(pal, "Save".into(), false, |app: &mut Workspace| {
                     app.save_script_draft()
                 })
+                .dims(Dimensions::new(
+                    Dim::Stretch,
+                    Dim::from(ControlSize::Control),
+                ))
             }),
             app.scripts.library.as_ref().map(|_| {
                 recipes::toggle(pal, "Refresh".into(), false, |app: &mut Workspace| {
                     app.refresh_script_library()
                 })
+                .dims(Dimensions::new(
+                    Dim::Stretch,
+                    Dim::from(ControlSize::Control),
+                ))
             }),
             app.scripts.library.as_ref().map(|_| {
                 recipes::field_bare(
@@ -175,14 +186,13 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
         Region::List,
         (
             (app.scripts.running.is_none() && app.scripts.draft.is_some()).then(|| {
-                recipes::toggle(
-                    pal,
-                    "Run captured scope".into(),
-                    true,
-                    |app: &mut Workspace| {
-                        app.run_script_draft();
-                    },
-                )
+                recipes::toggle(pal, "Run".into(), true, |app: &mut Workspace| {
+                    app.run_script_draft();
+                })
+                .dims(Dimensions::new(
+                    Dim::Stretch,
+                    Dim::from(ControlSize::Control),
+                ))
             }),
             app.scripts.running.as_ref().map(|run| {
                 recipes::toggle(
@@ -191,6 +201,10 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
                     false,
                     |app: &mut Workspace| app.cancel_script_run(),
                 )
+                .dims(Dimensions::new(
+                    Dim::Stretch,
+                    Dim::from(ControlSize::Control),
+                ))
             }),
         ),
     );
@@ -208,7 +222,7 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
         xcolumn(
             Region::List,
             (
-                label(format!(
+                selectable_text::<Workspace, ()>(format!(
                     "Report · inspected {} layers · proposes {} changes in {} layers",
                     proposal.input.layers.len(),
                     operations,
@@ -227,7 +241,7 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
                     .text_size(TextSize::Body.px())
                 }),
                 stale.clone().map(|reason| {
-                    label(format!("Preview stale · {reason}"))
+                    selectable_text::<Workspace, ()>(format!("Preview stale · {reason}"))
                         .text_size(TextSize::Body.px())
                         .color(pal.role("danger"))
                 }),
@@ -259,14 +273,16 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
             Region::Panel,
             (
                 label("Scripts").color(pal.text),
-                label("Python drafts are not run when opened.")
+                selectable_text::<Workspace, ()>("Opening never runs a draft.")
                     .text_size(TextSize::Body.px())
                     .color(pal.text_muted),
                 editor,
                 (!app.scripts.draft.is_some()).then(|| {
-                    label("Open a completed Python artifact from Chat to begin editing.")
-                        .text_size(TextSize::Body.px())
-                        .color(pal.text_muted)
+                    selectable_text::<Workspace, ()>(
+                        "Open a completed Python artifact from Chat to begin editing.",
+                    )
+                    .text_size(TextSize::Body.px())
+                    .color(pal.text_muted)
                 }),
                 library_controls,
                 run_controls,

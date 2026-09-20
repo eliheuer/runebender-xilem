@@ -137,7 +137,7 @@ impl Workspace {
             revision: None,
             saved_name: None,
         });
-        self.scripts.notice = Some("Opened chat artifact without saving or running it".into());
+        self.scripts.notice = Some("Opened without saving or running".into());
         self.rail = Rail::Scripts;
     }
 
