@@ -10,14 +10,21 @@
 //! second row.
 
 use crate::application::editor::tools::nodes::file_label;
+use crate::application::editor::tools::nodes_controls::{
+    apply_live_comparison, cancel_live_comparison, change_live_graph, clear_live_results,
+    edit_live_code, edit_live_scope, move_live_node, run_live_comparison, select_live_comparison,
+};
 use crate::application::view::canvas::nodes::{NodesEvent, nodes_canvas};
-use crate::application::view::design::{Region, Space, TextSize, column as xcolumn, row as xrow};
+use crate::application::view::design::{Region, Space, TextSize, row as xrow};
 use crate::application::view::render::bottom_keyline;
-use crate::application::view::{design, label, recipes};
+use crate::application::view::{design, label, recipes, text_input};
 use crate::application::workspace::Workspace;
 use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
+use masonry::properties::LineBreaking;
 use masonry::properties::types::CrossAxisAlignment;
+use runebender::document::nodes::{NodeGraph, Registry};
+use runebender::document::nodes_session::GraphGuard;
 use runebender::ui::nodes::{
     ContentState, ImageContent, ImmutablePng, NodeContent, NodeContentMap, ScriptContent,
 };
@@ -25,31 +32,30 @@ use std::sync::Arc;
 use xilem::WidgetView;
 use xilem::style::Style;
 use xilem::view::FlexExt as _;
-use xilem::view::{FlexSpacer, flex_col, sized_box};
+use xilem::view::{FlexSpacer, flex_col, portal, sized_box};
 
 #[cfg(unix)]
 use crate::application::editor::tools::nodes_execution::LiveGraphPhase;
 #[cfg(unix)]
 use crate::application::platform::nodes_proofs::NodeProofInspection;
 #[cfg(unix)]
-use runebender::document::agent::ToolCall;
-use runebender::document::nodes::Registry;
-#[cfg(unix)]
-use runebender::document::nodes_session::{
-    GraphEdit, GraphGuard, GraphInteractiveMutationRequest, GraphMutation, GraphRunHandle,
-    GraphRunStatus,
-};
+use runebender::document::nodes_session::{GraphRunHandle, GraphRunStatus};
 
 struct CanvasProjection {
-    graph: Arc<runebender::document::nodes::NodeGraph>,
+    graph: Arc<NodeGraph>,
+
     registry: Arc<Registry>,
     rows: Arc<std::collections::BTreeMap<u32, crate::application::editor::tools::nodes::RowState>>,
     content: Arc<NodeContentMap>,
     problems: Vec<String>,
     live: bool,
     running: bool,
+    can_cancel: bool,
+    can_clear: bool,
     can_apply: bool,
     report: Option<String>,
+    live_guard: Option<GraphGuard>,
+    source: Option<usize>,
 }
 
 fn fixture_png() -> ImmutablePng {
@@ -135,8 +141,12 @@ fn legacy_projection(app: &Workspace) -> Option<CanvasProjection> {
         problems: state.problems.iter().map(ToString::to_string).collect(),
         live: false,
         running: app.nodes.job.is_some(),
+        can_cancel: false,
+        can_clear: false,
         can_apply: false,
         report: None,
+        live_guard: None,
+        source: None,
     })
 }
 
@@ -148,42 +158,19 @@ fn content_size(app: &Workspace, node: u32, height: f64) -> [f32; 2] {
 }
 
 #[cfg(unix)]
-fn png_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
-    const SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
-    (bytes.len() >= 24 && &bytes[..8] == SIGNATURE).then(|| {
-        (
-            u32::from_be_bytes(bytes[16..20].try_into().unwrap()),
-            u32::from_be_bytes(bytes[20..24].try_into().unwrap()),
-        )
-    })
-}
-
-#[cfg(unix)]
 fn proof_images(
     state: &crate::application::editor::tools::nodes_workspace::LiveNodesState,
     handle: GraphRunHandle,
+    cache: &std::collections::BTreeMap<String, ImmutablePng>,
 ) -> Option<std::collections::BTreeMap<u32, ImmutablePng>> {
     let inspection = state.session.inspect_run(handle)?;
-    let NodeProofInspection::Completed {
-        artifact_ids,
-        proofs,
-    } = state.proofs.inspect(handle.get())?
+    let NodeProofInspection::Completed { artifact_ids, .. } = state.proofs.inspect(handle.get())?
     else {
         return None;
     };
     let mut images = std::collections::BTreeMap::new();
     for (index, capture) in inspection.identity.capture.proofs.iter().enumerate() {
-        let proof = proofs.get(index)?;
-        let (width, height) = png_dimensions(&proof.png)?;
-        images.insert(
-            capture.node,
-            ImmutablePng {
-                bytes: Arc::from(proof.png.clone()),
-                width,
-                height,
-                output_hash: artifact_ids.get(index)?.clone(),
-            },
-        );
+        images.insert(capture.node, cache.get(artifact_ids.get(index)?)?.clone());
     }
     Some(images)
 }
@@ -218,13 +205,14 @@ fn live_projection(app: &Workspace) -> Option<CanvasProjection> {
                 .unwrap_or_else(|| "Comparison did not complete".into()),
         ),
     };
-    let current_images = latest.and_then(|handle| proof_images(state, handle));
+    let current_images =
+        latest.and_then(|handle| proof_images(state, handle, &app.nodes.proof_images));
     let previous_images = latest.and_then(|latest| {
         state
             .handles
             .range(..latest)
             .rev()
-            .find_map(|handle| proof_images(state, *handle))
+            .find_map(|handle| proof_images(state, *handle, &app.nodes.proof_images))
     });
     let mut content = NodeContentMap::default();
     for node in &snapshot.graph.nodes {
@@ -288,6 +276,37 @@ fn live_projection(app: &Workspace) -> Option<CanvasProjection> {
                     | LiveGraphPhase::ProofsRunning
             )
         });
+    let can_cancel = state.handles.iter().any(|handle| {
+        app.nodes.live_ui_handles.contains(&handle.get())
+            && state.session.inspect_run(*handle).is_some_and(|run| {
+                matches!(run.status, GraphRunStatus::Queued | GraphRunStatus::Running)
+            })
+    });
+    let can_clear = state.handles.iter().any(|handle| {
+        app.nodes.live_ui_handles.contains(&handle.get())
+            && state.session.inspect_run(*handle).is_some_and(|run| {
+                matches!(
+                    run.status,
+                    GraphRunStatus::Completed
+                        | GraphRunStatus::Failed
+                        | GraphRunStatus::Cancelled
+                        | GraphRunStatus::Stale
+                        | GraphRunStatus::Released
+                )
+            })
+    });
+    let live_guard = GraphGuard {
+        identity: snapshot.identity.clone(),
+        revision: snapshot.revision,
+    };
+    let source = snapshot
+        .graph
+        .nodes
+        .iter()
+        .find(|node| node.type_name == "live.font")
+        .and_then(|node| node.values.get("source"))
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|source| usize::try_from(source).ok());
     Some(CanvasProjection {
         graph: Arc::new(snapshot.graph),
         registry: Arc::new(Registry::core()),
@@ -300,6 +319,8 @@ fn live_projection(app: &Workspace) -> Option<CanvasProjection> {
             .collect(),
         live: true,
         running,
+        can_cancel,
+        can_clear,
         can_apply: fresh && summary.as_ref().is_some_and(|summary| summary.can_apply),
         report: summary.map(|summary| {
             if summary.stderr.is_empty() {
@@ -308,6 +329,8 @@ fn live_projection(app: &Workspace) -> Option<CanvasProjection> {
                 format!("{} · {}", summary.report, summary.stderr)
             }
         }),
+        live_guard: Some(live_guard),
+        source,
     })
 }
 
@@ -319,156 +342,18 @@ fn projection(app: &Workspace) -> Option<CanvasProjection> {
     legacy_projection(app)
 }
 
-fn select_live_comparison(app: &mut Workspace) {
-    #[cfg(unix)]
-    match app.ensure_live_graph() {
-        Ok(()) => {
-            app.nodes.live_selected = true;
-            app.nodes.fit_request = app.nodes.fit_request.wrapping_add(1);
-            app.note = "Unsaved live comparison opened".into();
-        }
-        Err(error) => app.note = error,
-    }
-    #[cfg(not(unix))]
-    {
-        app.note = "Live comparison execution is available in the native editor".into();
-    }
-}
-
-#[cfg(unix)]
-fn live_interactive_edit(app: &mut Workspace, edit: GraphEdit) {
-    let result = app
-        .live_graph_session_mut()
-        .ok_or_else(|| "Open the live comparison before editing its graph".to_string())
-        .and_then(|session| {
-            let snapshot = session.snapshot();
-            session
-                .mutate_interactive(GraphInteractiveMutationRequest {
-                    guard: GraphGuard {
-                        identity: snapshot.identity,
-                        revision: snapshot.revision,
-                    },
-                    mutation: GraphMutation::Patch { edits: vec![edit] },
-                })
-                .map_err(|error| error.to_string())
-        });
-    if let Err(error) = result {
-        app.note = error;
-    }
-}
-
-fn edit_live_code(app: &mut Workspace, node: u32, code: String) {
-    #[cfg(unix)]
-    live_interactive_edit(
-        app,
-        GraphEdit::SetValue {
-            node,
-            field: "code".into(),
-            value: serde_json::Value::String(code),
-        },
-    );
-    #[cfg(not(unix))]
-    {
-        let _ = (node, code);
-        app.note = "Live graph editing is available in the native editor".into();
-    }
-}
-
-fn move_live_node(app: &mut Workspace, node: u32, pos: [f32; 2]) {
-    #[cfg(unix)]
-    live_interactive_edit(app, GraphEdit::MoveNode { node, pos });
-    #[cfg(not(unix))]
-    {
-        let _ = (node, pos);
-        app.note = "Live graph editing is available in the native editor".into();
-    }
-}
-
-fn run_live_comparison(app: &mut Workspace) {
-    #[cfg(unix)]
-    {
-        let Some(session) = app.live_graph_session() else {
-            app.note = "Open the live comparison before running it".into();
-            return;
-        };
-        let snapshot = session.snapshot();
-        let Some(source) = app.font.project.source_id(app.font.active()) else {
-            app.note = "The active source is unavailable".into();
-            return;
-        };
-        let operation = app
-            .live_nodes
-            .as_ref()
-            .map(|state| state.next_job)
-            .unwrap_or_default();
-        let response = app.call_live(&ToolCall {
-            name: "nodes_run".into(),
-            arguments: serde_json::json!({
-                "expected_document_epoch": snapshot.identity.document_epoch,
-                "guard": {
-                    "identity": snapshot.identity,
-                    "semantic_revision": snapshot.semantic_revision,
-                    "semantic_hash": snapshot.semantic_hash,
-                },
-                "actor": "native-nodes-ui",
-                "operation_key": format!("run-{operation}"),
-                "source": source.0,
-                "glyphs": [app.session.glyph_name.clone()],
-            }),
-        });
-        app.note = if response["ok"] == serde_json::Value::Bool(true) {
-            "Live comparison running".into()
-        } else {
-            response["error"]
-                .as_str()
-                .unwrap_or("Live comparison could not start")
-                .into()
-        };
-    }
-    #[cfg(not(unix))]
-    {
-        app.note = "Live comparison execution is available in the native editor".into();
-    }
-}
-
-fn apply_live_comparison(app: &mut Workspace) {
-    #[cfg(unix)]
-    {
-        let Some(state) = app.live_nodes.as_ref() else {
-            app.note = "No live comparison is open".into();
-            return;
-        };
-        let Some(handle) = state.handles.iter().next_back().copied() else {
-            app.note = "Run the comparison before applying it".into();
-            return;
-        };
-        let identity = state.session.snapshot().identity;
-        let epoch = identity.document_epoch.clone();
-        let revision = app.font.project.document_revision();
-        let response = app.call_live(&ToolCall {
-            name: "nodes_apply".into(),
-            arguments: serde_json::json!({
-                "expected_document_epoch": epoch,
-                "identity": identity,
-                "handle": handle,
-                "actor": "native-nodes-ui",
-                "operation_key": format!("apply-{}-{revision}", handle.get()),
-                "authorization": "user-approved",
-            }),
-        });
-        app.note = if response["ok"] == serde_json::Value::Bool(true) {
-            "Applied the selected live comparison; use Undo to revert it".into()
-        } else {
-            response["error"]
-                .as_str()
-                .unwrap_or("Live comparison could not be applied")
-                .into()
-        };
-    }
-    #[cfg(not(unix))]
-    {
-        app.note = "Live comparison execution is available in the native editor".into();
-    }
+fn bounded_message(
+    pal: &crate::application::view::theme::Palette,
+    text: String,
+) -> impl WidgetView<Workspace> + use<> {
+    sized_box(portal(
+        label(text)
+            .text_size(TextSize::Caption.px())
+            .color(pal.text)
+            .prop(LineBreaking::WordWrap)
+            .padding(Space::Sm),
+    ))
+    .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(64.0))))
 }
 
 pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
@@ -517,7 +402,12 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
     });
     let live = view.live;
     let running = view.running;
+    let can_cancel = view.can_cancel;
+    let can_clear = view.can_clear;
     let can_apply = view.can_apply;
+    let live_guard = view.live_guard.clone();
+    let source = view.source;
+    let original_graph = view.graph.clone();
     // The left tab rail and the inspector's first header occupy this same
     // 36-pixel band. One square, keylined control style keeps the file tabs
     // and commands from reading as two unrelated toolbars.
@@ -567,6 +457,28 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                             }
                         },
                     ),
+                    (live && can_cancel).then(|| {
+                        recipes::toggle(
+                            pal,
+                            "Cancel".into(),
+                            true,
+                            cancel_live_comparison,
+                        )
+                    }),
+                    live.then(|| {
+                        recipes::toggle(
+                            pal,
+                            if can_clear { "Clear results" } else { "Nothing to clear" }.into(),
+                            can_clear,
+                            move |app: &mut Workspace| {
+                                if can_clear {
+                                    clear_live_results(app);
+                                } else {
+                                    app.note = "No terminal native Nodes results to clear".into();
+                                }
+                            },
+                        )
+                    }),
                     live.then(|| {
                         recipes::toggle(
                             pal,
@@ -594,21 +506,36 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         pal.outline,
     );
     let choices = (!live).then(|| nodes_choices(app)).flatten();
-    let report = view.report.map(|report| {
-        label(report)
-            .text_size(TextSize::Caption.px())
-            .color(pal.text)
-            .padding(Space::Sm)
-    });
-    let problems: Vec<_> = view
-        .problems
-        .iter()
-        .map(|p| {
-            label(p.clone())
+    let scope = live.then(|| {
+        xrow(
+            Region::List,
+            (
+                label(source.map_or_else(
+                    || "Source unavailable".into(),
+                    |source| format!("Source {source}"),
+                ))
                 .text_size(TextSize::Caption.px())
-                .color(pal.text)
-        })
-        .collect();
+                .color(pal.text_muted),
+                label("Glyph scope")
+                    .text_size(TextSize::Caption.px())
+                    .color(pal.text_muted),
+                sized_box(text_input(
+                    app.nodes.live_scope.clone(),
+                    |app: &mut Workspace, scope| {
+                        edit_live_scope(app, scope);
+                    },
+                ))
+                .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
+                .flex(1.0),
+            ),
+        )
+        .padding(Space::Sm)
+        .gap(Space::Sm)
+        .background_color(pal.panel)
+    });
+    let report = view.report.map(|report| bounded_message(pal, report));
+    let problems =
+        (!view.problems.is_empty()).then(|| bounded_message(pal, view.problems.join("\n")));
     let canvas = nodes_canvas(
         view.graph,
         view.registry,
@@ -620,8 +547,11 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         move |app: &mut Workspace, ev| match ev {
             NodesEvent::Changed(graph) => {
                 if live {
-                    app.note =
-                        "The live comparison topology is fixed; edit code or move its nodes".into();
+                    if let Some(guard) = live_guard.clone() {
+                        change_live_graph(app, guard, (*original_graph).clone(), graph);
+                    } else {
+                        app.note = "The live comparison snapshot is unavailable".into();
+                    }
                 } else {
                     app.nodes_changed(graph);
                 }
@@ -657,9 +587,10 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
     Either::B(
         flex_col((
             strip,
+            scope,
             choices,
             report,
-            xcolumn(Region::List, problems),
+            problems,
             sized_box(canvas)
                 .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
                 .flex(1.0),

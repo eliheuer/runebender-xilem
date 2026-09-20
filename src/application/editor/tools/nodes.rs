@@ -17,6 +17,7 @@ use std::sync::{Arc, Mutex};
 use runebender::document::nodes::{NodeGraph, Problem, Registry};
 use runebender::document::nodes_run::{self, Event, RunReport, Status};
 use runebender::document::proposal;
+use runebender::ui::nodes::ImmutablePng;
 
 use crate::application::editor::tools::local_ai::{foreground_is_current, foreground_revisions};
 use crate::application::workspace::{Mode, Workspace};
@@ -91,6 +92,12 @@ pub(crate) struct NodesState {
     ///
     /// The session itself is Workspace-owned; this is only the selected canvas surface.
     pub(crate) live_selected: bool,
+    /// User-visible comma- or whitespace-separated glyph names captured by the next comparison.
+    pub(crate) live_scope: String,
+    /// Runs started by this native surface; agent-owned handles remain untouched by Clear.
+    pub(crate) live_ui_handles: std::collections::BTreeSet<u64>,
+    /// Exact proof bytes retained once per immutable artifact identity for presentation.
+    pub(crate) proof_images: BTreeMap<String, ImmutablePng>,
     /// Presentation-only inline content sizes keyed by graph node identity.
     pub(crate) content_sizes: BTreeMap<u32, [f32; 2]>,
 }

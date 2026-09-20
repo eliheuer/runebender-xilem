@@ -42,3 +42,9 @@ The native Comparison entry reads the canonical Workspace-owned `GraphSession` s
 It projects retained Python state, reports, and exact paired proof PNGs into `NodeContentMap` without giving the canvas an executor or live font handle.
 Inline code commits and completed header drags each become one revision-guarded interactive graph edit; resizing remains presentation-only.
 Run and explicit Apply use the same typed live-command adapter as agent requests, and Apply remains unavailable until both current compiled-family proofs complete.
+The comparison bar shows the stable `live.font` source and an editable, non-empty glyph-name scope initialized from the explicit overview selection.
+Native Run, Cancel, Clear results, and Apply commands live outside the view in `editor/tools/nodes_controls.rs`.
+Clear releases only terminal handles started by the native surface, leaving agent-owned work alone.
+Completed proof PNG bytes are copied into an `Arc` once per artifact identity and reused across view rebuilds.
+Reports and graph diagnostics use bounded wrapping portals instead of extending the toolbar on one line.
+Topology edits are converted into guarded graph patches against the exact snapshot displayed by the canvas, so an intervening agent edit rejects rather than being overwritten.

@@ -23,6 +23,7 @@ No release has been published yet.
 
 - Added native Nodes content children for multiline Python editing and immutable PNG specimen comparison.
   Code editing keeps platform focus, selection, clipboard, newline and local undo behavior without automatic execution; proof nodes retain prior images while running and support independent pan, zoom and presentation-only resizing.
+  Live comparisons expose their source and glyph scope, support guarded topology edits plus Run, Cancel, Clear and Apply controls, and reuse retained proof bytes by immutable artifact identity.
 
 - Added asynchronous native `proof_start`, `proof_status`, `proof_cancel` and `proof_release` tools.
   Completed proofs return compiled PNG images through MCP with immutable font hashes, captured revisions and explicit stale-result labels.
