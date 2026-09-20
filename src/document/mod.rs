@@ -44,6 +44,7 @@ pub mod new_font;
 pub mod nodes;
 pub mod nodes_run;
 pub mod project;
+pub mod proof_jobs;
 pub mod proposal;
 pub mod source;
 mod source_format;
