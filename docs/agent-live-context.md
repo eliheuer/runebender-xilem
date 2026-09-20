@@ -17,7 +17,8 @@ Every result delivered by the document mailbox includes `document_epoch`, `live_
 The epoch identifies this endpoint lifetime, including across reopen and process restart.
 It is an identity guard, not an authentication credential.
 Pass `expected_document_epoch` with the epoch you read to reject another lifetime before the handler executes.
-Omitting it retains compatibility with existing clients, whose socket paths still select an explicit document.
+Omitting it retains compatibility with older tools, whose socket paths still select an explicit document.
+The receipt-backed `agent_apply`, `agent_receipt` and `agent_history` tools require it.
 The adapter never follows whichever window becomes active or reconnects to a different endpoint automatically.
 Transport failures before application dispatch may lack an epoch and document revision.
 
@@ -52,7 +53,8 @@ A headless engine-only host returns `unsupported_context` instead of inventing a
 These are opaque session identities; clients must scope them by document epoch, source/layer, and branch where applicable.
 They survive supported rename and nonstructural edits, but are not persistent identifiers for save/reopen.
 Disk commands can load a fresh Project for each call, so these IDs do not establish identity between disk calls.
-Existing edit operations still use explicit glyph names and revision-scoped point indices; exposing IDs does not yet implement ID-addressed mutation.
+Legacy proposal operations use explicit glyph names and revision-scoped point indices.
+The [receipt-backed transaction tools](agent-live-transactions.md) use guarded logical glyph identities and stable point/anchor IDs for a bounded batch.
 Experiment reads identify their branch and retain geometry identities but do not currently expose a logical root glyph ID.
 
 Canonical live responses report `document_revision` and `saved=false`.
@@ -64,8 +66,9 @@ Use `source_id` for uniform source identity; the legacy `source` field is retain
 Socket requests and CLI/MCP input frames are bounded to 8 MiB.
 The socket queue still has one pending slot and the editor response timeout remains 30 seconds.
 A timeout or disconnect does not prove an operation failed to commit.
-Receipt lookup, retry deduplication, grouped atomic apply and cancellation are not implemented in this checkpoint.
-Do not blindly repeat a foreground mutation after a lost response.
+`agent_apply` now provides grouped atomic publication and in-memory retry receipts; `agent_receipt` reconciles a lost apply response.
+Independent edit cancellation remains unsupported.
+Do not blindly repeat legacy proposal/experiment mutations or history replay after a lost response.
 
 MCP negotiation recognizes `2024-11-05`, `2025-03-26`, `2025-06-18`, and `2025-11-25`, and falls back to `2025-11-25` for an unknown version.
 Only the tools capability is advertised.
@@ -81,7 +84,7 @@ Canonical inspection coverage also verifies identity retention through a width e
 CLI/MCP process tests cover bounded input and protocol negotiation.
 These checks do not certify native pointer/IME behavior, actual model-client image delivery, compiled proof lineage, or the remaining transaction milestone.
 
-The checkpoint passed 808 regular tests and both opt-in real-font tests (810 executed); the two local-model tests remain unrun.
+The original context checkpoint passed 808 regular tests and both opt-in real-font tests (810 executed); the two local-model tests remain unrun.
 Strict native and browser Clippy, warnings-denied documentation, the native release build, dependency advisories, formatting and copyright checks passed.
 The browser quality matrix passed at DPR 1, 2 and 1.25, including unsaved-outline export, drag, undo/redo and themes.
 Gray and Light native headless captures were inspected.

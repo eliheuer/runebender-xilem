@@ -65,6 +65,12 @@ pub(crate) struct OverviewEditBatch {
 /// before it. The depth keeps metadata Undo ordered with outline edits.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum MetadataEdit {
+    #[cfg(unix)]
+    AgentGroup {
+        group: runebender::document::project::EditHistoryGroupId,
+        addresses: Vec<runebender::document::variable::GlyphLayerAddress>,
+        overview_undo_depth: usize,
+    },
     Rename {
         before: String,
         after: String,
@@ -110,6 +116,10 @@ pub(crate) struct Workspace {
     /// The live document's private agent endpoint, serviced on the UI thread.
     #[cfg(unix)]
     pub(crate) live: Option<runebender::document::live_socket::Server>,
+    /// Bounded actor ledgers, bound lazily to the live endpoint's exact epoch.
+    #[cfg(unix)]
+    pub(crate) agent_sessions:
+        std::collections::BTreeMap<String, runebender::document::agent_session::AgentSession>,
 
     pub(crate) font: FontModel,
     pub(crate) palette: Arc<Palette>,

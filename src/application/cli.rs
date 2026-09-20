@@ -132,8 +132,8 @@ enum Command {
         action: AgentAction,
     },
     /// An MCP server over stdio: the same tool list as `agent`, for
-    /// a chat client that speaks the Model Context Protocol. Nothing
-    /// in it edits the foreground; every change is a proposal.
+    /// a chat client that speaks the Model Context Protocol. Disk edits
+    /// remain proposals; live tools can apply explicitly authorized edits.
     Mcp {
         /// The designspace or UFO the client works on.
         #[arg(long, required_unless_present_any = ["session", "live"], conflicts_with_all = ["session", "live"])]
@@ -1855,7 +1855,7 @@ fn mcp_serve(font: Option<&Path>, session: Option<&Path>, live: bool, tool: Opti
                     "name": t.name,
                     "description": t.description,
                     "inputSchema": t.parameters,
-                    "annotations": {"readOnlyHint": matches!(t.name.as_str(), "editor_context" | "project_info" | "font_info" | "read_glyph" | "glyph_inventory" | "design_context" | "experiment_list" | "read_kerning" | "specimen" | "editor_sessions" | "editor_connect" | "proposal_list") || (live_mode && t.name == "proof"), "openWorldHint": !live_mode},
+                    "annotations": {"readOnlyHint": matches!(t.name.as_str(), "agent_receipt" | "editor_context" | "project_info" | "font_info" | "read_glyph" | "glyph_inventory" | "design_context" | "experiment_list" | "read_kerning" | "specimen" | "editor_sessions" | "editor_connect" | "proposal_list") || (live_mode && t.name == "proof"), "openWorldHint": !live_mode},
                 })).collect::<Vec<_>>()
             })),
             "tools/call" => {

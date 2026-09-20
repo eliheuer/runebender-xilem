@@ -2383,6 +2383,18 @@ impl Workspace {
         if !matches!(self.mode, Mode::Overview) {
             return;
         }
+        #[cfg(unix)]
+        if matches!(
+            if redo {
+                self.metadata_redo.last()
+            } else {
+                self.metadata_undo.last()
+            },
+            Some(MetadataEdit::AgentGroup { .. })
+        ) && self.metadata_history_step(redo)
+        {
+            return;
+        }
         let has_overview_batch = if redo {
             !self.overview_redo.is_empty()
         } else {

@@ -7,6 +7,8 @@
 //! several tools in this module beside the session or command machinery it
 //! extends.
 
+#[cfg(unix)]
+pub(crate) mod agent_history;
 pub(crate) mod commands;
 pub(crate) mod inspector;
 pub(crate) mod session;

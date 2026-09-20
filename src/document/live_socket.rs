@@ -57,11 +57,15 @@ impl Pending {
     /// Expired requests are dropped without invoking `handle`.
     pub fn respond(mut self, handle: impl FnOnce(&ToolCall) -> Value) {
         if Instant::now() < self.deadline {
-            let expected = self
-                .call
-                .arguments
-                .as_object_mut()
-                .and_then(|args| args.remove("expected_document_epoch"));
+            let expected = self.call.arguments.get("expected_document_epoch").cloned();
+            // Strict application edit requests retain their required epoch in the typed payload.
+            if !matches!(
+                self.call.name.as_str(),
+                "agent_apply" | "agent_receipt" | "agent_history"
+            ) && let Some(args) = self.call.arguments.as_object_mut()
+            {
+                args.remove("expected_document_epoch");
+            }
             let mut result = if expected
                 .as_ref()
                 .is_some_and(|value| value.as_str() != Some(&self.epoch))

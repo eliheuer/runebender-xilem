@@ -10,20 +10,24 @@ No release has been published yet.
 
 ### Added
 
+- Added native live `agent_apply`, `agent_receipt` and `agent_history` tools with guarded width/point/anchor batches, bounded retry receipts, and shared ordinary/targeted undo.
+  Exact retries do not repeat edits, view refreshes or history entries, including after a lost response or undo.
+  Independent edit cancellation and durable receipt recovery remain unsupported.
+
 - Live context revisions now include the document epoch, preventing identical reopened state from reusing an earlier context token.
 
 - Added bounded in-memory operation receipts and a native background queue for immutable compiled proofs.
-  These runtime primitives are not yet connected to live editing tools.
+  The receipt layer is connected to live edits; the proof queue still needs its application adapter.
 
 - Added bounded canonical edit transactions with grouped history, immutable compiled-proof primitives, and a disposable live-client conformance harness.
-  These engine primitives are not yet exposed as receipt-backed live tools.
+  The transaction engine now backs the receipt-based live tools; compiled proof delivery remains pending.
   CLI-generated live prompts now share MCP's source, authorization and session guidance.
 
 - Added a disposable `agent fixture` process for testing live clients against real application state and ordinary editor undo/redo without opening a window.
 
 - Added native live `editor_context`, session-scoped object IDs in glyph reads, and document epoch guards for external agents.
   Live tools now advertise stable source IDs, and MCP input and protocol negotiation are bounded.
-  This is the first [live context checkpoint](docs/agent-live-context.md); grouped atomic apply, retry receipts, and compiled agent proofs remain pending.
+  This is the first [live context checkpoint](docs/agent-live-context.md); compiled agent proofs remain pending.
 
 - Documented the proposed [live agent-editing architecture](docs/agent-interface-research.md), client connection matrix, source audit, and gated acceptance plan.
   This is research only; it adds no runtime capability.

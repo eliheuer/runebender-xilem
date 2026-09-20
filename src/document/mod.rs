@@ -15,6 +15,7 @@
 //! of those tools as boxes and wires.
 
 pub mod agent;
+pub mod agent_edit;
 pub mod agent_session;
 pub mod axis;
 mod babelfont;

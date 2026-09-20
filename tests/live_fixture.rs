@@ -15,12 +15,21 @@ struct Fixture {
     child: Child,
     input: ChildStdin,
     output: BufReader<ChildStdout>,
+    next_id: u64,
 }
 
 impl Fixture {
     fn start() -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_runebender"))
-            .args(["agent", "fixture", "--duration-seconds", "15"])
+        Self::spawn(Command::new(env!("CARGO_BIN_EXE_runebender")).args([
+            "agent",
+            "fixture",
+            "--duration-seconds",
+            "15",
+        ]))
+    }
+
+    fn spawn(command: &mut Command) -> Self {
+        let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
@@ -31,6 +40,7 @@ impl Fixture {
             child,
             input,
             output,
+            next_id: 0,
         }
     }
 
@@ -48,6 +58,30 @@ impl Fixture {
         writeln!(self.input, "{}", json!({"action":action})).unwrap();
         self.input.flush().unwrap();
         self.read()
+    }
+
+    fn rpc(&mut self, method: &str, params: Value) -> Value {
+        self.next_id += 1;
+        writeln!(
+            self.input,
+            "{}",
+            json!({"jsonrpc":"2.0","id":self.next_id,"method":method,"params":params})
+        )
+        .unwrap();
+        self.input.flush().unwrap();
+        let response = self.read();
+        assert_eq!(
+            response["id"], self.next_id,
+            "MCP reply must match its request"
+        );
+        assert!(response.get("error").is_none(), "{response}");
+        response["result"].clone()
+    }
+
+    fn tool(&mut self, name: &str, arguments: Value) -> Value {
+        let result = self.rpc("tools/call", json!({"name":name,"arguments":arguments}));
+        assert_eq!(result["isError"], false, "{result}");
+        serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap()
     }
 }
 
@@ -113,4 +147,71 @@ fn application_fixture_refreshes_and_undoes_an_agent_edit() {
     assert_eq!(fixture.control("shutdown")["stopped"], true);
     assert!(fixture.child.wait().unwrap().success());
     assert!(!path.exists(), "fixture exit removes its endpoint");
+}
+
+#[test]
+fn mcp_receipt_tools_reconcile_retry_and_real_application_undo() {
+    let mut fixture = Fixture::start();
+    let ready = fixture.read();
+    let endpoint = ready["session"].as_str().unwrap();
+    let mut mcp = Fixture::spawn(Command::new(env!("CARGO_BIN_EXE_runebender")).args([
+        "mcp",
+        "--session",
+        endpoint,
+    ]));
+    let initialized = mcp.rpc("initialize", json!({"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"receipt-conformance","version":"1"}}));
+    assert_eq!(initialized["protocolVersion"], "2025-11-25");
+    let tools = mcp.rpc("tools/list", json!({}));
+    let listed = tools["tools"].as_array().unwrap();
+    let apply = listed
+        .iter()
+        .find(|tool| tool["name"] == "agent_apply")
+        .unwrap();
+    assert_eq!(apply["annotations"]["readOnlyHint"], false);
+    assert_eq!(apply["inputSchema"]["additionalProperties"], false);
+    assert!(
+        apply["inputSchema"]["required"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("expected_document_epoch"))
+    );
+    let receipt_tool = listed
+        .iter()
+        .find(|tool| tool["name"] == "agent_receipt")
+        .unwrap();
+    assert_eq!(receipt_tool["annotations"]["readOnlyHint"], true);
+    let context = mcp.tool("editor_context", json!({}));
+    let epoch = context["document_epoch"].clone();
+    let read = mcp.tool(
+        "read_glyph",
+        json!({"source":0,"glyph":"A","expected_document_epoch":epoch}),
+    );
+    let payload = json!({"expected_document_epoch":epoch,"actor":"mcp-test","operation_key":"one-width-edit","authorization":"user-approved","source":0,"history_name":"MCP width edit","edits":[{"target":{"glyph":"A","glyph_id":read["glyph_id"],"layer":read["layer"],"expected_revision":read["revision"]},"operations":[{"op":"set_width","width":430.0}]}]});
+    let applied = mcp.tool("agent_apply", payload.clone());
+    assert_eq!(applied["root_changed"], true);
+    let state = fixture.control("state");
+    for field in ["canonical_advance", "cache_advance", "session_advance"] {
+        assert_eq!(state[field], 430.0);
+    }
+    let repeated = mcp.tool("agent_apply", payload);
+    assert_eq!(repeated["replayed"], true);
+    assert_eq!(repeated["receipt"], applied["receipt"]);
+    assert_eq!(repeated["document_revision"], applied["document_revision"]);
+    assert_eq!(fixture.control("undo")["canonical_advance"], 412.0);
+    let lookup = json!({"expected_document_epoch":epoch,"actor":"mcp-test","operation_key":"one-width-edit"});
+    let receipt = mcp.tool("agent_receipt", lookup.clone());
+    assert_eq!(receipt["receipt"], applied["receipt"]);
+    assert_eq!(receipt["history_state"], "undone");
+    let mut replay = lookup;
+    replay["direction"] = json!("redo");
+    replay["authorization"] = json!("user-approved");
+    assert_eq!(
+        mcp.tool("agent_history", replay)["history_state"],
+        "applied"
+    );
+    let state = fixture.control("state");
+    assert_eq!(state["session_advance"], 430.0);
+    assert_eq!(state["source_exists"], false);
+    assert_eq!(fixture.control("shutdown")["stopped"], true);
+    assert!(fixture.child.wait().unwrap().success());
 }

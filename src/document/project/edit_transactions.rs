@@ -285,11 +285,11 @@ impl EditTransactionHistory {
         self.groups.iter().find(|entry| entry.id == id)
     }
 
-    fn replay_plan(
+    fn replay_entry(
         &self,
         id: EditHistoryGroupId,
         direction: HistoryDirection,
-    ) -> Result<ReplayPlan, DocumentEditTransactionError> {
+    ) -> Result<&EditHistoryEntry, DocumentEditTransactionError> {
         let entry = self
             .entry(id)
             .ok_or(DocumentEditTransactionError::UnknownHistoryGroup(id))?;
@@ -305,6 +305,15 @@ impl EditTransactionHistory {
                 direction,
             });
         }
+        Ok(entry)
+    }
+
+    fn replay_plan(
+        &self,
+        id: EditHistoryGroupId,
+        direction: HistoryDirection,
+    ) -> Result<ReplayPlan, DocumentEditTransactionError> {
+        let entry = self.replay_entry(id, direction)?;
         let (expected, replacements) = entry
             .edits
             .iter()
@@ -483,18 +492,25 @@ impl Project {
         group: EditHistoryGroupId,
         direction: HistoryDirection,
     ) -> Result<(), DocumentEditTransactionError> {
-        let plan = self
+        let entry = self
             .edit_transaction_history
-            .replay_plan(group, direction)?;
-        self.validate_history_group_plan(group, &plan)
+            .replay_entry(group, direction)?;
+        // Menu availability needs only guarded reads, not cloned replacement geometry.
+        self.validate_history_group_snapshots(
+            group,
+            entry.edits.iter().map(|edit| match direction {
+                HistoryDirection::Undo => &edit.after,
+                HistoryDirection::Redo => &edit.before,
+            }),
+        )
     }
 
-    fn validate_history_group_plan(
+    fn validate_history_group_snapshots<'a>(
         &self,
         group: EditHistoryGroupId,
-        plan: &ReplayPlan,
+        snapshots: impl IntoIterator<Item = &'a CanonicalLayerSnapshot>,
     ) -> Result<(), DocumentEditTransactionError> {
-        for expected in &plan.expected {
+        for expected in snapshots {
             if self.validate_edit_snapshot(expected).is_err() {
                 return Err(DocumentEditTransactionError::HistoryConflict {
                     group,
@@ -518,7 +534,7 @@ impl Project {
         let mut history = std::mem::take(&mut self.edit_transaction_history);
         let result = (|| {
             let plan = history.replay_plan(group, direction)?;
-            self.validate_history_group_plan(group, &plan)?;
+            self.validate_history_group_snapshots(group, &plan.expected)?;
             let before_revision = self.variable.revision;
             let change = self.commit_edit_replacements(&plan.replacements)?;
             history.finish_replay(group, direction);

@@ -26,7 +26,7 @@ The coordinator remains responsible for reconciling documentation and generated 
 Sol's staged engine batch is initially limited to one source and nonstructural width, point and existing-anchor edits.
 Fallible preparation precedes one guarded publication, one revision change and one named history group.
 The same Project-owned history handle must serve application undo and agent-targeted undo, with explicit state/conflict checks so neither can reverse an operation twice.
-The coordinator will add the application undo entry, UI refresh and operation receipt around that API.
+The coordinator has added the application undo entry, source-aware view refresh and operation receipt around that API.
 Cross-source metadata, add-anchor/structural edits and durable journals remain outside this first batch.
 
 Terra captures owned canonical compilation inputs and a revision before background compilation.
@@ -43,7 +43,7 @@ CLI-generated live prompts and MCP initialization now share live source, session
 
 ## Scheduled continuation and build coordination
 
-Active workers have ten-minute continuations in their existing tasks, shortened at the user's request.
+The completed workers used ten-minute continuations in their existing tasks, shortened at the user's request.
 Sol's original engine phase is committed at `de184bc25eaf2fbb4e33304bb49b275b8515b467` and its completed continuation has been removed.
 Terra's bounded proof phase is committed at `1b8cc22` with five focused tests and strict Clippy passing, and its completed continuation has also been removed.
 Luna's bounded harness phase is committed at `8a88aaeb599e3ca5a7c2674bd8deb324a75cf63d`, and its completed continuation has been removed.
@@ -79,9 +79,22 @@ Tests use synthetic or disposable copied fonts; original font sources remain unt
 Use headless checks and explicit client configuration boundaries.
 The full integrated native/browser matrix and a clean-checkout proof remain coordinator acceptance work, not something inferred from worker task creation.
 
+## Live transaction adapter checkpoint
+
+The native adapter now exposes `agent_apply`, `agent_receipt` and `agent_history` with strict typed requests and exact endpoint epochs.
+It admits eight actor ledgers with 256 non-evicting receipts each, and records one application entry and one canonical view refresh for each new committed group.
+Exact retries retain the original receipt even after undo and do not recreate the application entry.
+Ordinary editor, overview and targeted undo share the engine handle, including auxiliary-layer edits and inactive-source changes.
+The native suite passes 846 tests with four ignored tests, strict all-target Clippy and warnings-denied library documentation.
+The browser release build, strict browser Clippy and headless interaction checks at DPR 1, 2 and 1.25 also pass.
+The first browser check could not find an expired temporary Playwright installation; rerunning against the bundled runtime passed without source changes.
+The real stdio MCP process test covers generated schema discovery, apply, retry, receipt lookup, ordinary undo and targeted redo.
+These automated protocol checks are distinct from an actual desktop or OMP model trial of the new tools.
+The local evidence directory is `/private/tmp/runebender-agent-live-transactions-20260920`; its preserved binary and schema have SHA-256 records.
+
 ## Receipt integration constraints
 
-The coordinator's receipt ledger will be scoped to one document epoch and will not own font data.
+The coordinator's receipt ledgers are scoped to one document epoch and do not own font data.
 An operation key must bind to a canonical payload digest and actor; a retry with a different payload rejects.
 A retry of a committed operation returns its original receipt without reapplying the engine transaction or adding another application undo item.
 Bound the ledger by rejecting new operations at capacity instead of silently evicting keys and making an old retry execute again.
@@ -90,7 +103,8 @@ Original receipts retain before/after revision and history handle; status can se
 Cancellation must distinguish requests prevented from committing from operations already committed.
 The existing serial socket accept loop cannot deliver an independent cancellation request while waiting on an earlier call, and the synchronous MCP loop cannot read cancellation notifications while a tool is running.
 Do not advertise cancellation until those routing limits and queue/commit races have actual fault-injection coverage.
-Timeouts and lost responses remain ambiguous until receipt lookup is integrated and tested over a real socket.
+The new `agent_apply` path now reconciles lost responses through `agent_receipt`, including a real socket disconnect test.
+Legacy mutations and non-idempotent history replay still require inspecting current state before retrying.
 
 ## First user trials
 
@@ -99,24 +113,24 @@ Both should address the same native Xilem live document through its existing loc
 First prove context/read, one bounded unsaved edit, application cache/session refresh and ordinary undo/redo using the synthetic Workspace fixture.
 Then connect each actual client to a disposable font session and retain the transport and visible result evidence.
 A bundled Codex CLI check does not establish that the desktop task has loaded the tools, and a tools-list response does not establish model image delivery.
-Full Milestone 1 acceptance still requires integrated atomic receipts, retries/conflicts/cancellation, asynchronous compiled proofs and the final validation matrix.
+Full Milestone 1 acceptance still requires independent edit cancellation, asynchronous compiled proof delivery, actual client image evidence and the final validation matrix.
 
 ## Next core implementation boundary
 
-Add a transport-independent session value holding only epoch, actor binding, bounded receipts and job handles; pass the canonical Project into operations rather than copying or wrapping another editable font model.
-The native Workspace must construct this value from the same epoch as its socket server, because the existing mailbox validates and removes `expected_document_epoch` before application dispatch.
+The native Workspace now owns bounded actor ledgers around the canonical Project, constructed from the socket server's exact epoch.
+Strict edit requests retain their required epoch through mailbox dispatch, while legacy tools keep the earlier optional-guard stripping behavior.
 The browser must not advertise a live native session merely because it shares the Workspace type.
 
-For a first atomic wire operation, resolve explicit source/layer/glyph and existing point/anchor IDs against canonical reads, compare the existing external glyph revision tokens, then stage the complete read/write set through `begin_document_edit_transaction`.
+The first atomic wire operation resolves explicit source/layer/glyph and existing point/anchor IDs against canonical reads, compares existing external glyph revision tokens, then stages the complete read/write set through `begin_document_edit_transaction`.
 The engine's guarded commit remains the final publication boundary.
 Validate receipt capacity and operation-key conflicts before publication; retain terminal unchanged and rejected outcomes as well as committed receipts.
 An exact retry must return its original receipt without repeating application refresh or adding another history entry.
 
-Add one application `MetadataEdit` variant carrying the Project-owned group handle and affected addresses.
+One application `MetadataEdit::AgentGroup` carries the Project-owned group handle, affected addresses and overview history depth.
 The engine's read-only `check_document_edit_history_group` supports conflict-aware availability without mutating the document; replay rechecks the same guard before publication.
 Ordinary editor undo/redo and agent-targeted replay must use the same engine group, update the same application history entries and retain unrelated later edits.
-Tests must cover targeted undo followed by ordinary undo, ordinary undo followed by targeted undo, conflicts after later edits, and inactive-source cache refresh.
-The existing per-layer proposal-install bookkeeping is not an adequate substitute for this integration.
+Real-socket tests cover targeted undo followed by ordinary undo, ordinary undo followed by targeted undo, conflicts after later edits, inactive-source cache refresh, auxiliary layers and overview history ordering.
+The existing per-layer proposal-install bookkeeping remains separate from this integrated group path.
 
 Keep cancellation unadvertised until the serial socket and MCP loops can accept it independently of a running request, with explicit queued/committed race tests.
 Proof jobs must capture immutable inputs on the application thread, compile/render on workers, and return epoch/revision-bound handles without allowing a late result to become the current proof.

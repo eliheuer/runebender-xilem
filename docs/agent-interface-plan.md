@@ -42,7 +42,8 @@ Live schemas no longer advertise disk `master` indices; live calls reject that f
 Canonical live results include `document_revision` and `saved=false`.
 The socket envelope reports schema version 1 and the package version; this is not an executable hash.
 MCP input is bounded to 8 MiB and initialization chooses a supported version instead of echoing an arbitrary version.
-Full schema validation, live operation receipts, atomic grouped apply, cancellation and asynchronous compiled proof delivery remain pending.
+The native application now exposes strict receipt-backed atomic apply and shared ordinary/targeted grouped history through `agent_apply`, `agent_receipt` and `agent_history`.
+Full validation of legacy schemas, independent cancellation and asynchronous compiled proof delivery remain pending.
 The engine transaction/proof primitives and real OMP model trials are implemented; the desktop client trial remains pending.
 See [the live context wire notes](agent-live-context.md) for the implemented contract and its limits.
 
@@ -57,8 +58,8 @@ It must detect a conflict and resolve timeout ambiguity without duplicate edits.
 
 - [ ] Replace stale master/index assumptions in the live wire boundary with explicit stable identities and uniform result fields.
 - [ ] Add document epoch, document/context revision, capabilities, limits and server build/schema identity.
-- [ ] Capture a minimal coherent UI context: source, layer, active glyph/selection, text/features/location, and busy gesture state.
-- [ ] Keep context in the application adapter; toolkit-independent target/edit types belong in the font engine.
+- [x] Capture a minimal coherent UI context: source, layer, active glyph/selection, text/features/location, and busy gesture state.
+- [x] Keep context in the application adapter; toolkit-independent target/edit types belong in the font engine.
 - [ ] Negotiate supported MCP versions, bound input, validate schemas server-side, and produce structured actionable errors.
 - [ ] Update setup documentation from actual generated schemas; keep disk and live examples visibly distinct.
 
@@ -71,13 +72,17 @@ Reorder sources and change selection between read and mutation; the request stil
 
 ### 1B. A narrow atomic transaction and receipt
 
-- [ ] Stage supported operations with canonical drafts and check all preconditions before mutation.
-- [ ] Publish one guaranteed atomic bounded batch with one named history group; reject unsupported scope before editing.
+- [x] Stage supported operations with canonical drafts and check all preconditions before mutation.
+- [x] Publish one guaranteed atomic bounded batch with one named history group; reject unsupported scope before editing.
 - [ ] Return actor, operation ID, before/after revisions, changed IDs, history handle and `saved=false`.
-- [ ] Add a bounded session receipt ledger with idempotency payload checks and status queries.
+- [x] Add a bounded session receipt ledger with idempotency payload checks and status queries.
 - [ ] Reconcile timeout/disconnect by status; implement cancellation before commit and explicit too-late/committed outcomes.
-- [ ] Carry already-granted scoped authorization through the sequence; do not ask repeatedly for the same authorized edit.
-- [ ] Make targeted undo conflict-aware and integrate with ordinary editor undo so one operation cannot be undone twice.
+- [x] Carry already-granted scoped authorization through the sequence; do not ask repeatedly for the same authorized edit.
+- [x] Make targeted undo conflict-aware and integrate with ordinary editor undo so one operation cannot be undone twice.
+
+The [live transaction contract](agent-live-transactions.md) documents the implemented boundary.
+Real-socket tests cover a disconnected apply caller, exact receipt replay without duplicate refresh/history, stale dependencies, point/anchor identities, grouped history conflicts, source reorder, inactive-source refresh, overview ordering and active gestures.
+Independent cancellation remains unchecked; current receipts expose immutable changed layer addresses, while a complete changed-object-ID result remains follow-up work.
 
 Likely owners: canonical draft/history APIs, `edit_batch.rs`, `proposal.rs`, `experiments.rs`, plus the session adapter.
 Do not describe existing per-glyph installs as atomic or rebuild their geometry in an adapter.

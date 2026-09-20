@@ -356,6 +356,8 @@ impl Workspace {
             live: runebender::document::live_socket::Server::start()
                 .map_err(|e| eprintln!("Live tools unavailable: {e}"))
                 .ok(),
+            #[cfg(unix)]
+            agent_sessions: std::collections::BTreeMap::new(),
         };
         app.park();
         app.init_nodes();

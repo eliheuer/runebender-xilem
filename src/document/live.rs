@@ -15,7 +15,7 @@ use super::{
 };
 
 /// Common live-document guidance for CLI-generated prompts and MCP initialization.
-pub const INSTRUCTIONS: &str = "Live unsaved editor documents. Use editor_sessions then editor_connect if not connected. Verify the project and document_epoch, read editor_context, and choose an explicit stable source ID. Read glyphs before proposing; apply only within the user's granted authorization. Do not save font files. When multiple editors are open, choose the project the user requested. A closed endpoint never reconnects automatically. After a lost mutation response, inspect current state; retry deduplication and receipts are not available yet.";
+pub const INSTRUCTIONS: &str = "Live unsaved editor documents. Use editor_sessions then editor_connect if not connected. Verify the project and document_epoch, read editor_context, and choose an explicit stable source ID. Read glyphs before proposing; apply only within the user's granted authorization. Do not save font files. When multiple editors are open, choose the project the user requested. A closed endpoint never reconnects automatically. For agent_apply, reuse exactly the same actor, operation_key and complete payload after a lost response, or inspect agent_receipt. These in-memory receipts do not cover legacy proposal/experiment mutations or survive document closure; inspect state before retrying those operations.";
 
 /// A text-client prompt containing only the live tool schemas and live authorization rules.
 pub fn system_prompt(tools: &[agent::Tool]) -> String {
@@ -173,6 +173,7 @@ pub fn tools() -> Vec<agent::Tool> {
             }
         }
     }
+    result.extend(super::agent_edit::tools());
     result
 }
 

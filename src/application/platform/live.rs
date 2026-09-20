@@ -66,6 +66,9 @@ impl Workspace {
 
     fn handle_live(&mut self, call: &runebender::document::agent::ToolCall) -> serde_json::Value {
         use serde_json::json;
+        if let Some(result) = self.call_agent_edit(call) {
+            return result;
+        }
         if call.name == "editor_context" {
             if !call
                 .arguments
@@ -178,6 +181,11 @@ impl Workspace {
             "document_revision":project.document_revision(),
             "context_revision":revision, "context":context,
             "capabilities":{
+                "atomic_edits":true,
+                "operation_receipts":true,
+                "edit_cancellation":false,
+                "max_agent_actors":super::live_edits::MAX_ACTORS,
+                "receipts_per_actor":super::live_edits::RECEIPTS_PER_ACTOR,
                 "application_context":true,
                 "widget_text_ranges":false,
                 "auxiliary_layer_canvas_selection":false,

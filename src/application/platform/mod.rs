@@ -20,6 +20,8 @@ pub(crate) mod watch;
 
 #[cfg(unix)]
 pub(crate) mod live;
+#[cfg(unix)]
+pub(crate) mod live_edits;
 
 #[cfg(unix)]
 pub(crate) mod live_fixture;
