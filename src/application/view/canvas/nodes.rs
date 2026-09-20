@@ -1290,8 +1290,11 @@ mod tests {
         Arc::from(bytes.into_inner())
     }
 
-    fn fixture() -> (NodesWidget, WidgetId) {
-        let graph = nodes_live::comparison_starter(SourceId(0));
+    fn fixture_with_scripts(extra_script: bool) -> (NodesWidget, BTreeMap<u32, WidgetId>) {
+        let mut graph = nodes_live::comparison_starter(SourceId(0));
+        if extra_script {
+            graph.add("live.python", [320.0, 220.0]);
+        }
         let registry = Arc::new(Registry::core());
         let mut content = NodeContentMap::default();
         for node in &graph.nodes {
@@ -1328,11 +1331,7 @@ mod tests {
         }
         let content = Arc::new(content);
         let (code_editors, code_area_ids, preview_images) = content_children(&content);
-        let editor_id = code_area_ids
-            .values()
-            .next()
-            .expect("Python editor child")
-            .to_owned();
+        let editor_ids = code_area_ids.clone();
         let mut widget = NodesWidget {
             graph,
             registry,
@@ -1352,6 +1351,16 @@ mod tests {
             code_font_size: 0.0,
         };
         widget.relayout();
+        (widget, editor_ids)
+    }
+
+    fn fixture() -> (NodesWidget, WidgetId) {
+        let (widget, editor_ids) = fixture_with_scripts(false);
+        let editor_id = editor_ids
+            .values()
+            .next()
+            .expect("Python editor child")
+            .to_owned();
         (widget, editor_id)
     }
 
@@ -1384,11 +1393,34 @@ mod tests {
     }
 
     #[test]
-    fn editor_action_paths_keep_distinct_node_ids() {
-        let first = [ViewId::new(3)];
-        let second = [ViewId::new(4)];
-        assert_eq!(editor_node_from_path(&first), Some(3));
-        assert_eq!(editor_node_from_path(&second), Some(4));
+    fn second_editor_action_keeps_its_real_child_origin() {
+        let (widget, editor_ids) = fixture_with_scripts(true);
+        let mut harness = TestHarness::create_with_size(
+            crate::application::view::default_property_set(),
+            NewWidget::new(widget),
+            (1100, 720),
+        );
+        let (&second_node, &second_editor) = editor_ids.iter().next_back().unwrap();
+        let (&first_node, &first_editor) = editor_ids.iter().next().unwrap();
+        assert_ne!(first_node, second_node);
+        assert_ne!(first_editor, second_editor);
+
+        harness.mouse_click_on(second_editor, Some(PointerButton::Primary));
+        assert!(matches!(
+            harness.pop_action::<NodesEvent>(),
+            Some((NodesEvent::Selected(Some(node)), _)) if node == second_node
+        ));
+        harness.process_text_event(TextEvent::Ime(Ime::Commit("# second".into())));
+        let Some((TextAction::Changed(text), source)) = harness.pop_action::<TextAction>() else {
+            panic!("second editor did not emit TextAction");
+        };
+        assert!(text.contains("# second"));
+        assert_eq!(source, second_editor);
+        assert_ne!(source, first_editor);
+        assert_eq!(
+            editor_node_from_path(&[ViewId::new(u64::from(second_node))]),
+            Some(second_node)
+        );
     }
 
     #[test]
