@@ -215,3 +215,94 @@ fn mcp_receipt_tools_reconcile_retry_and_real_application_undo() {
     assert_eq!(fixture.control("shutdown")["stopped"], true);
     assert!(fixture.child.wait().unwrap().success());
 }
+
+#[test]
+fn file_backed_host_edits_and_undoes_without_rewriting_source() {
+    use runebender::document::project::Project;
+    use std::path::Path;
+
+    fn files(path: &Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
+        let mut result = Vec::new();
+        for entry in std::fs::read_dir(path).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                result.extend(files(&path));
+            } else {
+                result.push((path.clone(), std::fs::read(path).unwrap()));
+            }
+        }
+        result.sort_by(|a, b| a.0.cmp(&b.0));
+        result
+    }
+
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "runebender-file-host-{}-{nonce}",
+        std::process::id()
+    ));
+    std::fs::create_dir(&root).unwrap();
+    let font_path = root.join("Trial.ufo");
+    let mut project = Project::new_font(font_path.clone());
+    project.add_document_glyph("trial", 400.0, None).unwrap();
+    project
+        .encode_ufo_source(project.source_id(0).unwrap())
+        .unwrap()
+        .save(&font_path)
+        .unwrap();
+    let before = files(&font_path);
+    let mut host = Fixture::spawn(
+        Command::new(env!("CARGO_BIN_EXE_runebender"))
+            .args(["agent", "serve", "--font"])
+            .arg(&font_path)
+            .args(["--glyph", "trial", "--duration-seconds", "15"]),
+    );
+    let ready = host.read();
+    assert_eq!(ready["ok"], true, "{ready}");
+    assert_eq!(ready["fixture"], false);
+    assert_eq!(ready["font_path"], json!(font_path.canonicalize().unwrap()));
+    let endpoint = std::path::PathBuf::from(ready["session"].as_str().unwrap());
+    let call = |name: &str, arguments| {
+        live_socket::call(
+            &endpoint,
+            &ToolCall {
+                name: name.into(),
+                arguments,
+            },
+        )
+        .unwrap()
+    };
+    let epoch = &ready["document_epoch"];
+    let read = call(
+        "read_glyph",
+        json!({"source":0,"glyph":"trial","expected_document_epoch":epoch}),
+    );
+    let applied = call(
+        "agent_apply",
+        json!({"expected_document_epoch":epoch,"actor":"file-host-test","operation_key":"width-001","authorization":"user-approved","source":0,"history_name":"Trial width","edits":[{"target":{"glyph":"trial","glyph_id":read["glyph_id"],"layer":read["layer"],"expected_revision":read["revision"]},"operations":[{"op":"set_width","width":450.0}]}]}),
+    );
+    assert_eq!(applied["ok"], true, "{applied}");
+    assert_eq!(applied["saved"], false);
+    for (action, width) in [("state", 450.0), ("undo", 400.0), ("redo", 450.0)] {
+        let state = host.control(action);
+        for field in ["canonical_advance", "cache_advance", "session_advance"] {
+            assert_eq!(state[field], width, "{state}");
+        }
+    }
+    assert_eq!(
+        host.control("save")["ok"],
+        false,
+        "host exposes no save control"
+    );
+    assert_eq!(host.control("shutdown")["stopped"], true);
+    assert!(host.child.wait().unwrap().success());
+    assert!(!endpoint.exists(), "host removes its endpoint on shutdown");
+    assert_eq!(
+        files(&font_path),
+        before,
+        "all source bytes remain unchanged"
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}

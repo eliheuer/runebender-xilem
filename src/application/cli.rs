@@ -228,6 +228,18 @@ enum Command {
 
 #[derive(Subcommand)]
 enum AgentAction {
+    /// Open a font as an unsaved headless editor session for scripts and MCP (Unix only).
+    Serve {
+        /// Designspace or UFO to load into memory. This host never saves source files.
+        #[arg(long)]
+        font: PathBuf,
+        /// Glyph to select for state checks and ordinary undo/redo.
+        #[arg(long)]
+        glyph: String,
+        /// Maximum lifetime; keep stdin open. All unsaved edits disappear on exit.
+        #[arg(long, default_value_t = 3600, value_parser = clap::value_parser!(u64).range(1..=86400))]
+        duration_seconds: u64,
+    },
     /// Serve a synthetic unsaved application fixture for headless live-client tests (Unix only).
     Fixture {
         /// Maximum lifetime; keep stdin open and send newline-delimited control JSON.
@@ -451,6 +463,26 @@ pub(crate) fn run() -> Startup {
             ProposalAction::Discard { source, task } => proposal_discard(source, task, json),
         },
         Command::Agent { action } => match action {
+            AgentAction::Serve {
+                font,
+                glyph,
+                duration_seconds,
+            } => {
+                #[cfg(unix)]
+                match crate::application::platform::live_host::serve_font(
+                    font,
+                    glyph,
+                    std::time::Duration::from_secs(*duration_seconds),
+                ) {
+                    Ok(()) => exit::OK,
+                    Err(error) => fail(true, exit::FAILED, &error),
+                }
+                #[cfg(not(unix))]
+                {
+                    let _ = (font, glyph, duration_seconds);
+                    fail(true, exit::USAGE, "headless live sessions require Unix")
+                }
+            }
             AgentAction::Fixture { duration_seconds } => {
                 #[cfg(unix)]
                 match crate::application::platform::live_fixture::serve(

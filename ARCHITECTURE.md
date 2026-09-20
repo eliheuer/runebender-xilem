@@ -248,5 +248,7 @@ new application structure should stay idiomatic to Xilem and Masonry.
 `document/live_socket.rs` owns the Unix endpoint lifetime and checks optional document epoch guards before dispatch.
 Canonical glyph and object identities are exposed as opaque session-scoped strings; the [live wire notes](docs/agent-live-context.md) distinguish these identities from revisions and describe current limits.
 
-`application/platform/live_fixture.rs` is the synthetic headless application host for client conformance tests.
-Its separate stdin control channel drives ordinary application undo/redo without adding test commands to production agent tools.
+`application/platform/live_host.rs` runs a bounded headless native Workspace for file-backed fonts through `agent serve`, using the same live dispatch and history as the Xilem editor.
+It loads sources into memory without watching or saving them and exits on stdin EOF, shutdown or its deadline.
+Its separate stdin control channel drives state checks and ordinary application undo/redo without adding test commands to production agent tools.
+`application/platform/live_fixture.rs` supplies the synthetic unsaved document to that shared host for conformance tests.

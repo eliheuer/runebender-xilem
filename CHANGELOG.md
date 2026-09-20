@@ -10,6 +10,10 @@ No release has been published yet.
 
 ### Added
 
+- Added `agent serve --font PATH --glyph NAME` for bounded headless native editor sessions on real fonts.
+  Scripts and MCP clients share live reads, atomic edits, receipts and ordinary undo/redo; this host never saves source files.
+  A procedural Python spacing example prepares guarded requests before explicitly applying, reconciling or undoing them.
+
 - Added native live `agent_apply`, `agent_receipt` and `agent_history` tools with guarded width/point/anchor batches, bounded retry receipts, and shared ordinary/targeted undo.
   Exact retries do not repeat edits, view refreshes or history entries, including after a lost response or undo.
   Independent edit cancellation and durable receipt recovery remain unsupported.

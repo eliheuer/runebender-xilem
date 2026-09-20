@@ -1,8 +1,8 @@
 # Live agent implementation coordination
 
 The user requested that the original task retain core work, planning and delegation, with parallel Sol, Terra and Luna tasks following the Babelfont migration pattern.
-The current worker checkpoint is `ef08043034d3f9b090cde1ecbad2c67eee5ccc0e` on the isolated research branch.
-The released migration baseline is `e40bd4ce338cb8270f2356a515946e52d2b6b21b`; no automatic merge or push is authorized by this coordination plan.
+The original worker integration checkpoint was `ef08043034d3f9b090cde1ecbad2c67eee5ccc0e` on the agent research branch.
+The released migration baseline is `e40bd4ce338cb8270f2356a515946e52d2b6b21b`; the user subsequently authorized merging all validated agent work into the native checkout main branch and pushing upstream on 2026-09-20.
 The [implementation checklist](agent-interface-plan.md) remains the acceptance authority, and [live context notes](agent-live-context.md) describe what is currently implemented.
 
 ## Ownership
@@ -54,7 +54,7 @@ The combined base passed 818 serial workspace tests using disposable fonts, with
 Proof review fixes are integrated through `ef08043`; eight focused proof tests and strict native Clippy pass.
 The browser release build, strict browser Clippy and interaction quality at DPR 1, 2 and 1.25 also pass.
 Evidence is retained in `/private/tmp/runebender-agent-integration-20260920`; the final complete acceptance matrix remains pending.
-The [OMP model-client read/edit trials](agent-client-trials.md) now pass against fixture `999e6db`; the desktop task trial remains pending.
+The [OMP model-client read/edit trials](agent-client-trials.md) now pass against fixture `999e6db`; the subsequent desktop task trial is recorded below.
 The original three tasks were archived at the user's request, and their schedules are deleted.
 The new receipt and proof-job tasks completed their bounded work as `5b495b2` and `b375a7a`, integrated here as `92769ae` and `3efadba`.
 Both workers removed their completed ten-minute continuations.
@@ -138,3 +138,18 @@ Keep one bounded native queue across document replacements rather than creating 
 The adapter must bound retained completion references separately from the queue's own retention because cloned `Arc` results keep image bytes alive after queue discard.
 The current MCP `proof_content` path renders a scene synchronously; compiled job results must instead deliver the worker's already-rendered PNG with its captured font hash and revision, without recapture or rerender.
 The initial queue retains proof artifacts, not reusable compiled-font snapshot handles; do not advertise arbitrary later shaping or export against a retained font handle until that retention exists.
+
+## Native desktop task and main promotion
+
+The user confirmed the target is native Xilem from the completed Babelfont migration in `~/GH/repos/runebender-xilem`.
+The agent branch includes that main baseline and preserves its view/widget sources.
+The user explicitly requested all latest validated work on main and pushed upstream.
+
+The separate user-facing desktop task is `01a0bf07-bd97-7821-b5c0-fff48e09cff4`, “Try Virtua Grotesk through Runebender MCP”.
+Its actual MCP tool discovery and guarded real-font edit/retry trial pass, replacing the earlier host-reload blocker.
+The [client evidence](agent-client-trials.md) separates desktop MCP success from native window and compiled-image coverage.
+The new file-backed headless host and the synthetic fixture share the same bounded application dispatch loop.
+The host process tests pass, including byte-for-byte source preservation after edits and ordinary undo/redo.
+The native suite now passes 847 tests with four ignored tests, and strict all-target Clippy passes.
+Desktop and procedural examples operate on disposable font copies; original sources remain untouched.
+The central task remains the only scheduled continuation, while the desktop task is the user-facing trial surface.

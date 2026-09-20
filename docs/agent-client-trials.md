@@ -31,7 +31,40 @@ Receipt lookup, retry deduplication, grouped live apply, cancellation and discon
 
 ## Codex desktop task
 
-The desktop task trial is not yet run.
-The current coordinator task does not expose Runebender MCP tools in its active tool inventory.
-The installed bundled Codex CLI is a separate verified executable and is not evidence that the desktop task has loaded the server.
-Use the [prepared connection instructions](agent-worker-clients.md#codex-desktop-task-chat) with a pinned server, then verify actual desktop tool calls against a fresh disposable fixture.
+On 2026-09-20 UTC, the desktop task “Try Virtua Grotesk through Runebender MCP” loaded the actual Runebender MCP tools and completed a live transaction trial.
+The task ID is `01a0bf07-bd97-7821-b5c0-fff48e09cff4`.
+It connected to an explicitly supplied headless native Workspace containing a disposable copy of the real Virtua Grotesk designspace and both masters.
+The host uses the same application dispatch and history as native Xilem; no foreground window or native pointer/IME interaction was tested.
+
+The task verified the project, document epoch and stable source, read the red `.notdef` glyph in Regular, and changed its width from 600 to 602 through `agent_apply`.
+It submitted the identical request again and verified `replayed: true`, `root_changed: false`, an unchanged revision and the same immutable receipt.
+Receipt lookup and glyph reread confirmed the result.
+These were actual desktop MCP calls, without a CLI fallback for the font operations.
+
+The coordinator then exercised ordinary application Undo, Redo and Undo through the host control channel.
+Canonical, cache and active-session widths agreed at 600, 602 and finally 600.
+All 1,744 copied source files and their originals matched their pre-trial SHA-256 hashes afterward.
+The trial does not change or grade the original font, and it does not establish compiled-image delivery or native window behavior.
+
+Evidence is in `/private/tmp/runebender-desktop-virtua-20260920/desktop-trial.json`, `ordinary-history.json` and `source-manifest.json`.
+The MCP adapter was pinned to `ec6d32e`; the file-backed native host was built from the subsequent desktop-host changes on the same Babelfont-based branch.
+The preserved host binary SHA-256 is `4c15a68cc31d1d4466bea6d107076e079e575b84febafb45a039246f130dae89`.
+
+The intended editor is the native Xilem application in `~/GH/repos/runebender-xilem`, as confirmed by the user.
+At the trial, its main branch was `e40bd4ce338cb8270f2356a515946e52d2b6b21b`, which is an ancestor of the agent branch.
+The agent branch had no changes to the view/widget sources or `DESIGN.md` relative to that baseline.
+Existing PATH and checkout build artifacts can predate current sources; always build or select an explicitly validated executable rather than inferring its version from the checkout directory.
+
+To start a disposable background native Workspace without opening a window:
+
+```sh
+/absolute/path/to/validated/runebender agent serve \
+  --font /absolute/path/to/copied/VirtuaGrotesk.designspace \
+  --glyph .notdef \
+  --duration-seconds 3600
+```
+
+Keep stdin open and connect MCP or the [procedural example](agent-procedural-editing.md) to the exact socket printed in the readiness JSON.
+The separate stdin channel accepts one JSON object per line with `action` equal to `state`, `undo`, `redo` or `shutdown`.
+The host never saves and discards its unsaved state on exit, EOF or deadline.
+Use the normal native editor when a visible editing window and its save workflow are required.
