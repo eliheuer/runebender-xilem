@@ -7,7 +7,7 @@ Human-readable diagnostics go to standard error.
 The workers never open a font, create a mutable font wrapper, open a socket, write a source file, apply an edit, or invent authorization.
 The editor runner owns those boundaries.
 
-The provisional input envelope is:
+The version-one input envelope is:
 
 ```json
 {
@@ -51,7 +51,7 @@ python3 -I scripts/recipes/anchor_recipes.py < scripts/recipes/fixture-list-inpu
 python3 -I scripts/recipes/anchor_recipes.py < scripts/recipes/fixture-move-input.json
 ```
 
-`move_named_anchors.py` emits `edits` matching the native `AgentLayerEdits` shape:
+The `move_named_anchors` recipe in `anchor_recipes.py` emits `edits` matching the native `AgentLayerEdits` shape:
 each entry has `target` with the exact captured `AgentLayerGuard` and ordered `operations` using `set_anchor`, `anchor_id`, `x` and `y`.
 The result's `reads` array contains exact `AgentLayerGuard` values for read-only layers, and `report` is a deterministic human-readable string containing glyph, source, layer, name, id and coordinates.
 No-op offsets return an empty edit list.
