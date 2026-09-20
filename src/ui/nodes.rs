@@ -738,6 +738,9 @@ mod tests {
 
     #[test]
     fn comparison_starter_content_boxes_do_not_overlap() {
+        assert_eq!(LIVE_W - PAD * 2.0, 240.0);
+        assert_eq!(CODE_H, 112.0);
+        assert_eq!(IMAGE_H, 144.0);
         let graph =
             crate::document::nodes_live::comparison_starter(crate::document::variable::SourceId(0));
         let mut content = NodeContentMap::default();
@@ -750,7 +753,7 @@ mod tests {
                             text: String::new(),
                             content_hash: String::new(),
                             state: ContentState::Idle,
-                            size: [LIVE_W as f32 - (PAD * 2.0) as f32, CODE_H as f32],
+                            size: [240.0, 112.0],
                         }),
                     );
                 }
@@ -761,7 +764,7 @@ mod tests {
                             image: None,
                             previous_image: None,
                             state: ContentState::Idle,
-                            size: [LIVE_W as f32 - (PAD * 2.0) as f32, IMAGE_H as f32],
+                            size: [240.0, 144.0],
                         }),
                     );
                 }

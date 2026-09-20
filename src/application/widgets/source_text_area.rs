@@ -15,7 +15,7 @@ use masonry::core::keyboard::{Key, KeyState, Modifiers};
 use masonry::core::{
     AccessCtx, AccessEvent, ChildrenIds, CursorIcon, EventCtx, LayoutCtx, MeasureCtx, NewWidget,
     PaintCtx, PointerEvent, PropertiesMut, PropertiesRef, QueryCtx, RegisterCtx, StyleProperty,
-    TextEvent, Update, UpdateCtx, Widget, WidgetId, WidgetMut,
+    TextEvent, Update, UpdateCtx, Widget, WidgetMut,
 };
 use masonry::imaging::Painter;
 use masonry::kurbo::{Axis, Point, Size};
