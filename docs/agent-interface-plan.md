@@ -117,7 +117,9 @@ This closes the source/midpoint scenario only; reusable compiled-font handles an
 The [OMP client trials](agent-client-trials.md) now pass real model read and bounded edit calls against the synthetic Workspace, including fixture-driven ordinary undo/redo.
 The Codex desktop task now passes a real Virtua Grotesk copy trial, including receipt lookup and exact retry, with independent ordinary application undo/redo.
 Compiled image transport now passes a real socket and stdio MCP process test.
-Actual model image receipt and OMP trials of the new receipt tools remain pending.
+The actual desktop model now receives both retained Nodes PNGs and correctly describes the visible spacing change on a disposable Virtua comparison; independent coordinator retrieval confirms identical image hashes.
+Evidence is `/private/tmp/runebender-noon-desktop-model-image/desktop-model-image-trial.json`.
+OMP image trials and the separate visual-only synthetic-marker scenario remain pending.
 
 - [ ] Run the bounded scenario through a local Codex/ChatGPT desktop task and OMP CLI with disposable fixtures and isolated configuration, as selected by the user.
 - [ ] Save redacted transport transcript, receipts, binary/client hashes, images and disk manifests.

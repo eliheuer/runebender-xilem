@@ -113,5 +113,6 @@ Workers must ask for a coordinated seam change rather than independently editing
 - [ ] Graph save/reopen preserves code, settings and positions without persisting session handles or auto-running.
 - [x] Native Gray/Light headless evidence, browser regression checks and a disposable real-font scenario pass.
 
-Full native pointer/IME/platform acceptance and actual model image interpretation remain separate from unit/process tests.
+The existing desktop task now receives and interprets the original/changed PNGs through actual MCP image calls; see `/private/tmp/runebender-noon-desktop-model-image/desktop-model-image-trial.json`.
+Full native pointer/IME/platform acceptance, OMP image interpretation and the separate visual-only marker scenario remain unproven.
 This phase does not promise every old disk workflow node can operate on a live font version.

@@ -37,7 +37,50 @@ At the initial cleanup, four schedules remained; the completed Scripts and Nodes
 The existing desktop Virtua trial remains open for testing.
 Use bounded temporary reviews for independent research and code review instead of adding duplicate implementation tasks.
 
-The current integrated runtime is `7eb0a86`, with coordination and workflow documentation through `c7de387` on main and upstream.
+## Candidate handoff and user-led testing
+
+At approximately 11:47 Pacific, the validated candidate was fast-forwarded to main and pushed to upstream at `44c59409f3b2e0230e56b8197e04df8e74cbacf0`.
+The remote ref was directly verified and both checkouts were clean.
+The installed native release and main-checkout release executables have SHA-256 `6f34ac9f3bf31862bb595334160fc1765b587aea529cd0278e4407fe8ac3b0f1`; the main-checkout debug executable has SHA-256 `07b6bf93e9a7b8d4ad556f0bea6f7b29713a2ba03d088ac1d64d6e4778911891`.
+The runtime source is `edb5e3e`; later candidate commits change documentation only.
+The previous executables and installation manifest are preserved under `/private/tmp/runebender-noon-candidate`.
+All completed implementation workers are now archived, and only the central continuation remains scheduled.
+The metaball task remains open.
+
+The user then preferred to use the application directly and work with a chat on concrete UI/UX issues.
+Central agreed to hold further UI changes until that feedback, finish the already-running clean-source validation, and retain architecture and integration coordination here.
+The fresh disposable UI copy is `/private/tmp/runebender-noon-ui-virtua/sources/VirtuaGrotesk.designspace`, with a 1,744-file manifest alongside it.
+Fresh 1000-by-720 headless entry captures in `/private/tmp/runebender-noon-ui-audit` show Chat, Scripts and Nodes; they are not a completed interactive flow audit.
+All copied files still match their hashes after capture.
+
+Desktop MCP initially retained the older tool catalog after the executable update.
+After the task environment refreshed, all nine Nodes commands and asynchronous proof commands became callable, and `editor_sessions` returned successfully.
+The server is project-scoped in `.codex/config.toml`, with no tool allowlist.
+Computer Use explicitly disallows controlling Codex's own settings, so central requested a manual server refresh rather than bypassing that restriction.
+The refresh request is now resolved; do not ask for another restart without a new failure.
+The separate foreground-window request remains pending, and the user prefers to drive manual UI testing.
+This does not block manual use of the native editor.
+
+The existing desktop task subsequently completed the actual Nodes image trial using the refreshed MCP tools.
+It configured a Regular-source `AA` comparison, ran a Python width proposal, received both PNG image blocks, and described the second A shifting right without an outline change.
+The coordinator independently retrieved and viewed the same retained PNGs and verified their hashes against the task report.
+The proposal was not applied: canonical, cache and session advance all remained 716, document revision remained 2, the host was unmodified and both history depths were zero.
+The run was released, the headless host was shut down, and all 1,744 copied source files retained their hashes.
+Evidence is `/private/tmp/runebender-noon-desktop-model-image/desktop-model-image-trial.json` with `coordinator-verification.json` and the original/changed PNGs alongside it.
+This proves actual desktop model image receipt and bounded visual interpretation, but not the separate visual-only synthetic-marker, OMP image or foreground native interaction scenarios.
+
+The clean source archive at `60d203d` also passed formatting, 932 native tests with four ignored, strict all-target Clippy, warnings-denied documentation, the optimized build, advisories and copyright checks.
+Its runtime source matches the promoted candidate; the later candidate differences are documentation only.
+The archive used the existing dependency/build cache and disposable test fonts, without local source patches.
+Because an archive has no Git metadata, the copyright command used the candidate tracked-file manifest with its worktree redirected to the archive.
+The release build was interrupted by the task environment restart; after verifying its process was gone, only the unfinished release and final checks were resumed.
+Evidence is `/private/tmp/runebender-noon-candidate/clean-checkout-evidence.json`; the owned build lease has been released.
+
+The testing candidate and preparation handoff are complete.
+The user-led UI/UX phase remains open, with further UI changes held for concrete feedback.
+This does not mark the broader agent-interface milestones complete: OMP image acceptance, the visual-only marker scenario, native interaction/platform checks, expanded shared script editing and graph-history controls remain tracked work.
+
+An earlier integrated runtime was `7eb0a86`, with coordination and workflow documentation through `c7de387` on main and upstream.
 The Python runtime handoff is `c8ea6d49`; anchor recipes are `7d431ead` plus corrected contract handling in `8314665e`.
 The cancellation handoff is `fd0ddcbc`, whose receipt parent is already integrated and must not be applied twice.
 The OMP proof harness handoff is `b6421908`; its external model image trial remains unproven.
@@ -66,12 +109,13 @@ The earlier A-plus-acute specimen composed into Aacute and therefore did not exe
 The Nodes execution and canvas tasks are validated and archived, and all worker schedules are removed.
 The Scripts task remains open for final integration verification; only the central ten-minute continuation remains scheduled.
 The existing desktop trial remains available, and the metaball task is open at the user's request.
-Main and upstream remain `790702d7d0e00a5602aca30f49b72aef43b652c2` until the combined candidate passes remaining checks.
+Before the combined candidate promotion recorded above, main and upstream remained `790702d7d0e00a5602aca30f49b72aef43b652c2`.
 The native optimized release build and a separate full-family stdio MCP trial of that optimized executable passed.
 The latest-source browser release build, strict browser Clippy and quality checks at DPR 1, 2 and 1.25 passed.
 The combined evidence manifest is `/private/tmp/runebender-noon-candidate/candidate-evidence.json`.
 Advisories and Python harness checks passed with the unchanged dependencies.
-Clean-checkout acceptance, actual desktop/OMP model image interpretation, expanded shared script editing and exposed graph-history controls remain open.
+At the initial candidate checkpoint, clean-checkout acceptance, actual desktop/OMP model image interpretation, expanded shared script editing and exposed graph-history controls remained open.
+Subsequent desktop image evidence is recorded in the handoff section above.
 
 ## Agreed interfaces and remaining decisions
 
