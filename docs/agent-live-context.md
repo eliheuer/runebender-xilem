@@ -28,6 +28,7 @@ The result includes:
 
 - `document_revision`: the canonical Project revision at capture.
 - `context_revision`: SHA-256 of the serialized context, for equality comparisons, not a monotonic counter or an accepted write precondition.
+  The context includes the exact socket document epoch, so identical font and UI values in a replacement lifetime produce a different context revision.
 - `context.source_id`, `glyph_id`, `glyph`, `layer`, `mode`, `tab_id`, and `tool`.
 - `context.selection`: point, component, anchor, and overview glyph identities.
 - `context.text`: editor/preview text, direction setting, disabled features, script and language settings.

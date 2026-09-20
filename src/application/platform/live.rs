@@ -139,6 +139,7 @@ impl Workspace {
             .collect::<Vec<_>>();
         overview.sort();
         let context = json!({
+            "document_epoch": self.live.as_ref().map(|server| server.document_epoch()),
             "document_revision": project.document_revision(),
             "source_id": project.source_id(project.active).map(|source| source.0),
             "mode": match self.mode { Mode::Overview => "overview", Mode::Editor(_) => "editor", Mode::Nodes => "nodes" },
@@ -265,6 +266,7 @@ mod tests {
         assert_eq!(context["capabilities"]["widget_text_ranges"], false);
         assert!(context["context"]["text"]["caret"].is_null());
         let epoch = context["document_epoch"].clone();
+        assert_eq!(context["context"]["document_epoch"], epoch);
         let read = socket_call(
             &mut app,
             "read_glyph",
@@ -329,6 +331,24 @@ mod tests {
         let other = socket_call(&mut other, "editor_context", json!({}));
         assert_ne!(other["document_epoch"], epoch);
         assert!(!path.exists(), "no live request saves the document");
+    }
+
+    #[test]
+    fn context_revision_binds_identical_state_to_its_document_epoch() {
+        use crate::application::font_model::FontModel;
+        let path = std::env::temp_dir().join("live-epoch-never-saved.ufo");
+        let mut app =
+            Workspace::from_model(FontModel::from_project(Project::new_font(path))).unwrap();
+        let before = app.live_context();
+        // Replace only the endpoint lifetime, leaving every font and UI value identical.
+        app.live = Some(runebender::document::live_socket::Server::start().unwrap());
+        let after = app.live_context();
+        assert_ne!(
+            before["context"]["document_epoch"],
+            after["context"]["document_epoch"]
+        );
+        assert_ne!(before["context_revision"], after["context_revision"]);
+        assert_eq!(before["document_revision"], after["document_revision"]);
     }
 
     #[test]

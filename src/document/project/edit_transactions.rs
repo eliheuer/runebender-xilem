@@ -474,6 +474,37 @@ impl Project {
         Some(self.edit_transaction_history.entry(group)?.state)
     }
 
+    /// Check whether a retained group can replay against the current canonical layers.
+    ///
+    /// This read-only check supports application history availability and conflict reporting.
+    /// Replay validates again; a successful check is not a reservation or a write authorization.
+    pub fn check_document_edit_history_group(
+        &self,
+        group: EditHistoryGroupId,
+        direction: HistoryDirection,
+    ) -> Result<(), DocumentEditTransactionError> {
+        let plan = self
+            .edit_transaction_history
+            .replay_plan(group, direction)?;
+        self.validate_history_group_plan(group, &plan)
+    }
+
+    fn validate_history_group_plan(
+        &self,
+        group: EditHistoryGroupId,
+        plan: &ReplayPlan,
+    ) -> Result<(), DocumentEditTransactionError> {
+        for expected in &plan.expected {
+            if self.validate_edit_snapshot(expected).is_err() {
+                return Err(DocumentEditTransactionError::HistoryConflict {
+                    group,
+                    address: expected.address().clone(),
+                });
+            }
+        }
+        Ok(())
+    }
+
     /// Atomically undo or redo one named edit group after validating every affected layer.
     ///
     /// Ordinary editor undo and targeted agent undo must call this same method with the same
@@ -487,14 +518,7 @@ impl Project {
         let mut history = std::mem::take(&mut self.edit_transaction_history);
         let result = (|| {
             let plan = history.replay_plan(group, direction)?;
-            for expected in &plan.expected {
-                if self.validate_edit_snapshot(expected).is_err() {
-                    return Err(DocumentEditTransactionError::HistoryConflict {
-                        group,
-                        address: expected.address().clone(),
-                    });
-                }
-            }
+            self.validate_history_group_plan(group, &plan)?;
             let before_revision = self.variable.revision;
             let change = self.commit_edit_replacements(&plan.replacements)?;
             history.finish_replay(group, direction);
@@ -886,6 +910,11 @@ mod tests {
         assert_eq!(width(&project, &b), 580.0);
 
         // The application calls the same grouped API for ordinary undo.
+        assert_eq!(
+            project.check_document_edit_history_group(history_group, HistoryDirection::Undo),
+            Ok(())
+        );
+        assert_eq!(project.document_revision(), committed_after);
         let ordinary = project
             .replay_document_edit_history_group(history_group, HistoryDirection::Undo)
             .unwrap();
@@ -900,6 +929,14 @@ mod tests {
         );
 
         let revision_before_duplicate = project.document_revision();
+        assert_eq!(
+            project.check_document_edit_history_group(history_group, HistoryDirection::Undo),
+            Err(DocumentEditTransactionError::WrongHistoryState {
+                group: history_group,
+                state: EditHistoryGroupState::Undone,
+                direction: HistoryDirection::Undo,
+            })
+        );
         assert_eq!(
             project.replay_document_edit_history_group(history_group, HistoryDirection::Undo),
             Err(DocumentEditTransactionError::WrongHistoryState {
@@ -973,6 +1010,14 @@ mod tests {
             .unwrap();
         let revision_before_conflict = project.document_revision();
         let b_before_conflict = width(&project, &b);
+        assert_eq!(
+            project.check_document_edit_history_group(history_group, HistoryDirection::Undo),
+            Err(DocumentEditTransactionError::HistoryConflict {
+                group: history_group,
+                address: a.clone(),
+            })
+        );
+        assert_eq!(project.document_revision(), revision_before_conflict);
         assert_eq!(
             project.replay_document_edit_history_group(history_group, HistoryDirection::Undo),
             Err(DocumentEditTransactionError::HistoryConflict {

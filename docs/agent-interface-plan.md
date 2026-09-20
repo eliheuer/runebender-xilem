@@ -35,14 +35,15 @@ The implementation keeps canonical `Project` authoritative and uses its existing
 The first checkpoint adds `editor_context` in the application adapter and exposes stable glyph/contour/point/component/anchor identities in canonical reads.
 The Unix mailbox supplies a document epoch and rejects a mismatched optional `expected_document_epoch` before dispatch.
 The context includes active source/layer/glyph, selected object IDs, tab, tool, text/features, user axis values and gesture state.
-Its `context_revision` is a content hash, not a monotonic history counter; returning to identical context can reproduce the hash.
+Its `context_revision` is a content hash, not a monotonic history counter; returning to identical context within the same document epoch can reproduce the hash.
 Caret/selection ranges owned by the text widget remain explicitly unavailable, and there is no arbitrary auxiliary-layer canvas selector.
 
 Live schemas no longer advertise disk `master` indices; live calls reject that field and expose `source_id` on experiment results too.
 Canonical live results include `document_revision` and `saved=false`.
 The socket envelope reports schema version 1 and the package version; this is not an executable hash.
 MCP input is bounded to 8 MiB and initialization chooses a supported version instead of echoing an arbitrary version.
-Full schema validation, operation receipts, atomic grouped apply, cancellation, compiled proofs and real client/model trials remain pending.
+Full schema validation, live operation receipts, atomic grouped apply, cancellation and asynchronous compiled proof delivery remain pending.
+The engine transaction/proof primitives and real OMP model trials are implemented; the desktop client trial remains pending.
 See [the live context wire notes](agent-live-context.md) for the implemented contract and its limits.
 
 ## Milestone 1: one correct live editing loop

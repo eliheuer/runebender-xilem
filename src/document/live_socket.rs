@@ -82,6 +82,7 @@ impl Pending {
 #[derive(Debug)]
 pub struct Server {
     path: PathBuf,
+    epoch: String,
     receiver: mpsc::Receiver<Pending>,
     stop: Arc<AtomicBool>,
 }
@@ -117,13 +118,14 @@ impl Server {
         let (sender, receiver) = mpsc::sync_channel(1);
         let stop = Arc::new(AtomicBool::new(false));
         let stopping = stop.clone();
+        let worker_epoch = epoch.clone();
         std::thread::spawn(move || {
             while !stopping.load(Ordering::Relaxed) {
                 match listener.accept() {
                     Ok((mut stream, _)) => {
                         let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
                         let _ = stream.set_write_timeout(Some(Duration::from_secs(2)));
-                        let result = serve(&mut stream, &sender, &epoch);
+                        let result = serve(&mut stream, &sender, &worker_epoch);
                         if let Err(error) = result {
                             let _ = writeln!(
                                 stream,
@@ -142,6 +144,7 @@ impl Server {
         });
         Ok(Self {
             path,
+            epoch,
             receiver,
             stop,
         })
@@ -150,6 +153,12 @@ impl Server {
     /// The explicit endpoint clients pass to `--session`.
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// Opaque document lifetime used by request guards and response envelopes.
+    /// Application receipts and proof jobs must retain this exact identity.
+    pub fn document_epoch(&self) -> &str {
+        &self.epoch
     }
 
     /// Takes the next request without blocking the UI thread.
@@ -259,7 +268,9 @@ mod tests {
             assert!(Instant::now() < deadline);
             std::thread::sleep(Duration::from_millis(5));
         }
-        assert_eq!(client.join().unwrap()["glyph"], "n");
+        let result = client.join().unwrap();
+        assert_eq!(result["glyph"], "n");
+        assert_eq!(result["document_epoch"], server.document_epoch());
         drop(server);
         assert!(!path.exists());
     }

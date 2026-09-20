@@ -10,10 +10,11 @@ The [implementation checklist](agent-interface-plan.md) remains the acceptance a
 | Owner | Task ID | Scope |
 |---|---|---|
 | Coordinator | `01a0bc97-ee49-7cd0-a4a7-013a7973feb9` | Core session protocol and receipts, application integration, fixture endpoint, shared schemas/adapters, review and final acceptance |
-| Sol | `01a0bd66-eefd-7723-ae8b-abaa492918c1` | Typed session receipts, bounded retry ledger and atomic transaction boundary in `agent_session.rs` |
-| Terra | `01a0bd66-f64c-7911-b0d7-20a3f095f58d` | Bounded background immutable compiled proof jobs in `proof_jobs.rs` |
+| Sol/Luna (complete) | `01a0bd66-eefd-7723-ae8b-abaa492918c1` | Typed session receipts, bounded retry ledger and atomic transaction boundary in `agent_session.rs` |
+| Terra (complete) | `01a0bd66-f64c-7911-b0d7-20a3f095f58d` | Bounded background immutable compiled proof jobs in `proof_jobs.rs` |
 
-The new bounded tasks use Sol and Terra with high reasoning effort.
+The new bounded tasks started with Sol and Terra with high reasoning effort.
+Sol reached model capacity after writing the receipt implementation; the same receipt task resumed with Luna for validation, preserving its code and scope.
 The three original worker tasks are complete and archived; their engine, proof and client harness commits remain integrated.
 Workers operate in separate worktrees at the shared checkpoint and commit their own validated phases.
 They report exact commits, interfaces, evidence and blockers to the coordinator, who reviews before integration.
@@ -55,7 +56,14 @@ The browser release build, strict browser Clippy and interaction quality at DPR 
 Evidence is retained in `/private/tmp/runebender-agent-integration-20260920`; the final complete acceptance matrix remains pending.
 The [OMP model-client read/edit trials](agent-client-trials.md) now pass against fixture `999e6db`; the desktop task trial remains pending.
 The original three tasks were archived at the user's request, and their schedules are deleted.
-The new Sol and Terra tasks have ten-minute continuations named `continue-live-session-receipts` and `continue-background-compiled-proof-jobs`.
+The new receipt and proof-job tasks completed their bounded work as `5b495b2` and `b375a7a`, integrated here as `92769ae` and `3efadba`.
+Both workers removed their completed ten-minute continuations.
+Each worker reports seven focused tests and strict Clippy passing.
+The integrated native tree passes 837 tests with four explicitly ignored tests, strict all-target Clippy and warnings-denied documentation.
+The combined browser release build, strict Clippy and interaction quality at DPR 1, 2 and 1.25 also pass.
+This runtime checkpoint evidence is `/private/tmp/runebender-agent-runtime-20260920/evidence.json`.
+Both completed workers are archived; only the central continuation remains active.
+Integration also gates the native proof queue out of WASM and binds context tokens to the exact socket epoch.
 The coordinator's existing ten-minute continuation remains the central integration schedule.
 Continuations stay quiet when unchanged or non-actionable, report meaningful results or blockers, and are removed when their bounded work is complete.
 
@@ -105,9 +113,14 @@ Validate receipt capacity and operation-key conflicts before publication; retain
 An exact retry must return its original receipt without repeating application refresh or adding another history entry.
 
 Add one application `MetadataEdit` variant carrying the Project-owned group handle and affected addresses.
+The engine's read-only `check_document_edit_history_group` supports conflict-aware availability without mutating the document; replay rechecks the same guard before publication.
 Ordinary editor undo/redo and agent-targeted replay must use the same engine group, update the same application history entries and retain unrelated later edits.
 Tests must cover targeted undo followed by ordinary undo, ordinary undo followed by targeted undo, conflicts after later edits, and inactive-source cache refresh.
 The existing per-layer proposal-install bookkeeping is not an adequate substitute for this integration.
 
 Keep cancellation unadvertised until the serial socket and MCP loops can accept it independently of a running request, with explicit queued/committed race tests.
 Proof jobs must capture immutable inputs on the application thread, compile/render on workers, and return epoch/revision-bound handles without allowing a late result to become the current proof.
+Keep one bounded native queue across document replacements rather than creating an unbounded sequence of detached compilers.
+The adapter must bound retained completion references separately from the queue's own retention because cloned `Arc` results keep image bytes alive after queue discard.
+The current MCP `proof_content` path renders a scene synchronously; compiled job results must instead deliver the worker's already-rendered PNG with its captured font hash and revision, without recapture or rerender.
+The initial queue retains proof artifacts, not reusable compiled-font snapshot handles; do not advertise arbitrary later shaping or export against a retained font handle until that retention exists.

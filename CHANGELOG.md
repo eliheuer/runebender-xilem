@@ -10,6 +10,11 @@ No release has been published yet.
 
 ### Added
 
+- Live context revisions now include the document epoch, preventing identical reopened state from reusing an earlier context token.
+
+- Added bounded in-memory operation receipts and a native background queue for immutable compiled proofs.
+  These runtime primitives are not yet connected to live editing tools.
+
 - Added bounded canonical edit transactions with grouped history, immutable compiled-proof primitives, and a disposable live-client conformance harness.
   These engine primitives are not yet exposed as receipt-backed live tools.
   CLI-generated live prompts now share MCP's source, authorization and session guidance.

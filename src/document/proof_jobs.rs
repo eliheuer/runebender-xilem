@@ -4,7 +4,7 @@
 //! Bounded native workers for immutable compiled proofs.
 //!
 //! The application captures [`CompileProofInput`] while it owns the canonical
-//! [`Project`], then submits that owned value with an explicit document epoch.
+//! [`Project`](super::project::Project), then submits that owned value with an explicit document epoch.
 //! This module never borrows application state or constructs a second project.
 //! Its one worker compiles and renders only the immutable capture.
 //!
