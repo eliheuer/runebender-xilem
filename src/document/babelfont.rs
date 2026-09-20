@@ -4525,11 +4525,23 @@ impl LayerEditDraft {
                         )
                     })
                     .collect();
-                generated.push(
-                    Self::replacement_contour_from_path(&path, &smooth_at)
-                        .map_err(|error| error.to_string())?
-                        .ok_or_else(|| "metaball outline did not produce a contour".to_owned())?,
-                );
+                let mut converted = Self::replacement_contour_from_path(&path, &smooth_at)
+                    .map_err(|error| error.to_string())?
+                    .ok_or_else(|| "metaball outline did not produce a contour".to_owned())?;
+                // Babelfont rotates closed cubics to begin with off-curves on import.
+                // Restore img2bez's bottom start, keeping point metadata in the same order.
+                if let (Some(start), Shape::Path(contour)) =
+                    (path.segments().next().map(|s| s.start()), &mut converted.0)
+                    && let Some(index) = contour.nodes.iter().position(|node| {
+                        node.nodetype != NodeType::OffCurve
+                            && node.x == start.x
+                            && node.y == start.y
+                    })
+                {
+                    contour.nodes.rotate_left(index);
+                    converted.1.points.rotate_left(index);
+                }
+                generated.push(converted);
             }
         }
         data.groups.retain(|group| !selected.contains(&group.id));

@@ -176,36 +176,50 @@ mod tests {
     use kurbo::ParamCurve;
 
     #[test]
-    fn blended_stem_keeps_four_inflection_nodes() {
-        let group = MetaballGroup {
-            id: 1,
-            threshold: 0.5,
-            balls: [160.0, 370.0]
-                .into_iter()
-                .enumerate()
-                .map(|(i, y)| Metaball {
-                    id: u32::try_from(i).unwrap(),
-                    x: 250.0,
-                    y,
-                    radius: 180.0,
-                    stiffness: 2.0,
-                })
-                .collect(),
-        };
-        let paths = cubic_outline(&group, OutlineOptions::default()).unwrap();
-        let inflections = paths[0]
-            .segments()
-            .filter(|s| {
-                let point = s.start();
-                let (gradient, _) = derivatives(&group, point);
-                let curvature =
-                    feature_value(&group, point, Feature::Inflection) / gradient.hypot().powi(3);
-                curvature.abs() < 1e-10
-            })
-            .count();
-        assert_eq!(
-            inflections, 4,
-            "nodes at all four transitions into the neck"
-        );
+    fn blends_use_few_nodes_without_sacrificing_shape() {
+        for (dx, dy, radius, max_nodes) in [(0.0, 210.0, 180.0, 8), (95.0, 252.0, 205.0, 10)] {
+            let group = MetaballGroup {
+                id: 1,
+                threshold: 0.5,
+                balls: [(100.0, 100.0), (100.0 + dx, 100.0 + dy)]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, (x, y))| Metaball {
+                        id: u32::try_from(i).unwrap(),
+                        x,
+                        y,
+                        radius,
+                        stiffness: 2.0,
+                    })
+                    .collect(),
+            };
+            let paths = cubic_outline(&group, OutlineOptions::default()).unwrap();
+            assert_eq!(paths.len(), 1);
+            let segments: Vec<_> = paths[0].segments().map(|s| s.to_cubic()).collect();
+            assert!(
+                segments.len() <= max_nodes,
+                "{} nodes for offset {dx}",
+                segments.len()
+            );
+            let start = segments[0].p0;
+            for (i, cubic) in segments.iter().enumerate() {
+                assert!(start.y <= cubic.p0.y + 1e-9, "start at the lowest node");
+                let next = segments[(i + 1) % segments.len()];
+                assert_eq!(cubic.p3, next.p0);
+                assert!(
+                    (cubic.p3 - cubic.p2)
+                        .normalize()
+                        .dot((next.p1 - next.p0).normalize())
+                        > 1.0 - 1e-8
+                );
+                for j in 0..=200 {
+                    let p = cubic.eval(f64::from(j) / 200.0);
+                    let error =
+                        (field(&group, p) - group.threshold).abs() / tangent(&group, p).hypot();
+                    assert!(error < 0.25, "normal discrepancy {error}");
+                    assert!(p.y >= start.y - 1e-8, "start at the bottom of the curve");
+                }
+            }
+        }
     }
 }

@@ -395,6 +395,21 @@ mod tests {
             );
             app.edit_metaballs(|s| s.collapse_metaballs(false));
             assert!(!app.session.outline_is_empty());
+            for contour in &projected_glyph(&app.session).contours {
+                let start = contour
+                    .points
+                    .first()
+                    .expect("converted contour has points");
+                assert_ne!(start.typ, norad::PointType::OffCurve);
+                assert!(
+                    contour
+                        .points
+                        .iter()
+                        .filter(|p| p.typ != norad::PointType::OffCurve)
+                        .all(|p| start.y <= p.y + 1e-9),
+                    "editor contour starts at the bottom"
+                );
+            }
             app.undo_open_glyph(false);
             assert_eq!(
                 projected_glyph(&app.session),

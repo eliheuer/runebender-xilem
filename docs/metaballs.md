@@ -76,7 +76,9 @@ The interactive preview fits the whole loop with Kurbo's `simplify::simplify_bez
 Explicit conversion additionally locates horizontal and vertical extrema and curvature sign changes on the implicit field.
 It projects these feature points back onto the boundary and passes the ordered samples, tangents and feature labels to `img2bez::fit_smooth_contours`.
 Img2bez owns the constrained cubic fitting, using Kurbo internally to fit each span.
-This retains the structural nodes and their tangents instead of allowing whole-loop simplification to move them.
+This retains extrema and their tangents while optimizing segment count between them.
+Inflections can fall inside a cubic and no longer require an extra node.
+Converted contours start at their bottommost on-curve point, with ties resolved to the left.
 Extremum handles are exactly horizontal or vertical, and conversion retains fractional coordinates without rounding to a font-unit grid.
 A feature that cannot be resolved safely returns an error and leaves the source intact.
 
@@ -94,7 +96,7 @@ cargo run --no-default-features --example metaball_conversion_proof -- /tmp/meta
 
 The proof compares the previous whole-loop preview, img2bez's sampled-field tracing with bounded cleanup, and img2bez's exact-boundary fitting on a circle, a blended stem, an unequal diagonal blend, and a counter.
 These compare input information and pipeline choices, not img2bez against Kurbo.
-The diagonal blend needs more segments with constrained fitting; retaining extrema and inflections does not guarantee a globally minimal outline or replace a designer's judgment.
+The diagonal blend needs more segments with constrained fitting; retaining extrema does not guarantee a globally minimal outline or replace a designer's judgment.
 The reported discrepancy is a first-order normal-distance estimate sampled along the fitted curves, not a Hausdorff error bound.
 
 Sampling spacing is not a guaranteed error bound against the analytic field.

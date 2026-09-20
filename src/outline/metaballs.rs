@@ -67,7 +67,7 @@ pub fn preview(group: &MetaballGroup, options: OutlineOptions) -> Result<Vec<Bez
     sample_outline(group, options, false)
 }
 
-/// Fits editable cubic contours through img2bez with nodes at field extrema and inflections.
+/// Fits editable cubic contours through img2bez with required extrema and economical cubic spans.
 ///
 /// Tangents at extrema are exactly horizontal or vertical.
 /// Sampling and validation use the same bounded grid as [`preview`].
