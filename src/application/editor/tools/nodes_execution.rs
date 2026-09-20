@@ -153,6 +153,8 @@ pub(crate) enum LiveGraphExecutionErrorCode {
     UnknownRun,
     /// Action is not valid in the current phase.
     WrongPhase,
+    /// The graph or document changed after this run completed.
+    Stale,
     /// Python result could not stage against current canonical state.
     Staging,
     /// Proof recipe or proof outputs are invalid.
@@ -213,31 +215,19 @@ impl LiveGraphExecution {
     ) -> Result<LiveGraphSubmitResponse, LiveGraphExecutionError> {
         let request_key = (request.actor.clone(), request.operation_key.clone());
         if let Some(handle) = self.requests.get(&request_key).copied() {
-            let capture = session
-                .capture_run(
-                    graph_font_capture(&request),
-                    request.recipe_input.input_hash.clone(),
-                )
-                .map_err(graph_error)?;
-            let graph = session
-                .start_run(GraphRunRequest {
-                    guard: request.guard,
-                    actor: request.actor,
-                    operation_key: request.operation_key,
-                    capture,
-                })
-                .map_err(graph_error)?;
+            let (original_request, script) = {
+                let record = self.records.get(&handle).ok_or_else(|| {
+                    LiveGraphExecutionError::new(
+                        LiveGraphExecutionErrorCode::UnknownRun,
+                        "graph run retry is retained only as a released tombstone",
+                    )
+                })?;
+                validate_retry_request(record, &request)?;
+                (record.original_request(), record.script)
+            };
+            let graph = session.start_run(original_request).map_err(graph_error)?;
             debug_assert_eq!(graph.disposition, GraphReceiptDisposition::Replayed);
-            let record = self.records.get(&handle).ok_or_else(|| {
-                LiveGraphExecutionError::new(
-                    LiveGraphExecutionErrorCode::UnknownRun,
-                    "graph run retry is retained only as a released tombstone",
-                )
-            })?;
-            return Ok(LiveGraphSubmitResponse {
-                graph,
-                script: record.script,
-            });
+            return Ok(LiveGraphSubmitResponse { graph, script });
         }
         if self.retained_count() >= MAX_LIVE_GRAPH_RUNS {
             return Err(LiveGraphExecutionError::new(
@@ -397,6 +387,16 @@ impl LiveGraphExecution {
                 | ScriptJobStatus::Failed
                 | ScriptJobStatus::CancelledBeforeStart
                 | ScriptJobStatus::CancelledWhileRunning => {
+                    if session
+                        .inspect_run(handle)
+                        .is_some_and(|run| run.status == GraphRunStatus::CancellationRequested)
+                    {
+                        finish_cancelled(session, record, project);
+                        let _ = queue.discard(script_handle);
+                        record.script = None;
+                        changed.push((handle, record.phase));
+                        continue;
+                    }
                     let Some(outcome) = inspection.outcome else {
                         continue;
                     };
@@ -643,6 +643,8 @@ impl LiveGraphExecution {
     /// Workspace edit adapter, which remains responsible for receipts and ordinary font undo.
     pub(crate) fn apply_request(
         &self,
+        session: &GraphSession,
+        current: &GraphDocumentState,
         handle: GraphRunHandle,
         actor: impl Into<String>,
         operation_key: impl Into<String>,
@@ -658,6 +660,18 @@ impl LiveGraphExecution {
             return Err(LiveGraphExecutionError::new(
                 LiveGraphExecutionErrorCode::WrongPhase,
                 "Apply is available only after both comparison proofs complete",
+            ));
+        }
+        let snapshot = session.snapshot();
+        let identity = &record.work.identity;
+        if current.document_epoch != identity.graph.document_epoch
+            || current.document_revision != identity.capture.font.document_revision
+            || snapshot.semantic_revision != identity.semantic_revision
+            || snapshot.semantic_hash != identity.semantic_hash
+        {
+            return Err(LiveGraphExecutionError::new(
+                LiveGraphExecutionErrorCode::Stale,
+                "the graph or document changed after this run; rerun before Apply",
             ));
         }
         let proof = record.proof_request.as_ref().ok_or_else(|| {
@@ -719,6 +733,63 @@ impl LiveGraphExecution {
             )
         })
     }
+}
+
+impl LiveGraphRecord {
+    fn original_request(&self) -> GraphRunRequest {
+        let identity = &self.work.identity;
+        GraphRunRequest {
+            guard: GraphSemanticGuard {
+                identity: identity.graph.clone(),
+                semantic_revision: identity.semantic_revision,
+                semantic_hash: identity.semantic_hash.clone(),
+            },
+            actor: self.actor.clone(),
+            operation_key: self.operation_key.clone(),
+            capture: identity.capture.clone(),
+        }
+    }
+}
+
+fn validate_retry_request(
+    record: &LiveGraphRecord,
+    request: &LiveGraphSubmitRequest,
+) -> Result<(), LiveGraphExecutionError> {
+    let identity = &record.work.identity;
+    let expected_guard = GraphSemanticGuard {
+        identity: identity.graph.clone(),
+        semantic_revision: identity.semantic_revision,
+        semantic_hash: identity.semantic_hash.clone(),
+    };
+    if request.guard != expected_guard {
+        return Err(LiveGraphExecutionError::new(
+            LiveGraphExecutionErrorCode::Capture,
+            "graph retry guard does not match the original submitted run",
+        ));
+    }
+    let script = identity.capture.scripts.first().ok_or_else(|| {
+        LiveGraphExecutionError::new(
+            LiveGraphExecutionErrorCode::Capture,
+            "original graph run has no retained recipe capture",
+        )
+    })?;
+    if request.recipe_input.source != identity.capture.font.source
+        || request.recipe_input.input_hash != script.input_sha256
+    {
+        return Err(LiveGraphExecutionError::new(
+            LiveGraphExecutionErrorCode::Capture,
+            "recipe input does not match the original submitted run",
+        ));
+    }
+    if request.base_proof_input.document_revision() != identity.capture.font.document_revision
+        || request.base_proof_input.canonical_input_sha256() != identity.capture.font.capture_sha256
+    {
+        return Err(LiveGraphExecutionError::new(
+            LiveGraphExecutionErrorCode::Capture,
+            "base proof capture does not match the original submitted run",
+        ));
+    }
+    Ok(())
 }
 
 fn graph_font_capture(request: &LiveGraphSubmitRequest) -> GraphFontCapture {
@@ -1018,7 +1089,9 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use super::*;
-    use crate::application::platform::script_jobs::{ScriptJobConfig, ScriptRuntimeAvailability};
+    use crate::application::platform::script_jobs::{
+        ScriptJobConfig, ScriptJobStatus, ScriptRuntimeAvailability,
+    };
     use runebender::document::agent_edit::AgentLayerGuard;
     use runebender::document::compiled_proof;
     use runebender::document::edit_batch::canonical_glyph_revision;
@@ -1116,6 +1189,156 @@ mod tests {
     }
 
     #[test]
+    fn exact_retry_replays_retained_capture_after_graph_change() {
+        let Some(python) = python() else {
+            return;
+        };
+        let project = project();
+        let (mut session, request) = setup(&project);
+        let retry = LiveGraphSubmitRequest {
+            guard: request.guard.clone(),
+            actor: request.actor.clone(),
+            operation_key: request.operation_key.clone(),
+            recipe_input: request.recipe_input.clone(),
+            base_proof_input: request.base_proof_input.clone(),
+        };
+        let queue = ScriptJobQueue::new(ScriptJobConfig::new(python)).unwrap();
+        let mut adapter = LiveGraphExecution::default();
+        let submitted = adapter
+            .submit(&mut session, &queue, &project, request)
+            .unwrap();
+
+        let snapshot = session.snapshot();
+        session
+            .mutate_interactive(GraphInteractiveMutationRequest {
+                guard: GraphGuard {
+                    identity: snapshot.identity,
+                    revision: snapshot.revision,
+                },
+                mutation: GraphMutation::Patch {
+                    edits: vec![GraphEdit::SetValue {
+                        node: 3,
+                        field: "code".into(),
+                        value: Value::String("print('changed after submit')".into()),
+                    }],
+                },
+            })
+            .unwrap();
+
+        let replay = adapter
+            .submit(&mut session, &queue, &project, retry)
+            .unwrap();
+        assert_eq!(replay.graph.disposition, GraphReceiptDisposition::Replayed);
+        assert_eq!(replay.graph.receipt, submitted.graph.receipt);
+        assert_eq!(replay.script, submitted.script);
+
+        let mut changed_input = LiveGraphSubmitRequest {
+            guard: GraphSemanticGuard {
+                identity: submitted.graph.receipt.identity.graph.clone(),
+                semantic_revision: submitted.graph.receipt.identity.semantic_revision,
+                semantic_hash: submitted.graph.receipt.identity.semantic_hash.clone(),
+            },
+            actor: "test".into(),
+            operation_key: "run".into(),
+            recipe_input: input(&project, "job-1"),
+            base_proof_input: compiled_proof::capture(&project).unwrap(),
+        };
+        changed_input.recipe_input.input_hash = sha256(b"different-input");
+        let error = adapter
+            .submit(&mut session, &queue, &project, changed_input)
+            .unwrap_err();
+        assert_eq!(error.code, LiveGraphExecutionErrorCode::Capture);
+
+        let mut changed_project = project();
+        let source = changed_project.source_id(0).unwrap();
+        let layer = changed_project
+            .document_source(source)
+            .unwrap()
+            .default_layer();
+        changed_project
+            .edit_document_layer("A", &layer, |draft| {
+                draft.set_width(701.0)?;
+                Ok(())
+            })
+            .unwrap();
+        let changed_base = LiveGraphSubmitRequest {
+            guard: GraphSemanticGuard {
+                identity: submitted.graph.receipt.identity.graph.clone(),
+                semantic_revision: submitted.graph.receipt.identity.semantic_revision,
+                semantic_hash: submitted.graph.receipt.identity.semantic_hash.clone(),
+            },
+            actor: "test".into(),
+            operation_key: "run".into(),
+            recipe_input: input(&project, "job-1"),
+            base_proof_input: compiled_proof::capture(&changed_project).unwrap(),
+        };
+        let error = adapter
+            .submit(&mut session, &queue, &project, changed_base)
+            .unwrap_err();
+        assert_eq!(error.code, LiveGraphExecutionErrorCode::Capture);
+    }
+
+    #[test]
+    fn cancellation_discards_terminal_script_before_staging() {
+        let Some(python) = python() else {
+            return;
+        };
+        let project = project();
+        let (mut session, request) = setup(&project);
+        let queue = ScriptJobQueue::new(ScriptJobConfig::new(python)).unwrap();
+        let mut adapter = LiveGraphExecution::default();
+        let submitted = adapter
+            .submit(&mut session, &queue, &project, request)
+            .unwrap();
+        let script = submitted.script.unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if queue.inspect(script).unwrap().status == ScriptJobStatus::Completed {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "script did not finish before cancellation"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        let identity = submitted.graph.receipt.identity.clone();
+        let cancelled = adapter
+            .cancel(
+                &mut session,
+                &queue,
+                GraphCancelRequest {
+                    identity: identity.graph.clone(),
+                    handle: submitted.graph.receipt.handle,
+                    actor: "test".into(),
+                    operation_key: "cancel-before-poll".into(),
+                },
+                &GraphDocumentState {
+                    document_epoch: identity.graph.document_epoch,
+                    document_revision: identity.capture.font.document_revision,
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            cancelled.graph.receipt.outcome,
+            GraphCancelOutcome::CancellationRequested
+        );
+        assert_eq!(cancelled.script, Some(ScriptJobCancelOutcome::TooLate));
+
+        adapter.poll_scripts(&mut session, &queue, &project);
+        assert_eq!(
+            adapter.phase(submitted.graph.receipt.handle),
+            Some(LiveGraphPhase::Terminal(GraphRunStatus::Cancelled))
+        );
+        assert!(
+            adapter
+                .take_proof_request(submitted.graph.receipt.handle)
+                .is_err()
+        );
+    }
+
+    #[test]
     fn stages_recipe_without_mutating_root_then_publishes_both_proofs() {
         let Some(python) = python() else {
             return;
@@ -1175,11 +1398,67 @@ mod tests {
             "staged width"
         );
         let apply = adapter
-            .apply_request(handle, "test", "apply-1", "user-approved")
+            .apply_request(
+                &session,
+                &GraphDocumentState {
+                    document_epoch: "document".into(),
+                    document_revision: root_revision,
+                },
+                handle,
+                "test",
+                "apply-1",
+                "user-approved",
+            )
             .unwrap();
         assert_eq!(apply.expected_document_epoch, "document");
         assert_eq!(apply.source, project.source_id(0).unwrap().0);
         assert_eq!(apply.edits.len(), 1);
+
+        let stale_document = adapter
+            .apply_request(
+                &session,
+                &GraphDocumentState {
+                    document_epoch: "document".into(),
+                    document_revision: root_revision + 1,
+                },
+                handle,
+                "test",
+                "apply-after-document-change",
+                "user-approved",
+            )
+            .unwrap_err();
+        assert_eq!(stale_document.code, LiveGraphExecutionErrorCode::Stale);
+
+        let snapshot = session.snapshot();
+        session
+            .mutate_interactive(GraphInteractiveMutationRequest {
+                guard: GraphGuard {
+                    identity: snapshot.identity,
+                    revision: snapshot.revision,
+                },
+                mutation: GraphMutation::Patch {
+                    edits: vec![GraphEdit::SetValue {
+                        node: 3,
+                        field: "code".into(),
+                        value: Value::String("print('changed after proof')".into()),
+                    }],
+                },
+            })
+            .unwrap();
+        let stale = adapter
+            .apply_request(
+                &session,
+                &GraphDocumentState {
+                    document_epoch: "document".into(),
+                    document_revision: root_revision,
+                },
+                handle,
+                "test",
+                "apply-after-change",
+                "user-approved",
+            )
+            .unwrap_err();
+        assert_eq!(stale.code, LiveGraphExecutionErrorCode::Stale);
     }
 
     #[test]
