@@ -10,6 +10,9 @@ No release has been published yet.
 
 ### Added
 
+- Added live `editor_open_glyph` navigation for agent clients.
+  It switches the current editor tab to a named glyph while preserving text, preview, source and tool context, without editing or saving the font.
+
 - Added the native Python recipe runtime and script-file library foundation, plus anchor report and move examples.
   Recipes receive immutable captures and return validated reports or proposals; applying an edit remains a separate guarded action.
   Process deadlines, bounded result capture and observed file-conflict checks cover the runtime boundary.

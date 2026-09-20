@@ -87,6 +87,9 @@ impl Workspace {
             }
             return self.live_context();
         }
+        if call.name == "editor_open_glyph" {
+            return self.live_open_glyph(&call.arguments);
+        }
         if matches!(
             call.name.as_str(),
             "proposal_install" | "experiment_apply" | "experiment_undo_apply"
@@ -204,6 +207,7 @@ impl Workspace {
                 "max_agent_actors":super::live_edits::MAX_ACTORS,
                 "receipts_per_actor":super::live_edits::RECEIPTS_PER_ACTOR,
                 "application_context":true,
+                "glyph_navigation":true,
                 "widget_text_ranges":false,
                 "auxiliary_layer_canvas_selection":false,
                 "context_revision_kind":"sha256-content",
@@ -211,6 +215,38 @@ impl Workspace {
                 "read_state":"committed-project; active gesture draft excluded",
             },
         })
+    }
+
+    fn live_open_glyph(&mut self, arguments: &serde_json::Value) -> serde_json::Value {
+        use serde_json::json;
+
+        let Some(object) = arguments.as_object() else {
+            return json!({"ok":false,"error":"arguments must be an object", "error_code":"invalid_arguments"});
+        };
+        let Some(glyph) = object
+            .get("glyph")
+            .and_then(serde_json::Value::as_str)
+            .filter(|glyph| !glyph.is_empty())
+        else {
+            return json!({"ok":false,"error":"glyph must be a non-empty string", "error_code":"invalid_arguments"});
+        };
+        if object.len() != 1 {
+            return json!({"ok":false,"error":"editor_open_glyph accepts only glyph", "error_code":"invalid_arguments"});
+        }
+        let Some(index) = self.font.index_of(glyph) else {
+            return json!({"ok":false,"error":format!("glyph not found: {glyph}"), "error_code":"glyph_not_found"});
+        };
+        let previous = self.session.glyph_name.clone();
+        if previous != glyph {
+            if self.session.gesture_in_progress() {
+                return json!({"ok":false,"error":"finish the canvas gesture before opening another glyph", "error_code":"busy_gesture"});
+            }
+            self.edit_text_sort_glyph(index, self.tool);
+        }
+        let mut context = self.live_context();
+        context["changed"] = json!(previous != glyph);
+        context["previous_glyph"] = json!(previous);
+        context
     }
 }
 
@@ -356,6 +392,61 @@ mod tests {
         let other = socket_call(&mut other, "editor_context", json!({}));
         assert_ne!(other["document_epoch"], epoch);
         assert!(!path.exists(), "no live request saves the document");
+    }
+
+    #[test]
+    fn live_open_glyph_preserves_the_active_tab_context() {
+        use crate::application::{font_model::FontModel, workspace::Tool};
+        use serde_json::json;
+
+        let path = std::env::temp_dir().join(format!(
+            "live-navigation-never-saved-{}.ufo",
+            std::process::id()
+        ));
+        let mut project = Project::new_font(path.clone());
+        project
+            .add_document_glyph("A", 400.0, Some(u32::from('A')))
+            .unwrap();
+        project
+            .add_document_glyph("B", 420.0, Some(u32::from('B')))
+            .unwrap();
+        let mut app = Workspace::from_model(FontModel::from_project(project)).unwrap();
+        let a = app.font.index_of("A").unwrap();
+        app.open_glyph(a);
+        app.tool = Tool::Text;
+        app.has_text_session = true;
+        app.set_editor_text("AB".into());
+        app.preview_text = "proof text".into();
+        let tab = app.active_tab;
+        let text_context = app.text_context_id();
+        let document_revision = app.font.project.document_revision();
+        let epoch = socket_call(&mut app, "editor_context", json!({}))["document_epoch"].clone();
+
+        let opened = socket_call(
+            &mut app,
+            "editor_open_glyph",
+            json!({"glyph":"B","expected_document_epoch":epoch}),
+        );
+        assert_eq!(opened["ok"], true, "{opened}");
+        assert_eq!(opened["changed"], true);
+        assert_eq!(opened["previous_glyph"], "A");
+        assert_eq!(opened["context"]["glyph"], "B");
+        assert_eq!(opened["context"]["text"]["editor"], "AB");
+        assert_eq!(opened["context"]["text"]["preview"], "proof text");
+        assert_eq!(opened["context"]["tool"], "text");
+        assert_eq!(app.active_tab, tab);
+        assert_eq!(app.text_context_id(), text_context);
+        assert_eq!(app.font.project.document_revision(), document_revision);
+        assert!(!path.exists(), "navigation never saves the document");
+
+        let missing = socket_call(
+            &mut app,
+            "editor_open_glyph",
+            json!({"glyph":"missing","expected_document_epoch":epoch}),
+        );
+        assert_eq!(missing["error_code"], "glyph_not_found");
+        assert_eq!(app.session.glyph_name, "B");
+        assert_eq!(app.font.project.document_revision(), document_revision);
     }
 
     #[test]

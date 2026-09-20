@@ -77,6 +77,13 @@ pub fn tools() -> Vec<agent::Tool> {
         parameters: json!({"type":"object", "properties":{}, "additionalProperties":false}),
     });
     result.push(agent::Tool {
+        name: "editor_open_glyph".into(),
+        description: "Open a named glyph in the current editor tab while preserving its text and preview context, active source and current tool. Rejects an active canvas gesture. Does not edit or save the font.".into(),
+        parameters: json!({"type":"object", "properties":{
+            "glyph":{"type":"string","minLength":1}
+        }, "required":["glyph"], "additionalProperties":false}),
+    });
+    result.push(agent::Tool {
         name: "glyph_inventory".into(),
         description: "Find live glyphs by mark label or Unicode scalar before selecting references and targets. Returns names, encoding, empty status and revisions. Green is a reference only when the project says so. Uses the dark theme to interpret legacy mark colors.".into(),
         parameters: json!({"type":"object", "properties": {
@@ -165,6 +172,7 @@ pub fn tools() -> Vec<agent::Tool> {
         if !matches!(
             tool.name.as_str(),
             "editor_context"
+                | "editor_open_glyph"
                 | "design_context"
                 | "project_info"
                 | "experiment_list"
@@ -217,7 +225,7 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
     if object.contains_key("expected_document_epoch") {
         return Err("document epoch guards require the live socket session boundary".into());
     }
-    if name == "editor_context" {
+    if matches!(name, "editor_context" | "editor_open_glyph") {
         return Ok(
             json!({"ok":false,"error":"application context is unavailable in this host", "error_code":"unsupported_context"}),
         );
@@ -1045,5 +1053,21 @@ mod tests {
                 json!(["user-approved"])
             );
         }
+    }
+
+    #[test]
+    fn editor_open_glyph_is_application_only_and_requires_a_name() {
+        let tool = tools()
+            .into_iter()
+            .find(|tool| tool.name == "editor_open_glyph")
+            .expect("glyph navigation is discoverable");
+        assert_eq!(tool.parameters["required"], json!(["glyph"]));
+        assert_eq!(tool.parameters["properties"]["glyph"]["minLength"], 1);
+        assert!(tool.parameters["properties"].get("source").is_none());
+
+        let mut project = Project::new_font("never-saved.ufo".into());
+        let result = call(&mut project, "editor_open_glyph", &json!({"glyph":"A"}));
+        assert_eq!(result["error_code"], "unsupported_context");
+        assert_eq!(result["saved"], false);
     }
 }

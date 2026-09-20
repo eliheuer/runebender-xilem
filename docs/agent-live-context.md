@@ -35,6 +35,7 @@ The result includes:
 - `context.text`: editor/preview text, direction setting, disabled features, script and language settings.
 - `context.location`: axis tags and user-coordinate values.
 - `context.busy_gesture`: whether a canvas gesture has a private uncommitted draft.
+- `capabilities.glyph_navigation`: whether `editor_open_glyph` can navigate the application session.
 
 The context is captured in one application-thread call.
 Glyph reads inspect committed canonical state; an unfinished pointer gesture is not included in that state.
@@ -45,6 +46,12 @@ The widget owns caret and text selection ranges, so both are null and `widget_te
 Script, language and direction describe selected settings, not a resolved bidi/shaping run analysis.
 The context has no arbitrary auxiliary-layer canvas selection; `auxiliary_layer_canvas_selection` is false.
 A headless engine-only host returns `unsupported_context` instead of inventing application state.
+
+Call `editor_open_glyph` with a glyph name and the optional epoch guard to make that glyph active in the current editor tab.
+It follows text-sort activation: the tab identity, editor and preview text, active source, and current tool remain unchanged.
+It rejects an unknown glyph or an active canvas gesture and never edits or saves font data.
+The response includes the resulting coherent application context, `previous_glyph`, and whether the active glyph changed.
+An engine-only host returns `unsupported_context` because it has no application session to navigate.
 
 ## Canonical glyph reads
 
