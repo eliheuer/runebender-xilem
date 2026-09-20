@@ -95,3 +95,44 @@ The coordinator reviews and integrates completed work, runs combined gates, push
 This delivery does not close the broader variable/multilingual context, cross-source transactions, full client/platform matrix or remote transport work in agent-interface-plan.md.
 Actual model image interpretation and native foreground pointer/IME acceptance remain separate evidence.
 The latest user approval releases implementation and disposable local recipe trials; it does not authorize bypassing the earlier automatic review block on credentialed OMP image submissions or interrupting the desktop with a foreground GUI.
+
+## Requested Nodes comparison workflow
+
+The user next requested a ComfyUI-like graph with a base font branching into an unchanged specimen and a Python-transformed specimen.
+The Python node should show editable code inside its box, and image output nodes should be movable side by side for comparison.
+This is a requested next product phase, not an implemented capability or an instruction to duplicate the current workers.
+
+The intended graph is captured base FontVersion → specimen A, and the same captured FontVersion → Python script → derived FontVersion → specimen B.
+Run captures one immutable baseline shared by both paths, including unsaved editor changes.
+The script produces a guarded proposal that the host stages into a derived version, without changing its input or the open document.
+Applying a chosen result to the open document is a separate explicit operation using canonical transactions, conflict checks, receipts and ordinary undo.
+The script runner and result validator are the same ones used by the Scripts panel; the graph changes where the proposal is evaluated, not who owns font mutations.
+
+The graph's font wire is a typed handle to a canonical Rust-owned font version.
+Babelfont-backed geometry stays behind the Project adapters, including exact metadata and stable source/layer identities.
+Python receives immutable scoped input and returns operations; it does not receive a shared mutable Python Babelfont object or the original font path.
+The public graph should remain variable-family aware even though the first mutation adapter is limited to one explicit source.
+Current experiment versions represent a stable source, so a full-family compiled specimen needs a canonical family overlay that preserves every other source and dependency.
+Do not label a source-only outline grid as a fully compiled variable-font proof.
+
+Use the existing compiled-proof and Designbot path first.
+Both specimen nodes share explicit text, size, features, language/direction, variation location and renderer identity when doing A/B comparison.
+Keep captured font/script/parameter hashes with the displayed images and mark obsolete results stale until rerun.
+Late completions cannot replace results from newer graph runs.
+Retain previous images during recomputation with their state visible.
+An image output can be embedded in a resizable draggable node with zoom/open controls.
+The script node uses a real multiline editor with proper focus, selection, clipboard and code undo, plus an expand action using the same buffer as the Scripts editor.
+Editing code must not drag the node or trigger a graph run automatically.
+Loading a saved script copies a known revision into the graph; updating the library or refreshing from it is explicit.
+Saved graphs retain script text, parameters, connections and layout, but never stale session handles or implicit permission to execute.
+
+DrawBot is a possible later renderer adapter using a temporary compiled font artifact and explicit rendering recipe.
+It is not a required dependency for the first Nodes comparison loop and is distinct from the existing Designbot adapter.
+Renderer differences must remain visible rather than being mistaken for script-induced font changes.
+
+The current engine declares live.font, live.fork, live.proof and live.apply, but native editor/tools/nodes.rs removes live types from the palette and rejects their execution through the disk runner.
+The custom native Nodes canvas currently has no registered child widgets for inline editing.
+Therefore this phase requires a native live-graph scheduler, derived-version recipe adapter, full-family proof overlay where needed, and real code/image node content; it is not just adding a node label.
+Keep this phase queued behind the shared runner contract and current review, then split engine/scheduler and canvas/editor work with explicit ownership.
+
+Acceptance must show the original branch unchanged, a visible scripted anchor difference in a suitable mark-attachment specimen, identical proof settings, correct stale/cancel behavior, graph save/reopen without live bindings, and an explicit Apply/Undo that changes only the chosen target.
