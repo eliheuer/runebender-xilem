@@ -96,21 +96,11 @@ fn project_fixture() -> (Project, GlyphLayerAddress) {
     (project, address)
 }
 
-fn rename_project_glyph(project: &mut Project, source: SourceId, old: &str, new: &str) {
-    let mut font = project
-        .edit_source(source)
-        .expect("the fixture source exists")
-        .into_font();
-    let default_layer = font.default_layer().name().to_string();
-    assert!(
-        runebender::document::font_ops::rename_glyph(&mut font, old, new),
-        "fixture default-layer rename failed"
-    );
-    for layer in font.layers.iter_mut() {
-        if layer.name().as_str() != default_layer && layer.get_glyph(old).is_some() {
-            layer.rename_glyph(old, new, false).unwrap();
-        }
-    }
+fn rename_project_glyph(project: &mut Project, _source: SourceId, old: &str, new: &str) {
+    assert!(matches!(
+        project.rename_document_glyph(old, new),
+        Ok(DocumentEditOutcome::Changed { .. })
+    ));
 }
 
 fn rename_project_fixture() -> (Project, GlyphLayerAddress) {

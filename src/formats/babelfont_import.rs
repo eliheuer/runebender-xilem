@@ -670,13 +670,21 @@ mod tests {
         std::fs::create_dir(&occupied).unwrap();
         std::fs::write(occupied.join("sentinel"), "keep").unwrap();
         let mut project = Project::load(&package).unwrap();
-        let master = &mut project.edit_sources()[0];
-        assert!(master.dirty);
-        assert!(!master.source_path.exists());
-        master.font.get_glyph_mut("A").unwrap().width = 701.0;
-        master.save().unwrap();
+        let source = project.source_id(0).unwrap();
+        let source_path = project.document_source_path(source).unwrap().to_owned();
+        assert!(project.sources()[0].dirty);
+        assert!(!source_path.exists());
+        let layer = project.document_source(source).unwrap().default_layer();
+        assert!(matches!(
+            project.edit_document_layer("A", &layer, |draft| {
+                draft.set_width(701.0)?;
+                Ok(())
+            }),
+            Ok(crate::document::project::DocumentEditOutcome::Changed { .. })
+        ));
+        project.save().unwrap();
         assert_eq!(
-            Font::load(&master.source_path)
+            Font::load(&source_path)
                 .unwrap()
                 .get_glyph("A")
                 .unwrap()

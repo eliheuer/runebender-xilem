@@ -860,6 +860,35 @@ impl Project {
         Ok(target_id)
     }
 
+    /// Remove one glyph from a single source layer while retaining the logical glyph elsewhere.
+    pub fn remove_document_source_glyph(
+        &mut self,
+        glyph: &str,
+        source: SourceId,
+    ) -> Result<bool, String> {
+        let index = self.source_index(source).ok_or("unknown source")?;
+        let layer = self
+            .document_source(source)
+            .ok_or("unknown source")?
+            .default_layer();
+        if self.document_layer(glyph, &layer).is_none() {
+            return Ok(false);
+        }
+        let before = SourceFrame::capture(self);
+        if !self.variable.remove_layer(glyph, &layer) {
+            return Ok(false);
+        }
+        self.masters[index]
+            .font
+            .default_layer_mut()
+            .remove_glyph(glyph);
+        self.masters[index].dirty = true;
+        self.masters[index].modified_glyphs.insert(glyph.to_owned());
+        self.masters[index].refresh_from_font();
+        self.record_source_change(before);
+        Ok(true)
+    }
+
     /// Remove one auxiliary glyph layer, retaining the layer and other glyphs.
     pub fn remove_glyph_layer(&mut self, glyph: &str, id: &LayerId) -> Result<(), String> {
         let index = self.source_index(id.source).ok_or("unknown source")?;

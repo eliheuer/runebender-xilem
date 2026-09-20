@@ -1,12 +1,11 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Glyph-first storage and scoped compatibility edits.
+//! Glyph-first storage and explicit persistence projections.
 //!
 //! A source is a location and a persistence destination, not a separate font.
 //! Each variable glyph owns its source and auxiliary layers. UFO projections are
-//! disposable views for existing outline tools; guards reconcile all their edits,
-//! including history replay and metadata changes, before another Project operation.
+//! disposable views for persistence and format adapters.
 //! Babelfont owns live glyph geometry. Exact UFO projections also retain fields
 //! and precision outside Babelfont's schema; saving materializes its geometry
 //! through the preserving adapter rather than its lossy UFO converter.
@@ -20,7 +19,6 @@ pub(super) mod source_builder;
 pub use glyph_transactions::GlyphId;
 
 use std::collections::{BTreeMap, HashSet};
-use std::ops::{Deref, DerefMut};
 
 use super::project::Master;
 
@@ -981,90 +979,6 @@ impl VariableData {
             .get(name)?
             .get_layer(&super::babelfont::layer_key(id))?;
         Some(super::babelfont::project_layer(layer, preserved))
-    }
-}
-
-/// A scoped edit of a source projection; dropping it commits to the variable project.
-#[derive(Debug)]
-pub struct SourceEdit<'a> {
-    pub(super) source: &'a mut Master,
-    pub(super) data: &'a mut VariableData,
-    pub(super) id: SourceId,
-}
-
-impl<'a> SourceEdit<'a> {
-    /// Narrow a compatibility edit to its UFO payload.
-    pub fn into_font(self) -> SourceFontEdit<'a> {
-        SourceFontEdit(self)
-    }
-}
-
-impl Deref for SourceEdit<'_> {
-    type Target = Master;
-
-    fn deref(&self) -> &Self::Target {
-        self.source
-    }
-}
-
-impl DerefMut for SourceEdit<'_> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.source
-    }
-}
-
-impl Drop for SourceEdit<'_> {
-    fn drop(&mut self) {
-        self.source.dirty |= self.data.update_source(self.id, &self.source.font);
-    }
-}
-
-/// Scoped UFO compatibility access used by existing editing algorithms.
-#[derive(Debug)]
-pub struct SourceFontEdit<'a>(SourceEdit<'a>);
-
-impl Deref for SourceFontEdit<'_> {
-    type Target = norad::Font;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0.font
-    }
-}
-
-impl DerefMut for SourceFontEdit<'_> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.0.dirty = true;
-        &mut self.0.font
-    }
-}
-
-/// A batch of source edits committed together when the scope ends.
-#[derive(Debug)]
-pub struct SourcesEdit<'a> {
-    pub(super) sources: &'a mut [Master],
-    pub(super) data: &'a mut VariableData,
-}
-
-impl Deref for SourcesEdit<'_> {
-    type Target = [Master];
-
-    fn deref(&self) -> &Self::Target {
-        self.sources
-    }
-}
-
-impl DerefMut for SourcesEdit<'_> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.sources
-    }
-}
-
-impl Drop for SourcesEdit<'_> {
-    fn drop(&mut self) {
-        for (index, source) in self.sources.iter_mut().enumerate() {
-            let id = self.data.source_ids[index];
-            source.dirty |= self.data.update_source(id, &source.font);
-        }
     }
 }
 

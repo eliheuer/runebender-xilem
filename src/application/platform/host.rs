@@ -1377,69 +1377,24 @@ mod tests {
             workspace.font.project.document_glyph_codepoints("A"),
             Some(vec![vec!['\u{0628}']; 2])
         );
-        assert!(workspace.font.project.sources().iter().all(|master| {
-            let index = master.name_map["A"];
-            master.undo_depth(index) == 0
-        }));
-        for master in workspace.font.project.sources() {
-            assert_eq!(
-                master
-                    .font
-                    .get_glyph("A")
-                    .expect("A exists in every master")
-                    .codepoints
-                    .iter()
-                    .collect::<Vec<_>>(),
-                ['\u{0628}']
-            );
-        }
         workspace.undo_active_edit(false);
-        assert!(workspace.font.project.sources().iter().all(|master| {
-            master
-                .font
-                .get_glyph("A")
-                .expect("A exists")
-                .codepoints
-                .is_empty()
-        }));
+        assert_eq!(
+            workspace.font.project.document_glyph_codepoints("A"),
+            Some(vec![Vec::new(), Vec::new()])
+        );
         workspace.undo_active_edit(true);
-        assert!(workspace.font.project.sources().iter().all(|master| {
-            master
-                .font
-                .get_glyph("A")
-                .expect("A exists")
-                .codepoints
-                .contains('\u{0628}')
-        }));
+        assert_eq!(
+            workspace.font.project.document_glyph_codepoints("A"),
+            Some(vec![vec!['\u{0628}']; 2])
+        );
 
         workspace.name_buf = "beh.test".into();
         workspace.commit_rename();
-        assert!(
-            workspace
-                .font
-                .project
-                .sources()
-                .iter()
-                .all(|master| master.font.get_glyph("beh.test").is_some())
-        );
+        assert!(workspace.font.project.document_glyph("beh.test").is_some());
         workspace.undo_active_edit(false);
-        assert!(
-            workspace
-                .font
-                .project
-                .sources()
-                .iter()
-                .all(|master| master.font.get_glyph("A").is_some())
-        );
+        assert!(workspace.font.project.document_glyph("A").is_some());
         workspace.undo_active_edit(true);
-        assert!(
-            workspace
-                .font
-                .project
-                .sources()
-                .iter()
-                .all(|master| master.font.get_glyph("beh.test").is_some())
-        );
+        assert!(workspace.font.project.document_glyph("beh.test").is_some());
 
         workspace.back_to_overview();
         workspace.overview_set_unicode("0041".into());
@@ -1528,22 +1483,25 @@ mod tests {
             Some("interpolated")
         );
 
-        let mut sources = workspace.font.project.edit_sources();
-        let glyph = sources[1]
+        let source = workspace
             .font
-            .get_glyph_mut("A")
-            .expect("A exists in the second master");
-        let mut contour = norad::Contour::default();
-        contour.points.push(norad::ContourPoint::new(
-            10.0,
-            20.0,
-            norad::PointType::Move,
-            false,
-            None,
-            None,
-        ));
-        glyph.contours.push(contour);
-        drop(sources);
+            .project
+            .source_id(1)
+            .expect("the second source exists");
+        let layer = workspace
+            .font
+            .project
+            .document_source(source)
+            .expect("the second source is canonical")
+            .default_layer();
+        workspace
+            .font
+            .project
+            .edit_document_layer("A", &layer, |draft| {
+                draft.add_shape_contour(kurbo::Rect::new(10.0, 20.0, 11.0, 21.0), false)?;
+                Ok(())
+            })
+            .expect("the second source outline changes");
         workspace.font.project.recheck_compat("A");
 
         let status = workspace
@@ -1565,6 +1523,14 @@ mod tests {
             let source = dir.join(ufo);
             let mut font = norad::Font::load(&source).expect("the source UFO loads");
             font.features = "include(../shared.fea);".into();
+            let layer = font
+                .layers
+                .new_layer("Sketch")
+                .expect("the test layer is new");
+            let mut glyph = norad::Glyph::new("guide");
+            glyph.width = 321.0;
+            layer.insert_glyph(glyph);
+            font.font_info.note = Some("save-as metadata".into());
             font.save(&source).expect("the source features save");
             std::fs::write(
                 source.join("lib.plist"),
@@ -1577,19 +1543,6 @@ mod tests {
         std::fs::write(dir.join("shared.fea"), "# shared Save As include\n")
             .expect("the shared feature include is written");
         let mut workspace = Workspace::open(&designspace).expect("the designspace opens");
-        for master in workspace.font.project.edit_sources().iter_mut() {
-            let layer = master
-                .font
-                .layers
-                .new_layer("Sketch")
-                .expect("the test layer is new");
-            let mut glyph = norad::Glyph::new("guide");
-            glyph.width = 321.0;
-            layer.insert_glyph(glyph);
-            master.font.font_info.note = Some("save-as metadata".into());
-            master.dirty = true;
-        }
-        workspace.modified = true;
 
         let copy = dir.join("copy");
         std::fs::create_dir(&copy).expect("the copy directory is created");

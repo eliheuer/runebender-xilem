@@ -5,11 +5,23 @@
 
 use norad::{Contour, ContourPoint, Font, Glyph, Name, PointType};
 use runebender::document::DocumentEditError;
+use runebender::document::canonical_metadata::KerningParticipant;
 use runebender::document::font_memory::designspace_from_str;
 use runebender::document::project::{DocumentEditOutcome, Master, Project};
 use runebender::document::variable::{LayerId, SourceId};
 use runebender::text::shape::ShapingFont;
 use skrifa::raw::TableProvider as _;
+
+fn edit_width(project: &mut Project, source: SourceId, glyph: &str, width: f64) {
+    let layer = project.document_source(source).unwrap().default_layer();
+    assert!(matches!(
+        project.edit_document_layer(glyph, &layer, |draft| {
+            draft.set_width(width)?;
+            Ok(())
+        }),
+        Ok(DocumentEditOutcome::Changed { .. })
+    ));
+}
 
 fn designspace() -> norad::designspace::DesignSpaceDocument {
     designspace_from_str(r#"<designspace format="5.0">
@@ -92,14 +104,7 @@ fn unsaved_variable_document_compiles_outlines_advances_kerning_and_ligatures() 
         assert_eq!(ligature.len(), 1);
         assert_eq!(shaping.glyph_name(ligature[0].glyph_id), Some("AV"));
     }
-    project
-        .edit_source(SourceId(1))
-        .unwrap()
-        .font
-        .default_layer_mut()
-        .get_glyph_mut("A")
-        .unwrap()
-        .width = 1000.0;
+    edit_width(&mut project, SourceId(1), "A", 1000.0);
     let edited = project.compile().unwrap();
     let shaped = ShapingFont::from_bytes((*edited.bytes).clone())
         .unwrap()
@@ -116,22 +121,22 @@ fn unsaved_variable_document_compiles_outlines_advances_kerning_and_ligatures() 
 #[test]
 fn compiler_quantizes_exact_editable_metrics_only_in_its_snapshot() {
     let mut project = project();
-    {
-        let mut source = project.edit_source(SourceId(0)).unwrap();
-        source
-            .font
-            .default_layer_mut()
-            .get_glyph_mut("A")
-            .unwrap()
-            .width = 500.6;
-        *source
-            .font
-            .kerning
-            .get_mut(&Name::new("A").unwrap())
-            .unwrap()
-            .get_mut(&Name::new("V").unwrap())
-            .unwrap() = -50.5;
-    }
+    edit_width(&mut project, SourceId(0), "A", 500.6);
+    let mut metadata = project.document_font_metadata(SourceId(0)).unwrap().clone();
+    metadata
+        .set_kerning_pair(
+            KerningParticipant::glyph("A").unwrap(),
+            KerningParticipant::glyph("V").unwrap(),
+            Some(-50.5),
+        )
+        .unwrap();
+    assert!(matches!(
+        project.edit_document_source_metadata(SourceId(0), |draft| {
+            draft.set_font_metadata(metadata);
+            Ok(())
+        }),
+        Ok(DocumentEditOutcome::Changed { .. })
+    ));
     let exact = project.source_snapshot(SourceId(0)).unwrap();
     assert_eq!(
         exact.get_glyph("A").unwrap().width,
@@ -555,25 +560,31 @@ fn shared_feature_edits_and_variable_drafts_do_not_depend_on_selected_master() {
 #[test]
 fn mark_positioning_tracks_live_anchors_in_both_masters() {
     let mut project = project();
-    for (index, source) in project.edit_sources().iter_mut().enumerate() {
-        let base = source.font.default_layer_mut().get_glyph_mut("A").unwrap();
-        base.anchors.push(norad::Anchor::new(
-            250.0 + index as f64 * 150.0,
-            700.0 + index as f64 * 200.0,
-            Some(Name::new("top").unwrap()),
-            None,
-            None,
+    project
+        .add_document_glyph("acutecomb", 0.0, Some(0x301))
+        .unwrap();
+    let layers = project
+        .document_sources()
+        .map(|source| source.default_layer())
+        .collect::<Vec<_>>();
+    for (index, layer) in layers.into_iter().enumerate() {
+        assert!(matches!(
+            project.edit_document_layer("A", &layer, |draft| {
+                draft.add_anchor(
+                    "top".into(),
+                    kurbo::Point::new(250.0 + index as f64 * 150.0, 700.0 + index as f64 * 200.0),
+                )?;
+                Ok(())
+            }),
+            Ok(DocumentEditOutcome::Changed { .. })
         ));
-        let mut mark = Glyph::new("acutecomb");
-        mark.codepoints.insert('\u{301}');
-        mark.anchors.push(norad::Anchor::new(
-            100.0,
-            0.0,
-            Some(Name::new("_top").unwrap()),
-            None,
-            None,
+        assert!(matches!(
+            project.edit_document_layer("acutecomb", &layer, |draft| {
+                draft.add_anchor("_top".into(), kurbo::Point::new(100.0, 0.0))?;
+                Ok(())
+            }),
+            Ok(DocumentEditOutcome::Changed { .. })
         ));
-        source.font.default_layer_mut().insert_glyph(mark);
     }
     let compiled = project.compile().unwrap();
     for (location, y) in [(0.0, 700.0), (0.5, 800.0), (1.0, 900.0)] {
@@ -592,14 +603,7 @@ fn background_preview_coalesces_edits_and_never_publishes_a_stale_revision() {
     let mut project = project();
     assert!(project.request_preview().unwrap().is_none());
     for width in [850.0, 900.0, 1050.0] {
-        project
-            .edit_source(SourceId(1))
-            .unwrap()
-            .font
-            .default_layer_mut()
-            .get_glyph_mut("A")
-            .unwrap()
-            .width = width;
+        edit_width(&mut project, SourceId(1), "A", width);
         assert!(project.request_preview().unwrap().is_none());
     }
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);

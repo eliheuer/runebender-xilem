@@ -512,10 +512,11 @@ mod tests {
     fn add_fills_a_missing_source_without_replacing_glyph_identity() {
         let mut project = project();
         let id = project.document_glyph("A").unwrap().id();
-        {
-            let mut sources = project.edit_sources();
-            assert!(sources[1].remove_glyph("A"));
-        }
+        assert!(
+            project
+                .remove_document_source_glyph("A", SourceId(1))
+                .unwrap()
+        );
         project.active = 1;
         assert!(project.sources()[1].font.get_glyph("A").is_none());
         let revision = project.document_revision();

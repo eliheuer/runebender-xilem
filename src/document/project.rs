@@ -3,8 +3,8 @@
 
 //! The open variable font: glyph-local layers, axes, sources, instances and history.
 //!
-//! Project owns canonical glyphs through `variable`; `source` provides guarded
-//! UFO compatibility projections and paint caches for existing tools.
+//! Project owns canonical glyphs through `variable`; `source` provides
+//! persistence projections and paint caches for existing tools.
 //! Save and interpolation read canonical glyph layers. Format adapters preserve
 //! source metadata and retain explicit persistence destinations.
 //! No application or platform state belongs in the document model.
@@ -18,8 +18,8 @@ use kurbo::{BezPath, Rect, Shape as _};
 pub use super::source::{GlyphEntry, GlyphPoint, Master, extract_anchors, extract_points};
 use super::variable::{
     CanonicalSourceMetadataSnapshot, DocumentSnapshot, GlyphLayerAddress, GlyphSource, GlyphView,
-    LayerId, SourceEdit, SourceId, SourceMetadataEditDraft, SourceMetadataRestoreError,
-    SourcesEdit, VariableData, VariableGlyph,
+    LayerId, SourceId, SourceMetadataEditDraft, SourceMetadataRestoreError, VariableData,
+    VariableGlyph,
 };
 use crate::document::var_model::{Location, VariationModel};
 use crate::formats::binary_import::import_binary_font;
@@ -1424,12 +1424,6 @@ impl Project {
         &self.masters[self.active]
     }
 
-    /// The master being edited, mutably.
-    pub fn active_font_mut(&mut self) -> SourceEdit<'_> {
-        self.edit_source(self.source_id(self.active).expect("active source identity"))
-            .expect("active source exists")
-    }
-
     /// Read-only source projections for rendering and legacy outline algorithms.
     pub fn sources(&self) -> &[Master] {
         &self.masters
@@ -1446,24 +1440,6 @@ impl Project {
             .source_ids
             .iter()
             .position(|candidate| *candidate == id)
-    }
-
-    /// Edit one source projection and reconcile its changes into glyph-local layers.
-    pub fn edit_source(&mut self, id: SourceId) -> Option<SourceEdit<'_>> {
-        let index = self.source_index(id)?;
-        Some(SourceEdit {
-            source: self.masters.get_mut(index)?,
-            data: &mut self.variable,
-            id,
-        })
-    }
-
-    /// Edit multiple source projections in one scope.
-    pub fn edit_sources(&mut self) -> SourcesEdit<'_> {
-        SourcesEdit {
-            sources: &mut self.masters,
-            data: &mut self.variable,
-        }
     }
 
     /// The variable glyph, independent of the active source or preview location.
@@ -2436,7 +2412,6 @@ mod tests {
     use super::*;
     use crate::analysis::measure::joining_band;
     use crate::document::model::hoi::HoiIntermediates;
-    use crate::formats::metrics_keys::{read_metrics_key, write_metrics_key};
     use crate::testing::fonts;
 
     #[test]
@@ -2678,23 +2653,47 @@ mod tests {
     fn metrics_keys_sync_roundtrip() {
         // n's LSB copied onto h in both masters through the lib key.
         let mut project = Project::load(&fonts::designspace()).expect("loads");
-        for master in project.edit_sources().iter_mut() {
-            let glyph = master.font.get_glyph_mut("h").expect("has h");
-            write_metrics_key(glyph, true, "=n+10");
+        let layers = project
+            .document_sources()
+            .map(|source| source.default_layer())
+            .collect::<Vec<_>>();
+        for layer in &layers {
+            project
+                .edit_document_layer("h", layer, |draft| {
+                    draft.set_metrics_key(true, Some("=n+10".into()))?;
+                    Ok(())
+                })
+                .unwrap();
         }
         // Emulate command_sync_metrics' inner pass directly.
-        for master in project.edit_sources().iter_mut() {
-            let n = master.name_map["n"];
-            let h = master.name_map["h"];
-            let target = master.ink_bounds(n).unwrap().x0 + 10.0;
-            let delta = (target - master.ink_bounds(h).unwrap().x0).round();
-            master.shift_ink(h, delta);
-            let lsb = master.ink_bounds(h).unwrap().x0;
+        for layer in layers {
+            let n = GlyphLayerAddress {
+                glyph: "n".into(),
+                layer: layer.clone(),
+            };
+            let h = GlyphLayerAddress {
+                glyph: "h".into(),
+                layer: layer.clone(),
+            };
+            let target = project.document_layer_path(&n).unwrap().bounding_box().x0 + 10.0;
+            let delta =
+                (target - project.document_layer_path(&h).unwrap().bounding_box().x0).round();
+            project
+                .edit_document_layer("h", &layer, |draft| {
+                    draft.shift_points_and_anchors_x(delta)?;
+                    Ok(())
+                })
+                .unwrap();
+            let lsb = project.document_layer_path(&h).unwrap().bounding_box().x0;
             assert!(
                 (lsb - target).abs() < 1.0,
                 "h LSB follows n+10: {lsb} vs {target}"
             );
-            let back = read_metrics_key(master.font.get_glyph("h").unwrap(), true);
+            let back = project
+                .document_layer("h", &layer)
+                .unwrap()
+                .metrics_key(true)
+                .unwrap();
             assert_eq!(back.as_deref(), Some("=n+10"));
         }
     }
@@ -2921,13 +2920,17 @@ mod tests {
         // Demo masters are interpolation-compatible for letters.
         assert_eq!(project.compat.get("n"), Some(&true));
         // Break compatibility in one master and recheck.
-        let idx = project.sources()[0]
-            .glyphs
-            .iter()
-            .position(|g| g.name.as_ref() == "n")
-            .unwrap();
+        let layer = project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
         let rect = Rect::new(0.0, 0.0, 50.0, 50.0);
-        project.edit_sources()[0].add_shape_contour(idx, rect, false);
+        project
+            .edit_document_layer("n", &layer, |draft| {
+                draft.add_shape_contour(rect, false)?;
+                Ok(())
+            })
+            .unwrap();
         project.recheck_compat("n");
         assert_eq!(project.compat.get("n"), Some(&false));
     }

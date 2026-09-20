@@ -7301,12 +7301,11 @@ fn interpolation_preserves_precision_and_varies_anchors_and_components() {
 #[test]
 fn sparse_glyphs_and_component_cycles_have_explicit_behavior() {
     let (_scratch, mut project) = fixture();
-    project
-        .edit_source(SourceId(1))
-        .unwrap()
-        .font
-        .default_layer_mut()
-        .remove_glyph("B");
+    assert!(
+        project
+            .remove_document_source_glyph("B", SourceId(1))
+            .unwrap()
+    );
     assert_eq!(
         project
             .try_interpolated_at("B", &location(1.0, 0.0))
@@ -7314,8 +7313,21 @@ fn sparse_glyphs_and_component_cycles_have_explicit_behavior() {
             .width,
         600.123_456_789
     );
-    for source in project.edit_sources().iter_mut() {
-        source.font.get_glyph_mut("C").unwrap().components[0].base = Name::new("C").unwrap();
+    let layers = project
+        .document_sources()
+        .map(|source| source.default_layer())
+        .collect::<Vec<_>>();
+    for layer in layers {
+        assert!(commit_layer_edit(&mut project, "C", &layer, |draft| {
+            let component = draft
+                .view()
+                .components()
+                .next()
+                .expect("C has a component")
+                .id();
+            draft.set_component_reference(component, "C")?;
+            Ok(())
+        }));
     }
     assert!(
         project

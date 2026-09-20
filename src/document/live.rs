@@ -599,10 +599,17 @@ mod tests {
     #[test]
     fn unsaved_reads_proposals_install_and_undo_share_one_document() {
         let mut project = Project::new_font("never-saved.ufo".into());
-        let index = project.edit_sources()[0]
-            .add_glyph("live_test", 400.0)
+        project
+            .add_document_glyph("live_test", 400.0, None)
             .unwrap();
-        project.edit_sources()[0].set_advance(index, 512.0);
+        let source = project.source_id(0).unwrap();
+        let layer = project.document_source(source).unwrap().default_layer();
+        project
+            .edit_document_layer("live_test", &layer, |draft| {
+                draft.set_width(512.0)?;
+                Ok(())
+            })
+            .unwrap();
         let read = call(&mut project, "read_glyph", &json!({"glyph": "live_test"}));
         assert_eq!(read["advance"], 512.0);
         let batch = json!({"task": "spacing", "reason": "more room", "edits": [{
@@ -611,14 +618,9 @@ mod tests {
         }]});
         assert_eq!(call(&mut project, "propose_edits", &batch)["ok"], true);
         assert_eq!(
-            project.sources()[0]
-                .font
-                .get_glyph("live_test")
-                .unwrap()
-                .width,
+            project.document_layer("live_test", &layer).unwrap().width(),
             512.0
         );
-        assert!(project.sources()[0].dirty);
         assert_eq!(call(&mut project, "propose_edits", &batch)["ok"], false);
         let installed = call(
             &mut project,
@@ -626,10 +628,9 @@ mod tests {
             &json!({"task":"spacing","keep_structure":true,"authorization":"user-approved"}),
         );
         assert_eq!(installed["installed"]["installed"], json!(["live_test"]));
-        let source = project.source_id(0).unwrap();
         let address = super::super::variable::GlyphLayerAddress {
             glyph: "live_test".into(),
-            layer: project.document_source(source).unwrap().default_layer(),
+            layer,
         };
         assert_eq!(
             project
@@ -653,7 +654,9 @@ mod tests {
     #[test]
     fn drawing_requires_explicit_structure_choice_and_undo_restores_blank() {
         let mut project = Project::new_font("never-saved.ufo".into());
-        project.edit_sources()[0].add_glyph("draft", 500.0).unwrap();
+        project.add_document_glyph("draft", 500.0, None).unwrap();
+        let source = project.source_id(0).unwrap();
+        let layer = project.document_source(source).unwrap().default_layer();
         let revision =
             call(&mut project, "read_glyph", &json!({"glyph":"draft"}))["revision"].clone();
         let result = call(
@@ -677,13 +680,13 @@ mod tests {
                 .as_str()
                 .is_some_and(|error| error.contains("explicit user authorization"))
         );
-        assert!(
-            project.sources()[0]
-                .font
-                .get_glyph("draft")
+        assert_eq!(
+            project
+                .document_layer("draft", &layer)
                 .unwrap()
-                .contours
-                .is_empty(),
+                .contours()
+                .count(),
+            0,
             "a missing authorization cannot change the foreground"
         );
         let guarded = call(
@@ -699,40 +702,37 @@ mod tests {
         );
         assert_eq!(applied["installed"]["installed"], json!(["draft"]));
         assert_eq!(
-            project.sources()[0]
-                .font
-                .get_glyph("draft")
+            project
+                .document_layer("draft", &layer)
                 .unwrap()
-                .contours
-                .len(),
+                .contours()
+                .count(),
             1
         );
-        let source = project.source_id(0).unwrap();
         let address = super::super::variable::GlyphLayerAddress {
             glyph: "draft".into(),
-            layer: project.document_source(source).unwrap().default_layer(),
+            layer: layer.clone(),
         };
         project
             .replay_document_layer_history(&address, HistoryDirection::Undo)
             .unwrap();
-        assert!(
-            project.sources()[0]
-                .font
-                .get_glyph("draft")
+        assert_eq!(
+            project
+                .document_layer("draft", &layer)
                 .unwrap()
-                .contours
-                .is_empty()
+                .contours()
+                .count(),
+            0
         );
         project
             .replay_document_layer_history(&address, HistoryDirection::Redo)
             .unwrap();
         assert_eq!(
-            project.sources()[0]
-                .font
-                .get_glyph("draft")
+            project
+                .document_layer("draft", &layer)
                 .unwrap()
-                .contours
-                .len(),
+                .contours()
+                .count(),
             1
         );
     }
@@ -740,12 +740,25 @@ mod tests {
     #[test]
     fn inventory_finds_unicode_and_marks_without_changing_font() {
         let mut project = Project::new_font("never-saved.ufo".into());
-        project.edit_sources()[0].add_glyph("eight", 500.0);
-        let mut sources = project.edit_sources();
-        let glyph = sources[0].font.get_glyph_mut("eight").unwrap();
-        glyph.codepoints.insert('8');
-        crate::ui::theme::set_glyph_mark(glyph, Some("green"));
-        drop(sources);
+        project
+            .add_document_glyph("eight", 500.0, Some('8' as u32))
+            .unwrap();
+        let source = project.source_id(0).unwrap();
+        let layer = project.document_source(source).unwrap().default_layer();
+        project
+            .edit_document_layer("eight", &layer, |draft| {
+                draft.set_mark(
+                    Some("green"),
+                    Some(crate::document::model::glyph_metadata::MarkColor {
+                        red: 0.1,
+                        green: 0.8,
+                        blue: 0.2,
+                        alpha: 1.0,
+                    }),
+                )?;
+                Ok(())
+            })
+            .unwrap();
         let result = call(
             &mut project,
             "glyph_inventory",
@@ -762,11 +775,18 @@ mod tests {
     #[test]
     fn edits_after_read_reject_the_entire_proposal() {
         let mut project = Project::new_font("never-saved.ufo".into());
-        let index = project.edit_sources()[0]
-            .add_glyph("live_test", 400.0)
+        project
+            .add_document_glyph("live_test", 400.0, None)
             .unwrap();
+        let source = project.source_id(0).unwrap();
+        let layer = project.document_source(source).unwrap().default_layer();
         let read = call(&mut project, "read_glyph", &json!({"glyph": "live_test"}));
-        project.edit_sources()[0].set_advance(index, 450.0);
+        project
+            .edit_document_layer("live_test", &layer, |draft| {
+                draft.set_width(450.0)?;
+                Ok(())
+            })
+            .unwrap();
         let result = call(
             &mut project,
             "propose_edits",
@@ -775,7 +795,7 @@ mod tests {
             "expected_revision": read["revision"], "operations": [{"op": "set_width", "width": 500.0}]}]}),
         );
         assert_eq!(result["ok"], false);
-        assert!(proposal::list(&project.sources()[0].font).is_empty());
+        assert!(proposal::list_project(&project, source).is_empty());
     }
 
     #[test]
