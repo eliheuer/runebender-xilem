@@ -8,10 +8,12 @@ Opening does not save, execute, contact a model, or mutate the font.
 The Scripts panel provides a multiline Python text area and marks name or source edits as unsaved.
 An edited draft rejects an assistant artifact replacement until the user saves or discards it.
 
-The runner worker owns the persistent `ScriptLibrary`, subprocess queue, recipe capture, validation, report, preview, cancellation, and Apply path.
-This phase deliberately does not create a second library, executor, recipe protocol, or undo path.
+The runtime worker owns the persistent `ScriptLibrary`, subprocess queue, and pure recipe-result validation.
+The UI integration owns Workspace input capture, scope and parameter binding, document/script staleness, preview state, cancellation controls, and explicit receipt-backed Apply through the existing history path.
+This phase deliberately does not create a second library, executor, recipe protocol, preview store, or undo path.
 Until that runtime is registered, the panel states that Script storage and Run controls are unavailable instead of showing controls that do nothing.
 After integration, library loading must preserve the runtime revision on the draft, Save must use its expected-revision conflict handling, and an external change must never overwrite an edited draft.
+Changing the document, script, parameter values, source, or selected-glyph scope must invalidate any preview before Apply.
 The native runner must keep Python unavailable in the browser, while this shared panel remains buildable and states the limit honestly.
 
 The intended first runnable vertical slice is a read-only anchor report.
