@@ -57,6 +57,12 @@ impl<V, State, Action> Portal<V, State, Action> {
         self.constrain_horizontal = constrain_horizontal;
         self
     }
+
+    /// Make content at least as large as its viewport while retaining overflow scrolling.
+    pub(crate) fn must_fill(mut self, must_fill: bool) -> Self {
+        self.must_fill = must_fill;
+        self
+    }
 }
 
 impl<V, State, Action> ViewMarker for Portal<V, State, Action> {}

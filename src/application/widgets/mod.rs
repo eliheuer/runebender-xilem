@@ -11,6 +11,7 @@ pub(crate) mod menu_shell;
 pub(crate) mod quadrant_picker;
 pub(crate) mod shortcuts;
 pub(crate) mod text_label;
+pub(crate) mod text_undo_guard;
 
 pub(crate) mod preview_blur;
 
