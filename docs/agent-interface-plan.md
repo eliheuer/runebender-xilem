@@ -103,6 +103,9 @@ An agent with a vision-capable client receives the PNG and identifies a visual-o
 
 ### 1D. Real client end to end
 
+The [OMP client trials](agent-client-trials.md) now pass real model read and bounded edit calls against the synthetic Workspace, including fixture-driven ordinary undo/redo.
+The Codex desktop task trial, compiled image delivery and receipt/recovery portions remain pending.
+
 - [ ] Run the bounded scenario through a local Codex/ChatGPT desktop task and OMP CLI with disposable fixtures and isolated configuration, as selected by the user.
 - [ ] Save redacted transport transcript, receipts, binary/client hashes, images and disk manifests.
 - [ ] Test via the real document/UI adapter; an in-process `live::call` test alone is insufficient.

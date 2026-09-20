@@ -1,5 +1,7 @@
 # Agent client harness worker record
 
+This records the worker handoff; subsequent real model trials are tracked in [client trial evidence](agent-client-trials.md).
+
 Worker branch: `codex/agent-client-harness`.
 
 Checkpoint: `170d14a756af58a041caa44878447c0fb03adbc8`.

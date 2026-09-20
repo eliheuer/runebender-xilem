@@ -10,6 +10,10 @@ No release has been published yet.
 
 ### Added
 
+- Added bounded canonical edit transactions with grouped history, immutable compiled-proof primitives, and a disposable live-client conformance harness.
+  These engine primitives are not yet exposed as receipt-backed live tools.
+  CLI-generated live prompts now share MCP's source, authorization and session guidance.
+
 - Added a disposable `agent fixture` process for testing live clients against real application state and ordinary editor undo/redo without opening a window.
 
 - Added native live `editor_context`, session-scoped object IDs in glyph reads, and document epoch guards for external agents.

@@ -12,6 +12,23 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 #[test]
+fn generated_live_prompt_matches_available_tools_and_authorized_edits() {
+    let output = Command::new(env!("CARGO_BIN_EXE_runebender"))
+        .args(["agent", "tools"])
+        .env("RUNEBENDER_LIVE_SESSION", "schema-only-no-connection")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let prompt = value["prompt"].as_str().unwrap();
+    assert!(prompt.starts_with(live::INSTRUCTIONS));
+    assert!(!prompt.contains("You cannot edit the font"));
+    assert!(!prompt.contains("chosen master"));
+    assert!(!prompt.contains("call docs first"));
+    assert!(prompt.contains("proposal_install"));
+}
+
+#[test]
 fn cli_and_mcp_share_one_unsaved_authorized_document() {
     let server = Server::start().unwrap();
     let path = server.path().to_path_buf();

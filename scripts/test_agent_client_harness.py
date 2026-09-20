@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import Mock
 
 
 MODULE_PATH = Path(__file__).with_name("agent_client_harness.py")
@@ -55,6 +56,23 @@ class HarnessTests(unittest.TestCase):
             result = harness.probe_clients()
             self.assertIsInstance(result, dict)
             self.assertEqual(Path(directory).exists(), True)
+
+    def test_fixture_mismatch_and_source_write_fail_the_run(self) -> None:
+        def state(width, *, source_exists=False):
+            return {"ok": True, "canonical_advance": width, "cache_advance": width,
+                    "session_advance": width, "source_exists": source_exists}
+
+        for broken in (state(999), state(412, source_exists=True)):
+            fixture = Mock()
+            fixture.control.side_effect = [state(430), state(412), broken, state(430), state(430)]
+            runner = harness.Harness(Path("unused"), Path("unused"), Path("unused"), fixture)
+            with self.assertRaises(RuntimeError):
+                runner.run_fixture_controls(412, 430)
+
+    def test_missing_proof_artifact_fails_the_run(self) -> None:
+        runner = harness.Harness(Path("unused"), Path("unused"), Path("unused"))
+        with self.assertRaises(RuntimeError):
+            runner.write_proof_artifact({"ok": True})
 
 
 if __name__ == "__main__":

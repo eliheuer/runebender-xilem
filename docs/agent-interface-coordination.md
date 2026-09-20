@@ -38,7 +38,7 @@ Luna's harness takes an explicit executable path and Unix endpoint.
 The coordinator still needs to supply the real Workspace-backed headless fixture command and freeze receipt/proof tool names.
 Until those exist, the harness records pending capabilities rather than simulating successes or treating passing skips as coverage.
 Actual model image delivery and model interpretation require separate evidence.
-The remaining CLI-generated live prompt also needs review alongside server-side schema validation; the MCP live instructions were updated in the context checkpoint.
+CLI-generated live prompts and MCP initialization now share live source, session and authorization guidance; complete server-side schema validation remains pending.
 
 ## Scheduled continuation and build coordination
 
@@ -48,7 +48,9 @@ Terra's bounded proof phase is committed at `1b8cc22` with five focused tests an
 Luna's bounded harness phase is committed at `8a88aaeb599e3ca5a7c2674bd8deb324a75cf63d`, and its completed continuation has been removed.
 Its final fixture evidence is `/private/tmp/runebender-agent-client-fixture-20260920-run5/report.json`, against coordinator fixture commit `999e6db`.
 The report verifies unsaved width 412, authorized width 430, the specific authorization/stale rejection reasons, application cache/session agreement, ordinary undo/redo and no source write.
-Actual desktop and OMP model-client trials remain pending, and all worker commits remain subject to coordinator integration.
+The three worker commits are integrated as `7fe9376`, `f3c3ff7` and `ef1dcb8` on this isolated branch.
+The combined base passed the serial workspace tests using disposable fonts; proof review corrections and final integration validation remain pending.
+The [OMP model-client read/edit trials](agent-client-trials.md) now pass against fixture `999e6db`; the desktop task trial remains pending.
 The coordinator's existing ten-minute continuation was updated to respect this ownership split and review worker progress without duplicating their work.
 Continuations stay quiet when unchanged or non-actionable, report meaningful results or blockers, and are removed when their bounded work is complete.
 

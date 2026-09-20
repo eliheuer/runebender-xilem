@@ -147,6 +147,10 @@ Source image-resource insertion uses a stable-`SourceId` Project operation that 
 Interpolation compatibility diagnostics compare canonical contour and point topology under stable source identities rather than reading Master projections.
 `document_source_glyph_entries` derives sorted grid names, Unicode, advances, semantic marks and paint paths directly from canonical default layers; unresolved components retain their intrinsic contours in the grid.
 `CanonicalLayerSnapshot` captures one opaque addressed layer with the same geometry and extensions; guarded restore compares the complete live state before replacing it and advances the revision once.
+`document::project::edit_transactions` stages bounded nonstructural edits and read dependencies across layers of one source, publishes once and records a Project-owned history group.
+Targeted and ordinary application undo must route through the same group handle; the engine primitive does not by itself connect application history or live receipts.
+`document::compiled_proof` captures owned canonical compiler inputs and produces immutable OpenType snapshots for shaping and PNG proofing on workers.
+The application adapter owns document-epoch binding, asynchronous job dispatch, stale-result handling and client image delivery around those primitives.
 Multi-source glyph metadata uses staged layer drafts and one batch publication; Unicode replacement validates the complete source set before mutation and advances the revision once.
 `CanonicalSourceMetadataSnapshot` captures feature text, groups and exact kerning for the complete stable source set; guarded whole-snapshot restore ignores display reorder, rejects stale or changed source sets and publishes all affected canonical values in one revision.
 Auxiliary-layer copy and removal mutate canonical Babelfont layers and exact extensions directly.

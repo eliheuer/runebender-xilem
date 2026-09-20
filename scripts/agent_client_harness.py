@@ -322,8 +322,8 @@ class Harness:
 
     def write_proof_artifact(self, result: dict[str, Any]) -> None:
         svg = result.get("svg_content")
-        if not isinstance(svg, str):
-            return
+        if not isinstance(svg, str) or not svg.strip():
+            raise RuntimeError("proof: response did not contain an SVG artifact")
         path = self.output_dir / "live-proof.svg"
         path.write_text(svg, encoding="utf-8")
         self.transcript.append(
@@ -350,6 +350,13 @@ class Harness:
         self.record("fixture_redo", {"control": "redo"}, redone)
         after_redo = self.fixture.control("state")
         self.record("fixture_state_after_redo", {"control": "state"}, after_redo)
+        for phase, state in (
+            ("after_apply", after_apply), ("undo", undone), ("after_undo", after_undo),
+            ("redo", redone), ("after_redo", after_redo),
+        ):
+            self.require_ok(state, phase)
+            if state.get("source_exists") is not False:
+                raise RuntimeError(f"{phase}: fixture source must remain unwritten")
         valid_apply = all(
             after_apply.get(field) == after_advance
             for field in ("canonical_advance", "cache_advance", "session_advance")
@@ -369,6 +376,8 @@ class Harness:
             "redo_restored_after": valid_redo,
             "source_exists": after_redo.get("source_exists"),
         }
+        if not (valid_apply and valid_undo and valid_redo):
+            raise RuntimeError("fixture: canonical/cache/session advances disagree across undo/redo")
 
     def run_scenario(self, glyph: str, width: float, apply: bool) -> dict[str, Any]:
         tools = self.load_tools()

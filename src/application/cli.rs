@@ -467,14 +467,20 @@ pub(crate) fn run() -> Startup {
             }
 
             AgentAction::Tools => {
-                let tools = if std::env::var_os("RUNEBENDER_LIVE_SESSION").is_some() {
+                let live = std::env::var_os("RUNEBENDER_LIVE_SESSION").is_some();
+                let tools = if live {
                     runebender::document::live::tools()
                 } else {
                     agent::tools()
                 };
+                let prompt = if live {
+                    runebender::document::live::system_prompt(&tools)
+                } else {
+                    agent::system_prompt(&tools)
+                };
                 println!(
                     "{}",
-                    json!({ "ok": true, "prompt": agent::system_prompt(&tools), "tools": tools })
+                    json!({ "ok": true, "prompt": prompt, "tools": tools })
                 );
                 exit::OK
             }
@@ -1840,7 +1846,7 @@ fn mcp_serve(font: Option<&Path>, session: Option<&Path>, live: bool, tool: Opti
                         "name": "runebender",
                         "version": env!("CARGO_PKG_VERSION"),
                     },
-                    "instructions": if live_mode { "Live unsaved editor documents. Use editor_sessions then editor_connect if not connected. Verify the project and document_epoch, read editor_context, and choose an explicit stable source ID. Read glyphs before proposing; apply only within the user's granted authorization. Do not save font files. When multiple editors are open, choose the project the user requested. A closed endpoint never reconnects automatically.".into() } else { mcp_instructions(font.expect("font or session")) },
+                    "instructions": if live_mode { runebender::document::live::INSTRUCTIONS.into() } else { mcp_instructions(font.expect("font or session")) },
                 }))
             }
             "ping" => Ok(json!({})),
