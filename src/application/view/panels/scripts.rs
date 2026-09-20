@@ -140,26 +140,37 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
     let library_controls = xcolumn(
         Region::List,
         (
-            recipes::toggle(pal, "Choose folder".into(), false, |app: &mut Workspace| {
-                app.choose_script_library();
-            })
+            sized_box(recipes::toggle(
+                pal,
+                "Choose folder".into(),
+                false,
+                |app: &mut Workspace| {
+                    app.choose_script_library();
+                },
+            ))
             .dims(Dimensions::new(
                 Dim::Stretch,
                 Dim::from(ControlSize::Control),
             )),
             app.scripts.draft.is_some().then(|| {
-                recipes::toggle(pal, "Save".into(), false, |app: &mut Workspace| {
-                    app.save_script_draft()
-                })
+                sized_box(recipes::toggle(
+                    pal,
+                    "Save".into(),
+                    false,
+                    |app: &mut Workspace| app.save_script_draft(),
+                ))
                 .dims(Dimensions::new(
                     Dim::Stretch,
                     Dim::from(ControlSize::Control),
                 ))
             }),
             app.scripts.library.as_ref().map(|_| {
-                recipes::toggle(pal, "Refresh".into(), false, |app: &mut Workspace| {
-                    app.refresh_script_library()
-                })
+                sized_box(recipes::toggle(
+                    pal,
+                    "Refresh".into(),
+                    false,
+                    |app: &mut Workspace| app.refresh_script_library(),
+                ))
                 .dims(Dimensions::new(
                     Dim::Stretch,
                     Dim::from(ControlSize::Control),
@@ -186,21 +197,24 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
         Region::List,
         (
             (app.scripts.running.is_none() && app.scripts.draft.is_some()).then(|| {
-                recipes::toggle(pal, "Run".into(), true, |app: &mut Workspace| {
-                    app.run_script_draft();
-                })
+                sized_box(recipes::toggle(
+                    pal,
+                    "Run".into(),
+                    true,
+                    |app: &mut Workspace| app.run_script_draft(),
+                ))
                 .dims(Dimensions::new(
                     Dim::Stretch,
                     Dim::from(ControlSize::Control),
                 ))
             }),
             app.scripts.running.as_ref().map(|run| {
-                recipes::toggle(
+                sized_box(recipes::toggle(
                     pal,
                     format!("Cancel job {}", run.handle.get()),
                     false,
                     |app: &mut Workspace| app.cancel_script_run(),
-                )
+                ))
                 .dims(Dimensions::new(
                     Dim::Stretch,
                     Dim::from(ControlSize::Control),
