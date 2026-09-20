@@ -28,9 +28,11 @@ const MAX_GRAPH_RECEIPTS: usize = 64;
 const MAX_ACTIVE_RUNS: usize = 16;
 const MAX_RUN_RECEIPTS: usize = 64;
 const MAX_RUN_OUTPUTS: usize = 16;
+const MAX_RUN_ERRORS: usize = 16;
 const MAX_ID_BYTES: usize = 128;
 const MAX_OPERATION_KEY_BYTES: usize = 128;
 const MAX_OUTPUT_TEXT_BYTES: usize = 64 * 1024;
+const MAX_ERROR_BYTES: usize = 4 * 1024;
 
 /// Discoverable bounds shared by native UI and agent adapters.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -49,6 +51,8 @@ pub struct GraphSessionLimits {
     pub run_receipts: usize,
     /// Maximum node outputs retained for one run.
     pub outputs_per_run: usize,
+    /// Maximum structured errors retained for one run.
+    pub errors_per_run: usize,
 }
 
 impl GraphSessionLimits {
@@ -61,6 +65,7 @@ impl GraphSessionLimits {
             active_runs: MAX_ACTIVE_RUNS,
             run_receipts: MAX_RUN_RECEIPTS,
             outputs_per_run: MAX_RUN_OUTPUTS,
+            errors_per_run: MAX_RUN_ERRORS,
         }
     }
 }
@@ -887,6 +892,88 @@ impl GraphSession {
         }
     }
 
+    /// Derive script, parameter and proof identities from the canonical graph.
+    ///
+    /// The application supplies only the font capture and the input hash returned by its typed
+    /// recipe capture.
+    /// Agent transports should call this after capturing those values from live state rather than
+    /// deserialize a caller-authored [`GraphRunCapture`].
+    pub fn capture_run(
+        &self,
+        font: GraphFontCapture,
+        script_input_sha256: impl Into<String>,
+    ) -> Result<GraphRunCapture, GraphSessionError> {
+        let graph_diagnostics = diagnostics(&self.graph, &self.registry);
+        if !graph_diagnostics.is_empty() {
+            let mut error = GraphSessionError::new(
+                GraphSessionErrorCode::InvalidGraph,
+                "graph validation failed; run capture is unavailable",
+            );
+            error.diagnostics = graph_diagnostics;
+            return Err(error);
+        }
+        let plan = execution_plan(&self.graph)?;
+        validate_digest("font capture", &font.capture_sha256)?;
+        let input_sha256 = script_input_sha256.into();
+        validate_digest("recipe input", &input_sha256)?;
+        let python = self.graph.node(plan.python_node).unwrap();
+        let code = python
+            .values
+            .get("code")
+            .and_then(Value::as_str)
+            .filter(|code| !code.is_empty())
+            .ok_or_else(|| {
+                GraphSessionError::new(
+                    GraphSessionErrorCode::CaptureMismatch,
+                    "live.python code must be non-empty before Run",
+                )
+            })?;
+        let parameters = python
+            .values
+            .get("parameters")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
+        if !parameters.is_object() {
+            return Err(GraphSessionError::new(
+                GraphSessionErrorCode::CaptureMismatch,
+                "live.python parameters must be a JSON object",
+            ));
+        }
+        let proof_capture = |node: u32| -> Result<GraphProofCapture, GraphSessionError> {
+            let recipe = self
+                .graph
+                .node(node)
+                .and_then(|proof| proof.values.get("recipe"))
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!({"text":"Hamburgefontsiv"}));
+            if !recipe.is_object() {
+                return Err(GraphSessionError::new(
+                    GraphSessionErrorCode::CaptureMismatch,
+                    "live.proof recipe must be a JSON object",
+                ));
+            }
+            Ok(GraphProofCapture {
+                node,
+                recipe_sha256: digest_json(&recipe)?,
+            })
+        };
+        let capture = GraphRunCapture {
+            font,
+            scripts: vec![GraphScriptCapture {
+                node: plan.python_node,
+                script_sha256: sha256(code.as_bytes()),
+                input_sha256,
+                parameters_sha256: digest_json(&parameters)?,
+            }],
+            proofs: vec![
+                proof_capture(plan.unchanged_proof)?,
+                proof_capture(plan.changed_proof)?,
+            ],
+        };
+        validate_capture(&self.graph, &plan, &capture)?;
+        Ok(capture)
+    }
+
     /// Apply or replay one guarded graph-only mutation.
     pub fn mutate(
         &mut self,
@@ -1199,6 +1286,7 @@ impl GraphSession {
                 record.errors.clear();
             }
             GraphRunOutcome::Failed(errors) => {
+                validate_run_errors(&errors)?;
                 record.status = GraphRunStatus::Failed;
                 record.outputs.clear();
                 record.errors = errors;
@@ -1794,6 +1882,39 @@ fn validate_outputs(
     Ok(())
 }
 
+fn validate_run_errors(errors: &[GraphRunError]) -> Result<(), GraphSessionError> {
+    if errors.is_empty() || errors.len() > MAX_RUN_ERRORS {
+        return Err(GraphSessionError::new(
+            GraphSessionErrorCode::InvalidOutput,
+            format!("failed run must contain 1..={MAX_RUN_ERRORS} structured errors"),
+        ));
+    }
+    for error in errors {
+        validate_bounded("run error code", &error.code, MAX_ID_BYTES)?;
+        if error.message.is_empty() || error.message.len() > MAX_ERROR_BYTES {
+            return Err(GraphSessionError::new(
+                GraphSessionErrorCode::InvalidOutput,
+                format!("run error message must contain 1..={MAX_ERROR_BYTES} UTF-8 bytes"),
+            ));
+        }
+        if error
+            .port
+            .as_ref()
+            .is_some_and(|port| port.len() > MAX_ID_BYTES)
+            || error
+                .field
+                .as_ref()
+                .is_some_and(|field| field.len() > MAX_ID_BYTES)
+        {
+            return Err(GraphSessionError::new(
+                GraphSessionErrorCode::InvalidOutput,
+                "run error port and field names must not exceed 128 UTF-8 bytes",
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn inspection(handle: GraphRunHandle, record: &GraphRunRecord) -> GraphRunInspection {
     GraphRunInspection {
         handle,
@@ -1851,42 +1972,21 @@ mod tests {
         }
     }
 
-    fn hash(value: &impl Serialize) -> String {
-        digest_json(value).unwrap()
-    }
-
     fn run_request(session: &GraphSession, actor: &str, key: &str) -> GraphRunRequest {
-        let graph = &session.snapshot().graph;
-        let code = graph.node(3).unwrap().values["code"].as_str().unwrap();
-        let parameters = &graph.node(3).unwrap().values["parameters"];
-        let recipe = &graph.node(2).unwrap().values["recipe"];
         GraphRunRequest {
             guard: semantic_guard(session),
             actor: actor.into(),
             operation_key: key.into(),
-            capture: GraphRunCapture {
-                font: GraphFontCapture {
-                    source: 3,
-                    document_revision: 12,
-                    capture_sha256: sha256(b"font-capture"),
-                },
-                scripts: vec![GraphScriptCapture {
-                    node: 3,
-                    script_sha256: sha256(code.as_bytes()),
-                    input_sha256: sha256(b"recipe-input"),
-                    parameters_sha256: hash(parameters),
-                }],
-                proofs: vec![
-                    GraphProofCapture {
-                        node: 2,
-                        recipe_sha256: hash(recipe),
+            capture: session
+                .capture_run(
+                    GraphFontCapture {
+                        source: 3,
+                        document_revision: 12,
+                        capture_sha256: sha256(b"font-capture"),
                     },
-                    GraphProofCapture {
-                        node: 4,
-                        recipe_sha256: hash(recipe),
-                    },
-                ],
-            },
+                    sha256(b"recipe-input"),
+                )
+                .unwrap(),
         }
     }
 
@@ -2134,6 +2234,7 @@ mod tests {
     #[test]
     fn automatic_apply_and_mismatched_scope_are_rejected() {
         let mut session = new_session();
+        let mut unsafe_request = run_request(&session, "agent", "unsafe-run");
         let apply = Node {
             id: 5,
             type_name: "live.apply".into(),
@@ -2145,13 +2246,17 @@ mod tests {
                 &session,
                 "human",
                 "add-apply",
-                vec![GraphEdit::AddNode { node: apply }],
+                vec![
+                    GraphEdit::AddNode { node: apply },
+                    GraphEdit::Connect {
+                        link: Link(3, "font".into(), 5, "font".into()),
+                    },
+                ],
             ))
             .unwrap();
-        let error = session
-            .start_run(run_request(&session, "agent", "unsafe-run"))
-            .unwrap_err();
-        assert_eq!(error.code, GraphSessionErrorCode::InvalidGraph);
+        unsafe_request.guard = semantic_guard(&session);
+        let error = session.start_run(unsafe_request).unwrap_err();
+        assert_eq!(error.code, GraphSessionErrorCode::UnsupportedTopology);
 
         let mut session = new_session();
         let mut request = run_request(&session, "agent", "wrong-source");
