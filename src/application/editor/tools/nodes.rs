@@ -87,6 +87,12 @@ pub(crate) struct NodesState {
     /// The selected node, mirrored from the canvas so the strip can
     /// offer its choices.
     pub(crate) selected: Option<u32>,
+    /// Show the unsaved native comparison session instead of a disk graph.
+    ///
+    /// The session itself is Workspace-owned; this is only the selected canvas surface.
+    pub(crate) live_selected: bool,
+    /// Presentation-only inline content sizes keyed by graph node identity.
+    pub(crate) content_sizes: BTreeMap<u32, [f32; 2]>,
 }
 
 /// The pump's message: something arrived from the run thread.
@@ -193,17 +199,59 @@ impl Workspace {
             }
         }
         self.scan_nodes_files();
+        if std::env::var_os("RUNEBENDER_NODES_CONTENT_FIXTURE").is_some() {
+            self.open_nodes_content_fixture();
+        }
     }
 
     /// The registry: built-in engine types plus what font-ml declared.
     pub(crate) fn node_registry(&self) -> Registry {
         let mut registry = Registry::core();
-        // Live canvas actions are currently implemented by the GPUI shell.
-        registry.types.retain(|t| !t.name.starts_with("live."));
         if let Some(json) = &self.nodes.tasks_json {
             registry.add_tool("font-ml", json);
         }
         registry
+    }
+
+    /// Open the deterministic code-and-image layout used by headless UI review.
+    ///
+    /// The image supplied by the view is a fixture, not a computed font proof.
+    fn open_nodes_content_fixture(&mut self) {
+        let mut graph = runebender::document::nodes_live::comparison_starter(
+            runebender::document::variable::SourceId(0),
+        );
+        if let Some(python) = graph
+            .nodes
+            .iter_mut()
+            .find(|node| node.type_name == "live.python")
+        {
+            python.values.insert(
+                "code".into(),
+                serde_json::json!(
+                    "for layer in input['layers']:\n    print(layer['glyph'])\n\nresult = input"
+                ),
+            );
+        }
+        let registry = self.node_registry();
+        let problems = graph.validate(&registry);
+        let order = graph.order().unwrap_or_default();
+        let rows = graph
+            .nodes
+            .iter()
+            .map(|node| (node.id, RowState::Waiting))
+            .collect();
+        self.nodes.graph = Some(GraphState {
+            path: PathBuf::from("nodes-content-fixture.nodes.json"),
+            graph: Arc::new(graph),
+            registry: Arc::new(registry),
+            order,
+            problems,
+            rows: Arc::new(rows),
+        });
+        self.nodes.selected = None;
+        self.nodes.fit_request = self.nodes.fit_request.wrapping_add(1);
+        self.mode = Mode::Nodes;
+        self.note = "Opened Nodes content fixture".into();
     }
 
     /// The directory the font's sources sit in: the parent of the
@@ -264,6 +312,7 @@ impl Workspace {
                     problems,
                     rows: Arc::new(rows),
                 });
+                self.nodes.live_selected = false;
                 self.nodes.selected = None;
                 self.nodes.fit_request = self.nodes.fit_request.wrapping_add(1);
                 self.note = if n == 0 {
@@ -294,6 +343,7 @@ impl Workspace {
             problems: Vec::new(),
             rows: Arc::new(BTreeMap::new()),
         });
+        self.nodes.live_selected = false;
         self.nodes.selected = None;
         self.nodes.fit_request = self.nodes.fit_request.wrapping_add(1);
         self.mode = Mode::Nodes;
@@ -378,8 +428,7 @@ impl Workspace {
             .iter()
             .any(|n| n.type_name.starts_with("live."))
         {
-            self.note =
-                "Live graph controls currently require GPUI; use MCP for Xilem experiments".into();
+            self.note = "Select Comparison to run a native live graph".into();
             return;
         }
         if self.nodes.job.is_some() {

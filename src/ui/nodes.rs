@@ -83,6 +83,8 @@ pub struct ScriptContent {
     pub content_hash: String,
     /// Current status and bounded diagnostic for the node.
     pub state: ContentState,
+    /// Presentation size in canvas units; it does not affect semantic identity.
+    pub size: [f32; 2],
 }
 
 /// The image state shown inside a specimen node.
@@ -94,6 +96,8 @@ pub struct ImageContent {
     pub previous_image: Option<ImmutablePng>,
     /// Current status and bounded diagnostic for the node.
     pub state: ContentState,
+    /// Presentation size in canvas units; it does not affect semantic identity.
+    pub size: [f32; 2],
 }
 
 /// Immutable proof pixels and the identity that makes them comparable.
@@ -191,14 +195,14 @@ impl NodeBox {
     pub fn content_rect(&self) -> Option<Rect> {
         self.content.as_ref().map(|content| {
             let height = match content {
-                NodeContent::Script(_) => CODE_H,
-                NodeContent::Image(_) => IMAGE_H,
+                NodeContent::Script(content) => f64::from(content.size[1]),
+                NodeContent::Image(content) => f64::from(content.size[1]),
             };
             Rect::new(
                 self.rect.x0 + PAD,
-                self.rect.y1 - height - PAD,
+                self.rect.y1 - height - PAD - RESIZE_HANDLE,
                 self.rect.x1 - PAD,
-                self.rect.y1 - PAD,
+                self.rect.y1 - PAD - RESIZE_HANDLE,
             )
         })
     }
@@ -253,10 +257,17 @@ pub fn node_box_with_content(
     let x = f64::from(node.pos[0]);
     let y = f64::from(node.pos[1]);
     let live = node.type_name.starts_with("live.");
-    let width = if live { LIVE_W } else { NODE_W };
+    let content_width = match &content {
+        Some(NodeContent::Script(content)) => f64::from(content.size[0]) + PAD * 2.0,
+        Some(NodeContent::Image(content)) => f64::from(content.size[0]) + PAD * 2.0,
+        None => 0.0,
+    };
+    let width = if live { LIVE_W } else { NODE_W }.max(content_width);
     let content_height = match &content {
-        Some(NodeContent::Script(_)) => CODE_H + PAD * 2.0,
-        Some(NodeContent::Image(_)) => IMAGE_H + PAD * 2.0,
+        Some(NodeContent::Script(content)) => {
+            f64::from(content.size[1]) + PAD * 2.0 + RESIZE_HANDLE
+        }
+        Some(NodeContent::Image(content)) => f64::from(content.size[1]) + PAD * 2.0 + RESIZE_HANDLE,
         None => 0.0,
     };
     let h = HEADER_H
@@ -679,6 +690,7 @@ mod tests {
                 text: "print('specimen')\n".into(),
                 content_hash: "script-1".into(),
                 state: ContentState::Current,
+                size: [(LIVE_W - PAD * 2.0) as f32, CODE_H as f32],
             }),
         );
         let boxes = layout_with_content(&graph, &registry, &content);
@@ -721,6 +733,7 @@ mod tests {
             image: None,
             previous_image: Some(image.clone()),
             state: ContentState::Running,
+            size: [(LIVE_W - PAD * 2.0) as f32, IMAGE_H as f32],
         };
         assert_eq!(content.previous_image, Some(image));
         assert_eq!(content.state, ContentState::Running);

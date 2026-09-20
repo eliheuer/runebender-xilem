@@ -21,6 +21,9 @@ No release has been published yet.
   Chat can offer a completed Python artifact without saving or executing it; users can edit and revision-save it, bind validated JSON parameters to an explicit glyph/source scope, run it in a bounded background worker, review its report and guarded proposal, and explicitly Apply through ordinary editor history.
   Script execution remains unavailable in the browser.
 
+- Added native Nodes content children for multiline Python editing and immutable PNG specimen comparison.
+  Code editing keeps platform focus, selection, clipboard, newline and local undo behavior without automatic execution; proof nodes retain prior images while running and support independent pan, zoom and presentation-only resizing.
+
 - Added asynchronous native `proof_start`, `proof_status`, `proof_cancel` and `proof_release` tools.
   Completed proofs return compiled PNG images through MCP with immutable font hashes, captured revisions and explicit stale-result labels.
   Proof jobs share a bounded process-wide worker and release their document-scoped artifacts explicitly.

@@ -19,18 +19,21 @@ use masonry::core::keyboard::{Key, KeyState, NamedKey};
 use masonry::core::{
     AccessCtx, ChildrenIds, EventCtx, LayerType, LayoutCtx, MeasureCtx, NewWidget, PaintCtx,
     PointerButton, PointerButtonEvent, PointerEvent, PointerScrollEvent, PointerUpdate,
-    PropertiesMut, PropertiesRef, RegisterCtx, ScrollDelta, TextEvent, Widget, WidgetId,
+    PropertiesMut, PropertiesRef, RegisterCtx, ScrollDelta, StyleProperty, TextEvent, Widget,
+    WidgetId, WidgetPod,
 };
 use masonry::imaging::Painter;
-use masonry::kurbo::{Axis, BezPath, Line, Point, Rect, Shape as _, Size, Stroke};
+use masonry::kurbo::{Axis, BezPath, Line, Point, Rect, Shape as _, Size, Stroke, Vec2};
 use masonry::layout::{LenReq, Length};
+use masonry::peniko::{Blob, ImageAlphaType, ImageData, ImageFormat};
+use masonry::widgets::{Image as MasonryImage, TextAction, TextArea, TextInput};
 use runebender::document::nodes::{Kind, NodeGraph, Registry};
 use runebender::document::nodes_run::Status;
 use runebender::ui::editing::viewport::ViewPort;
 use runebender::ui::nodes::{self as nl, Hit, NodeBox, NodeContentMap, NodeRegion};
 use xilem::Color;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
-use xilem::{Pod, ViewCtx};
+use xilem::{InsertNewline, Pod, ViewCtx};
 
 use crate::application::editor::tools::nodes::RowState;
 use crate::application::view::theme::Palette;
@@ -48,6 +51,8 @@ pub(crate) enum NodesEvent {
     Selected(Option<u32>),
     /// Inline Python code changed through the focused child editor.
     EditCode { node: u32, code: String },
+    /// A completed header drag changed only presentation layout.
+    MoveNode { node: u32, pos: [f32; 2] },
     /// An embedded-content node was resized without changing its semantic input.
     Resize { node: u32, size: [f32; 2] },
     /// Something to say in the bar.
@@ -60,6 +65,12 @@ enum Drag {
     /// Moving a node: where the gesture began and the node's position
     /// then, in canvas units.
     Move {
+        id: u32,
+        start: Point,
+        origin: [f32; 2],
+    },
+    /// Resizing embedded content without changing graph semantics.
+    Resize {
         id: u32,
         start: Point,
         origin: [f32; 2],
@@ -90,6 +101,8 @@ pub(crate) struct NodesWidget {
     palette: Arc<Palette>,
     rows: Arc<BTreeMap<u32, RowState>>,
     content: Arc<NodeContentMap>,
+    code_editors: BTreeMap<u32, WidgetPod<TextInput>>,
+    preview_images: BTreeMap<u32, WidgetPod<SpecimenPreview>>,
     boxes: Vec<NodeBox>,
     viewport: ViewPort,
     fitted: bool,
@@ -98,6 +111,209 @@ pub(crate) struct NodesWidget {
     drag: Option<Drag>,
     /// The right-click menu's layer, while it is up.
     menu: Option<WidgetId>,
+}
+
+fn code_editor(text: &str) -> (WidgetPod<TextInput>, WidgetId) {
+    let area = TextArea::new_editable(text)
+        .with_style(StyleProperty::FontFamily(
+            crate::application::view::UI_FONT_FAMILY.into(),
+        ))
+        .with_style(StyleProperty::FontSize(
+            crate::application::view::design::TextSize::Caption.px(),
+        ))
+        .with_insert_newline(InsertNewline::OnEnter);
+    let input = TextInput::from_text_area(NewWidget::new(area)).with_clip(true);
+    let area_id = input.area_pod().id();
+    (NewWidget::new(input).to_pod(), area_id)
+}
+
+fn decode_png(png: &nl::ImmutablePng) -> Option<ImageData> {
+    let rgba = image::load_from_memory_with_format(&png.bytes, image::ImageFormat::Png)
+        .ok()?
+        .to_rgba8();
+    if rgba.width() != png.width || rgba.height() != png.height {
+        return None;
+    }
+    Some(ImageData {
+        data: Blob::new(Arc::new(rgba.into_raw())),
+        format: ImageFormat::Rgba8,
+        alpha_type: ImageAlphaType::Alpha,
+        width: png.width,
+        height: png.height,
+    })
+}
+
+struct SpecimenPreview {
+    image: WidgetPod<MasonryImage>,
+    zoom: f64,
+    pan: Vec2,
+    drag: Option<Point>,
+}
+
+impl SpecimenPreview {
+    fn new(image: ImageData) -> Self {
+        Self {
+            image: NewWidget::new(MasonryImage::new(image).with_alt_text("Specimen proof image"))
+                .to_pod(),
+            zoom: 1.0,
+            pan: Vec2::ZERO,
+            drag: None,
+        }
+    }
+}
+
+impl Widget for SpecimenPreview {
+    type Action = ();
+
+    fn register_children(&mut self, ctx: &mut RegisterCtx<'_>) {
+        ctx.register_child(&mut self.image);
+    }
+
+    fn measure(
+        &mut self,
+        _ctx: &mut MeasureCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        _axis: Axis,
+        len_req: LenReq,
+        _cross_length: Option<Length>,
+    ) -> Length {
+        match len_req {
+            LenReq::FitContent(space) => space,
+            _ => Length::px(120.0),
+        }
+    }
+
+    fn layout(&mut self, ctx: &mut LayoutCtx<'_>, _props: &PropertiesRef<'_>, size: Size) {
+        let child = Size::new(size.width * self.zoom, size.height * self.zoom);
+        ctx.run_layout(&mut self.image, child);
+        ctx.place_child(
+            &mut self.image,
+            Point::new(
+                (size.width - child.width) / 2.0 + self.pan.x,
+                (size.height - child.height) / 2.0 + self.pan.y,
+            ),
+        );
+        ctx.set_clip_path(size.to_rect());
+    }
+
+    fn on_pointer_event(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        _props: &mut PropertiesMut<'_>,
+        event: &PointerEvent,
+    ) {
+        match event {
+            PointerEvent::Down(PointerButtonEvent {
+                button: Some(PointerButton::Primary),
+                state,
+                ..
+            }) => {
+                if state.count >= 2 {
+                    self.zoom = 1.0;
+                    self.pan = Vec2::ZERO;
+                    self.drag = None;
+                    ctx.request_layout();
+                } else {
+                    self.drag = Some(ctx.local_position(state.position));
+                    ctx.capture_pointer();
+                }
+                ctx.set_handled();
+            }
+            PointerEvent::Move(PointerUpdate { current, .. }) => {
+                let at = ctx.local_position(current.position);
+                if let Some(last) = self.drag.replace(at) {
+                    self.pan += at - last;
+                    ctx.request_layout();
+                    ctx.set_handled();
+                }
+            }
+            PointerEvent::Up(_) => {
+                self.drag = None;
+                ctx.set_handled();
+            }
+            PointerEvent::Scroll(PointerScrollEvent { delta, .. }) => {
+                let dy = match delta {
+                    ScrollDelta::PixelDelta(delta) => delta.y,
+                    ScrollDelta::LineDelta(_, y) => f64::from(*y) * 20.0,
+                    _ => 0.0,
+                };
+                self.zoom = (self.zoom * (dy * 0.0015).exp()).clamp(0.25, 8.0);
+                ctx.request_layout();
+                ctx.set_handled();
+            }
+            _ => {}
+        }
+    }
+
+    fn paint(
+        &mut self,
+        _ctx: &mut PaintCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        _painter: &mut Painter<'_>,
+    ) {
+    }
+
+    fn accessibility_role(&self) -> Role {
+        Role::Image
+    }
+
+    fn accessibility(
+        &mut self,
+        _ctx: &mut AccessCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        _node: &mut Node,
+    ) {
+    }
+
+    fn children_ids(&self) -> ChildrenIds {
+        ChildrenIds::from_slice(&[self.image.id()])
+    }
+}
+
+fn content_children(
+    content: &NodeContentMap,
+) -> (
+    BTreeMap<u32, WidgetPod<TextInput>>,
+    BTreeMap<u32, WidgetId>,
+    BTreeMap<u32, WidgetPod<SpecimenPreview>>,
+) {
+    let mut editors = BTreeMap::new();
+    let mut area_ids = BTreeMap::new();
+    let mut images = BTreeMap::new();
+    for (&node, content) in &content.by_node {
+        match content {
+            nl::NodeContent::Script(script) => {
+                let (editor, area_id) = code_editor(&script.text);
+                editors.insert(node, editor);
+                area_ids.insert(node, area_id);
+            }
+            nl::NodeContent::Image(image) => {
+                let visible = image.image.as_ref().or(image.previous_image.as_ref());
+                if let Some(decoded) = visible.and_then(decode_png) {
+                    images.insert(node, NewWidget::new(SpecimenPreview::new(decoded)).to_pod());
+                }
+            }
+        }
+    }
+    (editors, area_ids, images)
+}
+
+fn projected_images(content: &NodeContentMap) -> Vec<(u32, Option<(String, u32, u32)>)> {
+    content
+        .by_node
+        .iter()
+        .filter_map(|(&node, content)| match content {
+            nl::NodeContent::Image(content) => Some((
+                node,
+                content
+                    .image
+                    .as_ref()
+                    .or(content.previous_image.as_ref())
+                    .map(|image| (image.output_hash.clone(), image.width, image.height)),
+            )),
+            nl::NodeContent::Script(_) => None,
+        })
+        .collect()
 }
 
 impl NodesWidget {
@@ -164,7 +380,14 @@ impl Widget for NodesWidget {
         true
     }
 
-    fn register_children(&mut self, _ctx: &mut RegisterCtx<'_>) {}
+    fn register_children(&mut self, ctx: &mut RegisterCtx<'_>) {
+        for editor in self.code_editors.values_mut() {
+            ctx.register_child(editor);
+        }
+        for image in self.preview_images.values_mut() {
+            ctx.register_child(image);
+        }
+    }
 
     fn measure(
         &mut self,
@@ -195,15 +418,34 @@ impl Widget for NodesWidget {
                     .min((size.height - FIT_MARGIN * 2.0).max(1.0) / bounds.height().max(1.0))
                     .clamp(0.05, 1.0);
                 self.viewport.zoom = zoom;
-                self.viewport.offset = kurbo::Vec2::new(
+                self.viewport.offset = Vec2::new(
                     size.width / 2.0 - bounds.center().x * zoom,
                     size.height / 2.0 - bounds.center().y * zoom,
                 );
             } else {
                 self.viewport.zoom = 1.0;
-                self.viewport.offset = kurbo::Vec2::new(FIT_MARGIN, FIT_MARGIN);
+                self.viewport.offset = Vec2::new(FIT_MARGIN, FIT_MARGIN);
             }
             self.fitted = true;
+        }
+        let transform = nl::canvas_affine(&self.viewport);
+        for node in &self.boxes {
+            let Some(content) = node.content_rect() else {
+                continue;
+            };
+            let screen = Rect::from_points(
+                transform * Point::new(content.x0, content.y0),
+                transform * Point::new(content.x1, content.y1),
+            );
+            let child_size = Size::new(screen.width().max(1.0), screen.height().max(1.0));
+            if let Some(editor) = self.code_editors.get_mut(&node.id) {
+                ctx.run_layout(editor, child_size);
+                ctx.place_child(editor, screen.origin());
+            }
+            if let Some(image) = self.preview_images.get_mut(&node.id) {
+                ctx.run_layout(image, child_size);
+                ctx.place_child(image, screen.origin());
+            }
         }
         ctx.set_clip_path(size.to_rect());
     }
@@ -259,7 +501,7 @@ impl Widget for NodesWidget {
             // Body, header band in the mark colour (inverted when
             // selected), the rule between them, the keyline.
             let offset = if selected { 5.0 } else { 4.0 } / zoom.max(0.01);
-            let shadow = nb.rect + kurbo::Vec2::new(-offset, offset);
+            let shadow = nb.rect + Vec2::new(-offset, offset);
             painter
                 .fill(&(tf * rect_path(shadow)), pal.cell_shadow())
                 .draw();
@@ -358,6 +600,56 @@ impl Widget for NodesWidget {
                     pal.text_muted,
                     Anchor::Start,
                 );
+            }
+            if let Some(content) = &nb.content {
+                let (state, identity) = match content {
+                    nl::NodeContent::Script(content) => {
+                        (&content.state, Some(content.content_hash.as_str()))
+                    }
+                    nl::NodeContent::Image(content) => (
+                        &content.state,
+                        content
+                            .image
+                            .as_ref()
+                            .or(content.previous_image.as_ref())
+                            .map(|image| image.output_hash.as_str()),
+                    ),
+                };
+                let short_identity = identity
+                    .filter(|identity| !identity.is_empty())
+                    .map(|identity| identity.chars().take(24).collect::<String>());
+                let status: String = match state {
+                    nl::ContentState::Idle => "Not run".into(),
+                    nl::ContentState::Running => "Running\u{2026}".into(),
+                    nl::ContentState::Current => short_identity.map_or_else(
+                        || "Current".into(),
+                        |identity| format!("Current · {identity}"),
+                    ),
+                    nl::ContentState::Stale => short_identity
+                        .map_or_else(|| "Stale".into(), |identity| format!("Stale · {identity}")),
+                    nl::ContentState::Error(message) => message.clone(),
+                };
+                let at =
+                    tf * Point::new(nb.rect.x0 + nl::PAD, nb.rect.y1 - nl::RESIZE_HANDLE / 2.0);
+                text_label::draw(
+                    painter,
+                    at,
+                    &status,
+                    text_px * 0.8,
+                    if matches!(state, nl::ContentState::Error(_)) {
+                        pal.role("error")
+                    } else {
+                        pal.text_muted
+                    },
+                    Anchor::Start,
+                );
+                if let Some(handle) = nb.resize_rect() {
+                    let a = tf * Point::new(handle.x0 + nl::PAD / 2.0, handle.y1 - nl::PAD / 2.0);
+                    let b = tf * Point::new(handle.x1, handle.y0);
+                    painter
+                        .stroke(Line::new(a, b), &Stroke::new(1.0), pal.text_muted)
+                        .draw();
+                }
             }
         }
         // Foreground wires and ports stay visible over card edges, as in GPUI.
@@ -468,18 +760,28 @@ impl Widget for NodesWidget {
                     Hit::Node(id) => {
                         self.selected = Some(id);
                         ctx.submit_action::<NodesEvent>(NodesEvent::Selected(Some(id)));
-                        if matches!(
-                            nl::node_region_hit(&self.boxes, at),
-                            Some(hit) if hit.node == id && hit.region == NodeRegion::Header
-                        ) {
-                            let origin = self.graph.node(id).map(|n| n.pos).unwrap_or_default();
-                            Drag::Move {
-                                id,
-                                start: at,
-                                origin,
+                        match nl::node_region_hit(&self.boxes, at).map(|hit| hit.region) {
+                            Some(NodeRegion::Header) => {
+                                let origin = self.graph.node(id).map(|n| n.pos).unwrap_or_default();
+                                Drag::Move {
+                                    id,
+                                    start: at,
+                                    origin,
+                                }
                             }
-                        } else {
-                            Drag::Idle
+                            Some(NodeRegion::Resize) => {
+                                let origin = match self.content.get(id) {
+                                    Some(nl::NodeContent::Script(content)) => content.size,
+                                    Some(nl::NodeContent::Image(content)) => content.size,
+                                    None => [nl::LIVE_W as f32, nl::IMAGE_H as f32],
+                                };
+                                Drag::Resize {
+                                    id,
+                                    start: at,
+                                    origin,
+                                }
+                            }
+                            _ => Drag::Idle,
                         }
                     }
                     Hit::Output(from, output, kind) => Drag::Wire {
@@ -541,6 +843,30 @@ impl Widget for NodesWidget {
                         self.relayout();
                         ctx.request_render();
                     }
+                    Some(Drag::Resize { id, start, origin }) => {
+                        let size = [
+                            crate::application::view::render::px32(
+                                (f64::from(origin[0]) + at.x - start.x)
+                                    .max(nl::NODE_W)
+                                    .min(1024.0),
+                            ),
+                            crate::application::view::render::px32(
+                                (f64::from(origin[1]) + at.y - start.y)
+                                    .max(nl::ROW_H * 3.0)
+                                    .min(768.0),
+                            ),
+                        ];
+                        if let Some(content) = Arc::make_mut(&mut self.content).by_node.get_mut(id)
+                        {
+                            match content {
+                                nl::NodeContent::Script(content) => content.size = size,
+                                nl::NodeContent::Image(content) => content.size = size,
+                            }
+                        }
+                        self.relayout();
+                        ctx.request_layout();
+                        ctx.request_render();
+                    }
                     Some(Drag::Pan { last }) => {
                         let d = local - *last;
                         *last = local;
@@ -551,6 +877,7 @@ impl Widget for NodesWidget {
                         *to = at;
                         ctx.request_render();
                     }
+                    Some(Drag::Idle) => {}
                     None => {}
                 }
             }
@@ -573,7 +900,22 @@ impl Widget for NodesWidget {
                         }
                         self.emit_changed(ctx);
                     }
-                    Some(Drag::Move { .. }) => self.emit_changed(ctx),
+                    Some(Drag::Move { id, .. }) => {
+                        if let Some(node) = self.graph.node(id) {
+                            ctx.submit_action::<NodesEvent>(NodesEvent::MoveNode {
+                                node: id,
+                                pos: node.pos,
+                            });
+                        }
+                    }
+                    Some(Drag::Resize { id, .. }) => {
+                        let size = match self.content.get(id) {
+                            Some(nl::NodeContent::Script(content)) => content.size,
+                            Some(nl::NodeContent::Image(content)) => content.size,
+                            None => return,
+                        };
+                        ctx.submit_action::<NodesEvent>(NodesEvent::Resize { node: id, size });
+                    }
                     _ => {}
                 }
                 ctx.request_render();
@@ -634,7 +976,12 @@ impl Widget for NodesWidget {
     }
 
     fn children_ids(&self) -> ChildrenIds {
-        ChildrenIds::new()
+        ChildrenIds::from_iter(
+            self.code_editors
+                .values()
+                .map(WidgetPod::id)
+                .chain(self.preview_images.values().map(WidgetPod::id)),
+        )
     }
 }
 
@@ -679,12 +1026,15 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
     type ViewState = ();
 
     fn build(&self, ctx: &mut ViewCtx, _: &mut Workspace) -> (Self::Element, Self::ViewState) {
+        let (code_editors, _, preview_images) = content_children(&self.content);
         let mut widget = NodesWidget {
             graph: (*self.graph).clone(),
             registry: self.registry.clone(),
             palette: self.palette.clone(),
             rows: self.rows.clone(),
             content: self.content.clone(),
+            code_editors,
+            preview_images,
             boxes: Vec::new(),
             viewport: ViewPort::new(),
             fitted: false,
@@ -725,9 +1075,50 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
             element.widget.rows = self.rows.clone();
             dirty = true;
         }
-        if !Arc::ptr_eq(&self.content, &prev.content) {
+        if self.content != prev.content {
             element.widget.content = self.content.clone();
+            let wanted_editors: Vec<u32> = self
+                .content
+                .by_node
+                .iter()
+                .filter_map(|(&node, content)| {
+                    matches!(content, nl::NodeContent::Script(_)).then_some(node)
+                })
+                .collect();
+            let current_editors: Vec<u32> = element.widget.code_editors.keys().copied().collect();
+            if wanted_editors != current_editors {
+                for (_, editor) in std::mem::take(&mut element.widget.code_editors) {
+                    element.ctx.remove_child(editor);
+                }
+                let (editors, _, _) = content_children(&self.content);
+                element.widget.code_editors = editors;
+                element.ctx.children_changed();
+            } else {
+                for (&node, content) in &self.content.by_node {
+                    let nl::NodeContent::Script(script) = content else {
+                        continue;
+                    };
+                    let editor = element
+                        .widget
+                        .code_editors
+                        .get_mut(&node)
+                        .expect("script node has an editor child");
+                    let mut editor = element.ctx.get_mut(editor);
+                    let mut area = TextInput::text_mut(&mut editor);
+                    if area.widget.text().to_string() != script.text {
+                        TextArea::reset_text(&mut area, &script.text);
+                    }
+                }
+            }
+            if projected_images(&self.content) != projected_images(&prev.content) {
+                for (_, image) in std::mem::take(&mut element.widget.preview_images) {
+                    element.ctx.remove_child(image);
+                }
+                element.widget.preview_images = content_children(&self.content).2;
+                element.ctx.children_changed();
+            }
             element.widget.relayout();
+            element.ctx.request_layout();
             dirty = true;
         }
         if !Arc::ptr_eq(&self.palette, &prev.palette) {
@@ -757,7 +1148,23 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
                 (self.on_event)(app, *event);
                 MessageResult::Action(())
             }
-            None => MessageResult::Stale,
+            None => match message.take_message::<TextAction>() {
+                Some(action) => match *action {
+                    TextAction::Changed(code) | TextAction::Entered(code) => {
+                        let node = self.content.by_node.iter().find_map(|(&node, content)| {
+                            matches!(content, nl::NodeContent::Script(_)).then_some(node)
+                        });
+                        if let Some(node) = node {
+                            (self.on_event)(app, NodesEvent::EditCode { node, code });
+                            MessageResult::Action(())
+                        } else {
+                            MessageResult::Stale
+                        }
+                    }
+                    TextAction::Cancelled => MessageResult::Nop,
+                },
+                None => MessageResult::Stale,
+            },
         }
     }
 }
@@ -771,4 +1178,118 @@ fn mix(a: Color, b: Color, t: f32) -> Color {
         a[2] + (b[2] - a[2]) * t,
         1.0,
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::{DynamicImage, Rgba, RgbaImage};
+    use masonry::core::{Ime, TextEvent};
+    use masonry_testing::TestHarness;
+    use runebender::document::nodes_live;
+    use runebender::document::variable::SourceId;
+    use runebender::ui::nodes::{
+        ContentState, ImageContent, ImmutablePng, NodeContent, ScriptContent,
+    };
+    use std::io::Cursor;
+
+    fn png() -> Arc<[u8]> {
+        let mut raster = RgbaImage::new(2, 2);
+        raster.put_pixel(0, 0, Rgba([0, 0, 0, 255]));
+        raster.put_pixel(1, 0, Rgba([255, 255, 255, 255]));
+        raster.put_pixel(0, 1, Rgba([255, 255, 255, 255]));
+        raster.put_pixel(1, 1, Rgba([0, 0, 0, 255]));
+        let mut bytes = Cursor::new(Vec::new());
+        DynamicImage::ImageRgba8(raster)
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .expect("fixture PNG encodes");
+        Arc::from(bytes.into_inner())
+    }
+
+    fn fixture() -> (NodesWidget, WidgetId) {
+        let graph = nodes_live::comparison_starter(SourceId(0));
+        let registry = Arc::new(Registry::core());
+        let mut content = NodeContentMap::default();
+        for node in &graph.nodes {
+            match node.type_name.as_str() {
+                "live.python" => {
+                    content.by_node.insert(
+                        node.id,
+                        NodeContent::Script(ScriptContent {
+                            text: "print('A')\n".into(),
+                            content_hash: "script".into(),
+                            state: ContentState::Current,
+                            size: [240.0, 112.0],
+                        }),
+                    );
+                }
+                "live.proof" => {
+                    content.by_node.insert(
+                        node.id,
+                        NodeContent::Image(ImageContent {
+                            image: Some(ImmutablePng {
+                                bytes: png(),
+                                width: 2,
+                                height: 2,
+                                output_hash: format!("proof-{}", node.id),
+                            }),
+                            previous_image: None,
+                            state: ContentState::Current,
+                            size: [240.0, 144.0],
+                        }),
+                    );
+                }
+                _ => {}
+            }
+        }
+        let content = Arc::new(content);
+        let (code_editors, code_area_ids, preview_images) = content_children(&content);
+        let editor_id = code_area_ids
+            .values()
+            .next()
+            .expect("Python editor child")
+            .to_owned();
+        let mut widget = NodesWidget {
+            graph,
+            registry,
+            palette: Arc::new(Palette::load("gray")),
+            rows: Arc::new(BTreeMap::new()),
+            content,
+            code_editors,
+            preview_images,
+            boxes: Vec::new(),
+            viewport: ViewPort::new(),
+            fitted: false,
+            size: Size::ZERO,
+            selected: None,
+            drag: None,
+            menu: None,
+        };
+        widget.relayout();
+        (widget, editor_id)
+    }
+
+    #[test]
+    fn real_code_and_png_children_render_and_route_text_input() {
+        let (widget, editor_id) = fixture();
+        let mut harness = TestHarness::create_with_size(
+            crate::application::view::default_property_set(),
+            NewWidget::new(widget),
+            (1100, 720),
+        );
+        let rendered = harness.render();
+        assert!(rendered.iter().any(|byte| *byte != 0));
+
+        harness.mouse_click_on(editor_id, Some(PointerButton::Primary));
+        harness.process_text_event(TextEvent::Ime(Ime::Commit("#".into())));
+        assert!(matches!(
+            harness.pop_action::<TextAction>(),
+            Some((TextAction::Changed(text), _)) if text.contains('#')
+        ));
+        harness.process_text_event(TextEvent::ClipboardPaste("\npass".into()));
+        assert!(matches!(
+            harness.pop_action::<TextAction>(),
+            Some((TextAction::Changed(text), _)) if text.contains("pass")
+        ));
+    }
 }
