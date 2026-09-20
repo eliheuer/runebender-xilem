@@ -41,6 +41,14 @@ pub(crate) fn nodes(directory: &Path) -> Option<PathBuf> {
         .pick_file()
 }
 
+/// Pick an explicit destination for one nodes graph without overwriting it in the dialog layer.
+pub(crate) fn save_nodes(directory: &Path, suggested_name: &str) -> Option<PathBuf> {
+    at(directory)
+        .add_filter("Runebender nodes", &["json"])
+        .set_file_name(suggested_name)
+        .save_file()
+}
+
 /// Pick one raster image.
 pub(crate) fn image(directory: &Path) -> Option<PathBuf> {
     at(directory)

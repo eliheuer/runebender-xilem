@@ -12,7 +12,8 @@
 use crate::application::editor::tools::nodes::file_label;
 use crate::application::editor::tools::nodes_controls::{
     apply_live_comparison, cancel_live_comparison, change_live_graph, clear_live_results,
-    edit_live_code, edit_live_scope, move_live_node, run_live_comparison, select_live_comparison,
+    edit_live_code, edit_live_scope, move_live_node, open_live_comparison_file,
+    run_live_comparison, save_live_comparison_file, select_live_comparison,
 };
 use crate::application::view::canvas::nodes::{NodesEvent, nodes_canvas};
 use crate::application::view::design::{Region, Space, TextSize, row as xrow};
@@ -25,6 +26,7 @@ use masonry::properties::LineBreaking;
 use masonry::properties::types::CrossAxisAlignment;
 use runebender::document::nodes::{NodeGraph, Registry};
 use runebender::document::nodes_session::GraphGuard;
+use runebender::document::variable::SourceId;
 use runebender::ui::nodes::{
     ContentState, ImageContent, ImmutablePng, NodeContent, NodeContentMap, ScriptContent,
 };
@@ -407,6 +409,12 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
     let can_apply = view.can_apply;
     let live_guard = view.live_guard.clone();
     let source = view.source;
+    let source_name = source.and_then(|source| {
+        app.font
+            .project
+            .document_source(SourceId(source))
+            .map(|source| source.name().to_owned())
+    });
     let original_graph = view.graph.clone();
     // The left tab rail and the inspector's first header occupy this same
     // 36-pixel band. One square, keylined control style keeps the file tabs
@@ -425,17 +433,40 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                         select_live_comparison,
                     ),
                     FlexSpacer::Flex(1.0),
-                    recipes::toggle(pal, "New".into(), false, |app: &mut Workspace| {
-                        app.nodes.live_selected = false;
-                        app.new_nodes_file();
+                    (!live).then(|| {
+                        recipes::toggle(pal, "New".into(), false, |app: &mut Workspace| {
+                            app.nodes.live_selected = false;
+                            app.new_nodes_file();
+                        })
                     }),
-                    recipes::toggle(pal, "Open".into(), false, |app: &mut Workspace| {
-                        app.nodes.live_selected = false;
-                        app.command_open_nodes();
+                    (!live).then(|| {
+                        recipes::toggle(pal, "Open".into(), false, |app: &mut Workspace| {
+                            app.nodes.live_selected = false;
+                            app.command_open_nodes();
+                        })
                     }),
                     (!live).then(|| {
                         recipes::toggle(pal, "Save".into(), false, |app: &mut Workspace| {
                             app.save_nodes_file();
+                        })
+                    }),
+                    live.then(|| {
+                        recipes::toggle(
+                            pal,
+                            "Save comparison as\u{2026}".into(),
+                            false,
+                            save_live_comparison_file,
+                        )
+                    }),
+                    (live && source.is_some()).then(|| {
+                        let source = source.expect("checked above");
+                        let label = source_name
+                            .clone()
+                            .map_or_else(|| format!("Open for source {source}"), |name| {
+                                format!("Open for {name}")
+                            });
+                        recipes::toggle(pal, label, false, move |app: &mut Workspace| {
+                            open_live_comparison_file(app, SourceId(source));
                         })
                     }),
                     recipes::toggle(
@@ -512,7 +543,11 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             (
                 label(source.map_or_else(
                     || "Source unavailable".into(),
-                    |source| format!("Source {source}"),
+                    |source| {
+                        source_name
+                            .clone()
+                            .map_or_else(|| format!("Source {source}"), |name| name)
+                    },
                 ))
                 .text_size(TextSize::Caption.px())
                 .color(pal.text_muted),

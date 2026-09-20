@@ -8,7 +8,10 @@
 
 use crate::application::workspace::Workspace;
 use runebender::document::nodes_session::GraphGuard;
+use runebender::document::variable::SourceId;
 
+#[cfg(unix)]
+use crate::application::platform::dialogs;
 #[cfg(unix)]
 use crate::application::platform::nodes_proofs::NodeProofInspection;
 #[cfg(unix)]
@@ -45,6 +48,94 @@ pub(crate) fn select_live_comparison(app: &mut Workspace) {
     #[cfg(not(unix))]
     {
         app.note = "Live comparison execution is available in the native editor".into();
+    }
+}
+
+/// Open graph intent for the exact source named by the invoking control.
+pub(crate) fn open_live_comparison_file(app: &mut Workspace, explicit_source: SourceId) {
+    #[cfg(unix)]
+    {
+        if app.font.project.document_source(explicit_source).is_none() {
+            app.note = "The source selected by Open is no longer loaded".into();
+            return;
+        }
+        if app.live_nodes.as_ref().is_some_and(|state| {
+            let revision = state.session.snapshot().revision;
+            state
+                .saved_revision
+                .map_or(revision != 0, |saved| saved != revision)
+        }) {
+            app.note = "Save the edited comparison graph before opening another one".into();
+            return;
+        }
+        if app
+            .live_nodes
+            .as_ref()
+            .is_some_and(|state| !state.handles.is_empty())
+        {
+            app.note = "Release current comparison results before opening another graph".into();
+            return;
+        }
+        let start = app
+            .live_nodes
+            .as_ref()
+            .and_then(|state| state.file.as_ref())
+            .and_then(|metadata| metadata.path.parent())
+            .or_else(|| app.font.document_source().parent())
+            .unwrap_or_else(|| std::path::Path::new("."));
+        if let Some(path) = dialogs::nodes(start) {
+            match app.open_live_graph_file(&path, explicit_source) {
+                Ok(_) => {
+                    app.nodes.fit_request = app.nodes.fit_request.wrapping_add(1);
+                }
+                Err(error) => app.note = error,
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = explicit_source;
+        app.note = "Live graph files are available in the native editor".into();
+    }
+}
+
+/// Save live graph intent to an exact user-selected path.
+pub(crate) fn save_live_comparison_file(app: &mut Workspace) {
+    #[cfg(unix)]
+    {
+        let start = app
+            .live_nodes
+            .as_ref()
+            .and_then(|state| state.file.as_ref())
+            .and_then(|metadata| metadata.path.parent())
+            .or_else(|| app.font.document_source().parent())
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let suggested = app
+            .live_nodes
+            .as_ref()
+            .and_then(|state| state.file.as_ref())
+            .and_then(|metadata| metadata.path.file_name())
+            .and_then(|name| name.to_str())
+            .unwrap_or("comparison.nodes.json");
+        if let Some(path) = dialogs::save_nodes(start, suggested) {
+            match app.save_live_graph_file(&path) {
+                Ok(metadata) => {
+                    app.note = format!(
+                        "Saved {}",
+                        metadata
+                            .path
+                            .file_name()
+                            .and_then(|name| name.to_str())
+                            .unwrap_or("comparison graph")
+                    );
+                }
+                Err(error) => app.note = error,
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        app.note = "Live graph files are available in the native editor".into();
     }
 }
 

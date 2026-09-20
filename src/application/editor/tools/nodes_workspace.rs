@@ -31,6 +31,7 @@ pub(crate) struct LiveNodesState {
     pub(crate) requests: BTreeMap<(String, String), (Value, Value)>,
     pub(crate) next_job: u64,
     pub(crate) file: Option<LiveGraphFileMetadata>,
+    pub(crate) saved_revision: Option<u64>,
 }
 
 impl Workspace {
@@ -90,10 +91,6 @@ impl Workspace {
     ///
     /// Saving the same open path uses its observed revision.
     /// A different path must remain absent, so Save As cannot silently overwrite a graph.
-    #[allow(
-        dead_code,
-        reason = "the native file controls consume this narrow persistence command"
-    )]
     pub(crate) fn save_live_graph_file(
         &mut self,
         path: &Path,
@@ -108,9 +105,11 @@ impl Workspace {
             .as_ref()
             .filter(|metadata| metadata.path == path)
             .map(|metadata| metadata.revision.as_str());
-        let saved = nodes_file::save(path, &state.session.snapshot().graph, expected_revision)
+        let snapshot = state.session.snapshot();
+        let saved = nodes_file::save(path, &snapshot.graph, expected_revision)
             .map_err(|error| error.to_string())?;
         state.file = Some(saved.metadata.clone());
+        state.saved_revision = Some(snapshot.revision);
         Ok(saved.metadata)
     }
 
@@ -118,10 +117,6 @@ impl Workspace {
     ///
     /// Retained runs must be released first so replacing the session cannot orphan their work or
     /// make old results appear to belong to the newly opened graph.
-    #[allow(
-        dead_code,
-        reason = "the native file controls consume this narrow persistence command"
-    )]
     pub(crate) fn open_live_graph_file(
         &mut self,
         path: &Path,
@@ -309,6 +304,7 @@ fn fresh_live_nodes(
         handles: BTreeSet::new(),
         requests: BTreeMap::new(),
         next_job: 0,
+        saved_revision: file.as_ref().map(|_| 0),
         file,
     })
 }
@@ -805,7 +801,22 @@ mod tests {
         assert_eq!(app.font.project.is_modified(), modified);
         assert_eq!(app.script_jobs.is_some(), queue_was_initialized);
 
+        let mut oversized = reopened.graph.clone();
+        while oversized.nodes.len() <= 64 {
+            oversized.add("live.proof", [0.0, 0.0]);
+        }
+        let oversized_path = root.0.join("oversized.nodes.json");
+        std::fs::write(&oversized_path, serde_json::to_vec(&oversized).unwrap()).unwrap();
         let current_identity = reopened.identity;
+        let error = app
+            .open_live_graph_file(&oversized_path, source)
+            .unwrap_err();
+        assert!(error.contains("graph has"), "{error}");
+        assert_eq!(
+            app.live_graph_session().unwrap().snapshot().identity,
+            current_identity
+        );
+
         let retained: GraphRunHandle = serde_json::from_value(json!(99)).unwrap();
         app.live_nodes.as_mut().unwrap().handles.insert(retained);
         let error = app.open_live_graph_file(&path, source).unwrap_err();

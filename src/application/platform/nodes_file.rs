@@ -13,7 +13,7 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use runebender::document::nodes::{EXTENSION, NodeGraph};
+use runebender::document::nodes::{EXTENSION, FILE_VERSION, NodeGraph};
 use sha2::{Digest, Sha256};
 
 const MAX_GRAPH_BYTES: usize = 2 * 1024 * 1024;
@@ -91,9 +91,18 @@ impl From<io::Error> for LiveGraphFileError {
 pub(crate) fn load(path: &Path) -> Result<LiveGraphDocument, LiveGraphFileError> {
     validate_path(path)?;
     let bytes = read_path(path)?;
+    document_from_bytes(path, bytes)
+}
+
+fn document_from_bytes(
+    path: &Path,
+    bytes: Vec<u8>,
+) -> Result<LiveGraphDocument, LiveGraphFileError> {
     let revision = hex_digest(Sha256::digest(&bytes));
+    reject_unknown_fields(&bytes)?;
     let mut graph: NodeGraph = serde_json::from_slice(&bytes)
         .map_err(|error| LiveGraphFileError::InvalidGraph(error.to_string()))?;
+    validate_identity_fields(&graph)?;
     strip_session_values(&mut graph);
     Ok(LiveGraphDocument {
         metadata: LiveGraphFileMetadata {
@@ -137,7 +146,66 @@ pub(crate) fn save(
         let _ = fs::remove_file(&temporary);
     }
     staged?;
-    load(path)
+    let written_revision = hex_digest(Sha256::digest(&bytes));
+    let actual_bytes = read_path(path)?;
+    let actual_revision = hex_digest(Sha256::digest(&actual_bytes));
+    if actual_revision != written_revision {
+        return Err(LiveGraphFileError::Conflict { actual_revision });
+    }
+    document_from_bytes(path, actual_bytes)
+}
+
+fn reject_unknown_fields(bytes: &[u8]) -> Result<(), LiveGraphFileError> {
+    let value: serde_json::Value = serde_json::from_slice(bytes)
+        .map_err(|error| LiveGraphFileError::InvalidGraph(error.to_string()))?;
+    let object = value
+        .as_object()
+        .ok_or_else(|| LiveGraphFileError::InvalidGraph("root must be an object".into()))?;
+    if let Some(field) = object
+        .keys()
+        .find(|field| !matches!(field.as_str(), "version" | "nodes" | "links"))
+    {
+        return Err(LiveGraphFileError::InvalidGraph(format!(
+            "unknown root field {field:?}"
+        )));
+    }
+    if let Some(nodes) = object.get("nodes").and_then(serde_json::Value::as_array) {
+        for node in nodes {
+            let Some(node) = node.as_object() else {
+                continue;
+            };
+            if let Some(field) = node
+                .keys()
+                .find(|field| !matches!(field.as_str(), "id" | "type" | "pos" | "values"))
+            {
+                return Err(LiveGraphFileError::InvalidGraph(format!(
+                    "unknown node field {field:?}"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_identity_fields(graph: &NodeGraph) -> Result<(), LiveGraphFileError> {
+    if graph.version != FILE_VERSION {
+        return Err(LiveGraphFileError::InvalidGraph(format!(
+            "unsupported version {}; expected {FILE_VERSION}",
+            graph.version
+        )));
+    }
+    let mut ids = std::collections::HashSet::new();
+    if let Some(duplicate) = graph
+        .nodes
+        .iter()
+        .map(|node| node.id)
+        .find(|id| !ids.insert(*id))
+    {
+        return Err(LiveGraphFileError::InvalidGraph(format!(
+            "duplicate node id {duplicate}"
+        )));
+    }
+    Ok(())
 }
 
 fn strip_session_values(graph: &mut NodeGraph) {
@@ -372,5 +440,36 @@ mod tests {
         let error = save(&path, &graph, Some(&saved.metadata.revision)).unwrap_err();
         assert!(matches!(error, LiveGraphFileError::Conflict { .. }));
         assert_eq!(fs::read_to_string(path).unwrap(), "external edit\n");
+    }
+
+    #[test]
+    fn rejects_unknown_authority_version_and_duplicate_ids() {
+        let root = TestDirectory::new("identity");
+        let path = root.0.join("comparison.nodes.json");
+        let graph = nodes_live::comparison_starter(SourceId(0));
+        let mut value = serde_json::to_value(&graph).unwrap();
+        value["session_id"] = json!("stale-authority");
+        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        assert!(matches!(
+            load(&path),
+            Err(LiveGraphFileError::InvalidGraph(_))
+        ));
+
+        value.as_object_mut().unwrap().remove("session_id");
+        value["version"] = json!(FILE_VERSION + 1);
+        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        assert!(matches!(
+            load(&path),
+            Err(LiveGraphFileError::InvalidGraph(_))
+        ));
+
+        value["version"] = json!(FILE_VERSION);
+        let duplicate = value["nodes"][0].clone();
+        value["nodes"].as_array_mut().unwrap().push(duplicate);
+        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        assert!(matches!(
+            load(&path),
+            Err(LiveGraphFileError::InvalidGraph(_))
+        ));
     }
 }
