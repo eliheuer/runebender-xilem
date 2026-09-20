@@ -69,7 +69,7 @@ pub(crate) struct LiveGraphSubmitRequest {
 pub(crate) struct LiveGraphSubmitResponse {
     /// Durable graph run receipt.
     pub(crate) graph: GraphRunResponse,
-    /// Shared Python queue handle, absent after explicit release.
+    /// Shared Python queue handle, absent when submission failed or after explicit release.
     pub(crate) script: Option<ScriptJobHandle>,
 }
 
@@ -147,8 +147,6 @@ pub(crate) enum LiveGraphExecutionErrorCode {
     Capture,
     /// Graph session rejected a command.
     Graph,
-    /// Shared Python queue rejected submission.
-    ScriptQueue,
     /// Handle is not retained by this adapter.
     UnknownRun,
     /// Action is not valid in the current phase.
@@ -310,16 +308,16 @@ impl LiveGraphExecution {
                         operation_key: request.operation_key,
                         script: None,
                         work,
-                        base_input: Some(request.base_proof_input),
+                        base_input: None,
                         proof_request: None,
                         proof_recipe,
                         phase,
                     },
                 );
-                return Err(LiveGraphExecutionError::new(
-                    LiveGraphExecutionErrorCode::ScriptQueue,
-                    message,
-                ));
+                return Ok(LiveGraphSubmitResponse {
+                    graph,
+                    script: None,
+                });
             }
         };
         self.requests.insert(request_key, work.handle);
@@ -1279,6 +1277,102 @@ mod tests {
             .submit(&mut session, &queue, &project, changed_base)
             .unwrap_err();
         assert_eq!(error.code, LiveGraphExecutionErrorCode::Capture);
+    }
+
+    #[test]
+    fn queue_full_submission_returns_a_releasable_failed_receipt() {
+        let Some(python) = python() else {
+            return;
+        };
+        let project = project();
+        let mut config = ScriptJobConfig::new(python);
+        config.queue_capacity = 1;
+        config.retained_capacity = 4;
+        config.deadline = Duration::from_secs(30);
+        let queue = ScriptJobQueue::new(config).unwrap();
+        let blocker = queue
+            .submit(ScriptJobRequest {
+                input: input(&project, "queue-blocker"),
+                script: format!("import time\ntime.sleep(30)\n{}", script()),
+            })
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while queue.inspect(blocker).unwrap().status != ScriptJobStatus::Running {
+            assert!(Instant::now() < deadline, "blocking script did not start");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let queued = queue
+            .submit(ScriptJobRequest {
+                input: input(&project, "queue-filler"),
+                script: script(),
+            })
+            .unwrap();
+
+        let (mut session, request) = setup(&project);
+        let retry = LiveGraphSubmitRequest {
+            guard: request.guard.clone(),
+            actor: request.actor.clone(),
+            operation_key: request.operation_key.clone(),
+            recipe_input: request.recipe_input.clone(),
+            base_proof_input: request.base_proof_input.clone(),
+        };
+        let mut adapter = LiveGraphExecution::default();
+        let submitted = adapter
+            .submit(&mut session, &queue, &project, request)
+            .unwrap();
+        let handle = submitted.graph.receipt.handle;
+        assert_eq!(
+            submitted.graph.disposition,
+            GraphReceiptDisposition::Applied
+        );
+        assert_eq!(submitted.script, None);
+        assert_eq!(
+            adapter.phase(handle),
+            Some(LiveGraphPhase::Terminal(GraphRunStatus::Failed))
+        );
+        let inspection = session.inspect_run(handle).unwrap();
+        assert_eq!(inspection.status, GraphRunStatus::Failed);
+        assert_eq!(inspection.errors[0].code, "script_submit");
+        assert!(adapter.records.get(&handle).unwrap().base_input.is_none());
+
+        let replay = adapter
+            .submit(
+                &mut session,
+                &queue,
+                &project,
+                LiveGraphSubmitRequest {
+                    guard: retry.guard.clone(),
+                    actor: retry.actor.clone(),
+                    operation_key: retry.operation_key.clone(),
+                    recipe_input: retry.recipe_input.clone(),
+                    base_proof_input: retry.base_proof_input.clone(),
+                },
+            )
+            .unwrap();
+        assert_eq!(replay.graph.disposition, GraphReceiptDisposition::Replayed);
+        assert_eq!(replay.graph.receipt, submitted.graph.receipt);
+        assert_eq!(replay.script, None);
+
+        assert!(adapter.release(&mut session, &queue, handle).unwrap());
+        assert_eq!(adapter.phase(handle), Some(LiveGraphPhase::Released));
+        let released_replay = adapter
+            .submit(&mut session, &queue, &project, retry)
+            .unwrap();
+        assert_eq!(
+            released_replay.graph.disposition,
+            GraphReceiptDisposition::Replayed
+        );
+        assert_eq!(released_replay.graph.receipt, submitted.graph.receipt);
+        assert_eq!(released_replay.script, None);
+
+        assert_eq!(
+            queue.cancel(queued),
+            ScriptJobCancelOutcome::CancelledBeforeStart
+        );
+        assert_eq!(
+            queue.cancel(blocker),
+            ScriptJobCancelOutcome::CancellationRequested
+        );
     }
 
     #[test]
