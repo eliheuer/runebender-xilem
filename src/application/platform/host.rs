@@ -1380,6 +1380,14 @@ mod tests {
         workspace.open_glyph(index);
 
         workspace.set_unicode_from_buf("U+0628".into());
+        assert_eq!(
+            workspace.font.project.document_glyph_codepoints("A"),
+            Some(vec![vec!['\u{0628}']; 2])
+        );
+        assert!(workspace.font.project.sources().iter().all(|master| {
+            let index = master.name_map["A"];
+            master.undo_depth(index) == 0
+        }));
         for master in workspace.font.project.sources() {
             assert_eq!(
                 master

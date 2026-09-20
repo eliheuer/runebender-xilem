@@ -308,7 +308,7 @@ git diff --check
 - Overview metaball conversion now commits guarded layer transactions and replays Project-owned layer history instead of calling `FontModel::replace_glyph` or recording `Master.history` snapshots.
 - No production application caller materializes or reconciles a whole glyph; compatibility projection helpers remain test-only while M13 removes the bridge itself.
 - Production application code no longer calls `FontModel::master_mut` or `font_mut`; the two accessors are confined to stale-state and persistence fixtures.
-- Direct source-projection mutation remains in Unicode propagation and Save As retargeting; those callers remain M06/M13 work rather than completion claims.
+- Direct source-projection mutation remains in Save As retargeting; that caller remains M06/M13 work rather than a completion claim.
 - Pen, Rectangle, Ellipse and Knife Pointer Cancel paths now have real widget-event coverage.
 
 ## Canonical Session storage and history cutover
@@ -632,6 +632,32 @@ The focused regression covers canonical left and right formula application, two-
 The complete binary suite passed 173 tests with four documented model or external-font tests ignored.
 Warning-denied native workspace/all-target Clippy, the release WASM build, warning-denied browser Clippy, formatting and diff checks passed.
 
+## Atomic canonical Unicode slice
+
+Implementation commit: `Edit glyph Unicode through Project`.
+Resolve its exact ID with `git log --format=%H --grep='^Edit glyph Unicode through Project$' -1`.
+Affected paths: `src/application/font_model.rs`, `src/application/platform/host.rs` and this log.
+
+Reviewed core commit `b40e074` adds exact canonical Unicode reads and one atomic all-source write.
+The application now reads and writes glyph codepoints through those Project operations, rebuilds its derived cache only after a changed canonical commit and no longer mutates or reconciles source projections for Unicode edits.
+The existing application snapshot owns the user-facing cross-source Undo/Redo label, while each application and core regression verifies canonical values and zero legacy Master history.
+
+Executed evidence:
+
+```sh
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::platform::host::tests::unicode_and_rename_undo_atomically_across_masters -- --exact --test-threads=1
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender -- --test-threads=1
+CARGO_BUILD_JOBS=1 cargo clippy --workspace --all-targets --locked -- -D warnings
+CARGO_BUILD_JOBS=1 ./web/build.sh
+CARGO_BUILD_JOBS=1 CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS='-C target-feature=+simd128' cargo clippy --manifest-path web/Cargo.toml --locked --target wasm32-unknown-unknown --no-deps -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The focused regression covers canonical cross-source edit, Undo/Redo, rename interaction, overview edit and save/reopen persistence.
+The complete binary suite passed 173 tests with four documented model or external-font tests ignored.
+Warning-denied native workspace/all-target Clippy, the release WASM build, warning-denied browser Clippy, formatting and diff checks passed.
+
 ## Next action
 
-Replace the remaining Unicode and Save As `edit_sources` callers with canonical Project operations, then remove the test-only compatibility bridge itself during M13.
+Replace the remaining Save As `edit_sources` caller once the reviewed persistence dependency chain is available on this branch, then consume the reviewed test-only compatibility-bridge removal during M13.
