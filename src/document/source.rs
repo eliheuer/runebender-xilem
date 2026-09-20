@@ -5,7 +5,7 @@
 //!
 //! A [`SourceInput`] exists only while a format adapter hands a decoded UFO to
 //! [`Project`](super::project::Project).
-//! The live project stores [`SourceState`] instead: paths, opaque filesystem payloads and save
+//! The live project stores private source state instead: paths, opaque filesystem payloads and save
 //! status that are not canonical font data.
 
 use std::path::{Path, PathBuf};

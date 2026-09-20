@@ -82,7 +82,7 @@ pub fn outward_normals_for_points(points: &[kurbo::Point]) -> Vec<(f64, f64)> {
 
 /// Learn an anisotropic embolden offset from canonical document-layer pairs.
 ///
-/// Incompatible contour or point structures are skipped, matching [`learn_offset`].
+/// Incompatible contour or point structures are skipped.
 pub fn learn_layer_offset(pairs: &[(LayerView<'_>, LayerView<'_>)]) -> Option<Offset> {
     let (mut sx, mut nx2, mut sy, mut ny2) = (0.0, 0.0, 0.0, 0.0);
     for (light, heavy) in pairs {

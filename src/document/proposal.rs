@@ -156,8 +156,8 @@ pub fn compatible(foreground: &Glyph, proposed: &Glyph) -> bool {
 
 /// Whether two canonical layers have the same contour and point structure.
 ///
-/// This is the document-native equivalent of [`compatible`] and does not materialize a UFO
-/// glyph. Components and anchors are deliberately outside the interpolation structure check.
+/// This compares canonical geometry without materializing a UFO glyph.
+/// Components and anchors are deliberately outside the interpolation structure check.
 pub fn compatible_layers(foreground: LayerView<'_>, proposed: LayerView<'_>) -> bool {
     let signature = |layer: LayerView<'_>| {
         layer
