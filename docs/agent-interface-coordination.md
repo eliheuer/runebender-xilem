@@ -45,23 +45,31 @@ The Nodes canvas content-layout seam is `642d710`, which does not yet establish 
 
 ## Noon candidate integration in progress
 
-At approximately 11:00 Pacific, the coordinator has integrated the native Python runtime/library, Scripts flow, guarded live Nodes engine and canvas, full-family proof overlays, independent edit cancellation and direct MCP PNG delivery.
-Source checkpoint `8fa7e4c` passed 925 native tests with four explicitly ignored tests and strict all-target Clippy.
-The subsequent `ccdb370` phase keeps ordinary font Undo/Redo available while staying in Nodes and passes its focused Apply/Undo/Redo test.
-Scripts scrolling and shortcut isolation are integrated for final review; actual Gray/Light captures also identified Nodes layout defects now being corrected.
+At approximately 11:40 Pacific, source checkpoint `edb5e3ece3fb344f64dc72f1fac72b94db00abcd` has passed 932 native tests with four explicitly ignored tests, strict all-target Clippy, and warnings-denied documentation.
+The integrated candidate includes native Python scripts, guarded live Nodes, full-family proof overlays, independent cancellation, direct MCP PNG delivery, bounded source-editor Undo/Redo, ordinary font Undo from Nodes, and explicit comparison graph save/reopen.
+Gray and Light headless captures of Scripts and the actual compiled Nodes outputs are in `/private/tmp/runebender-noon-candidate/ui-final`.
+They establish rendered layout and theme behavior, not foreground pointer, IME, accessibility or GPU acceptance.
 
-The credential-free actual stdio MCP trial passed on a copied full Virtua Grotesk designspace.
-All nine Nodes tools were used, exact returned image bytes and hashes matched, A changed from 716 to 816, ordinary Undo restored 716, and retry after Undo did not reapply.
+The exact candidate's credential-free stdio MCP trial passed on a copied full Virtua Grotesk designspace.
+All nine Nodes tools were used, exact returned PNG bytes matched their published hashes, A changed from 716 to 816, ordinary Undo restored 716, and retry after Undo did not reapply.
 All 1,744 files in both input and copy matched before, after and after cleanup.
-Evidence is `/private/tmp/runebender-nodes-virtua-full-family-20260920-1140/evidence.json`.
-This does not establish actual model image interpretation or foreground pointer/IME behavior.
+Evidence is `/private/tmp/runebender-noon-candidate/transport-2/virtua-mcp/evidence.json`.
+The pinned executable has SHA-256 `07b6bf93e9a7b8d4ad556f0bea6f7b29713a2ba03d088ac1d64d6e4778911891`.
+This does not establish actual model image interpretation.
+
+The separate full-family anchor trial passed with `A` followed by the noncomposing U+030B combining mark.
+Moving the Regular A top anchor by 100 units changed the shaped mark offset by 100 units at the source and 50 units at the family midpoint; the Bold source remained unchanged.
+Both corresponding PNG pairs differ, ordinary Undo restores the anchor, exact retry after Undo does not reapply, and all source hashes remain unchanged.
+Evidence is `/private/tmp/runebender-nodes-virtua-anchor-20260920-1250/evidence.json`, SHA-256 `6edb29fb3c4327832254586a6d741a91eb2706c6a28b24337d5746f6cdf51ce5`.
+The earlier A-plus-acute specimen composed into Aacute and therefore did not exercise mark positioning; it is not counted as passing anchor evidence.
 
 The Nodes execution and canvas tasks are validated and archived, and all worker schedules are removed.
 The Scripts task remains open for final integration verification; only the central ten-minute continuation remains scheduled.
 The existing desktop trial remains available, and the metaball task is open at the user's request.
 Main and upstream remain `790702d7d0e00a5602aca30f49b72aef43b652c2` until the combined candidate passes remaining checks.
-Native release, warnings-denied docs, advisories, browser build/lint/quality and clean-checkout acceptance must not be inferred from the passing native subset.
-Live graph persistence, expanded script editing, graph-history UI and source/midpoint mark specimens remain tracked work.
+The native optimized release build and latest-source browser build/lint/quality are still pending at this checkpoint.
+Advisories and Python harness checks passed with the unchanged dependencies.
+Clean-checkout acceptance, actual desktop/OMP model image interpretation, expanded shared script editing and exposed graph-history controls remain open.
 
 ## Agreed interfaces and remaining decisions
 

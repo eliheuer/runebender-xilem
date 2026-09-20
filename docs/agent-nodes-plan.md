@@ -13,12 +13,13 @@ Real multiline TextArea children and immutable PNG children are integrated, incl
 The same shared Python queue, compiler queue, Project transaction boundary and ordinary font history serve the UI and agent calls.
 The disk workflow runner remains separate and cannot silently execute a live graph.
 
-At source checkpoint `8fa7e4c`, 925 native tests passed with four ignored, and strict all-target Clippy passed.
+At source checkpoint `edb5e3e`, 932 native tests passed with four ignored, strict all-target Clippy passed, and warnings-denied documentation passed.
 An actual stdio MCP trial on a disposable full Virtua Grotesk designspace used every Nodes tool, verified exact PNG bytes and captured hashes, applied a 100-unit A width change, retried it, and undid it through ordinary Workspace history.
 All 1,744 family files remained unchanged in both input and copy, including after process cleanup.
-Evidence is `/private/tmp/runebender-nodes-virtua-full-family-20260920-1140/evidence.json`; this is transport and application evidence, not model interpretation or foreground interaction.
+Evidence is `/private/tmp/runebender-noon-candidate/transport-2/virtua-mcp/evidence.json`; this is transport and application evidence, not model interpretation or foreground interaction.
 
-Live comparison save/reopen is integrated for final validation, with source binding chosen explicitly at Open and no persisted session authority.
+Live comparison save/reopen passes native persistence tests, with source binding chosen explicitly at Open and no persisted session authority.
+Foreground file-picker interaction remains part of the UI/UX pass.
 Expansion into the shared Scripts editor and exposed graph Undo/Redo controls remain unfinished.
 The graph engine has guarded Undo/Redo; the shared source editor now implements bounded local text history independently from graph and font history.
 Native Gray/Light visual cleanup and the final combined browser/build checks remain in progress.
@@ -70,7 +71,8 @@ Poll stable job status/results before adding another subscription protocol.
 
 The canonical model remains variable-family aware; the initial Python mutation scope is one explicit source within existing atomic limits.
 A derived family's compiled proof must preserve all other sources, features, kerning and component dependencies through a canonical overlay.
-That overlay is implemented; source and midpoint mark-attachment acceptance remains a separate required scenario.
+That overlay passes the source and midpoint mark-attachment scenario in `/private/tmp/runebender-nodes-virtua-anchor-20260920-1250/evidence.json`.
+A 100-unit Regular anchor edit moves the noncomposing mark by 100 units at the source and 50 at the midpoint, with unchanged original files and reversible Apply.
 The existing compiled proof worker and Designbot adapter remain the first rendering path.
 Proof results carry the same revision/hash/recipe metadata to the canvas and agent image response.
 
@@ -105,7 +107,7 @@ Workers must ask for a coordinated seam change rather than independently editing
 - [ ] Image nodes can be dragged/resized beside each other without rerunning or changing the font.
 - [x] Native and agent calls discover/read/patch the same graph and reject stale patches.
 - [ ] Script exceptions, malformed output, cancellation and document replacement leave the original version and disk sources unchanged.
-- [ ] Source-scoped anchor changes are visible in an appropriate mark-attachment specimen with truthful compiled-family lineage.
+- [x] Source-scoped anchor changes are visible in an appropriate mark-attachment specimen with truthful compiled-family lineage.
 - [ ] Current/stale/error state matches across node previews, job status and MCP images.
 - [x] Explicit Apply yields one existing receipt/history group and ordinary Undo restores the selected change.
 - [ ] Graph save/reopen preserves code, settings and positions without persisting session handles or auto-running.
