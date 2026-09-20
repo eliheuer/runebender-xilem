@@ -31,6 +31,13 @@ mod glyph_transactions;
 pub use glyph_transactions::{CanonicalGlyphTransaction, GlyphTransactionError};
 #[path = "project/constructors.rs"]
 mod constructors;
+#[path = "project/edit_transactions.rs"]
+mod edit_transactions;
+pub use edit_transactions::{
+    CanonicalDocumentEditTransaction, DocumentEditHistoryReplayOutcome, DocumentEditOperation,
+    DocumentEditTransactionError, DocumentEditTransactionOutcome, DocumentLayerEdit,
+    EditHistoryGroupId, EditHistoryGroupState,
+};
 #[path = "project/proposal_transactions.rs"]
 mod proposal_transactions;
 #[path = "project/save_as.rs"]
@@ -315,6 +322,7 @@ pub struct Project {
     pub(super) variable: VariableData,
     source_history: sources::SourceHistory,
     document_history: super::history::DocumentHistory,
+    edit_transaction_history: edit_transactions::EditTransactionHistory,
     source_metadata_history: super::history::SourceMetadataHistory,
     /// Index into `sources` of the source being edited.
     pub active: usize,
@@ -515,6 +523,7 @@ impl Project {
             variable,
             source_history: sources::SourceHistory::default(),
             document_history: super::history::DocumentHistory::default(),
+            edit_transaction_history: edit_transactions::EditTransactionHistory::default(),
             source_metadata_history: super::history::SourceMetadataHistory::default(),
             sources: vec![SourceState::from_input(input)],
             active: 0,
@@ -810,6 +819,7 @@ impl Project {
             variable,
             source_history: sources::SourceHistory::default(),
             document_history: super::history::DocumentHistory::default(),
+            edit_transaction_history: edit_transactions::EditTransactionHistory::default(),
             source_metadata_history: super::history::SourceMetadataHistory::default(),
             active: default_index,
             master_names,

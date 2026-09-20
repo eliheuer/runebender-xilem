@@ -110,6 +110,7 @@ impl Project {
             variable,
             source_history: sources::SourceHistory::default(),
             document_history: super::super::history::DocumentHistory::default(),
+            edit_transaction_history: edit_transactions::EditTransactionHistory::default(),
             source_metadata_history: super::super::history::SourceMetadataHistory::default(),
             active: 0,
             master_names: vec![name],
