@@ -589,7 +589,10 @@ mod tests {
                 },
                 (1440, 900),
                 1.0,
-                directory.join(format!("nodes-{theme}.png")).to_str().unwrap(),
+                directory
+                    .join(format!("nodes-{theme}.png"))
+                    .to_str()
+                    .unwrap(),
             );
             app = state.workspace.unwrap();
         }

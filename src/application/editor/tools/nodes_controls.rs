@@ -7,6 +7,7 @@
 //! edits, explicit run/cancel/release/apply requests, and the presentation byte cache.
 
 use crate::application::workspace::Workspace;
+use runebender::document::nodes_session::GraphGuard;
 
 #[cfg(unix)]
 use crate::application::platform::nodes_proofs::NodeProofInspection;
@@ -16,7 +17,7 @@ use runebender::document::agent::ToolCall;
 use runebender::document::nodes::NodeGraph;
 #[cfg(unix)]
 use runebender::document::nodes_session::{
-    GraphEdit, GraphGuard, GraphInteractiveMutationRequest, GraphMutation, GraphRunStatus,
+    GraphEdit, GraphInteractiveMutationRequest, GraphMutation, GraphRunStatus,
 };
 #[cfg(unix)]
 use runebender::ui::nodes::ImmutablePng;
@@ -53,12 +54,7 @@ pub(crate) fn edit_live_scope(app: &mut Workspace, scope: String) {
 }
 
 /// Commit one focused `TextArea` value through the canonical graph guard.
-pub(crate) fn edit_live_code(
-    app: &mut Workspace,
-    guard: runebender::document::nodes_session::GraphGuard,
-    node: u32,
-    code: String,
-) {
+pub(crate) fn edit_live_code(app: &mut Workspace, guard: GraphGuard, node: u32, code: String) {
     #[cfg(unix)]
     live_interactive_mutation(
         app,
@@ -77,12 +73,7 @@ pub(crate) fn edit_live_code(
 }
 
 /// Commit only the final header-drag position through the canonical graph guard.
-pub(crate) fn move_live_node(
-    app: &mut Workspace,
-    guard: runebender::document::nodes_session::GraphGuard,
-    node: u32,
-    pos: [f32; 2],
-) {
+pub(crate) fn move_live_node(app: &mut Workspace, guard: GraphGuard, node: u32, pos: [f32; 2]) {
     #[cfg(unix)]
     live_interactive_mutation(app, guard, vec![GraphEdit::MoveNode { node, pos }]);
     #[cfg(not(unix))]
@@ -117,7 +108,7 @@ pub(crate) fn change_live_graph(
 #[cfg(not(unix))]
 pub(crate) fn change_live_graph(
     app: &mut Workspace,
-    _guard: runebender::document::nodes_session::GraphGuard,
+    _guard: GraphGuard,
     _before: runebender::document::nodes::NodeGraph,
     _after: runebender::document::nodes::NodeGraph,
 ) {

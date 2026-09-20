@@ -24,7 +24,11 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
     let pal = &app.palette;
     let draft = app.scripts.draft.clone();
     let editor = draft.map(|draft| {
-        let dirty = if draft.dirty { "Unsaved changes" } else { "Not saved" };
+        let dirty = if draft.dirty {
+            "Unsaved changes"
+        } else {
+            "Not saved"
+        };
         xcolumn(
             Region::List,
             (

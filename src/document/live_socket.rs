@@ -598,7 +598,8 @@ mod tests {
             .respond(|call| {
                 assert_eq!(
                     call.arguments["expected_document_epoch"], "current",
-                    "{} must reach its strict application adapter with its epoch", tool.name
+                    "{} must reach its strict application adapter with its epoch",
+                    tool.name
                 );
                 serde_json::json!({"ok":true})
             });

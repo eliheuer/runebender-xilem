@@ -471,7 +471,7 @@ impl Widget for NodesWidget {
             }
             self.fitted = true;
         }
-        let zoom = f32::try_from(self.viewport.zoom).unwrap_or(1.0);
+        let zoom = crate::application::view::render::px32(self.viewport.zoom);
         let code_font_size =
             (crate::application::view::design::TextSize::Caption.px() * zoom).clamp(6.0, 40.0);
         if (self.code_font_size - code_font_size).abs() > f32::EPSILON {
