@@ -1,7 +1,7 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Draws a reproducible comparison of preview fitting, img2bez and constrained conversion.
+//! Draws a reproducible comparison of preview fitting and img2bez with sampled-field and exact-boundary inputs.
 
 use std::fmt::Write as _;
 use std::io::Write as _;
@@ -66,6 +66,7 @@ fn image_fit(group: &MetaballGroup) -> Vec<BezPath> {
         .with_accuracy(0.25);
     options.min_contour_area = 0.0;
     options.smoothing = 0.0;
+    options.cleanup_max_deviation = Some(0.25);
     img2bez::trace_sdf(width, height, &values, 1, &options)
         .unwrap()
         .to_bezpaths()
@@ -122,8 +123,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let titles = [
         "Previous / live preview",
-        "img2bez · direct field",
-        "New · constrained Kurbo",
+        "img2bez · sampled field",
+        "img2bez · exact boundary",
     ];
     for (column, title) in titles.iter().enumerate() {
         writeln!(
@@ -191,7 +192,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-    svg.push_str(r#"<text x="40" y="1565" font-size="14">Discrepancy = max |F − threshold| / |gradient F| at 101 samples per cubic; an estimate, not a Hausdorff bound.</text><text x="40" y="1588" font-size="14">Kurbo: grid 2, accuracy 0.25. img2bez 23073ca: Clean, grid spacing 0.5, accuracy 0.25, smoothing 0, rounding off.</text></g></svg>"#);
+    svg.push_str(r#"<text x="40" y="1565" font-size="14">Discrepancy = max |F − threshold| / |gradient F| at 101 samples per cubic; an estimate, not a Hausdorff bound.</text><text x="40" y="1588" font-size="14">Exact boundary: grid 2, accuracy 0.25. Sampled field: Clean, grid 0.5, accuracy 0.25, cleanup limit 0.25, no smoothing or rounding.</text></g></svg>"#);
     std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)

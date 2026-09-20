@@ -1,7 +1,7 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Fit between exact field features so simplification cannot move font nodes off extrema.
+//! Supply exact metaball boundary features and tangents to img2bez for cubic fitting.
 
 use super::{field, tangent};
 use crate::formats::metaballs::MetaballGroup;
@@ -140,82 +140,32 @@ fn structural_knots(group: &MetaballGroup, points: &[Point]) -> Result<Vec<Knot>
     Ok(knots)
 }
 
-fn control(group: &MetaballGroup, knot: Knot, chord: Vec2) -> Vec2 {
-    let mut direction = tangent(group, knot.point);
-    match knot.feature {
-        Some(Feature::Horizontal) => direction.y = 0.0,
-        Some(Feature::Vertical) => direction.x = 0.0,
-        _ => (),
-    }
-    if direction.hypot() > 1e-12 {
-        direction.normalize() * (chord.hypot() / 3.0)
-    } else {
-        chord / 3.0
-    }
-}
-
 pub(super) fn fit(
     group: &MetaballGroup,
     points: &[Point],
     accuracy: f64,
 ) -> Result<BezPath, String> {
-    let knots = structural_knots(group, points)?;
-    let mut stops: Vec<_> = knots
-        .iter()
-        .enumerate()
-        .filter_map(|(i, knot)| knot.feature.map(|_| i))
+    let samples = structural_knots(group, points)?
+        .into_iter()
+        .map(|knot| {
+            let tangent = tangent(group, knot.point);
+            img2bez::BoundarySample {
+                position: [knot.point.x, knot.point.y],
+                tangent: [tangent.x, tangent.y],
+                feature: knot.feature.map(|feature| match feature {
+                    Feature::Horizontal => img2bez::BoundaryFeature::ExtremumY,
+                    Feature::Vertical => img2bez::BoundaryFeature::ExtremumX,
+                    Feature::Inflection => img2bez::BoundaryFeature::Inflection,
+                }),
+            }
+        })
         .collect();
-    stops.push(knots.len());
-    let mut output = BezPath::new();
-    output.move_to(knots[0].point);
-    for pair in stops.windows(2) {
-        let mut span = BezPath::new();
-        span.move_to(knots[pair[0]].point);
-        for i in pair[0]..pair[1] {
-            let a = knots[i];
-            let b = knots[(i + 1) % knots.len()];
-            let chord = b.point - a.point;
-            span.curve_to(
-                a.point + control(group, a, chord),
-                b.point - control(group, b, chord),
-                b.point,
-            );
-        }
-        // An open span preserves both endpoint positions and endpoint tangent directions.
-        let fitted = kurbo::simplify::simplify_bezpath(
-            span,
-            accuracy,
-            &kurbo::simplify::SimplifyOptions::default(),
-        );
-        let mut cubics: Vec<_> = fitted
-            .segments()
-            .map(|segment| segment.to_cubic())
-            .collect();
-        // Kurbo's angular representation can leave roundoff in an axis tangent.
-        // Restore the explicit constraints so editors recognize truly axis-aligned handles.
-        let align = |handle: &mut Point, knot: Knot| match knot.feature {
-            Some(Feature::Horizontal) => handle.y = knot.point.y,
-            Some(Feature::Vertical) => handle.x = knot.point.x,
-            _ => (),
-        };
-        if let Some(first) = cubics.first_mut() {
-            let knot = knots[pair[0]];
-            first.p1 += knot.point - first.p0;
-            first.p0 = knot.point;
-            align(&mut first.p1, knot);
-        }
-        if let Some(last) = cubics.last_mut() {
-            let knot = knots[pair[1] % knots.len()];
-            last.p2 += knot.point - last.p3;
-            last.p3 = knot.point;
-            align(&mut last.p2, knot);
-        }
-        for cubic in cubics {
-            output.curve_to(cubic.p1, cubic.p2, cubic.p3);
-        }
-    }
-    output.close_path();
-    Ok(output)
+    img2bez::fit_smooth_contours(&[samples], accuracy)
+        .map_err(|error| error.to_string())?
+        .to_bezpaths()
+        .into_iter()
+        .next()
+        .ok_or_else(|| "img2bez did not produce a metaball contour".into())
 }
 
 #[cfg(test)]

@@ -74,14 +74,16 @@ Bisection locates field crossings; analytic gradients supply cubic tangents.
 The interactive preview fits the whole loop with Kurbo's `simplify::simplify_bezpath`.
 
 Explicit conversion additionally locates horizontal and vertical extrema and curvature sign changes on the implicit field.
-It projects these feature points back onto the boundary, splits the loop at them, and fits each span separately with Kurbo.
+It projects these feature points back onto the boundary and passes the ordered samples, tangents and feature labels to `img2bez::fit_smooth_contours`.
+Img2bez owns the constrained cubic fitting, using Kurbo internally to fit each span.
 This retains the structural nodes and their tangents instead of allowing whole-loop simplification to move them.
 Extremum handles are exactly horizontal or vertical, and conversion retains fractional coordinates without rounding to a font-unit grid.
 A feature that cannot be resolved safely returns an error and leaves the source intact.
 
-This follows the font-oriented goals of [img2bez](https://github.com/eliheuer/img2bez), while using the exact field derivatives available for metaballs.
+[img2bez](https://github.com/eliheuer/img2bez) is the conversion library; Runebender supplies the metaball field information.
 The pinned img2bez dependency also offers `trace_sdf`, which can fit a sampled field without a PNG intermediate.
-Its cleanup is useful for traced images, but does not guarantee fidelity to the original analytic field.
+Its optional `cleanup_max_deviation` checks cleanup candidates against the original fitted contour, preserving earlier geometry when a candidate exceeds the sampled limit.
+The exact-boundary entry point uses the supplied geometry directly, without image cleanup.
 The comparison below exercises that alternative rather than assuming it improves every shape.
 
 Generate a reproducible SVG with nodes, handles, segment counts, and sampled field discrepancy:
@@ -90,7 +92,8 @@ Generate a reproducible SVG with nodes, handles, segment counts, and sampled fie
 cargo run --no-default-features --example metaball_conversion_proof -- /tmp/metaball-comparison.svg
 ```
 
-The proof compares the previous whole-loop fit, img2bez's Clean profile with rounding and smoothing disabled, and constrained conversion on a circle, a blended stem, an unequal diagonal blend, and a counter.
+The proof compares the previous whole-loop preview, img2bez's sampled-field tracing with bounded cleanup, and img2bez's exact-boundary fitting on a circle, a blended stem, an unequal diagonal blend, and a counter.
+These compare input information and pipeline choices, not img2bez against Kurbo.
 The diagonal blend needs more segments with constrained fitting; retaining extrema and inflections does not guarantee a globally minimal outline or replace a designer's judgment.
 The reported discrepancy is a first-order normal-distance estimate sampled along the fitted curves, not a Hausdorff error bound.
 

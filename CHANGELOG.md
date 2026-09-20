@@ -146,7 +146,7 @@ No release has been published yet.
 
 ### Fixed
 
-- Metaball conversion now fits between field extrema and inflections, with exact horizontal and vertical handles at extrema.
+- Metaball conversion now uses img2bez to fit between field extrema and inflections, with exact horizontal and vertical handles at extrema.
   Circle nodes stay on the four extrema, while blended outlines retain their structural points and fractional coordinates.
   Live metaballs remain editable until explicit conversion; conversion still participates in normal undo/redo.
 
