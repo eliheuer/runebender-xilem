@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import selectors
@@ -32,16 +33,14 @@ LIVE_REQUIRED_TOOLS = {
     "project_info",
     "editor_context",
     "read_glyph",
-    "propose_edits",
-    "proposal_install",
+    "agent_apply",
+    "agent_receipt",
+    "agent_history",
 }
 PENDING_CAPABILITIES = {
-    "receipt_lookup": "No receipt/status tool is present in the checkpoint schema.",
-    "compiled_proof": "No compiled-snapshot proof tool is present in the checkpoint schema.",
-    "grouped_atomic_apply": "Proposal install reports per-glyph history, not a receipt-backed group.",
-    "disconnect_after_commit": "The current CLI cannot inject a response drop after commit.",
-    "ui_refresh_and_undo": "The harness endpoint does not expose application UI undo.",
-    "cancellation": "No cancellation lifecycle is exposed by the checkpoint schema.",
+    "compiled_proof": "The compiled-proof API and validated binary are not frozen for this harness; no image trial was attempted.",
+    "disconnect_after_commit": "This harness does not inject a socket response drop; exact retry is exercised, but disconnect evidence remains pending.",
+    "cancellation": "No cancellation lifecycle is exposed by the current schema or serial adapter.",
 }
 
 
@@ -300,6 +299,24 @@ class Harness:
         if result.get("ok") is not False or expected not in result.get("error", ""):
             raise RuntimeError(f"{phase}: expected {expected!r} error category")
 
+    @staticmethod
+    def require_error_code(result: dict[str, Any], phase: str, expected: str) -> None:
+        if result.get("ok") is not False or result.get("error_code") != expected:
+            raise RuntimeError(f"{phase}: expected {expected!r} error code")
+
+    @staticmethod
+    def require_rejected_receipt(result: dict[str, Any], phase: str, expected: str) -> None:
+        receipt = result.get("receipt")
+        outcome = receipt.get("outcome") if isinstance(receipt, dict) else None
+        error = outcome.get("error", "") if isinstance(outcome, dict) else ""
+        if (
+            result.get("ok") is not False
+            or not isinstance(outcome, dict)
+            or outcome.get("status") != "rejected"
+            or expected not in error
+        ):
+            raise RuntimeError(f"{phase}: expected rejected receipt containing {expected!r}")
+
     def load_tools(self) -> dict[str, dict[str, Any]]:
         env = os.environ.copy()
         env["RUNEBENDER_LIVE_SESSION"] = str(self.session)
@@ -320,26 +337,21 @@ class Harness:
         }
         return self.tools
 
-    def write_proof_artifact(self, result: dict[str, Any]) -> None:
-        svg = result.get("svg_content")
-        if not isinstance(svg, str) or not svg.strip():
-            raise RuntimeError("proof: response did not contain an SVG artifact")
-        path = self.output_dir / "live-proof.svg"
-        path.write_text(svg, encoding="utf-8")
-        self.transcript.append(
-            {
-                "phase": "proof_artifact",
-                "path": redact_text(str(path)),
-                "bytes": len(svg.encode()),
-                "sha256": sha256_file(path),
-                "format": "svg",
-                "compiled_snapshot": False,
-            }
-        )
-
-    def run_fixture_controls(self, before_advance: float, after_advance: float) -> None:
+    def run_fixture_controls(
+        self,
+        before_state: dict[str, Any],
+        before_advance: float,
+        after_advance: float,
+    ) -> None:
         if self.fixture is None:
             return
+        if before_state.get("source_exists") is not False:
+            raise RuntimeError("before_apply: fixture source must remain unwritten")
+        if not all(
+            before_state.get(field) == before_advance
+            for field in ("canonical_advance", "cache_advance", "session_advance")
+        ):
+            raise RuntimeError("before_apply: canonical/cache/session advances disagree")
         after_apply = self.fixture.control("state")
         self.record("fixture_state_after_apply", {"control": "state"}, after_apply)
         undone = self.fixture.control("undo")
@@ -371,10 +383,11 @@ class Harness:
         )
         self.fixture_summary = {
             "status": "pass" if valid_apply and valid_undo and valid_redo else "fail",
+            "source_path_exists_before": before_state.get("source_exists"),
             "apply_cache_session_match": valid_apply,
             "undo_restored_before": valid_undo,
             "redo_restored_after": valid_redo,
-            "source_exists": after_redo.get("source_exists"),
+            "source_path_exists_after_redo": after_redo.get("source_exists"),
         }
         if not (valid_apply and valid_undo and valid_redo):
             raise RuntimeError("fixture: canonical/cache/session advances disagree across undo/redo")
@@ -430,67 +443,87 @@ class Harness:
             expected_advance = self.fixture_readiness.get("unsaved_advance")
             if before.get("advance") != expected_advance:
                 raise RuntimeError("read_before: advance does not match fixture readiness")
-        task = f"harness-spacing-{int(time.time())}"
-        batch = {
-            "task": task,
-            "reason": "bounded Milestone 1D harness edit",
+        if not math.isfinite(width):
+            raise RuntimeError("requested width must be finite")
+        if width == before.get("advance"):
+            raise RuntimeError("requested width is unchanged; choose a different width")
+        actor = "agent-client-harness"
+        operation_key = f"harness-spacing-{time.time_ns()}"
+        request = {
+            "expected_document_epoch": epoch,
+            "actor": actor,
+            "operation_key": operation_key,
+            "authorization": "user-approved",
+            "source": source,
+            "history_name": "Bounded harness spacing edit",
+            "reads": [],
             "edits": [
                 {
-                    "glyph": glyph,
-                    "expected_revision": revision,
+                    "target": {
+                        "glyph": glyph,
+                        "glyph_id": before.get("glyph_id"),
+                        "layer": before.get("layer"),
+                        "expected_revision": revision,
+                    },
                     "operations": [{"op": "set_width", "width": width}],
                 }
             ],
-            **source_guard,
         }
-        proposed = self.call("proposal", "propose_edits", batch)
-        self.require_ok(proposed, "proposal")
-        self.check_epoch(proposed, epoch, "proposal")
-        summary["capabilities"]["connect_epoch_context_read_propose"] = {
+        for field in ("glyph_id", "layer"):
+            if not isinstance(request["edits"][0]["target"][field], str):
+                raise RuntimeError(f"read_before did not return {field}")
+        prepared_digest = sha256_json(request)
+        before_state = None
+        if self.fixture is not None:
+            before_state = self.fixture.control("state")
+            self.record("fixture_state_before_apply", {"control": "state"}, before_state)
+        summary["capabilities"]["prepare_guarded_apply"] = {
             "status": "pass",
             "document_epoch": epoch,
             "source_id": source,
             "context_revision": context.get("context_revision"),
             "before_revision": revision,
             "before_advance": before.get("advance"),
+            "operation_key": operation_key,
+            "prepared_request_sha256": prepared_digest,
             "fixture_unsaved_advance": (
                 self.fixture_readiness.get("unsaved_advance")
                 if self.fixture_readiness is not None
                 else None
             ),
-            "proposal_ok": proposed.get("ok") is True,
-        }
-        proof = self.call("proof_before_apply", "proof", {"glyphs": [glyph], **source_guard})
-        self.require_ok(proof, "proof_before_apply")
-        self.check_epoch(proof, epoch, "proof_before_apply")
-        self.write_proof_artifact(proof)
-        summary["capabilities"]["editable_svg_proof"] = {
-            "status": "pass" if proof.get("ok") is True else "fail",
-            "compiled_snapshot": False,
+            "prepared": True,
         }
 
         if apply:
-            unauthorized = self.call(
-                "authorization_guard",
-                "proposal_install",
-                {"task": task, "keep_structure": True, **source_guard},
-            )
-            self.check_epoch(unauthorized, epoch, "authorization_guard")
-            self.require_error_category(
-                unauthorized, "authorization_guard", "explicit user authorization required"
-            )
-            installed = self.call(
-                "authorized_apply",
-                "proposal_install",
-                {
-                    "task": task,
-                    "keep_structure": True,
-                    "authorization": "user-approved",
-                    **source_guard,
-                },
-            )
+            unauthorized = json.loads(json.dumps(request))
+            unauthorized["operation_key"] = f"{operation_key}-unauthorized"
+            unauthorized["authorization"] = "not-user-approved"
+            authorization_result = self.call("authorization_guard", "agent_apply", unauthorized)
+            self.require_error_code(authorization_result, "authorization_guard", "authorization_required")
+            installed = self.call("authorized_apply", "agent_apply", request)
             self.require_ok(installed, "authorized_apply")
             self.check_epoch(installed, epoch, "authorized_apply")
+            receipt = installed.get("receipt")
+            if not isinstance(receipt, dict):
+                raise RuntimeError("authorized_apply: response did not contain a receipt")
+            if receipt.get("outcome", {}).get("status") not in {"committed", "unchanged"}:
+                raise RuntimeError("authorized_apply: receipt did not record a successful outcome")
+            retry = self.call("exact_retry", "agent_apply", request)
+            self.require_ok(retry, "exact_retry")
+            self.check_epoch(retry, epoch, "exact_retry")
+            if retry.get("replayed") is not True or retry.get("root_changed") is not False:
+                raise RuntimeError("exact_retry: operation was not replayed without a second root change")
+            if retry.get("receipt") != receipt:
+                raise RuntimeError("exact_retry: receipt changed across an exact retry")
+            looked_up = self.call(
+                "receipt_lookup",
+                "agent_receipt",
+                {"expected_document_epoch": epoch, "actor": actor, "operation_key": operation_key},
+            )
+            self.require_ok(looked_up, "receipt_lookup")
+            self.check_epoch(looked_up, epoch, "receipt_lookup")
+            if looked_up.get("receipt") != receipt or looked_up.get("history_state") != "applied":
+                raise RuntimeError("receipt_lookup: receipt or applied history state changed")
             after = self.call("read_after_apply", "read_glyph", {"glyph": glyph, **source_guard})
             self.require_ok(after, "read_after_apply")
             self.check_epoch(after, epoch, "read_after_apply")
@@ -498,46 +531,85 @@ class Harness:
                 raise RuntimeError("read_after_apply: returned source does not match the bound source")
             if after.get("advance") != width:
                 raise RuntimeError("read_after_apply: advance does not match requested width")
-            stale = self.call(
-                "stale_write",
-                "propose_edits",
+            stale = json.loads(json.dumps(request))
+            stale["operation_key"] = f"{operation_key}-stale"
+            stale["edits"][0]["operations"][0]["width"] = width + 1
+            stale_result = self.call("stale_write", "agent_apply", stale)
+            self.require_rejected_receipt(stale_result, "stale_write", "guarded layer changed")
+            if before_state is not None:
+                self.run_fixture_controls(before_state, before.get("advance"), after.get("advance"))
+                summary["capabilities"]["ordinary_undo_redo_and_source_path_absence"] = self.fixture_summary
+            undone = self.call(
+                "targeted_undo",
+                "agent_history",
                 {
-                    "task": f"{task}-stale",
-                    "reason": "expected stale rejection",
-                    "edits": [
-                        {
-                            "glyph": glyph,
-                            "expected_revision": revision,
-                            "operations": [{"op": "set_width", "width": width + 1}],
-                        }
-                    ],
-                    **source_guard,
+                    "expected_document_epoch": epoch,
+                    "actor": actor,
+                    "operation_key": operation_key,
+                    "authorization": "user-approved",
+                    "direction": "undo",
                 },
             )
-            self.check_epoch(stale, epoch, "stale_write")
-            self.require_error_category(stale, "stale_write", "stale revision")
-            summary["capabilities"]["authorized_apply_and_stale_write"] = {
-                "status": (
-                    "pass"
-                    if installed.get("ok") is True
-                    and "explicit user authorization required" in unauthorized.get("error", "")
-                    and "stale revision" in stale.get("error", "")
-                    else "fail"
-                ),
-                "authorization_rejected_without_grant": True,
-                "authorization_error_category": "explicit user authorization required",
+            self.require_ok(undone, "targeted_undo")
+            self.check_epoch(undone, epoch, "targeted_undo")
+            if undone.get("history_state") != "undone":
+                raise RuntimeError("targeted_undo: receipt history state is not undone")
+            after_undo = self.call(
+                "receipt_after_undo",
+                "agent_receipt",
+                {"expected_document_epoch": epoch, "actor": actor, "operation_key": operation_key},
+            )
+            self.require_ok(after_undo, "receipt_after_undo")
+            self.check_epoch(after_undo, epoch, "receipt_after_undo")
+            if after_undo.get("history_state") != "undone":
+                raise RuntimeError("receipt_after_undo: history state is not undone")
+            if after_undo.get("receipt") != receipt:
+                raise RuntimeError("receipt_after_undo: immutable receipt changed after undo")
+            restored = self.call(
+                "read_after_targeted_undo",
+                "read_glyph",
+                {"glyph": glyph, **source_guard},
+            )
+            self.require_ok(restored, "read_after_targeted_undo")
+            self.check_epoch(restored, epoch, "read_after_targeted_undo")
+            if restored.get("source_id") != source or restored.get("advance") != before.get("advance"):
+                raise RuntimeError("read_after_targeted_undo: original glyph width was not restored")
+            if self.fixture is not None:
+                targeted_undo_state = self.fixture.control("state")
+                self.record(
+                    "fixture_state_after_targeted_undo",
+                    {"control": "state"},
+                    targeted_undo_state,
+                )
+                self.require_ok(targeted_undo_state, "targeted_undo_state")
+                if targeted_undo_state.get("source_exists") is not False:
+                    raise RuntimeError("targeted_undo_state: fixture source must remain unwritten")
+                if not all(
+                    targeted_undo_state.get(field) == before.get("advance")
+                    for field in ("canonical_advance", "cache_advance", "session_advance")
+                ):
+                    raise RuntimeError("targeted_undo_state: canonical/cache/session advances disagree")
+            summary["capabilities"]["apply_retry_and_readback"] = {
+                "status": "pass",
+                "receipt_backed": True,
+                "authorization_rejected": True,
+                "stale_revision_rejected": True,
+                "exact_retry_replayed": True,
+                "root_changed_on_retry": False,
                 "after_revision": after.get("revision"),
                 "after_advance": after.get("advance"),
-                "stale_rejected": True,
-                "stale_error_category": "stale revision",
+                "targeted_undo": True,
+                "restored_advance": restored.get("advance"),
             }
-            self.run_fixture_controls(before.get("advance"), after.get("advance"))
-            if self.fixture is not None:
-                summary["capabilities"]["ui_refresh_and_undo"] = self.fixture_summary
+            summary["capabilities"]["receipt_lookup_and_targeted_undo"] = {
+                "status": "pass",
+                "receipt_outcome": receipt.get("outcome", {}).get("status"),
+                "history_state_after_undo": after_undo.get("history_state"),
+            }
         else:
-            summary["capabilities"]["authorized_apply_and_stale_write"] = {
+            summary["capabilities"]["apply_retry_and_readback"] = {
                 "status": "not_tested",
-                "reason": "pass --apply against a disposable application fixture to mutate",
+                "reason": "pass --apply against a disposable application fixture to apply, retry, receipt-check and undo",
             }
         return summary
 
