@@ -77,7 +77,7 @@ fn process_layer_signals(root: &mut RenderRoot, signals: &Rc<RefCell<Vec<RenderR
     }
 }
 
-/// Renders `logic(app)` once at `size` and writes it to `path`.
+/// Renders `logic(app)` once at `size`, writes it to `path`, and returns the state.
 ///
 /// `logic` has to return a view with a concrete widget type, because the
 /// rebuild below downcasts the root back to it. Wrapping the
@@ -90,7 +90,8 @@ pub(crate) fn render_to<State, V, F>(
     size: (u32, u32),
     scale: f64,
     path: &str,
-) where
+) -> State
+where
     State: 'static,
     V: WidgetView<State>,
     V::Widget: Sized,
@@ -189,4 +190,5 @@ pub(crate) fn render_to<State, V, F>(
         .save(path)
         .unwrap_or_else(|e| panic!("screenshot: could not write {path}: {e}"));
     eprintln!("wrote {path}");
+    app
 }

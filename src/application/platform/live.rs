@@ -44,6 +44,7 @@ pub(crate) fn with_live<V: xilem::WidgetView<Workspace>>(
             },
             |app: &mut Workspace, ()| {
                 app.live_nodes_pump();
+                app.sync_live_nodes_presentation();
                 let request = app.live.as_ref().and_then(|server| server.try_recv());
                 if let Some(request) = request {
                     request.respond(|call| app.call_live(call));

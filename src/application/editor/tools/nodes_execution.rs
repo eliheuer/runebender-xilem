@@ -44,7 +44,7 @@ pub(crate) enum LiveGraphPhase {
     RecipeStaged,
     /// The compiled-proof owner has accepted the comparison request.
     ProofsRunning,
-    /// GraphSession owns the terminal output or error.
+    /// `GraphSession` owns the terminal output or error.
     Terminal(GraphRunStatus),
     /// Heavy artifacts were explicitly released.
     Released,
@@ -92,7 +92,7 @@ pub(crate) struct LiveGraphProofRequest {
     pub(crate) stderr: String,
     /// Identical typed recipe for both comparison proofs.
     pub(crate) proof_recipe: CompiledProofRecipe,
-    /// Derived FontVersion output published only after both proofs finish.
+    /// Derived `FontVersion` output published only after both proofs finish.
     pub(crate) derived_version: GraphNodeOutput,
 }
 
@@ -195,7 +195,7 @@ struct LiveGraphRecord {
     phase: LiveGraphPhase,
 }
 
-/// Bounded state connecting GraphSession to existing Python and proof owners.
+/// Bounded state connecting `GraphSession` to existing Python and proof owners.
 #[derive(Debug, Default)]
 pub(crate) struct LiveGraphExecution {
     records: BTreeMap<GraphRunHandle, LiveGraphRecord>,
@@ -224,7 +224,11 @@ impl LiveGraphExecution {
                 (record.original_request(), record.script)
             };
             let graph = session.start_run(original_request).map_err(graph_error)?;
-            debug_assert_eq!(graph.disposition, GraphReceiptDisposition::Replayed);
+            debug_assert_eq!(
+                graph.disposition,
+                GraphReceiptDisposition::Replayed,
+                "an accepted adapter retry must replay its canonical graph receipt"
+            );
             return Ok(LiveGraphSubmitResponse { graph, script });
         }
         if self.retained_count() >= MAX_LIVE_GRAPH_RUNS {
@@ -690,7 +694,7 @@ impl LiveGraphExecution {
         })
     }
 
-    /// Release heavy adapter and GraphSession artifacts without enabling re-execution.
+    /// Release heavy adapter and `GraphSession` artifacts without enabling re-execution.
     pub(crate) fn release(
         &mut self,
         session: &mut GraphSession,

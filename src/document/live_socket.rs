@@ -85,6 +85,15 @@ impl Pending {
                     | "proof_status"
                     | "proof_cancel"
                     | "proof_release"
+                    | "nodes_discover"
+                    | "nodes_snapshot"
+                    | "nodes_mutate"
+                    | "nodes_run"
+                    | "nodes_status"
+                    | "nodes_cancel"
+                    | "nodes_release"
+                    | "nodes_apply"
+                    | "nodes_image"
             ) && let Some(args) = self.call.arguments.as_object_mut()
             {
                 args.remove("expected_document_epoch");
@@ -571,6 +580,30 @@ mod tests {
             client.join().unwrap()["image"].as_str().unwrap().len(),
             4 * 1024 * 1024
         );
+    }
+
+    #[test]
+    fn every_nodes_tool_retains_its_required_epoch_through_dispatch() {
+        for tool in super::super::agent_nodes::tools() {
+            let (reply, receive) = mpsc::channel();
+            Pending {
+                call: ToolCall {
+                    name: tool.name.clone(),
+                    arguments: serde_json::json!({"expected_document_epoch":"current"}),
+                },
+                epoch: "current".into(),
+                deadline: Instant::now() + TIMEOUT,
+                reply,
+            }
+            .respond(|call| {
+                assert_eq!(
+                    call.arguments["expected_document_epoch"], "current",
+                    "{} must reach its strict application adapter with its epoch", tool.name
+                );
+                serde_json::json!({"ok":true})
+            });
+            assert_eq!(receive.recv().unwrap()["ok"], true);
+        }
     }
 
     #[test]

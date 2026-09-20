@@ -24,10 +24,7 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
     let pal = &app.palette;
     let draft = app.scripts.draft.clone();
     let editor = draft.map(|draft| {
-        let dirty = draft
-            .dirty
-            .then_some("Unsaved changes")
-            .unwrap_or("Not saved");
+        let dirty = if draft.dirty { "Unsaved changes" } else { "Not saved" };
         xcolumn(
             Region::List,
             (
@@ -291,7 +288,7 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
                     .text_size(TextSize::Body.px())
                     .color(pal.text_muted),
                 editor,
-                (!app.scripts.draft.is_some()).then(|| {
+                app.scripts.draft.is_none().then(|| {
                     selectable_text::<Workspace, ()>(
                         "Open a completed Python artifact from Chat to begin editing.",
                     )

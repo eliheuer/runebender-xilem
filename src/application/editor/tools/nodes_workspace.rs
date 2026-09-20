@@ -32,7 +32,7 @@ impl Workspace {
         self.live_nodes.as_ref().map(|state| &state.session)
     }
 
-    /// Mutate through GraphSession's guarded methods, never a copied canvas graph.
+    /// Mutate through `GraphSession`'s guarded methods, never a copied canvas graph.
     pub(crate) fn live_graph_session_mut(&mut self) -> Option<&mut GraphSession> {
         self.live_nodes.as_mut().map(|state| &mut state.session)
     }
@@ -556,6 +556,47 @@ mod tests {
         })
     }
 
+    fn capture_completed_comparison(mut app: Workspace) -> Workspace {
+        let Some(directory) = std::env::var_os("RUNEBENDER_NODES_PROOFS") else {
+            return app;
+        };
+        use crate::application::view::theme::Palette;
+        use crate::application::workspace::{AppState, Mode};
+        use std::sync::Arc;
+
+        let directory = std::path::PathBuf::from(directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        let mode = std::mem::replace(&mut app.mode, Mode::Nodes);
+        app.nodes.live_selected = true;
+        app.nodes.live_scope = "A".into();
+        app.sync_live_nodes_presentation();
+        for theme in ["gray", "light"] {
+            app.theme_id = theme;
+            app.palette = Arc::new(Palette::load(theme));
+            let state = AppState {
+                palette: app.palette.clone(),
+                theme_id: theme,
+                workspace: Some(app),
+                notice: None,
+                running: true,
+            };
+            let background = state.background();
+            let state = crate::application::platform::screenshot::render_to(
+                state,
+                background,
+                |state: &mut AppState| {
+                    xilem::view::sized_box(crate::application::view::render::root_logic(state))
+                },
+                (1440, 900),
+                1.0,
+                directory.join(format!("nodes-{theme}.png")).to_str().unwrap(),
+            );
+            app = state.workspace.unwrap();
+        }
+        app.mode = mode;
+        app
+    }
+
     #[test]
     fn node_commands_share_images_retry_receipts_apply_and_ordinary_undo() {
         let mut project = Project::new_font(std::env::temp_dir().join("nodes-command-unsaved.ufo"));
@@ -662,6 +703,7 @@ json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],
         assert_eq!(changed["ok"], true, "{changed}");
         assert_ne!(original["font_sha256"], changed["font_sha256"]);
         assert_ne!(original["png_base64"], changed["png_base64"]);
+        app = capture_completed_comparison(app);
         let apply = json!({"expected_document_epoch":epoch,"identity":identity,"handle":handle,"actor":"nodes-test","operation_key":"apply-one","authorization":"user-approved"});
         let applied = call(&mut app, "nodes_apply", apply.clone());
         assert_eq!(applied["ok"], true, "{applied}");
