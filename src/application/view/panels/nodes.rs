@@ -18,6 +18,8 @@ use crate::application::workspace::Workspace;
 use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
 use masonry::properties::types::CrossAxisAlignment;
+use runebender::ui::nodes::NodeContentMap;
+use std::sync::Arc;
 use xilem::WidgetView;
 use xilem::style::Style;
 use xilem::view::FlexExt as _;
@@ -109,11 +111,16 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         state.registry.clone(),
         app.palette.clone(),
         state.rows.clone(),
+        Arc::new(NodeContentMap::default()),
         app.nodes.selected,
         app.nodes.fit_request,
         |app: &mut Workspace, ev| match ev {
             NodesEvent::Changed(graph) => app.nodes_changed(graph),
             NodesEvent::Selected(id) => app.nodes.selected = id,
+            NodesEvent::EditCode { .. } | NodesEvent::Resize { .. } => {
+                app.note =
+                    "Nodes content is unavailable until the live graph session starts".into();
+            }
             NodesEvent::Note(note) => app.note = note,
         },
     );

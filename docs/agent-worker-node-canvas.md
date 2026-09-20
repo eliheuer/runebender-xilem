@@ -20,6 +20,8 @@ The projection contains no executor, mutable Project reference, font path, or li
 
 `node_region_hit` identifies header, ordinary body, embedded content, and resize regions after normal port hit testing.
 Only the header may begin a graph move.
+The native canvas receives the projection separately from graph and run-row state, so output refreshes need not rewrite a graph.
+Code and image bodies remain inert until their focused child widgets are registered.
 Code and image content must receive their own focused child-widget events before the graph canvas processes keyboard or pointer editing.
 Canvas code changes should emit a distinct typed graph-value edit for `live.python` field `code`.
 `MoveNode` and resizing are presentation-only graph edits and must not change semantic hashes, invalidate output, or trigger execution.

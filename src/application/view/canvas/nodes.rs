@@ -27,7 +27,7 @@ use masonry::layout::{LenReq, Length};
 use runebender::document::nodes::{Kind, NodeGraph, Registry};
 use runebender::document::nodes_run::Status;
 use runebender::ui::editing::viewport::ViewPort;
-use runebender::ui::nodes::{self as nl, Hit, NodeBox};
+use runebender::ui::nodes::{self as nl, Hit, NodeBox, NodeContentMap, NodeRegion};
 use xilem::Color;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
@@ -46,6 +46,10 @@ pub(crate) enum NodesEvent {
     Changed(NodeGraph),
     /// The selection moved.
     Selected(Option<u32>),
+    /// Inline Python code changed through the focused child editor.
+    EditCode { node: u32, code: String },
+    /// An embedded-content node was resized without changing its semantic input.
+    Resize { node: u32, size: [f32; 2] },
     /// Something to say in the bar.
     Note(String),
 }
@@ -70,6 +74,8 @@ enum Drag {
         kind: Kind,
         to: Point,
     },
+    /// A child widget or inert node body owns the press.
+    Idle,
 }
 
 /// A rectangle as a path, so the affine applies to it.
@@ -83,6 +89,7 @@ pub(crate) struct NodesWidget {
     registry: Arc<Registry>,
     palette: Arc<Palette>,
     rows: Arc<BTreeMap<u32, RowState>>,
+    content: Arc<NodeContentMap>,
     boxes: Vec<NodeBox>,
     viewport: ViewPort,
     fitted: bool,
@@ -127,7 +134,7 @@ impl NodesWidget {
     }
 
     fn relayout(&mut self) {
-        self.boxes = nl::layout(&self.graph, &self.registry);
+        self.boxes = nl::layout_with_content(&self.graph, &self.registry, &self.content);
     }
 
     fn to_canvas(&self, local: Point) -> Point {
@@ -461,11 +468,18 @@ impl Widget for NodesWidget {
                     Hit::Node(id) => {
                         self.selected = Some(id);
                         ctx.submit_action::<NodesEvent>(NodesEvent::Selected(Some(id)));
-                        let origin = self.graph.node(id).map(|n| n.pos).unwrap_or_default();
-                        Drag::Move {
-                            id,
-                            start: at,
-                            origin,
+                        if matches!(
+                            nl::node_region_hit(&self.boxes, at),
+                            Some(hit) if hit.node == id && hit.region == NodeRegion::Header
+                        ) {
+                            let origin = self.graph.node(id).map(|n| n.pos).unwrap_or_default();
+                            Drag::Move {
+                                id,
+                                start: at,
+                                origin,
+                            }
+                        } else {
+                            Drag::Idle
                         }
                     }
                     Hit::Output(from, output, kind) => Drag::Wire {
@@ -632,6 +646,7 @@ pub(crate) struct NodesView<F> {
     registry: Arc<Registry>,
     palette: Arc<Palette>,
     rows: Arc<BTreeMap<u32, RowState>>,
+    content: Arc<NodeContentMap>,
     selected: Option<u32>,
     on_event: F,
 }
@@ -641,6 +656,7 @@ pub(crate) fn nodes_canvas<F: Fn(&mut Workspace, NodesEvent) + 'static>(
     registry: Arc<Registry>,
     palette: Arc<Palette>,
     rows: Arc<BTreeMap<u32, RowState>>,
+    content: Arc<NodeContentMap>,
     selected: Option<u32>,
     fit_request: u64,
     on_event: F,
@@ -651,6 +667,7 @@ pub(crate) fn nodes_canvas<F: Fn(&mut Workspace, NodesEvent) + 'static>(
         registry,
         palette,
         rows,
+        content,
         selected,
         on_event,
     }
@@ -667,6 +684,7 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
             registry: self.registry.clone(),
             palette: self.palette.clone(),
             rows: self.rows.clone(),
+            content: self.content.clone(),
             boxes: Vec::new(),
             viewport: ViewPort::new(),
             fitted: false,
@@ -705,6 +723,11 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
         }
         if !Arc::ptr_eq(&self.rows, &prev.rows) {
             element.widget.rows = self.rows.clone();
+            dirty = true;
+        }
+        if !Arc::ptr_eq(&self.content, &prev.content) {
+            element.widget.content = self.content.clone();
+            element.widget.relayout();
             dirty = true;
         }
         if !Arc::ptr_eq(&self.palette, &prev.palette) {
