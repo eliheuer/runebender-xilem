@@ -5,16 +5,22 @@
 //! The existing disk graph workflow remains separate; these commands never save a font.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use runebender::document::nodes::Registry;
 use runebender::document::nodes_live;
 use runebender::document::nodes_session::{GraphDocumentState, GraphRunHandle, GraphSession};
+use runebender::document::variable::SourceId;
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
 use super::nodes_execution::{LiveGraphExecution, LiveGraphPhase, LiveGraphProofOutputs};
+use crate::application::platform::nodes_file::{self, LiveGraphFileMetadata};
 use crate::application::platform::nodes_proofs::{NodeProofInspection, NodeProofJobs};
 use crate::application::workspace::Workspace;
+
+static NEXT_GRAPH_SESSION: AtomicU64 = AtomicU64::new(1);
 
 /// Per-document live graph, retained jobs and bounded transport retry responses.
 pub(crate) struct LiveNodesState {
@@ -24,6 +30,7 @@ pub(crate) struct LiveNodesState {
     pub(crate) handles: BTreeSet<GraphRunHandle>,
     pub(crate) requests: BTreeMap<(String, String), (Value, Value)>,
     pub(crate) next_job: u64,
+    pub(crate) file: Option<LiveGraphFileMetadata>,
 }
 
 impl Workspace {
@@ -75,22 +82,105 @@ impl Workspace {
                     serde_json::json!(normalized_location);
             }
         }
-        let session = GraphSession::new(
-            format!("nodes-{}", self.document_id),
-            epoch,
-            graph,
-            Registry::core(),
-        )
-        .map_err(|error| error.to_string())?;
-        self.live_nodes = Some(LiveNodesState {
-            session,
-            execution: LiveGraphExecution::default(),
-            proofs: NodeProofJobs::default(),
-            handles: BTreeSet::new(),
-            requests: BTreeMap::new(),
-            next_job: 0,
-        });
+        self.live_nodes = Some(fresh_live_nodes(self.document_id, epoch, graph, None)?);
         Ok(())
+    }
+
+    /// Save the current native live graph intent to an explicit user-selected path.
+    ///
+    /// Saving the same open path uses its observed revision.
+    /// A different path must remain absent, so Save As cannot silently overwrite a graph.
+    #[allow(
+        dead_code,
+        reason = "the native file controls consume this narrow persistence command"
+    )]
+    pub(crate) fn save_live_graph_file(
+        &mut self,
+        path: &Path,
+    ) -> Result<LiveGraphFileMetadata, String> {
+        self.ensure_live_graph()?;
+        let state = self
+            .live_nodes
+            .as_mut()
+            .expect("live graph was initialized");
+        let expected_revision = state
+            .file
+            .as_ref()
+            .filter(|metadata| metadata.path == path)
+            .map(|metadata| metadata.revision.as_str());
+        let saved = nodes_file::save(path, &state.session.snapshot().graph, expected_revision)
+            .map_err(|error| error.to_string())?;
+        state.file = Some(saved.metadata.clone());
+        Ok(saved.metadata)
+    }
+
+    /// Open live graph intent into a fresh guarded session bound to one explicit source.
+    ///
+    /// Retained runs must be released first so replacing the session cannot orphan their work or
+    /// make old results appear to belong to the newly opened graph.
+    #[allow(
+        dead_code,
+        reason = "the native file controls consume this narrow persistence command"
+    )]
+    pub(crate) fn open_live_graph_file(
+        &mut self,
+        path: &Path,
+        explicit_source: SourceId,
+    ) -> Result<LiveGraphFileMetadata, String> {
+        let source_name = self
+            .font
+            .project
+            .document_source(explicit_source)
+            .ok_or("selected live graph source is not loaded in this document")?
+            .name()
+            .to_owned();
+        if self
+            .live_nodes
+            .as_ref()
+            .is_some_and(|state| !state.handles.is_empty())
+        {
+            return Err("release current live graph runs before opening another graph".into());
+        }
+        let mut document = nodes_file::load(path).map_err(|error| error.to_string())?;
+        let fonts: Vec<usize> = document
+            .graph
+            .nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(index, node)| (node.type_name == "live.font").then_some(index))
+            .collect();
+        if fonts.len() != 1 {
+            return Err("saved live graph must contain exactly one live font node".into());
+        }
+        document.graph.nodes[fonts[0]]
+            .values
+            .insert("source".into(), serde_json::json!(explicit_source.0));
+        let epoch = self
+            .live
+            .as_ref()
+            .ok_or("native live endpoint is unavailable")?
+            .document_epoch()
+            .to_owned();
+        let metadata = document.metadata;
+        let replacement = fresh_live_nodes(
+            self.document_id,
+            epoch,
+            document.graph,
+            Some(metadata.clone()),
+        )?;
+        self.live_nodes = Some(replacement);
+        self.nodes.live_selected = true;
+        self.nodes.selected = None;
+        self.nodes.live_ui_handles.clear();
+        self.nodes.proof_images.clear();
+        self.nodes.content_sizes.clear();
+        self.note = format!(
+            "Opened {} for source {source_name}; no comparison was run",
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("live graph")
+        );
+        Ok(metadata)
     }
 
     /// Observe only owned Python/proof jobs and publish results with their captured identities.
@@ -196,6 +286,31 @@ impl Workspace {
             }
         }
     }
+}
+
+fn fresh_live_nodes(
+    document_id: u64,
+    epoch: String,
+    graph: runebender::document::nodes::NodeGraph,
+    file: Option<LiveGraphFileMetadata>,
+) -> Result<LiveNodesState, String> {
+    let generation = NEXT_GRAPH_SESSION.fetch_add(1, Ordering::Relaxed);
+    let session = GraphSession::new(
+        format!("nodes-{document_id}-{generation}"),
+        epoch,
+        graph,
+        Registry::core(),
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(LiveNodesState {
+        session,
+        execution: LiveGraphExecution::default(),
+        proofs: NodeProofJobs::default(),
+        handles: BTreeSet::new(),
+        requests: BTreeMap::new(),
+        next_job: 0,
+        file,
+    })
 }
 
 fn parse<T: serde::de::DeserializeOwned>(arguments: &Value) -> Result<T, String> {
@@ -547,13 +662,173 @@ mod tests {
     };
     use runebender::document::project::Project;
     use serde_json::json;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{Duration, Instant};
+
+    static NEXT_TEST_DIRECTORY: AtomicU64 = AtomicU64::new(1);
+
+    struct TestDirectory(std::path::PathBuf);
+
+    impl TestDirectory {
+        fn new() -> Self {
+            let sequence = NEXT_TEST_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "runebender-live-graph-workspace-{}-{sequence}",
+                std::process::id()
+            ));
+            std::fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
 
     fn call(app: &mut Workspace, name: &str, arguments: Value) -> Value {
         app.call_live(&ToolCall {
             name: name.into(),
             arguments,
         })
+    }
+
+    #[test]
+    fn live_graph_save_and_open_preserve_intent_with_fresh_identity() {
+        let project = Project::new_font(std::env::temp_dir().join("live-graph-unsaved.ufo"));
+        let source = project.source_id(0).unwrap();
+        let mut app = Workspace::from_model(FontModel::from_project(project)).unwrap();
+        let document_revision = app.font.project.document_revision();
+        let modified = app.font.project.is_modified();
+        let queue_was_initialized = app.script_jobs.is_some();
+        app.ensure_live_graph().unwrap();
+        let before = app.live_graph_session().unwrap().snapshot();
+        let python = before
+            .graph
+            .nodes
+            .iter()
+            .find(|node| node.type_name == "live.python")
+            .unwrap()
+            .id;
+        let proof = before
+            .graph
+            .nodes
+            .iter()
+            .find(|node| node.type_name == "live.proof")
+            .unwrap();
+        let proof_id = proof.id;
+        let mut proof_recipe = proof.values["recipe"].clone();
+        proof_recipe["text"] = json!("Saved specimen");
+        app.live_graph_session_mut()
+            .unwrap()
+            .mutate_interactive(GraphInteractiveMutationRequest {
+                guard: GraphGuard {
+                    identity: before.identity.clone(),
+                    revision: before.revision,
+                },
+                mutation: GraphMutation::Patch {
+                    edits: vec![
+                        GraphEdit::MoveNode {
+                            node: python,
+                            pos: [123.0, 456.0],
+                        },
+                        GraphEdit::SetValue {
+                            node: python,
+                            field: "code".into(),
+                            value: json!("print('persisted')\n"),
+                        },
+                        GraphEdit::SetValue {
+                            node: python,
+                            field: "parameters".into(),
+                            value: json!({"weight": 725}),
+                        },
+                        GraphEdit::SetValue {
+                            node: proof_id,
+                            field: "recipe".into(),
+                            value: proof_recipe,
+                        },
+                    ],
+                },
+            })
+            .unwrap();
+        let root = TestDirectory::new();
+        let path = root.0.join("comparison.nodes.json");
+        let saved = app.save_live_graph_file(&path).unwrap();
+        assert_eq!(app.font.project.document_revision(), document_revision);
+        assert_eq!(app.font.project.is_modified(), modified);
+        assert_eq!(app.script_jobs.is_some(), queue_was_initialized);
+
+        let metadata = app.open_live_graph_file(&path, source).unwrap();
+        assert_eq!(metadata, saved);
+        assert!(app.note.contains("for source"));
+        assert!(app.note.contains("no comparison was run"));
+        let reopened = app.live_graph_session().unwrap().snapshot();
+        assert_ne!(reopened.identity, before.identity);
+        assert_eq!(
+            reopened.identity.document_epoch,
+            before.identity.document_epoch
+        );
+        assert_eq!(reopened.revision, 0);
+        assert_eq!(reopened.semantic_revision, 0);
+        assert!(!reopened.can_undo);
+        assert!(!reopened.can_redo);
+        let python = reopened
+            .graph
+            .nodes
+            .iter()
+            .find(|node| node.type_name == "live.python")
+            .unwrap();
+        assert_eq!(python.pos, [123.0, 456.0]);
+        assert_eq!(python.values["code"], "print('persisted')\n");
+        assert_eq!(python.values["parameters"], json!({"weight": 725}));
+        let proof = reopened
+            .graph
+            .nodes
+            .iter()
+            .find(|node| node.id == proof_id)
+            .unwrap();
+        assert_eq!(proof.values["recipe"]["text"], "Saved specimen");
+        let font = reopened
+            .graph
+            .nodes
+            .iter()
+            .find(|node| node.type_name == "live.font")
+            .unwrap();
+        assert_eq!(font.values["source"], source.0);
+        let state = app.live_nodes.as_ref().unwrap();
+        assert!(state.handles.is_empty());
+        assert!(state.requests.is_empty());
+        assert_eq!(state.next_job, 0);
+        assert!(app.nodes.proof_images.is_empty());
+        assert_eq!(app.font.project.document_revision(), document_revision);
+        assert_eq!(app.font.project.is_modified(), modified);
+        assert_eq!(app.script_jobs.is_some(), queue_was_initialized);
+
+        let current_identity = reopened.identity;
+        let retained: GraphRunHandle = serde_json::from_value(json!(99)).unwrap();
+        app.live_nodes.as_mut().unwrap().handles.insert(retained);
+        let error = app.open_live_graph_file(&path, source).unwrap_err();
+        assert!(error.contains("release current"));
+        assert_eq!(
+            app.live_graph_session().unwrap().snapshot().identity,
+            current_identity
+        );
+        app.live_nodes.as_mut().unwrap().handles.remove(&retained);
+
+        let error = app
+            .open_live_graph_file(&path, SourceId(usize::MAX))
+            .unwrap_err();
+        assert!(error.contains("not loaded"));
+        assert_eq!(
+            app.live_graph_session().unwrap().snapshot().identity,
+            current_identity
+        );
+
+        std::fs::write(&path, "external edit\n").unwrap();
+        let error = app.save_live_graph_file(&path).unwrap_err();
+        assert!(error.contains("changed on disk"));
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "external edit\n");
     }
 
     fn capture_completed_comparison(mut app: Workspace) -> Workspace {
