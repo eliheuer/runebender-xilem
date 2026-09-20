@@ -2246,6 +2246,10 @@ impl Workspace {
                         address: address.clone(),
                         label: label.into(),
                         layer_history_depth,
+                        component_selection: (
+                            self.session.selected_component,
+                            session.selected_component,
+                        ),
                     });
                     self.metadata_redo.clear();
                     if !session.reload_from_project(&self.font.project, &address) {

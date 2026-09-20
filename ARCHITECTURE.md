@@ -29,7 +29,7 @@ src/
 ├── lib.rs                 font-engine public map
 ├── main.rs                executable composition root
 ├── analysis/              read and measure font data
-├── document/              projects, masters, history, workflows
+├── document/              projects, sources, history, workflows
 ├── formats/               source formats and persistent metadata
 ├── outline/               reusable geometry and outline operations
 ├── text/                  shaping, joining, features, text layout
@@ -116,9 +116,10 @@ Layer drafts address points by stable `PointId` for individual movement, snapped
 Persistent point drags capture stable origins for selected points, carried handles and smooth-coupled handles before the first snapped event.
 They also shift contour points and anchors together for left-sidebearing edits while exact advance changes remain explicit metric operations.
 Direct line-to-cubic conversion inserts newly identified canonical controls and sets every accepted geometric-line endpoint to cubic while retaining endpoint identity and metadata, including on wraparound closing segments.
-Direct topology operations create pen, rectangle and ellipse contours with stable identities before any UFO projection is refreshed.
+Direct topology operations create pen, rectangle and ellipse contours with stable identities in canonical layer drafts.
 Trace and SVG format boundaries append or replace only their explicit contour payloads through validated layer drafts, assigning fresh document identities without reconciling a whole glyph.
-Imported contours are validated as a complete serializable glyph candidate before commit, including topology and identifier uniqueness, and replacement retains the existing contour/component paint slots when their counts permit it.
+Imported contours are decoded at the format boundary and validated for topology and identifier uniqueness against the destination layer before commit.
+Replacement retains the existing contour/component paint slots when their counts permit it.
 The hyperbezier pen creates, appends and closes typed canonical hyper contours directly, retaining stable on-curve identities and a fresh UFO compatibility marker.
 Direct segment subdivision supports stored-endpoint lines, quadratics and cubics, preserving existing control identities and metadata while assigning fresh identities to inserted topology and rejecting nonfinite computed geometry before mutation.
 Quadratic subdivision represents stored and implied endpoints explicitly; it validates that implied pairs still belong to a quadratic chain and materializes a midpoint before moving either defining control.

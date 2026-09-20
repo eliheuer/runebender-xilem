@@ -537,6 +537,7 @@ impl Workspace {
                 address,
                 label,
                 layer_history_depth,
+                component_selection,
                 ..
             } => {
                 let expected_depth = if redo {
@@ -567,6 +568,21 @@ impl Workspace {
                 if !self.reload_canonical_layer(address) {
                     return false;
                 }
+                let selected = if redo {
+                    component_selection.1
+                } else {
+                    component_selection.0
+                };
+                let session = Arc::make_mut(&mut self.session);
+                session.selected_component = None;
+                if let Some(component) = selected {
+                    let _ = session.select_component_id(component);
+                }
+                if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+                    tab.session = self.session.clone();
+                }
+                self.selected_points = self.session.selection.len();
+                self.refresh_coord_bufs();
                 format!("{} {label}", if redo { "Redid" } else { "Undid" })
             }
             MetadataEdit::SourceStructure {

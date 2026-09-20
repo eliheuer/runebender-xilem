@@ -95,6 +95,7 @@ No release has been published yet.
 
 ### Fixed
 
+- Restored stable component selection when undoing and redoing component additions, duplication and deletion.
 - Made Save As publish and retarget complete UFO/Designspace copies atomically, including external relative feature includes, without replacing original or pre-existing destination files.
 - Made Glyphs conversion warnings fail explicitly and publish validated generated sources without replacing an existing output directory.
 - Prevented compiled-font imports from selecting an existing UFO destination and rejected aliased save destinations before staging.

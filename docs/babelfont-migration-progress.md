@@ -1,13 +1,21 @@
 # Babelfont migration progress
 
-Status: **M13 COMPLETE — independent M14 final proof pending**.
+Status: **M13 COMPLETE — independent M14 final proof in progress**.
 The definition of complete and milestone dependencies remain in [the checklist](babelfont-migration-checklist.md).
 Canonical queries, layer and source-metadata edits, snapshots and auxiliary-layer structure now operate on Babelfont plus typed extensions.
-The remaining migration milestones still own ordinary topology tools, history replacement, application callers, broader metadata, interpolation, compilation, experiments and removal of compatibility state.
+The editing-model cutover is complete; the remaining gate is independent validation and promotion.
 
-## Continuation checkout
+## Final validation checkout
 
-The active integration continuation is `/Users/eli/.codex/worktrees/f236/runebender-xilem` on branch `codex/babelfont-integration`.
+The worker handed off clean M13 commit `6401eeef99aa2ea51771827d34e6cc84e93f3538` from `codex/babelfont-integration-rescue` and stopped implementation.
+Independent validation runs in a fresh clone at `/private/tmp/runebender-final-migration-20260919/candidate`.
+Its first complete native test run found that canonical history restored added components without restoring their selection.
+The final-validation branch records component selection alongside the application's history references and extends duplicate/delete undo/redo coverage.
+Geometry and its history remain owned by Project.
+
+## Historical integration checkpoints
+
+The former integration continuation was `/Users/eli/.codex/worktrees/f236/runebender-xilem` on branch `codex/babelfont-integration`.
 It started from clean commit `3f209776d35dbc7e88e35facb3a48e9f7edd68e0` and does not modify or replace the earlier continuation below.
 The earlier worktree and its branch remain preserved for review.
 
@@ -18,7 +26,7 @@ The earlier worktree and its branch remain preserved for review.
 - The first implementation run started clean; main and the originating task's branch were not changed.
 - The checklist contains 15 milestones and 76 acceptance steps.
 
-### Active integration checkpoint
+### Earlier integration checkpoint
 
 The current integration series owns canonical Designspace structure, guarded Designspace source transactions, direct font-information and source-comparison reads, direct curve conversion and handle cleanup, typed component alignment, typed glyph-layer metadata and canonical proposal/version state.
 It also preserves auxiliary history across source restore and invalidates metric-dependent application state when metadata history replays.

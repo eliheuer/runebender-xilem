@@ -1974,6 +1974,19 @@ mod tests {
         assert_eq!(projected_glyph(&workspace.session).components.len(), 1);
         assert_eq!(workspace.session.selected_component, None);
 
+        workspace.undo_open_glyph(false);
+        assert_eq!(workspace.session.selected_component, Some(duplicate));
+        assert_eq!(projected_glyph(&workspace.session).components.len(), 2);
+        workspace.undo_open_glyph(false);
+        assert_eq!(workspace.session.selected_component, Some(component));
+        assert_eq!(projected_glyph(&workspace.session).components.len(), 1);
+        workspace.undo_open_glyph(true);
+        assert_eq!(workspace.session.selected_component, Some(duplicate));
+        assert_eq!(projected_glyph(&workspace.session).components.len(), 2);
+        workspace.undo_open_glyph(true);
+        assert_eq!(workspace.session.selected_component, None);
+        assert_eq!(projected_glyph(&workspace.session).components.len(), 1);
+
         std::fs::remove_dir_all(path).expect("the component fixture is removed");
     }
 

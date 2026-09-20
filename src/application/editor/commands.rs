@@ -70,6 +70,7 @@ impl Workspace {
             glyph,
             address: address.clone(),
             label: "component add".into(),
+            component_selection: (self.session.selected_component, Some(component_id)),
             layer_history_depth: self.font.project.document_layer_history_depth(
                 &address,
                 runebender::document::history::HistoryDirection::Undo,
@@ -150,6 +151,7 @@ impl Workspace {
             glyph,
             address: address.clone(),
             label: "component alignment".into(),
+            component_selection: (Some(component_id), Some(component_id)),
             layer_history_depth: self.font.project.document_layer_history_depth(
                 &address,
                 runebender::document::history::HistoryDirection::Undo,
@@ -274,6 +276,10 @@ impl Workspace {
                 glyph: name.clone(),
                 address: address.clone(),
                 label: "reinterpolate".into(),
+                component_selection: (
+                    self.session.selected_component,
+                    self.session.selected_component,
+                ),
                 layer_history_depth: self.font.project.document_layer_history_depth(
                     &address,
                     runebender::document::history::HistoryDirection::Undo,
@@ -613,6 +619,10 @@ impl Workspace {
                     glyph: name.clone(),
                     address: address.clone(),
                     label: "bake masks".into(),
+                    component_selection: (
+                        self.session.selected_component,
+                        self.session.selected_component,
+                    ),
                     layer_history_depth: self.font.project.document_layer_history_depth(
                         address,
                         runebender::document::history::HistoryDirection::Undo,
@@ -1283,6 +1293,10 @@ impl Workspace {
             glyph,
             address: address.clone(),
             label: "paste contours".into(),
+            component_selection: (
+                self.session.selected_component,
+                self.session.selected_component,
+            ),
             layer_history_depth: self.font.project.document_layer_history_depth(
                 &address,
                 runebender::document::history::HistoryDirection::Undo,

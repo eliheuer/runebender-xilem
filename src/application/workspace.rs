@@ -87,6 +87,11 @@ pub(crate) enum MetadataEdit {
         address: runebender::document::variable::GlyphLayerAddress,
         label: String,
         layer_history_depth: usize,
+        // Selection belongs to the editor; geometry and history stay in Project.
+        component_selection: (
+            Option<runebender::document::ComponentId>,
+            Option<runebender::document::ComponentId>,
+        ),
     },
     SourceStructure {
         glyph: String,
