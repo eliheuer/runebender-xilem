@@ -19,12 +19,14 @@ use masonry::core::keyboard::{Key, KeyState, NamedKey};
 use masonry::core::{
     AccessCtx, ChildrenIds, EventCtx, LayerType, LayoutCtx, MeasureCtx, NewWidget, PaintCtx,
     PointerButton, PointerButtonEvent, PointerEvent, PointerScrollEvent, PointerUpdate,
-    PropertiesMut, PropertiesRef, RegisterCtx, ScrollDelta, TextEvent, Widget, WidgetId, WidgetPod,
+    PropertiesMut, PropertiesRef, PropertySet, RegisterCtx, ScrollDelta, TextEvent, Widget,
+    WidgetId, WidgetPod,
 };
 use masonry::imaging::Painter;
 use masonry::kurbo::{Axis, BezPath, Line, Point, Rect, Shape as _, Size, Stroke, Vec2};
 use masonry::layout::{LenReq, Length};
 use masonry::peniko::{Blob, ImageAlphaType, ImageData, ImageFormat};
+use masonry::properties::ContentColor;
 use masonry::widgets::{Image as MasonryImage, Portal, TextAction};
 use runebender::document::nodes::{Kind, NodeGraph, Registry};
 use runebender::document::nodes_run::Status;
@@ -115,11 +117,16 @@ pub(crate) struct NodesWidget {
     code_font_size: f32,
 }
 
-fn code_editor(text: &str) -> (WidgetPod<Portal<SourceTextArea>>, WidgetId) {
+fn code_editor(text: &str, text_color: Color) -> (WidgetPod<Portal<SourceTextArea>>, WidgetId) {
     let source = NewWidget::new(
         SourceTextArea::new(text)
             .with_text_size(crate::application::view::design::TextSize::Caption.px()),
-    );
+    )
+    .with_props({
+        let mut props = PropertySet::new();
+        props.insert(ContentColor { color: text_color });
+        props
+    });
     let area_id = source.id();
     let portal = Portal::new(source).content_must_fill(true);
     (NewWidget::new(portal).to_pod(), area_id)
@@ -298,14 +305,14 @@ type ContentChildren = (
     BTreeMap<u32, WidgetPod<SpecimenPreview>>,
 );
 
-fn content_children(content: &NodeContentMap) -> ContentChildren {
+fn content_children(content: &NodeContentMap, text_color: Color) -> ContentChildren {
     let mut editors = BTreeMap::new();
     let mut area_ids = BTreeMap::new();
     let mut images = BTreeMap::new();
     for (&node, content) in &content.by_node {
         match content {
             nl::NodeContent::Script(script) => {
-                let (editor, area_id) = code_editor(&script.text);
+                let (editor, area_id) = code_editor(&script.text, text_color);
                 editors.insert(node, editor);
                 area_ids.insert(node, area_id);
             }
@@ -1104,7 +1111,8 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
     type ViewState = ();
 
     fn build(&self, ctx: &mut ViewCtx, _: &mut Workspace) -> (Self::Element, Self::ViewState) {
-        let (code_editors, code_area_ids, preview_images) = content_children(&self.content);
+        let (code_editors, code_area_ids, preview_images) =
+            content_children(&self.content, self.palette.text);
         for (&node, &area_id) in &code_area_ids {
             ctx.with_id(ViewId::new(u64::from(node)), |ctx| {
                 ctx.record_action_source(area_id);
@@ -1175,7 +1183,7 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
                 for (_, editor) in std::mem::take(&mut element.widget.code_editors) {
                     element.ctx.remove_child(editor);
                 }
-                let (editors, area_ids, _) = content_children(&self.content);
+                let (editors, area_ids, _) = content_children(&self.content, self.palette.text);
                 element.widget.code_editors = editors;
                 element.widget.code_area_ids = area_ids;
                 for (&node, &area_id) in &element.widget.code_area_ids {
@@ -1203,7 +1211,8 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
                 for (_, image) in std::mem::take(&mut element.widget.preview_images) {
                     element.ctx.remove_child(image);
                 }
-                element.widget.preview_images = content_children(&self.content).2;
+                element.widget.preview_images =
+                    content_children(&self.content, self.palette.text).2;
                 element.ctx.children_changed();
             }
             element.widget.relayout();
@@ -1211,6 +1220,12 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
             dirty = true;
         }
         if !Arc::ptr_eq(&self.palette, &prev.palette) {
+            let text_color = self.palette.text;
+            for editor in element.widget.code_editors.values_mut() {
+                let mut editor = element.ctx.get_mut(editor);
+                let mut source = Portal::child_mut(&mut editor);
+                source.insert_prop(ContentColor { color: text_color });
+            }
             element.widget.palette = self.palette.clone();
             dirty = true;
         }
@@ -1334,12 +1349,14 @@ mod tests {
             }
         }
         let content = Arc::new(content);
-        let (code_editors, code_area_ids, preview_images) = content_children(&content);
+        let palette = Arc::new(Palette::load("gray"));
+        let (code_editors, code_area_ids, preview_images) =
+            content_children(&content, palette.text);
         let editor_ids = code_area_ids.clone();
         let mut widget = NodesWidget {
             graph,
             registry,
-            palette: Arc::new(Palette::load("gray")),
+            palette,
             rows: Arc::new(BTreeMap::new()),
             content,
             code_editors,
