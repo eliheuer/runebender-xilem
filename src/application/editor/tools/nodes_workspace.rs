@@ -811,7 +811,7 @@ mod tests {
         let error = app
             .open_live_graph_file(&oversized_path, source)
             .unwrap_err();
-        assert!(error.contains("graph has"), "{error}");
+        assert!(error.contains("exceeds 64 nodes"), "{error}");
         assert_eq!(
             app.live_graph_session().unwrap().snapshot().identity,
             current_identity

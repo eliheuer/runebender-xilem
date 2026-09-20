@@ -167,6 +167,8 @@ Native graph specimens share that worker and must release terminal handles or tr
 `document::nodes_session` owns the canonical live graph, guarded graph history, semantic identity and bounded run receipts.
 `application/editor/tools/nodes_workspace.rs` routes UI and agent commands to one Workspace-owned session and the shared Python queue.
 `nodes_execution.rs` stages the strict recipe result without publishing a font change; `application/platform/nodes_proofs.rs` owns paired captures on the process-wide compiler queue.
+`application/platform/nodes_file.rs` persists graph authoring intent without session authority; opening binds an explicitly chosen current source to a fresh graph session.
+`application/widgets/source_text_area.rs` delegates editing to the framework text area and owns bounded local source Undo/Redo, separate from graph and font histories.
 Graph authoring and running never apply the result implicitly; the separate Apply command uses the existing receipt-backed font edit adapter.
 The CLI forwards completed worker PNGs directly as MCP image content, preserving captured revision and font hash separately from the current document envelope.
 Multi-source glyph metadata uses staged layer drafts and one batch publication; Unicode replacement validates the complete source set before mutation and advances the revision once.
