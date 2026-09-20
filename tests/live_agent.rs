@@ -149,12 +149,19 @@ fn cli_and_mcp_share_one_unsaved_authorized_document() {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
+    let node_run = replies[0]["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["name"] == "nodes_run")
+        .expect("live Nodes runner is advertised");
+    let properties = &node_run["inputSchema"]["properties"];
+    assert!(properties.get("expected_document_epoch").is_some());
+    assert!(properties.get("guard").is_some());
+    assert!(properties.get("glyphs").is_some());
     assert!(
-        replies[0]["result"]["tools"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|tool| tool["name"] != "nodes_run")
+        properties.get("file").is_none(),
+        "live Nodes must not expose the disk runner"
     );
     let result: Value =
         serde_json::from_str(replies[2]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();

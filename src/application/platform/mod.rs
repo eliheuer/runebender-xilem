@@ -38,3 +38,6 @@ pub(crate) mod live_fixture;
 
 #[cfg(unix)]
 pub(crate) mod live_host;
+
+#[cfg(unix)]
+pub(crate) mod nodes_proofs;

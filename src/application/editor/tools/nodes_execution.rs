@@ -1097,6 +1097,9 @@ mod tests {
     use runebender::document::edit_batch::canonical_glyph_revision;
     use runebender::document::nodes::Registry;
     use runebender::document::nodes_live;
+    use runebender::document::nodes_session::{
+        GraphEdit, GraphGuard, GraphInteractiveMutationRequest, GraphMutation,
+    };
     use runebender::document::script_recipe::{SCRIPT_RECIPE_SCHEMA_VERSION, ScriptRecipeLayer};
 
     fn python() -> Option<PathBuf> {
@@ -1249,7 +1252,7 @@ mod tests {
             .unwrap_err();
         assert_eq!(error.code, LiveGraphExecutionErrorCode::Capture);
 
-        let mut changed_project = project();
+        let mut changed_project = self::project();
         let source = changed_project.source_id(0).unwrap();
         let layer = changed_project
             .document_source(source)

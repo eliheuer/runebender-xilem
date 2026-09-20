@@ -13,11 +13,7 @@ use std::collections::BTreeMap;
 use runebender::document::agent::ToolCall;
 #[cfg(unix)]
 use runebender::document::agent_edit::AgentEditRequest;
-use runebender::document::agent_edit::AgentLayerGuard;
-use runebender::document::edit_batch::canonical_glyph_revision;
-use runebender::document::script_recipe::{
-    ScriptRecipeAnchor, ScriptRecipeInput, ScriptRecipeLayer, ScriptRecipeResult,
-};
+use runebender::document::script_recipe::{ScriptRecipeInput, ScriptRecipeResult};
 use serde_json::Value;
 #[cfg(unix)]
 use serde_json::json;
@@ -333,51 +329,30 @@ impl Workspace {
             .project
             .source_id(self.font.active())
             .ok_or("The active source is unavailable")?;
-        let layer_id = self
-            .font
-            .project
-            .document_source(source)
-            .ok_or("The active source is unavailable")?
-            .default_layer();
-        let mut layers = Vec::with_capacity(glyphs.len());
-        for glyph_name in &glyphs {
-            let glyph = self
-                .font
-                .project
-                .document_glyph(glyph_name)
-                .ok_or_else(|| format!("Glyph {glyph_name} is unavailable"))?;
-            let layer = self
-                .font
-                .project
-                .document_layer(glyph_name, &layer_id)
-                .ok_or_else(|| format!("Glyph {glyph_name} has no active-source layer"))?;
-            layers.push(ScriptRecipeLayer {
-                guard: AgentLayerGuard {
-                    glyph: glyph_name.clone(),
-                    glyph_id: glyph.id().to_wire(),
-                    layer: layer_id.name.clone(),
-                    expected_revision: canonical_glyph_revision(layer)?,
-                },
-                width: layer.width(),
-                anchors: layer
-                    .anchors()
-                    .map(|anchor| {
-                        let position = anchor.position();
-                        ScriptRecipeAnchor {
-                            id: anchor.id().to_wire(),
-                            name: (!anchor.name().is_empty()).then(|| anchor.name().to_string()),
-                            x: position.x,
-                            y: position.y,
-                        }
-                    })
-                    .collect(),
-            });
-        }
         let job_id = format!("scripts-{}-{}", self.document_id, self.scripts.next_job);
         self.scripts.next_job = self.scripts.next_job.saturating_add(1);
-        let input = ScriptRecipeInput::new(job_id, source.0, parameters, layers)
-            .map_err(|error| error.to_string())?;
+        let input = runebender::document::script_recipe::capture(
+            &self.font.project,
+            source,
+            &glyphs,
+            job_id,
+            parameters,
+        )?;
         Ok((input, glyphs))
+    }
+
+    /// Lazily initialize the one Python queue shared by Scripts and Nodes.
+    pub(crate) fn ensure_script_job_queue(&mut self) -> Result<(), String> {
+        if self.script_jobs.is_none() {
+            let executable = std::env::var_os("RUNEBENDER_PYTHON")
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "python3".into());
+            self.script_jobs = Some(
+                ScriptJobQueue::new(ScriptJobConfig::new(executable))
+                    .map_err(|error| format!("Python runner unavailable: {error:?}"))?,
+            );
+        }
+        Ok(())
     }
 
     /// Submit the exact unsaved draft and immutable scope to the shared queue.
@@ -400,17 +375,9 @@ impl Workspace {
                 return;
             }
         };
-        if self.script_jobs.is_none() {
-            let executable = std::env::var_os("RUNEBENDER_PYTHON")
-                .filter(|value| !value.is_empty())
-                .unwrap_or_else(|| "python3".into());
-            match ScriptJobQueue::new(ScriptJobConfig::new(executable)) {
-                Ok(queue) => self.script_jobs = Some(queue),
-                Err(error) => {
-                    self.scripts.notice = Some(format!("Python runner unavailable: {error:?}"));
-                    return;
-                }
-            }
+        if let Err(error) = self.ensure_script_job_queue() {
+            self.scripts.notice = Some(error);
+            return;
         }
         let handle = match self
             .script_job_queue()

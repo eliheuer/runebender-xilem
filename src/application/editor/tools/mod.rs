@@ -19,3 +19,6 @@ pub(crate) mod nodes;
 pub(crate) mod nodes_execution;
 pub(crate) mod scripts;
 pub(crate) mod text;
+
+#[cfg(unix)]
+pub(crate) mod nodes_workspace;

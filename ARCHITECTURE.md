@@ -76,7 +76,7 @@ second set of module names to keep in sync.
 | Add or change an editor tool | `application/editor/tools/` | usually `outline/` or `text/` |
 | Change Metaballs | `application/editor/tools/metaballs.rs` | `outline/metaballs.rs`, `formats/metaballs.rs` |
 | Change text-mode interaction | `application/editor/tools/text.rs` | `text/buffer/`, `text/shape.rs` |
-| Change Nodes interaction | `application/editor/tools/nodes.rs` | `document/nodes*.rs`, `ui/nodes.rs` |
+| Change Nodes interaction | `application/editor/tools/nodes.rs`, `nodes_workspace.rs`, `nodes_execution.rs` | `document/nodes*.rs`, `ui/nodes.rs` |
 | Change selection or undo | `application/editor/session.rs` | `ui/editing/`, `document/history.rs` |
 | Add a menu item or shortcut | `application/actions.rs` | `application/editor/commands.rs` |
 | Change the edit canvas | `application/view/canvas/editor.rs` | `application/editor/session.rs` |
@@ -164,7 +164,11 @@ Native graph specimens share that worker and must release terminal handles or tr
 `document::script_recipe` defines immutable Python recipe captures and validates bounded reports and guarded proposals.
 `application/platform/script_jobs.rs` runs the optional interpreter with monitored file-backed standard streams, deadlines and bounded retained results.
 `application/platform/script_library.rs` owns ordinary Python files and observed-revision conflict checks; application commands own capture, preview and explicit Apply through the existing font transaction path.
-The CLI forwards its completed PNG directly as MCP image content, preserving captured revision and font hash separately from the current document envelope.
+`document::nodes_session` owns the canonical live graph, guarded graph history, semantic identity and bounded run receipts.
+`application/editor/tools/nodes_workspace.rs` routes UI and agent commands to one Workspace-owned session and the shared Python queue.
+`nodes_execution.rs` stages the strict recipe result without publishing a font change; `application/platform/nodes_proofs.rs` owns paired captures on the process-wide compiler queue.
+Graph authoring and running never apply the result implicitly; the separate Apply command uses the existing receipt-backed font edit adapter.
+The CLI forwards completed worker PNGs directly as MCP image content, preserving captured revision and font hash separately from the current document envelope.
 Multi-source glyph metadata uses staged layer drafts and one batch publication; Unicode replacement validates the complete source set before mutation and advances the revision once.
 `CanonicalSourceMetadataSnapshot` captures feature text, groups and exact kerning for the complete stable source set; guarded whole-snapshot restore ignores display reorder, rejects stale or changed source sets and publishes all affected canonical values in one revision.
 Auxiliary-layer copy and removal mutate canonical Babelfont layers and exact extensions directly.

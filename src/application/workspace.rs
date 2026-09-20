@@ -265,6 +265,9 @@ pub(crate) struct Workspace {
     pub(crate) sample_index: usize,
     /// The nodes file, the files beside the font, and a run.
     pub(crate) nodes: nodes::NodesState,
+    #[cfg(unix)]
+    pub(crate) live_nodes:
+        Option<crate::application::editor::tools::nodes_workspace::LiveNodesState>,
     /// A font build running outside the UI thread.
     pub(crate) export_job: Option<export::ExportJob>,
     /// The Local AI panel: models, tasks, a run, proposals.

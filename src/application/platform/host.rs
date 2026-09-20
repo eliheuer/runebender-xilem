@@ -341,6 +341,8 @@ impl Workspace {
             show_all_masters: false,
             sample_index: 0,
             nodes: nodes::NodesState::default(),
+            #[cfg(unix)]
+            live_nodes: None,
             export_job: None,
             ai: local_ai::LocalAiState::default(),
             chat: chat::ChatState::default(),

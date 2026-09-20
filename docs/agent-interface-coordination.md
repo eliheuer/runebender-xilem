@@ -33,7 +33,7 @@ The completed cancellation, procedural/OMP harness, Python runtime and Python re
 Archiving these handoffs does not imply integration.
 The completed metaball task was also archived; its implementation is already an ancestor of this branch.
 Their obsolete schedules were already removed.
-Only the central ten-minute continuation, Scripts panel ten-minute worker, native Nodes execution ten-minute worker and Nodes canvas twenty-minute worker remain scheduled.
+At the initial cleanup, four schedules remained; the completed Scripts and Nodes execution schedules were subsequently removed as recorded below.
 The existing desktop Virtua trial remains open for testing.
 Use bounded temporary reviews for independent research and code review instead of adding duplicate implementation tasks.
 
@@ -42,6 +42,24 @@ The Python runtime handoff is `c8ea6d49`; anchor recipes are `7d431ead` plus cor
 The cancellation handoff is `fd0ddcbc`, whose receipt parent is already integrated and must not be applied twice.
 The OMP proof harness handoff is `b6421908`; its external model image trial remains unproven.
 The Nodes canvas content-layout seam is `642d710`, which does not yet establish working inline editing or image rendering.
+
+## Noon candidate integration in progress
+
+At 10:10 Pacific, central integrated the Python runtime bounds corrections, recipe examples, live edit cancellation and queue ownership fix, guarded GraphSession, native graph execution adapter, Nodes request schemas, Scripts library/editor/run/proposal/Apply flow and the strict OMP proof harness.
+The Scripts and Nodes execution schedules are removed because their bounded implementation handoffs are complete; their tasks remain available until central validation finishes.
+The central ten-minute continuation and Nodes canvas twenty-minute continuation remain active.
+
+The coordinator is connecting one Workspace graph to the shared Python queue and process-wide compiler queue.
+The unchanged and derived specimen inputs retain the whole variable family and exact captured hashes.
+The same native command handler serves graph authoring, run/status/cancel/release, immutable image retrieval and separate guarded Apply.
+New direct-application tests cover common receipt replay after ordinary Undo.
+Native graph retry, stale Apply and cancellation-race review fixes are integrated; their added tests await the combined run.
+
+The first combined native attempt passed 511 library tests and 206 binary tests, with four explicitly ignored tests, but failed a new synthetic proof fixture's width assertion.
+The fixture now sets its intended starting width explicitly.
+Subsequent compilation exposed a Scripts sizing-wrapper error, corrected before the next run.
+These partial results do not constitute final native, browser, clean-checkout or interactive acceptance.
+Main and upstream remain the earlier validated checkpoint until the combined candidate passes its gates.
 
 ## Agreed interfaces and remaining decisions
 

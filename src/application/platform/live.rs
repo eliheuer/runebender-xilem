@@ -43,6 +43,7 @@ pub(crate) fn with_live<V: xilem::WidgetView<Workspace>>(
                 }
             },
             |app: &mut Workspace, ()| {
+                app.live_nodes_pump();
                 let request = app.live.as_ref().and_then(|server| server.try_recv());
                 if let Some(request) = request {
                     request.respond(|call| app.call_live(call));
@@ -66,6 +67,9 @@ impl Workspace {
 
     fn handle_live(&mut self, call: &runebender::document::agent::ToolCall) -> serde_json::Value {
         use serde_json::json;
+        if let Some(result) = self.call_agent_nodes(call) {
+            return result;
+        }
         if let Some(result) = self.call_agent_proof(call) {
             return result;
         }
