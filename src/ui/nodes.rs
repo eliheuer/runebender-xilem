@@ -248,9 +248,22 @@ pub fn node_box_with_content(
     content: Option<NodeContent>,
 ) -> NodeBox {
     let ty = registry.get(&node.type_name);
-    let title = ty
+    let fallback_title = ty
         .map(|t| t.title.clone())
         .unwrap_or_else(|| node.type_name.clone());
+    let title = if node.type_name == "live.proof" {
+        graph
+            .link_into(node.id, "font")
+            .and_then(|link| graph.node(link.from()))
+            .and_then(|upstream| match upstream.type_name.as_str() {
+                "live.font" => Some("Original specimen".into()),
+                "live.python" => Some("Scripted specimen".into()),
+                _ => None,
+            })
+            .unwrap_or(fallback_title)
+    } else {
+        fallback_title
+    };
     let inputs: Vec<_> = ty.map(|t| t.inputs.clone()).unwrap_or_default();
     let outputs: Vec<_> = ty.map(|t| t.outputs.clone()).unwrap_or_default();
     let rows = (inputs.len() + outputs.len()).max(1);
@@ -756,6 +769,12 @@ mod tests {
             }
         }
         let boxes = layout_with_content(&graph, &Registry::core(), &content);
+        let proof_titles: Vec<_> = boxes
+            .iter()
+            .filter(|node| node.type_name == "live.proof")
+            .map(|node| node.title.as_str())
+            .collect();
+        assert_eq!(proof_titles, ["Original specimen", "Scripted specimen"]);
         for (index, left) in boxes.iter().enumerate() {
             for right in boxes.iter().skip(index + 1) {
                 assert!(
