@@ -21,6 +21,28 @@ They report exact commits, interfaces, evidence and blockers to the coordinator,
 Workers do not create more tasks, change central checklist/changelog files, or expand into another owner's adapter files.
 The coordinator remains responsible for reconciling documentation and generated schemas after integration.
 
+## September 20 noon testing target
+
+At approximately 09:10 Pacific, the user requested a coherent testing candidate around noon, followed by UI/UX testing and bug fixing.
+This is the current delivery target, not evidence of completion or a promise that every broader acceptance item will pass by that time.
+Prioritize the complete Python report/proposal/Apply/Undo flow, then the native graph's shared baseline, editable script and two specimen outputs, using the same guarded agent commands.
+Retain the separate full-family, client-image, clean-checkout and native interaction acceptance requirements; do not silently count partial implementations as passing them.
+
+The user also requested sidebar and schedule cleanup.
+The completed cancellation, procedural/OMP harness, Python runtime and Python recipe tasks were archived with their committed work preserved on their named Git branches for central review.
+Archiving these handoffs does not imply integration.
+The completed metaball task was also archived; its implementation is already an ancestor of this branch.
+Their obsolete schedules were already removed.
+Only the central ten-minute continuation, Scripts panel ten-minute worker, native Nodes execution ten-minute worker and Nodes canvas twenty-minute worker remain scheduled.
+The existing desktop Virtua trial remains open for testing.
+Use bounded temporary reviews for independent research and code review instead of adding duplicate implementation tasks.
+
+The current integrated runtime is `7eb0a86`, with coordination and workflow documentation through `c7de387` on main and upstream.
+The Python runtime handoff is `c8ea6d49`; anchor recipes are `7d431ead` plus corrected contract handling in `8314665e`.
+The cancellation handoff is `fd0ddcbc`, whose receipt parent is already integrated and must not be applied twice.
+The OMP proof harness handoff is `b6421908`; its external model image trial remains unproven.
+The Nodes canvas content-layout seam is `642d710`, which does not yet establish working inline editing or image rendering.
+
 ## Agreed interfaces and remaining decisions
 
 Sol's staged engine batch is initially limited to one source and nonstructural width, point and existing-anchor edits.
