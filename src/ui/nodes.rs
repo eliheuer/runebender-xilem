@@ -217,7 +217,7 @@ pub fn kind_mark(kind: Kind) -> Option<&'static str> {
         Kind::Adapter => "purple",
         Kind::Glyph | Kind::Glyphs => "orange",
         Kind::Rows => "pink",
-        Kind::Number | Kind::Flag | Kind::Text => return None,
+        Kind::Number | Kind::Flag | Kind::Text | Kind::Parameters => return None,
     })
 }
 

@@ -24,6 +24,7 @@ pub fn types() -> Vec<NodeType> {
     [
         ("live.font", "Current font", false, true),
         ("live.fork", "Font version", true, true),
+        ("live.python", "Python recipe", true, true),
         ("live.proof", "Designbot proof", true, false),
         ("live.apply", "Apply to current font", true, false),
     ]
@@ -58,6 +59,34 @@ pub fn types() -> Vec<NodeType> {
                     help: "The stable source or stored session result.".into(),
                 });
             }
+            if name == "live.python" {
+                ports.extend([
+                    Port {
+                        name: "code".into(),
+                        kind: Kind::Text,
+                        required: true,
+                        default: None,
+                        help: "Exact Python source submitted to the shared recipe runner.".into(),
+                    },
+                    Port {
+                        name: "parameters".into(),
+                        kind: Kind::Parameters,
+                        required: false,
+                        default: Some(json!({})),
+                        help: "Structured parameters included in the immutable recipe input."
+                            .into(),
+                    },
+                ]);
+            }
+            if name == "live.proof" {
+                ports.push(Port {
+                    name: "recipe".into(),
+                    kind: Kind::Parameters,
+                    required: false,
+                    default: Some(json!({"text":"Hamburgefontsiv"})),
+                    help: "Structured specimen settings shared by both comparison proofs.".into(),
+                });
+            }
             ports
         },
         outputs: if output {
@@ -89,6 +118,48 @@ pub fn starter(source_id: SourceId) -> NodeGraph {
         .insert("source".into(), json!(source_id.0));
     add_direction(&mut graph, source, [336.0, 32.0]);
     add_direction(&mut graph, source, [336.0, 416.0]);
+    graph
+}
+
+/// Create the first supported Python comparison graph.
+///
+/// One captured base feeds an unchanged proof and a Python-derived proof.
+/// The Python code remains empty until the user or agent authors it, and opening
+/// the graph never executes it.
+pub fn comparison_starter(source_id: SourceId) -> NodeGraph {
+    let mut graph = NodeGraph::default();
+    let source = graph.add("live.font", [32.0, 32.0]);
+    graph
+        .node_mut(source)
+        .unwrap()
+        .values
+        .insert("source".into(), json!(source_id.0));
+    let unchanged = graph.add("live.proof", [640.0, 32.0]);
+    graph
+        .node_mut(unchanged)
+        .unwrap()
+        .values
+        .insert("recipe".into(), json!({"text":"Hamburgefontsiv"}));
+    graph.connect(source, "font", unchanged, "font");
+    let python = graph.add("live.python", [336.0, 416.0]);
+    graph
+        .node_mut(python)
+        .unwrap()
+        .values
+        .insert("code".into(), json!(""));
+    graph
+        .node_mut(python)
+        .unwrap()
+        .values
+        .insert("parameters".into(), json!({}));
+    graph.connect(source, "font", python, "font");
+    let changed = graph.add("live.proof", [640.0, 416.0]);
+    graph
+        .node_mut(changed)
+        .unwrap()
+        .values
+        .insert("recipe".into(), json!({"text":"Hamburgefontsiv"}));
+    graph.connect(python, "font", changed, "font");
     graph
 }
 

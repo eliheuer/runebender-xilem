@@ -46,6 +46,7 @@ pub mod model;
 pub mod new_font;
 pub mod nodes;
 pub mod nodes_run;
+pub mod nodes_session;
 pub mod project;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod proof_jobs;

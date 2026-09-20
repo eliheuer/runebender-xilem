@@ -451,7 +451,7 @@ fn value_of(kind: Kind, value: &Value, models_dir: Option<&Path>) -> Option<RunV
         Kind::Adapter => RunValue::Adapter {
             path: resolve_model(value.as_str()?, models_dir),
         },
-        Kind::Layer | Kind::FontVersion => return None,
+        Kind::Layer | Kind::FontVersion | Kind::Parameters => return None,
         Kind::Rows => RunValue::Rows {
             rows: value.as_array()?.clone(),
         },

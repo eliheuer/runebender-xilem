@@ -59,6 +59,8 @@ pub enum Kind {
     Flag,
     /// Free text.
     Text,
+    /// Structured recipe or script parameters.
+    Parameters,
     /// A layer in the source, by name.
     Layer,
     /// Per-glyph rows of a report.
@@ -78,6 +80,7 @@ impl Kind {
                 | Self::Number
                 | Self::Flag
                 | Self::Text
+                | Self::Parameters
                 | Self::Layer
                 | Self::Model
                 | Self::Adapter
@@ -671,6 +674,7 @@ fn value_fits(value: &Value, kind: Kind) -> bool {
         | Kind::Source
         | Kind::Path => value.is_string(),
         Kind::Rows => value.is_array(),
+        Kind::Parameters => value.is_object(),
         Kind::FontVersion => false,
     }
 }
