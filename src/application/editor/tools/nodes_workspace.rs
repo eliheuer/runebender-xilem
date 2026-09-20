@@ -273,7 +273,7 @@ impl Workspace {
                 let request: NodesDiscoverRequest = parse(&call.arguments)?;
                 request.validate()?;
                 Ok(
-                    json!({"ok":true,"identity":state.session.snapshot().identity,"discovery":state.session.discovery(),"root_changed":false}),
+                    json!({"ok":true,"identity":state.session.snapshot().identity,"discovery":state.session.discovery(),"recipe_authoring":script_recipe::AUTHORING_INSTRUCTIONS,"root_changed":false}),
                 )
             }
             "nodes_snapshot" => {

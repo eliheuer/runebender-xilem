@@ -35,6 +35,7 @@ fn generated_live_prompt_matches_available_tools_and_authorized_edits() {
     assert!(!prompt.contains("chosen master"));
     assert!(!prompt.contains("call docs first"));
     assert!(prompt.contains("proposal_install"));
+    assert!(prompt.contains(runebender::document::script_recipe::AUTHORING_INSTRUCTIONS));
 }
 
 #[test]

@@ -19,6 +19,23 @@ use super::agent_edit::{AgentEditOperation, AgentLayerEdits, AgentLayerGuard};
 /// The only recipe JSON schema accepted by this version of Runebender.
 pub const SCRIPT_RECIPE_SCHEMA_VERSION: u32 = 1;
 
+/// Shared authoring guidance for local chat, MCP clients and graph discovery.
+pub const AUTHORING_INSTRUCTIONS: &str = "Python recipes are optional clients of the Rust editor. \
+Read one JSON object with json.load(sys.stdin); there is no mutable font object or implicit input \
+variable. Input has schema_version, job_id, input_hash, source, parameters and layers. Each layer \
+has guard, width and anchors; guard.glyph is its glyph name. Each anchor has id, optional name, \
+x and y. Preserve every supplied guard and identity. Emit exactly one JSON object to stdout \
+with schema_version, job_id and input_hash echoed unchanged, report as a string, reads as an \
+array of unmodified layer guards, and edits as an array of {target: layer.guard, operations: [...]}. \
+Use edits=[] for reports; include consulted non-edited layers in reads. Supported recipe operations \
+are {op: set_width, width: number} and {op: set_anchor, anchor_id: anchor.id, x: number, y: number}; \
+JSON keys and string values must be quoted. Do not invent IDs, open font source files, or import \
+an editable Babelfont wrapper. Send diagnostics to stderr, not stdout. The user chooses an explicit \
+source and 1 to 64 glyphs; at most 256 edit operations are accepted. Run creates a report or \
+proposal only; Apply is separate and uses ordinary editor Undo. When asked to write a script, \
+return a complete python fenced block for Open in Scripts, without running or saving it unless \
+requested. Nodes uses this same recipe contract and retained before/after proof images.";
+
 const MAX_STRING_BYTES: usize = 256;
 const MAX_PARAMETER_BYTES: usize = 64 * 1024;
 const MAX_LAYERS: usize = 64;

@@ -2060,7 +2060,9 @@ fn mcp_response(
                     "name": "runebender",
                     "version": env!("CARGO_PKG_VERSION"),
                 },
-                "instructions": if live_mode { runebender::document::live::INSTRUCTIONS.into() } else { mcp_instructions(font.expect("font or session")) },
+                "instructions": if live_mode {
+                    format!("{}\n\n{}", runebender::document::live::INSTRUCTIONS, runebender::document::script_recipe::AUTHORING_INSTRUCTIONS)
+                } else { mcp_instructions(font.expect("font or session")) },
             }))
         }
         "ping" => Ok(json!({})),

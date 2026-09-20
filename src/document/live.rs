@@ -29,6 +29,8 @@ pub fn system_prompt(tools: &[agent::Tool]) -> String {
          To call a tool, emit one <tool_call>JSON object with name and arguments</tool_call> \
          block, then wait for its result.\n\n"
     );
+    prompt.push_str(super::script_recipe::AUTHORING_INSTRUCTIONS);
+    prompt.push_str("\n\n");
     for tool in tools {
         prompt.push_str(&format!(
             "- {}: {} Arguments: {}\n",
