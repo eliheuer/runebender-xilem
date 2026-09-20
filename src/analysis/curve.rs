@@ -41,36 +41,6 @@ pub struct Cubic {
     pub start_smooth: bool,
 }
 
-/// Build the per-contour cubic segment lists from a UFO boundary glyph.
-///
-/// Lines become degenerate "straight" cubics, quads elevate, and
-/// hyper contours run through the solver. The comb and continuity
-/// analyses read these lists. Document callers should use
-/// [`cubics_from_layer`] instead.
-pub fn cubics_from_norad(glyph: &norad::Glyph) -> Vec<Vec<Cubic>> {
-    let mut out = Vec::new();
-    for contour in &glyph.contours {
-        let path = if crate::outline::path::hyper_model::norad_contour_is_hyper(contour) {
-            let ws = crate::outline::path::hyper_model::Contour::from_norad(contour);
-            let mut bez = kurbo::BezPath::new();
-            crate::outline::path::Path::from_contour(&ws).append_to_bezpath(&mut bez);
-            bez
-        } else {
-            crate::outline::glyph_paths::contour_to_bezpath(contour)
-        };
-        let smooth = contour
-            .points
-            .iter()
-            .filter(|point| point.smooth)
-            .map(|point| Point::new(point.x, point.y));
-        let segs = cubics_from_path(&path, smooth);
-        if !segs.is_empty() {
-            out.push(segs);
-        }
-    }
-    out
-}
-
 /// Build per-contour cubic segments directly from one canonical glyph layer.
 pub fn cubics_from_layer(layer: LayerView<'_>) -> Vec<Vec<Cubic>> {
     layer

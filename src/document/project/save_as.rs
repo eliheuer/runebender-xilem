@@ -60,8 +60,6 @@ impl Project {
         for (source, target) in self.sources.iter_mut().zip(source_targets) {
             source.source_path = target;
             source.dirty = false;
-            source.modified_glyphs.clear();
-            source.kerning_dirty = false;
         }
         if let Some((target, _document, canonical)) = designspace {
             self.variable.install_designspace(canonical);

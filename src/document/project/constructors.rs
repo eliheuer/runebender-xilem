@@ -3,7 +3,7 @@
 
 //! Project assembly around already canonical source documents.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 use super::*;
 
@@ -17,17 +17,16 @@ impl Project {
     ) -> Result<Self, String> {
         let specification = crate::document::new_font::specification(family, style, weight_class)?;
         let variable = VariableData::from_new_font(specification)?;
-        Self::from_canonical_single_source(variable, path, true, HashMap::new())
+        Self::from_canonical_single_source(variable, path, true)
     }
 
     /// Finish an explicit UFO import boundary after its transient decoder has been validated.
     pub(in crate::document) fn from_ufo_boundary(
         path: PathBuf,
         font: &norad::Font,
-        glif_paths: HashMap<String, String>,
     ) -> Result<Self, String> {
         let variable = super::super::ufo_codec::decode_source(font)?;
-        Self::from_canonical_single_source(variable, path, false, glif_paths)
+        Self::from_canonical_single_source(variable, path, false)
     }
 
     /// Finish an imported single-source document whose first save must create a new UFO.
@@ -36,7 +35,7 @@ impl Project {
         font: &norad::Font,
     ) -> Result<Self, String> {
         let variable = super::super::ufo_codec::decode_source(font)?;
-        Self::from_canonical_single_source(variable, path, true, HashMap::new())
+        Self::from_canonical_single_source(variable, path, true)
     }
 
     /// Decode imported Designspace sources into canonical ownership before projections exist.
@@ -98,7 +97,6 @@ impl Project {
         variable: VariableData,
         path: PathBuf,
         dirty: bool,
-        glif_paths: HashMap<String, String>,
     ) -> Result<Self, String> {
         let source = SourceId(0);
         let name: Arc<str> = variable
@@ -106,8 +104,7 @@ impl Project {
             .and_then(|info| info.names.style_name.clone())
             .unwrap_or_else(|| "Regular".into())
             .into();
-        let mut state = SourceState::new(path, dirty);
-        state.glif_paths = glif_paths;
+        let state = SourceState::new(path, dirty);
         let mut project = Self {
             sources: vec![state],
             variable,

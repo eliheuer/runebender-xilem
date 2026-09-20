@@ -111,22 +111,6 @@ pub(super) fn specification(
     Ok(NewFontSpecification { font_info, glyphs })
 }
 
-/// Materialize the compatibility UFO projection of a canonically constructed new font.
-///
-/// Application code should prefer [`super::project::Project::new_canonical_font`].
-pub fn new_font(family: &str, style: &str, weight_class: i32) -> norad::Font {
-    let project = super::project::Project::new_canonical_font(
-        std::path::PathBuf::from("Untitled.ufo"),
-        family,
-        style,
-        weight_class.max(1) as u32,
-    )
-    .expect("the checked-in new-font template is valid");
-    project
-        .encode_ufo_source(super::variable::SourceId(0))
-        .expect("a new canonical font has its default source")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

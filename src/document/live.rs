@@ -463,7 +463,15 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
                 .and_then(Value::as_str)
                 .ok_or("glyph is required")?;
             match branch {
-                Some(_) => crate::analysis::glyph::read_glyph(&font, glyph, layer),
+                Some(branch) => crate::analysis::glyph::read_experiment_glyph(
+                    project
+                        .experiments
+                        .versions
+                        .get(branch)
+                        .ok_or("unknown experiment")?,
+                    glyph,
+                    layer,
+                ),
                 None => crate::analysis::glyph::read_project_glyph(project, source, glyph, layer),
             }
         }

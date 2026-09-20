@@ -170,11 +170,7 @@ pub fn project_from_ufo_files<'a>(
 ) -> Result<UfoProjectFiles, String> {
     let decoded = ufo_from_files(files)?;
     let glif_paths = decoded.glif_paths;
-    let project = crate::document::project::Project::from_ufo_boundary(
-        source_path,
-        &decoded.font,
-        glif_paths.clone(),
-    )?;
+    let project = crate::document::project::Project::from_ufo_boundary(source_path, &decoded.font)?;
     Ok(UfoProjectFiles {
         project,
         glif_paths,
@@ -223,7 +219,7 @@ pub fn project_from_embedded_glif_json(
         }
         layer.insert_glyph(glyph);
     }
-    crate::document::project::Project::from_ufo_boundary(source_path, &font, HashMap::new())
+    crate::document::project::Project::from_ufo_boundary(source_path, &font)
 }
 
 fn validate_file_inventory<'a>(

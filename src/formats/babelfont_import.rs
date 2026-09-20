@@ -750,7 +750,7 @@ mod tests {
         assert_eq!(project.instances[0].1["Weight"], 0.5);
         assert_eq!(
             project
-                .try_interpolated_at("A", &[("Weight".into(), 0.5)].into())
+                .try_encode_interpolated_ufo_at("A", &[("Weight".into(), 0.5)].into())
                 .unwrap()
                 .width,
             731.123_456_789
@@ -773,7 +773,7 @@ mod tests {
         assert_eq!(reloaded.variable_glyph("A").unwrap().layer_ids().count(), 4);
         assert_eq!(
             reloaded
-                .try_interpolated_at("A", &[("Weight".into(), 0.5)].into())
+                .try_encode_interpolated_ufo_at("A", &[("Weight".into(), 0.5)].into())
                 .unwrap()
                 .width,
             731.123_456_789

@@ -155,6 +155,66 @@ impl Experiment {
         self.working.view(address)
     }
 
+    /// Select one exact experiment layer, or the default layer when no name is supplied.
+    pub fn selected_layer(
+        &self,
+        glyph: &str,
+        layer: Option<&str>,
+    ) -> Option<(LayerId, LayerView<'_>)> {
+        let selected = layer.map_or_else(
+            || self.default_layer.clone(),
+            |name| LayerId {
+                source: self.root,
+                name: name.to_owned(),
+            },
+        );
+        let address = GlyphLayerAddress {
+            glyph: glyph.to_owned(),
+            layer: selected.clone(),
+        };
+        Some((selected, self.working.view(&address)?))
+    }
+
+    /// Render one experiment layer through the same typed component resolver as Project.
+    pub fn layer_path(
+        &self,
+        glyph: &str,
+        selected: &LayerId,
+    ) -> Result<kurbo::BezPath, crate::outline::glyph_paths::ComponentResolveError> {
+        let address = GlyphLayerAddress {
+            glyph: glyph.to_owned(),
+            layer: selected.clone(),
+        };
+        let layer = self.working.view(&address).ok_or_else(|| {
+            crate::outline::glyph_paths::ComponentResolveError::Missing(glyph.into())
+        })?;
+        crate::outline::glyph_paths::canonical_layer_to_bezpath(
+            layer,
+            |name| {
+                let same_layer = GlyphLayerAddress {
+                    glyph: name.to_owned(),
+                    layer: selected.clone(),
+                };
+                self.working.view(&same_layer).or_else(|| {
+                    self.working.view(&GlyphLayerAddress {
+                        glyph: name.to_owned(),
+                        layer: self.default_layer.clone(),
+                    })
+                })
+            },
+            |name| {
+                self.working
+                    .layers
+                    .iter()
+                    .filter(|(address, _)| {
+                        address.glyph == name && address.layer.source == self.root
+                    })
+                    .map(|(_, draft)| draft.view())
+                    .collect()
+            },
+        )
+    }
+
     /// Edit one isolated canonical layer atomically.
     pub fn edit_layer(
         &mut self,
@@ -205,24 +265,10 @@ impl Experiment {
             .collect()
     }
 
-    /// Materialize this isolated version at an explicit UFO export or proof boundary.
-    ///
-    /// The returned font is transient. Canonical layer drafts and metadata remain the version's
-    /// only persistent editing state.
-    pub fn encode_ufo_source(&self, project: &Project) -> Result<norad::Font, String> {
-        let mut font = project
-            .encode_ufo_source(self.root)
-            .ok_or("the experiment's source is no longer loaded")?;
-        for (address, draft) in &self.working.layers {
-            let layer = font
-                .layers
-                .get_or_create_layer(&address.layer.name)
-                .map_err(|error| error.to_string())?;
-            layer.insert_glyph(draft.view().project());
-        }
-        super::font_ops::write_canonical_metadata_to_ufo(&mut font, &self.working.font_metadata)
-            .map_err(|error| error.to_string())?;
-        Ok(font)
+    pub(crate) fn layer_drafts(
+        &self,
+    ) -> impl Iterator<Item = (&GlyphLayerAddress, &LayerEditDraft)> {
+        self.working.layers.iter()
     }
 
     fn proposal_layer(&self, task: &str) -> LayerId {

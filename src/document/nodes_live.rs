@@ -245,17 +245,6 @@ pub fn discard(project: &mut Project, name: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Save a captured version to a new UFO directory. Existing destinations are refused;
-/// the live root and its save path are unchanged. A failed write may leave a partial directory.
-pub fn save_new(font: &norad::Font, path: &std::path::Path) -> Result<(), String> {
-    if path.extension().and_then(|e| e.to_str()) != Some("ufo") {
-        return Err("Choose a new .ufo directory".into());
-    }
-    std::fs::create_dir(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    font.save(path)
-        .map_err(|e| format!("{}: {e}", path.display()))
-}
-
 /// Add existing or MCP-created session versions to a live graph, preserving all
 /// existing node positions and connections. Disk-only graphs are left unchanged.
 /// Returns the number of imported versions.
@@ -313,6 +302,15 @@ mod tests {
     use super::super::font_memory::designspace_from_str;
     use super::super::project::SourceInput;
     use super::*;
+
+    fn save_new(font: &norad::Font, path: &std::path::Path) -> Result<(), String> {
+        if path.extension().and_then(|extension| extension.to_str()) != Some("ufo") {
+            return Err("Choose a new .ufo directory".into());
+        }
+        std::fs::create_dir(path).map_err(|error| format!("{}: {error}", path.display()))?;
+        font.save(path)
+            .map_err(|error| format!("{}: {error}", path.display()))
+    }
 
     fn two_source_project() -> Project {
         let font = Project::new_font("synthetic.ufo".into())

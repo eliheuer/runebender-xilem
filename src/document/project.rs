@@ -1067,32 +1067,17 @@ impl Project {
         Ok(VariationModel::new(&locations)?.interpolate(&values, location)?[0])
     }
 
-    /// The interpolation at the current location as a norad glyph,
-    /// point structure kept: the working form for the ghost, the
-    /// strip, and for freezing into a brace layer.
-    pub fn interpolated_norad_glyph(&self, glyph_name: &str) -> Option<norad::Glyph> {
-        if self.location.values().all(|v| v.abs() < 1e-9) {
-            return None;
-        }
-        self.interpolated_at(glyph_name, &self.location)
-    }
-
-    /// The interpolation at an arbitrary normalized location.
-    ///
-    /// The default location is included, where it returns the
-    /// default master's own coordinates: trajectory sampling needs
-    /// the whole axis, ends included.
-    pub fn interpolated_at(&self, glyph_name: &str, location: &Location) -> Option<norad::Glyph> {
-        self.try_interpolated_at(glyph_name, location).ok()
-    }
-
-    /// Interpolate this glyph's sources, with explicit failure reasons.
-    /// Missing glyphs in non-default sources produce a sparse per-glyph model.
-    pub fn try_interpolated_at(
+    pub(crate) fn interpolation_codec_parts(
         &self,
         glyph_name: &str,
         location: &Location,
-    ) -> Result<norad::Glyph, String> {
+    ) -> Result<
+        (
+            super::interpolation::InterpolatedLayer,
+            super::LayerView<'_>,
+        ),
+        String,
+    > {
         let interpolated = self.try_interpolated_layer_at(glyph_name, location)?;
         let (layers, locations) = self.interpolation_layers(glyph_name, None)?;
         let default = locations
@@ -1103,10 +1088,10 @@ impl Project {
             .get(default)
             .copied()
             .ok_or("missing default layer")?;
-        super::interpolation::project_interpolated(&interpolated, base)
+        Ok((interpolated, base))
     }
 
-    fn try_interpolated_layer_at(
+    pub(crate) fn try_interpolated_layer_at(
         &self,
         glyph_name: &str,
         location: &Location,
@@ -2259,7 +2244,6 @@ impl Project {
             .expect("canonical source metadata retains its source");
         let source = &mut self.sources[index];
         source.dirty = true;
-        source.kerning_dirty = true;
     }
 
     fn record_layer_change(&mut self, name: &str, layer: &LayerId) {
@@ -2268,7 +2252,6 @@ impl Project {
             .expect("committed layer retains its source");
         let source = &mut self.sources[index];
         source.dirty = true;
-        source.modified_glyphs.insert(name.to_owned());
         self.recheck_compat(name);
     }
 
@@ -2312,8 +2295,6 @@ impl Project {
         super::filesystem::ExportPlan::new(exports, designspace)?.execute()?;
         for source in &mut self.sources {
             source.dirty = false;
-            source.modified_glyphs.clear();
-            source.kerning_dirty = false;
         }
         if self.ds_dirty {
             self.ds_dirty = false;
@@ -2419,7 +2400,7 @@ mod tests {
         project.add_sparse_source(&layer, &loc_500).unwrap();
         project.location = loc_500.clone();
         let refined = project
-            .interpolated_norad_glyph(name)
+            .encode_current_interpolated_ufo(name)
             .expect("interpolates");
         assert!(
             (refined.contours[0].points[0].x - (orig + 40.0)).abs() < 0.6,
@@ -2429,12 +2410,12 @@ mod tests {
         );
         assert!(project.undo_sources(false).unwrap());
         let linear = project
-            .try_interpolated_at(name, &loc_500)
+            .try_encode_interpolated_ufo_at(name, &loc_500)
             .unwrap_or_else(|error| panic!("interpolates without the sparse source: {error}"));
         assert!((linear.contours[0].points[0].x - (orig + 40.0)).abs() > 1.0);
         assert!(project.undo_sources(true).unwrap());
         let restored = project
-            .try_interpolated_at(name, &loc_500)
+            .try_encode_interpolated_ufo_at(name, &loc_500)
             .unwrap_or_else(|error| {
                 panic!("interpolates with the restored sparse source: {error}")
             });
@@ -2659,7 +2640,7 @@ mod tests {
                     axis.max,
                 ),
             );
-            let g = project.interpolated_at(name, &location).unwrap();
+            let g = project.encode_interpolated_ufo_at(name, &location).unwrap();
             let p = &g.contours[0].points[0];
             (p.x, p.y)
         };

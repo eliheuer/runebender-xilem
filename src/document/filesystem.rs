@@ -122,26 +122,7 @@ pub(crate) struct ImportedUfo {
 
 impl ImportedUfo {
     pub(crate) fn into_source_input(self, path: PathBuf) -> SourceInput {
-        let glif_paths = self
-            .font
-            .default_layer()
-            .iter()
-            .filter_map(|glyph| {
-                let name = glyph.name().to_string();
-                let relative = self.font.default_layer().get_path(&name)?;
-                Some((
-                    name,
-                    self.font
-                        .default_layer()
-                        .path()
-                        .join(relative)
-                        .to_string_lossy()
-                        .into_owned(),
-                ))
-            })
-            .collect();
         let mut source = SourceInput::from_font(self.font, path);
-        source.glif_paths = glif_paths;
         source.preserved_files = self.preserved;
         source
     }

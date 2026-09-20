@@ -51,12 +51,6 @@ impl Project {
             .source_index(transaction.source)
             .expect("validated proposal source remains present");
         self.sources[index].dirty = true;
-        self.sources[index].modified_glyphs.extend(
-            transaction
-                .affected
-                .iter()
-                .map(|address| address.glyph.clone()),
-        );
         self.compute_compat();
         Ok(transaction.affected)
     }

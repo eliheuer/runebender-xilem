@@ -773,13 +773,20 @@ fn canonical_contour_paths_match_legacy_conversion_and_keep_implied_quadratics()
         project.document_layer("paths", &layer_id).unwrap(),
     );
     assert_eq!(canonical, legacy);
-    assert_eq!(
-        runebender::analysis::curve::ordinary_cubics_from_layer(
-            project.document_layer("paths", &layer_id).unwrap(),
-        ),
-        runebender::analysis::curve::cubics_from_norad(&glyph),
-        "canonical curve-analysis input changed cubic segments"
+    let curve_contours = runebender::analysis::curve::ordinary_cubics_from_layer(
+        project.document_layer("paths", &layer_id).unwrap(),
     );
+    assert_eq!(
+        curve_contours.iter().map(Vec::len).collect::<Vec<_>>(),
+        vec![4, 1, 4, 3],
+        "canonical curve analysis changed line, open, quadratic, or implied contours"
+    );
+    assert_eq!(curve_contours[0][0].p0, kurbo::Point::new(0.0, 0.0));
+    assert_eq!(curve_contours[0][0].p3, kurbo::Point::new(100.0, 0.0));
+    assert!(curve_contours[0][0].straight);
+    assert_eq!(curve_contours[2][0].p0, kurbo::Point::new(300.0, 0.0));
+    assert_eq!(curve_contours[2][3].p3, kurbo::Point::new(300.0, 0.0));
+    assert!(!curve_contours[2][0].straight);
     assert_eq!(
         canonical
             .elements()
@@ -6880,8 +6887,12 @@ fn source_authoring_keeps_identity_and_round_trips_the_designspace() {
         .map(|component| component.id())
         .collect::<Vec<_>>();
     let target = location(0.25, 0.0);
-    let expected = project.try_interpolated_at("A", &target).unwrap();
-    let expected_component = project.try_interpolated_at("C", &target).unwrap();
+    let expected = project
+        .try_encode_interpolated_ufo_at("A", &target)
+        .unwrap();
+    let expected_component = project
+        .try_encode_interpolated_ufo_at("C", &target)
+        .unwrap();
     let expected_kerning = project.interpolated_kerning_at("A", "B", &target).unwrap();
     let revision = project.document_revision();
     let before = project.document_snapshot();
@@ -6999,12 +7010,19 @@ fn full_source_can_replace_intermediate_participation_without_losing_the_layer()
     let (scratch, mut project) = fixture();
     let original = project.encode_ufo_source(SourceId(0)).unwrap();
     let target = location(0.5, 0.0);
-    let expected = project.try_interpolated_at("A", &target).unwrap();
+    let expected = project
+        .try_encode_interpolated_ufo_at("A", &target)
+        .unwrap();
     let added = project
         .add_interpolated_source("Medium", "Medium.ufo", &target)
         .unwrap();
     assert!(project.brace.is_empty());
-    assert_eq!(project.try_interpolated_at("A", &target).unwrap(), expected);
+    assert_eq!(
+        project
+            .try_encode_interpolated_ufo_at("A", &target)
+            .unwrap(),
+        expected
+    );
     assert_eq!(project.encode_ufo_source(SourceId(0)).unwrap(), original);
     assert_glyph_content_eq(
         project
@@ -7018,7 +7036,9 @@ fn full_source_can_replace_intermediate_participation_without_losing_the_layer()
     let reloaded = Project::load(&scratch.0.join("Font.designspace")).unwrap();
     assert!(reloaded.brace.is_empty());
     assert_eq!(
-        reloaded.try_interpolated_at("A", &target).unwrap(),
+        reloaded
+            .try_encode_interpolated_ufo_at("A", &target)
+            .unwrap(),
         expected
     );
     assert!(project.undo_sources(false).unwrap());
@@ -7300,21 +7320,21 @@ fn structural_undo_and_redo_advance_the_live_document_revision() {
 fn interpolation_is_glyph_local_and_independent_of_selected_source() {
     let (_scratch, mut project) = fixture();
     let a = project
-        .try_interpolated_at("A", &location(0.5, 0.0))
+        .try_encode_interpolated_ufo_at("A", &location(0.5, 0.0))
         .unwrap();
     assert_eq!(a.contours[0].points[0].x, 80.0);
     let b = project
-        .try_interpolated_at("B", &location(0.5, 0.0))
+        .try_encode_interpolated_ufo_at("B", &location(0.5, 0.0))
         .unwrap();
     assert_eq!(b.contours[0].points[0].x, 50.0);
     let middle = project
-        .try_interpolated_at("B", &location(0.5, 0.5))
+        .try_encode_interpolated_ufo_at("B", &location(0.5, 0.5))
         .unwrap();
     assert_eq!(middle.contours[0].points[0].x, 87.5);
     project.active = 3;
     assert_eq!(
         project
-            .try_interpolated_at("B", &location(0.5, 0.5))
+            .try_encode_interpolated_ufo_at("B", &location(0.5, 0.5))
             .unwrap(),
         middle
     );
@@ -7322,7 +7342,7 @@ fn interpolation_is_glyph_local_and_independent_of_selected_source() {
     assert!(project.glyph_names().any(|name| name == "onlySketch"));
     assert!(
         project
-            .try_interpolated_at("onlySketch", &location(0.5, 0.0))
+            .try_encode_interpolated_ufo_at("onlySketch", &location(0.5, 0.0))
             .is_err()
     );
 }
@@ -7331,7 +7351,9 @@ fn interpolation_is_glyph_local_and_independent_of_selected_source() {
 fn interpolation_structure_ignores_legacy_designspace_projections() {
     let (_scratch, mut project) = fixture();
     let target = location(0.5, 0.5);
-    let expected_glyph = project.try_interpolated_at("B", &target).unwrap();
+    let expected_glyph = project
+        .try_encode_interpolated_ufo_at("B", &target)
+        .unwrap();
     let expected_kerning = project.interpolated_kerning_at("A", "B", &target).unwrap();
     let expected_sources = project
         .glyph_sources("B")
@@ -7346,7 +7368,9 @@ fn interpolation_structure_ignores_legacy_designspace_projections() {
     project.instances.clear();
 
     assert_eq!(
-        project.try_interpolated_at("B", &target).unwrap(),
+        project
+            .try_encode_interpolated_ufo_at("B", &target)
+            .unwrap(),
         expected_glyph
     );
     assert_eq!(
@@ -7369,7 +7393,7 @@ fn interpolation_structure_ignores_legacy_designspace_projections() {
 fn interpolation_preserves_precision_and_varies_anchors_and_components() {
     let (_scratch, project) = fixture();
     let glyph = project
-        .try_interpolated_at("C", &location(0.5, 0.0))
+        .try_encode_interpolated_ufo_at("C", &location(0.5, 0.0))
         .unwrap();
     assert_eq!(glyph.width, 650.123_456_789);
     assert_eq!(glyph.height, 1050.0);
@@ -7401,7 +7425,7 @@ fn sparse_glyphs_and_component_cycles_have_explicit_behavior() {
     );
     assert_eq!(
         project
-            .try_interpolated_at("B", &location(1.0, 0.0))
+            .try_encode_interpolated_ufo_at("B", &location(1.0, 0.0))
             .unwrap()
             .width,
         600.123_456_789
@@ -7430,7 +7454,7 @@ fn sparse_glyphs_and_component_cycles_have_explicit_behavior() {
     );
     assert!(
         project
-            .try_interpolated_at("A", &location(f64::NAN, 0.0))
+            .try_encode_interpolated_ufo_at("A", &location(f64::NAN, 0.0))
             .unwrap_err()
             .contains("finite")
     );
@@ -7622,7 +7646,7 @@ fn equal_point_counts_do_not_hide_incompatible_types_or_components() {
     }));
     assert!(
         project
-            .try_interpolated_at("B", &location(0.5, 0.0))
+            .try_encode_interpolated_ufo_at("B", &location(0.5, 0.0))
             .unwrap_err()
             .contains("incompatible")
     );
@@ -7638,7 +7662,7 @@ fn equal_point_counts_do_not_hide_incompatible_types_or_components() {
     }));
     assert!(
         project
-            .try_interpolated_at("C", &location(0.5, 0.0))
+            .try_encode_interpolated_ufo_at("C", &location(0.5, 0.0))
             .is_err()
     );
 }

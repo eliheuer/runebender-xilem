@@ -323,28 +323,9 @@ impl Project {
         self.commit_glyph_transaction(transaction)
     }
 
-    fn record_glyph_changes(
-        &mut self,
-        history: &HistoryUpdate,
-        affected_layers: &[GlyphLayerAddress],
-    ) {
-        let affected = affected_layers
-            .iter()
-            .map(|address| address.glyph.as_str())
-            .collect::<std::collections::BTreeSet<_>>();
+    fn record_glyph_changes(&mut self, _: &HistoryUpdate, _: &[GlyphLayerAddress]) {
         for source in &mut self.sources {
             source.dirty = true;
-            source.kerning_dirty = true;
-            source
-                .modified_glyphs
-                .extend(affected.iter().map(|name| (*name).to_owned()));
-            if let HistoryUpdate::Rename { old, new } = history {
-                source.modified_glyphs.remove(old);
-                source.modified_glyphs.insert(new.clone());
-            }
-            if let HistoryUpdate::Remove(name) = history {
-                source.modified_glyphs.remove(name);
-            }
         }
         self.compute_compat();
     }

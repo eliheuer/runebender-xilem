@@ -14,7 +14,7 @@ use super::var_model::{Location, VariationModel};
 
 /// One interpolated canonical layer, retaining the default layer's object identities.
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct InterpolatedLayer {
+pub(crate) struct InterpolatedLayer {
     pub(super) glyph_name: String,
     pub(super) width: f64,
     pub(super) height: f64,
@@ -303,88 +303,6 @@ pub(super) fn interpolate_layers(
     })
 }
 
-pub(super) fn project_interpolated(
-    output: &InterpolatedLayer,
-    base: LayerView<'_>,
-) -> Result<norad::Glyph, String> {
-    let mut glyph = base.project();
-    if output.glyph_name != glyph.name().as_str()
-        || output
-            .codepoints
-            .iter()
-            .copied()
-            .collect::<norad::Codepoints>()
-            != glyph.codepoints
-        || output.note != glyph.note
-    {
-        return Err("canonical interpolation changed default-layer metadata".into());
-    }
-    glyph.width = output.width;
-    glyph.height = output.height;
-    for ((contour, output), source) in glyph
-        .contours
-        .iter_mut()
-        .zip(output.contours())
-        .zip(base.contours())
-    {
-        if output.id != source.id()
-            || output.closed != source.is_closed()
-            || output.hyper != source.is_hyper()
-        {
-            return Err("canonical interpolation changed default contour structure".into());
-        }
-        for ((point, output), source) in contour
-            .points
-            .iter_mut()
-            .zip(&output.points)
-            .zip(source.points())
-        {
-            if output.id != source.id()
-                || output.point_type != source.point_type()
-                || output.smooth != source.is_smooth()
-                || output.name.as_deref() != source.name()
-            {
-                return Err("canonical interpolation changed default point structure".into());
-            }
-            point.x = output.position.x;
-            point.y = output.position.y;
-        }
-    }
-    for ((anchor, output), source) in glyph
-        .anchors
-        .iter_mut()
-        .zip(&output.anchors)
-        .zip(base.anchors())
-    {
-        if output.id != source.id() || output.name != source.name() {
-            return Err("canonical interpolation changed default anchor structure".into());
-        }
-        anchor.x = output.position.x;
-        anchor.y = output.position.y;
-    }
-    for ((component, output), source) in glyph
-        .components
-        .iter_mut()
-        .zip(output.components())
-        .zip(base.components())
-    {
-        if output.id != source.id() || output.reference != source.reference() {
-            return Err("canonical interpolation changed default component structure".into());
-        }
-        let [x_scale, xy_scale, yx_scale, y_scale, x_offset, y_offset] =
-            output.transform.as_coeffs();
-        component.transform = norad::AffineTransform {
-            x_scale,
-            xy_scale,
-            yx_scale,
-            y_scale,
-            x_offset,
-            y_offset,
-        };
-    }
-    Ok(glyph)
-}
-
 fn same_location(a: &Location, b: &Location) -> bool {
     a.keys()
         .chain(b.keys())
@@ -539,7 +457,7 @@ mod tests {
         assert_eq!(result.anchors[0].id, base.anchors().next().unwrap().id());
 
         result.point_at_mut(0, 0).unwrap().position = (33.25, 44.75).into();
-        let projected = project_interpolated(&result, base).unwrap();
+        let projected = crate::document::ufo_codec::encode_interpolated(&result, base).unwrap();
         assert_eq!(
             (
                 projected.contours[0].points[0].x,
@@ -604,7 +522,7 @@ mod tests {
             &location(0.5),
         )
         .unwrap();
-        let projected = project_interpolated(&result, base).unwrap();
+        let projected = crate::document::ufo_codec::encode_interpolated(&result, base).unwrap();
 
         assert_eq!(
             result.contours_to_bezpath(),

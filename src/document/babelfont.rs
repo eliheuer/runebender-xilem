@@ -310,8 +310,8 @@ impl<'a> LayerView<'a> {
         Self { layer, preserved }
     }
 
-    pub(crate) fn project(self) -> norad::Glyph {
-        project_layer(self.layer, self.preserved)
+    pub(super) fn codec_parts(self) -> (&'a Layer, &'a LayerPreservation) {
+        (self.layer, self.preserved)
     }
 
     /// The exact horizontal advance from the document extension.

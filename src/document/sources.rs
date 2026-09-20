@@ -207,10 +207,7 @@ impl Project {
                 );
                 let mut rebuilt = SourceState::new(path, true);
                 if let Some(mut old) = old {
-                    rebuilt.modified_glyphs = std::mem::take(&mut old.modified_glyphs);
-                    rebuilt.glif_paths = std::mem::take(&mut old.glif_paths);
                     rebuilt.preserved_files = std::mem::take(&mut old.preserved_files);
-                    rebuilt.kerning_dirty = old.kerning_dirty;
                 }
                 Ok(rebuilt)
             })
@@ -776,9 +773,6 @@ impl Project {
             .source_index(address.layer.source)
             .ok_or("background source disappeared")?;
         self.sources[index].dirty = true;
-        self.sources[index]
-            .modified_glyphs
-            .insert(address.glyph.clone());
         self.record_canonical_source_change(before);
         Ok(true)
     }
@@ -808,7 +802,6 @@ impl Project {
             "validated source layer must remain copyable"
         );
         self.sources[index].dirty = true;
-        self.sources[index].modified_glyphs.insert(glyph.to_owned());
         self.record_source_change(before);
         Ok(target_id)
     }
@@ -832,7 +825,6 @@ impl Project {
             return Ok(false);
         }
         self.sources[index].dirty = true;
-        self.sources[index].modified_glyphs.insert(glyph.to_owned());
         self.record_source_change(before);
         Ok(true)
     }
@@ -852,7 +844,6 @@ impl Project {
             "validated canonical layer must remain removable"
         );
         self.sources[index].dirty = true;
-        self.sources[index].modified_glyphs.insert(glyph.to_owned());
         self.record_source_change(before);
         Ok(())
     }

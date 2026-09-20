@@ -18,7 +18,7 @@ use crate::document::variable::{LayerId, SourceId};
 ///
 /// The UFO value is a transient compatibility codec result, never editable document state.
 pub fn canonical_glyph_revision(layer: LayerView<'_>) -> Result<String, String> {
-    glyph_revision(&layer.project())
+    glyph_revision(&crate::formats::ufo::glyph_from_layer(layer))
 }
 
 /// Opaque SHA-256 revision of a glyph's canonical GLIF, including its metadata.
