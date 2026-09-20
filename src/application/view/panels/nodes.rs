@@ -559,14 +559,22 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             NodesEvent::Selected(id) => app.nodes.selected = id,
             NodesEvent::EditCode { node, code } => {
                 if live {
-                    edit_live_code(app, node, code);
+                    if let Some(guard) = live_guard.clone() {
+                        edit_live_code(app, guard, node, code);
+                    } else {
+                        app.note = "The live comparison snapshot is unavailable".into();
+                    }
                 } else {
                     app.nodes_set_value(node, "code", serde_json::Value::String(code));
                 }
             }
             NodesEvent::MoveNode { node, pos } => {
                 if live {
-                    move_live_node(app, node, pos);
+                    if let Some(guard) = live_guard.clone() {
+                        move_live_node(app, guard, node, pos);
+                    } else {
+                        app.note = "The live comparison snapshot is unavailable".into();
+                    }
                 } else {
                     let Some(state) = app.nodes.graph.as_ref() else {
                         return;

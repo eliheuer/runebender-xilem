@@ -53,30 +53,41 @@ pub(crate) fn edit_live_scope(app: &mut Workspace, scope: String) {
 }
 
 /// Commit one focused TextArea value through the canonical graph guard.
-pub(crate) fn edit_live_code(app: &mut Workspace, node: u32, code: String) {
+pub(crate) fn edit_live_code(
+    app: &mut Workspace,
+    guard: runebender::document::nodes_session::GraphGuard,
+    node: u32,
+    code: String,
+) {
     #[cfg(unix)]
-    live_interactive_edit(
+    live_interactive_mutation(
         app,
-        GraphEdit::SetValue {
+        guard,
+        vec![GraphEdit::SetValue {
             node,
             field: "code".into(),
             value: serde_json::Value::String(code),
-        },
+        }],
     );
     #[cfg(not(unix))]
     {
-        let _ = (node, code);
+        let _ = (guard, node, code);
         app.note = "Live graph editing is available in the native editor".into();
     }
 }
 
 /// Commit only the final header-drag position through the canonical graph guard.
-pub(crate) fn move_live_node(app: &mut Workspace, node: u32, pos: [f32; 2]) {
+pub(crate) fn move_live_node(
+    app: &mut Workspace,
+    guard: runebender::document::nodes_session::GraphGuard,
+    node: u32,
+    pos: [f32; 2],
+) {
     #[cfg(unix)]
-    live_interactive_edit(app, GraphEdit::MoveNode { node, pos });
+    live_interactive_mutation(app, guard, vec![GraphEdit::MoveNode { node, pos }]);
     #[cfg(not(unix))]
     {
-        let _ = (node, pos);
+        let _ = (guard, node, pos);
         app.note = "Live graph editing is available in the native editor".into();
     }
 }
@@ -111,23 +122,6 @@ pub(crate) fn change_live_graph(
     _after: runebender::document::nodes::NodeGraph,
 ) {
     app.note = "Live graph editing is available in the native editor".into();
-}
-
-#[cfg(unix)]
-fn live_interactive_edit(app: &mut Workspace, edit: GraphEdit) {
-    let Some(session) = app.live_graph_session() else {
-        app.note = "Open the live comparison before editing its graph".into();
-        return;
-    };
-    let snapshot = session.snapshot();
-    live_interactive_mutation(
-        app,
-        GraphGuard {
-            identity: snapshot.identity,
-            revision: snapshot.revision,
-        },
-        vec![edit],
-    );
 }
 
 #[cfg(unix)]
@@ -454,9 +448,10 @@ impl Workspace {
     /// Cache each retained exact PNG once, keyed by its immutable proof artifact identity.
     pub(crate) fn sync_live_nodes_presentation(&mut self) {
         let Some(state) = self.live_nodes.as_ref() else {
+            self.nodes.proof_images.clear();
             return;
         };
-        let images: Vec<_> = state
+        let completed: Vec<_> = state
             .handles
             .iter()
             .filter_map(|handle| match state.proofs.inspect(handle.get()) {
@@ -466,6 +461,16 @@ impl Workspace {
                 }) => Some((artifact_ids, proofs)),
                 _ => None,
             })
+            .collect();
+        let retained: std::collections::BTreeSet<_> = completed
+            .iter()
+            .flat_map(|(artifact_ids, _)| artifact_ids.iter().cloned())
+            .collect();
+        self.nodes
+            .proof_images
+            .retain(|artifact, _| retained.contains(artifact));
+        let images: Vec<_> = completed
+            .into_iter()
             .flat_map(|(artifact_ids, proofs)| artifact_ids.into_iter().zip(proofs))
             .filter(|(artifact, _)| !self.nodes.proof_images.contains_key(artifact))
             .filter_map(|(artifact, proof)| {

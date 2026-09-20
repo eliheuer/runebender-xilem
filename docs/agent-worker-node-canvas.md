@@ -46,5 +46,7 @@ The comparison bar shows the stable `live.font` source and an editable, non-empt
 Native Run, Cancel, Clear results, and Apply commands live outside the view in `editor/tools/nodes_controls.rs`.
 Clear releases only terminal handles started by the native surface, leaving agent-owned work alone.
 Completed proof PNG bytes are copied into an `Arc` once per artifact identity and reused across view rebuilds.
+The live pump also removes cached bytes when native or external agent release drops the canonical handle.
 Reports and graph diagnostics use bounded wrapping portals instead of extending the toolbar on one line.
 Topology edits are converted into guarded graph patches against the exact snapshot displayed by the canvas, so an intervening agent edit rejects rather than being overwritten.
+Inline code commits and completed header drags use that same displayed-snapshot guard.
