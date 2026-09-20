@@ -153,3 +153,28 @@ The host process tests pass, including byte-for-byte source preservation after e
 The native suite now passes 847 tests with four ignored tests, and strict all-target Clippy passes.
 Desktop and procedural examples operate on disposable font copies; original sources remain untouched.
 The central task remains the only scheduled continuation, while the desktop task is the user-facing trial surface.
+
+
+## Compiled proof integration and second worker wave
+
+The user requested another wave of bounded scheduled workers on 2026-09-20.
+Sol task `01a0bf34-0cef-7001-905e-1e3848e05cfb` owns independent edit cancellation and concurrent socket/MCP routing, with ten-minute continuation.
+Terra task `01a0bf34-1694-7050-b5d3-c191f6b1d0c3` completed changed-object receipts, reviewed and integrated as `937345b`.
+Luna task `01a0bf34-26bb-7af0-8deb-c4571d507bfb` completed the receipt-backed Python harness; review fixes restored negative cases, post-undo verification and accurate binary provenance, integrated as `6a5b355`.
+The two completed worker continuations have been removed; their reports retain the detailed scope and evidence.
+The central ten-minute continuation owns proof integration, client image trials, final acceptance and validated main promotion.
+
+The [compiled proof contract](agent-compiled-proofs.md) now defines strict start/status/cancel/release requests and document-local retry identities.
+One process-wide queue survives document replacement while each Workspace owns at most eight proof handles.
+Completed PNGs pass directly through MCP without scene rendering, with separate captured and current document revisions.
+Handles retain one proof artifact, not a reusable compiled-font object.
+Actual desktop and OMP image interpretation, cancellation integration and the remaining acceptance matrix stay pending until separately tested.
+
+
+The integrated compiled-proof checkpoint passes 852 native tests with four explicitly ignored tests and 12 Python checks.
+The real socket/stdio MCP proof test verifies the original 412-unit glyph advance in a captured proof after the live glyph changes to 430, direct PNG byte equality across socket/MCP, and a new current proof with the changed advance and a different font hash.
+The image trial exposed partial socket response formatting on larger payloads; accepted streams now use blocking I/O and responses are serialized before writing, with no second error frame appended after a partial send.
+Sol is incorporating the complete bounded-response helper and a multi-megabyte regression into the concurrent cancellation transport.
+Native evidence lives in `/private/tmp/runebender-agent-compiled-live-20260920`.
+The initial targeted run lacked `RUNEBENDER_TEST_FONTS`; the final suite used disposable sources and passed.
+These are automated protocol checks, not an actual model image-interpretation trial.

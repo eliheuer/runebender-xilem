@@ -358,6 +358,8 @@ impl Workspace {
                 .ok(),
             #[cfg(unix)]
             agent_sessions: std::collections::BTreeMap::new(),
+            #[cfg(unix)]
+            proof_jobs: super::live_proofs::LiveProofSession::default(),
         };
         app.park();
         app.init_nodes();

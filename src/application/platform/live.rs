@@ -66,6 +66,9 @@ impl Workspace {
 
     fn handle_live(&mut self, call: &runebender::document::agent::ToolCall) -> serde_json::Value {
         use serde_json::json;
+        if let Some(result) = self.call_agent_proof(call) {
+            return result;
+        }
         if let Some(result) = self.call_agent_edit(call) {
             return result;
         }
@@ -183,6 +186,10 @@ impl Workspace {
             "capabilities":{
                 "atomic_edits":true,
                 "operation_receipts":true,
+                "async_compiled_proofs":true,
+                "proof_artifact_handles":true,
+                "reusable_compiled_font_handles":false,
+                "max_retained_proofs":super::live_proofs::MAX_SESSION_PROOFS,
                 "edit_cancellation":false,
                 "max_agent_actors":super::live_edits::MAX_ACTORS,
                 "receipts_per_actor":super::live_edits::RECEIPTS_PER_ACTOR,

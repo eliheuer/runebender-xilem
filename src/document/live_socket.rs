@@ -61,7 +61,13 @@ impl Pending {
             // Strict application edit requests retain their required epoch in the typed payload.
             if !matches!(
                 self.call.name.as_str(),
-                "agent_apply" | "agent_receipt" | "agent_history"
+                "agent_apply"
+                    | "agent_receipt"
+                    | "agent_history"
+                    | "proof_start"
+                    | "proof_status"
+                    | "proof_cancel"
+                    | "proof_release"
             ) && let Some(args) = self.call.arguments.as_object_mut()
             {
                 args.remove("expected_document_epoch");
@@ -127,6 +133,7 @@ impl Server {
             while !stopping.load(Ordering::Relaxed) {
                 match listener.accept() {
                     Ok((mut stream, _)) => {
+                        let _ = stream.set_nonblocking(false);
                         let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
                         let _ = stream.set_write_timeout(Some(Duration::from_secs(2)));
                         let result = serve(&mut stream, &sender, &worker_epoch);
@@ -214,7 +221,17 @@ fn serve(
             "editor did not respond; inspect proposals before retrying",
         )
     })?;
-    writeln!(stream, "{result}")
+    // Serialize before writing: streaming Value formatting can issue tiny writes.
+    let frame = serde_json::to_string(&result)?;
+    if frame.len() as u64 >= LIMIT {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "response too large",
+        ));
+    }
+    // After a partial response, never append a second JSON error frame.
+    let _ = writeln!(stream, "{frame}");
+    Ok(())
 }
 
 /// Sends one bounded call to an explicit editor endpoint. Never falls back to disk.

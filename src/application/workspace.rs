@@ -121,6 +121,10 @@ pub(crate) struct Workspace {
     pub(crate) agent_sessions:
         std::collections::BTreeMap<String, runebender::document::agent_session::AgentSession>,
 
+    /// Bounded proof handles for this endpoint lifetime.
+    #[cfg(unix)]
+    pub(crate) proof_jobs: crate::application::platform::live_proofs::LiveProofSession,
+
     pub(crate) font: FontModel,
     pub(crate) palette: Arc<Palette>,
     pub(crate) cells: Arc<Vec<Cell>>,

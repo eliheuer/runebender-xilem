@@ -10,6 +10,13 @@ No release has been published yet.
 
 ### Added
 
+- Added asynchronous native `proof_start`, `proof_status`, `proof_cancel` and `proof_release` tools.
+  Completed proofs return compiled PNG images through MCP with immutable font hashes, captured revisions and explicit stale-result labels.
+  Proof jobs share a bounded process-wide worker and release their document-scoped artifacts explicitly.
+
+- Atomic edit receipts now include stable IDs of the actual changed widths, points and anchors, excluding no-ops and preserving those IDs across retries and undo.
+  The procedural client harness now checks receipt-backed edits, authorization, stale writes, retries and both targeted and ordinary undo.
+
 - Added `agent serve --font PATH --glyph NAME` for bounded headless native editor sessions on real fonts.
   Scripts and MCP clients share live reads, atomic edits, receipts and ordinary undo/redo; this host never saves source files.
   A procedural Python spacing example prepares guarded requests before explicitly applying, reconciling or undoing them.
@@ -21,17 +28,17 @@ No release has been published yet.
 - Live context revisions now include the document epoch, preventing identical reopened state from reusing an earlier context token.
 
 - Added bounded in-memory operation receipts and a native background queue for immutable compiled proofs.
-  The receipt layer is connected to live edits; the proof queue still needs its application adapter.
+  The receipt layer and proof queue are connected to native live-session adapters.
 
 - Added bounded canonical edit transactions with grouped history, immutable compiled-proof primitives, and a disposable live-client conformance harness.
-  The transaction engine now backs the receipt-based live tools; compiled proof delivery remains pending.
+  The transaction engine backs receipt-based live tools, and completed compiled proofs can be delivered as MCP images.
   CLI-generated live prompts now share MCP's source, authorization and session guidance.
 
 - Added a disposable `agent fixture` process for testing live clients against real application state and ordinary editor undo/redo without opening a window.
 
 - Added native live `editor_context`, session-scoped object IDs in glyph reads, and document epoch guards for external agents.
   Live tools now advertise stable source IDs, and MCP input and protocol negotiation are bounded.
-  This is the first [live context checkpoint](docs/agent-live-context.md); compiled agent proofs remain pending.
+  See the [live context contract](docs/agent-live-context.md) and [compiled proof contract](docs/agent-compiled-proofs.md).
 
 - Documented the proposed [live agent-editing architecture](docs/agent-interface-research.md), client connection matrix, source audit, and gated acceptance plan.
   This is research only; it adds no runtime capability.

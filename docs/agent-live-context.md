@@ -112,3 +112,11 @@ The process integration test `application_fixture_refreshes_and_undoes_an_agent_
 It reads width 412 through the socket, installs width 430, verifies canonical/cache/session agreement, then checks ordinary undo to 412 and redo to 430.
 It also verifies that the synthetic source path does not exist and that shutdown removes the socket.
 Evidence and a pinned executable are under `/private/tmp/runebender-agent-fixture-20260920`; this test does not establish actual desktop or OMP model-client use.
+
+
+## Compiled proof artifacts
+
+The native adapter also exposes strict epoch-bound `proof_start`, `proof_status`, `proof_cancel` and `proof_release` tools.
+See the [compiled proof contract](agent-compiled-proofs.md) for bounded retention, recipe inputs, current/stale lineage, queued-only cancellation and direct MCP PNG delivery.
+These capture the full canonical family and do not use the active-source fallback or experiment branch fields of legacy proofs.
+A successful protocol image response remains separate from an actual client model image-reception trial.

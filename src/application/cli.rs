@@ -1887,7 +1887,7 @@ fn mcp_serve(font: Option<&Path>, session: Option<&Path>, live: bool, tool: Opti
                     "name": t.name,
                     "description": t.description,
                     "inputSchema": t.parameters,
-                    "annotations": {"readOnlyHint": matches!(t.name.as_str(), "agent_receipt" | "editor_context" | "project_info" | "font_info" | "read_glyph" | "glyph_inventory" | "design_context" | "experiment_list" | "read_kerning" | "specimen" | "editor_sessions" | "editor_connect" | "proposal_list") || (live_mode && t.name == "proof"), "openWorldHint": !live_mode},
+                    "annotations": {"readOnlyHint": matches!(t.name.as_str(), "proof_status" | "agent_receipt" | "editor_context" | "project_info" | "font_info" | "read_glyph" | "glyph_inventory" | "design_context" | "experiment_list" | "read_kerning" | "specimen" | "editor_sessions" | "editor_connect" | "proposal_list") || (live_mode && t.name == "proof"), "openWorldHint": !live_mode},
                 })).collect::<Vec<_>>()
             })),
             "tools/call" => {
@@ -2494,7 +2494,12 @@ fn emboldened_layer_points(
 fn proof_content(mut value: serde_json::Value) -> Vec<serde_json::Value> {
     use base64::Engine as _;
     let mut content = Vec::new();
-    if let Some(scene) = value.get("scene") {
+    if let Some(png) = value
+        .as_object_mut()
+        .and_then(|object| object.remove("png_base64"))
+    {
+        content.push(serde_json::json!({"type":"image", "mimeType":"image/png", "data":png}));
+    } else if let Some(scene) = value.get("scene") {
         let rendered = runebender::formats::designbot::render(scene, false);
         match rendered {
             Ok(png) => {

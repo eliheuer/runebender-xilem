@@ -159,6 +159,17 @@ pub struct ProofJobCompletion {
     pub outcome: ProofJobOutcome,
 }
 
+/// One coherent observation of a retained job, without consuming its completion.
+#[derive(Clone, Debug)]
+pub struct ProofJobInspection {
+    /// Original submitted lineage.
+    pub lineage: ProofJobLineage,
+    /// State observed under the same lock as the outcome.
+    pub status: ProofJobStatus,
+    /// Terminal outcome when available, sharing rather than copying image bytes.
+    pub outcome: Option<ProofJobOutcome>,
+}
+
 enum JobPhase {
     Queued(Box<ProofJobRequest>),
     Running,
@@ -367,6 +378,23 @@ impl ProofJobQueue {
             .jobs
             .get(&handle)
             .map(|record| record.phase.status())
+    }
+
+    /// Inspect one job atomically without consuming another session's completion.
+    ///
+    /// Repeated calls retain the same terminal result until [`Self::discard`].
+    pub fn inspect(&self, handle: ProofJobHandle) -> Option<ProofJobInspection> {
+        self.shared
+            .state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .jobs
+            .get(&handle)
+            .map(|record| ProofJobInspection {
+                lineage: record.lineage.clone(),
+                status: record.phase.status(),
+                outcome: record.phase.completion(),
+            })
     }
 
     /// Cancel only queued work.
@@ -611,6 +639,36 @@ mod tests {
             );
             std::thread::sleep(Duration::from_millis(5));
         }
+    }
+
+    #[test]
+    fn inspection_does_not_consume_completions_and_is_coherent() {
+        let queue = ProofJobQueue::with_executor(2, 3, |request| Ok(proof(&request))).unwrap();
+        let first = queue.submit(request(1)).unwrap();
+        let second = queue.submit(request(2)).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        for handle in [first, second] {
+            loop {
+                let view = queue.inspect(handle).unwrap();
+                if view.status == ProofJobStatus::Completed {
+                    assert!(matches!(view.outcome, Some(ProofJobOutcome::Completed(_))));
+                    break;
+                }
+                assert!(view.outcome.is_none());
+                assert!(Instant::now() < deadline);
+                std::thread::yield_now();
+            }
+        }
+        assert_eq!(
+            queue.inspect(first).unwrap().lineage.document_epoch,
+            "epoch-1"
+        );
+        assert_eq!(queue.poll_completions().len(), 2);
+        assert!(queue.poll_completions().is_empty());
+        assert!(queue.inspect(first).unwrap().outcome.is_some());
+        assert!(queue.discard(first));
+        assert!(queue.inspect(first).is_none());
+        assert!(queue.inspect(second).is_some());
     }
 
     #[test]

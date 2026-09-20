@@ -306,3 +306,153 @@ fn file_backed_host_edits_and_undoes_without_rewriting_source() {
     );
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn compiled_proof_mcp_delivers_original_png_after_live_edit() {
+    use base64::Engine as _;
+    use std::time::{Duration, Instant};
+
+    let mut fixture = Fixture::start();
+    let ready = fixture.read();
+    assert_eq!(ready["ok"], true, "{ready}");
+    let mut mcp = Fixture::spawn(Command::new(env!("CARGO_BIN_EXE_runebender")).args([
+        "mcp",
+        "--session",
+        ready["session"].as_str().unwrap(),
+    ]));
+    mcp.rpc("initialize", json!({"protocolVersion":"2025-11-25"}));
+    let listed = mcp.rpc("tools/list", json!({}));
+    assert!(
+        listed["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|tool| tool["name"] == "proof_start")
+    );
+    let epoch = &ready["document_epoch"];
+    let read = mcp.tool(
+        "read_glyph",
+        json!({"source":0,"glyph":"A","expected_document_epoch":epoch}),
+    );
+    let revision = read["document_revision"].clone();
+    let request = json!({"expected_document_epoch":epoch,"expected_document_revision":revision,
+        "operation_key":"before-spacing-proof","recipe":{"text":"A","normalized_location":[],
+        "right_to_left":false,"features":[],"script":null,"language":null}});
+    let started = mcp.tool("proof_start", request.clone());
+    assert_eq!(started["replayed"], false);
+    let applied = mcp.tool("agent_apply", json!({"expected_document_epoch":epoch,"actor":"proof-test",
+        "operation_key":"width-during-proof","authorization":"user-approved","source":0,
+        "history_name":"Edit after capture","edits":[{"target":{"glyph":"A","glyph_id":read["glyph_id"],
+        "layer":read["layer"],"expected_revision":read["revision"]},"operations":[{"op":"set_width","width":430.0}]}]}));
+    assert_eq!(applied["root_changed"], true);
+    let retry = mcp.tool("proof_start", request.clone());
+    assert_eq!(retry["replayed"], true);
+    assert_eq!(retry["proof_id"], started["proof_id"]);
+    assert_eq!(retry["captured_document_revision"], revision);
+    let args = json!({"expected_document_epoch":epoch,"proof_id":started["proof_id"],"include_image":true});
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let (metadata, png_text) = loop {
+        let response = mcp.rpc(
+            "tools/call",
+            json!({"name":"proof_status","arguments":args}),
+        );
+        assert_eq!(response["isError"], false, "{response}");
+        let metadata: Value =
+            serde_json::from_str(response["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(metadata["captured_document_revision"], revision);
+        assert_eq!(metadata["document_revision"], applied["document_revision"]);
+        assert_eq!(metadata["current"], false);
+        assert_eq!(metadata["stale"], true);
+        assert_ne!(metadata["status"], "failed", "{metadata}");
+        if metadata["status"] == "completed" {
+            assert!(
+                metadata.get("png_base64").is_none(),
+                "image must not be repeated inside text"
+            );
+            assert_eq!(response["content"][1]["type"], "image");
+            assert_eq!(response["content"][1]["mimeType"], "image/png");
+            break (
+                metadata,
+                response["content"][1]["data"].as_str().unwrap().to_owned(),
+            );
+        }
+        assert!(
+            Instant::now() < deadline,
+            "proof did not finish: {metadata}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let png = base64::engine::general_purpose::STANDARD
+        .decode(&png_text)
+        .unwrap();
+    assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
+    let hash = metadata["font_sha256"]
+        .as_str()
+        .unwrap()
+        .strip_prefix("sha256:")
+        .unwrap();
+    assert_eq!(hash.len(), 64);
+    assert!(hash.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    assert_eq!(metadata["recipe"], request["recipe"]);
+    assert_eq!(metadata["glyphs"][0]["glyph_name"], "A");
+    assert_eq!(metadata["glyphs"][0]["x_advance"], 412.0);
+    let wire = live_socket::call(
+        std::path::Path::new(ready["session"].as_str().unwrap()),
+        &ToolCall {
+            name: "proof_status".into(),
+            arguments: args,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        wire["png_base64"], png_text,
+        "MCP forwards the worker PNG without rendering again"
+    );
+    assert_eq!(wire["font_sha256"], metadata["font_sha256"]);
+    let mut changed_recipe = request.clone();
+    changed_recipe["recipe"]["text"] = json!("AA");
+    let conflict = mcp.rpc(
+        "tools/call",
+        json!({"name":"proof_start","arguments":changed_recipe}),
+    );
+    assert_eq!(conflict["isError"], true);
+    let mut stale_request = request.clone();
+    stale_request["operation_key"] = json!("stale-new-capture");
+    let stale = mcp.rpc(
+        "tools/call",
+        json!({"name":"proof_start","arguments":stale_request}),
+    );
+    let error: Value = serde_json::from_str(stale["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(error["error_code"], "stale_revision");
+    let mut current_request = request.clone();
+    current_request["operation_key"] = json!("after-spacing-proof");
+    current_request["expected_document_revision"] = applied["document_revision"].clone();
+    let current_start = mcp.tool("proof_start", current_request);
+    let current_args =
+        json!({"expected_document_epoch":epoch,"proof_id":current_start["proof_id"]});
+    loop {
+        let current = mcp.tool("proof_status", current_args.clone());
+        assert_ne!(current["status"], "failed", "{current}");
+        if current["status"] == "completed" {
+            assert_eq!(current["current"], true);
+            assert_eq!(current["stale"], false);
+            assert_eq!(current["glyphs"][0]["x_advance"], 430.0);
+            assert_ne!(current["font_sha256"], metadata["font_sha256"]);
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(mcp.tool("proof_release", current_args)["released"], true);
+    let handle = json!({"expected_document_epoch":epoch,"proof_id":started["proof_id"]});
+    assert_eq!(mcp.tool("proof_release", handle.clone())["released"], true);
+    let unknown = mcp.rpc(
+        "tools/call",
+        json!({"name":"proof_status","arguments":handle}),
+    );
+    assert_eq!(unknown["isError"], true);
+    let state = fixture.control("state");
+    assert_eq!(state["canonical_advance"], 430.0);
+    assert_eq!(state["source_exists"], false);
+    assert_eq!(fixture.control("undo")["canonical_advance"], 412.0);
+}

@@ -107,3 +107,11 @@ See [the format contract and upstream evidence](variable-project-decision.md) fo
 - `docs/visual-audit/2026-09-14/` retains matched Gray and Light screenshots for
   recent interface changes. These images are visual evidence, not platform or
   input certification.
+
+## Native agent proof artifacts
+
+Compiled live proofs retain one captured family revision and one shaping recipe, with explicit stale-result metadata.
+The handles do not retain a reusable compiled-font object for arbitrary later shaping or export.
+Only queued proof work can be cancelled; a running compiler finishes on its original immutable inputs.
+A successful MCP image transport test does not prove that a particular desktop or CLI model received or interpreted the image.
+Native pointer, IME and foreground-window interaction remain separate from the headless Workspace trials.

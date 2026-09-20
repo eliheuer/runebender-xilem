@@ -23,8 +23,9 @@ pub fn system_prompt(tools: &[agent::Tool]) -> String {
         "{INSTRUCTIONS}\n\nUse only tools listed below. Read geometry before stating measurements. \
          A proposal is separate from installation; report an edit as installed only after a \
          successful installation result. Use explicit targets and the revision you read. \
-         These tools return source SVG proofs; compiled proofs and image delivery are not \
-         established by a text response.\n\n\
+         Use proof_start and proof_status for compiled PNG artifacts bound to captured revisions; \
+         check current/stale and font_sha256 before comparing results. Legacy proof returns source \
+         geometry. A text response alone does not establish that a model received an image.\n\n\
          To call a tool, emit one <tool_call>JSON object with name and arguments</tool_call> \
          block, then wait for its result.\n\n"
     );
@@ -174,6 +175,7 @@ pub fn tools() -> Vec<agent::Tool> {
         }
     }
     result.extend(super::agent_edit::tools());
+    result.extend(super::agent_proof::tools());
     result
 }
 

@@ -156,7 +156,9 @@ The application adapter owns document-epoch binding, asynchronous job dispatch, 
 `document::agent_edit` validates strict live edit payloads and resolves guarded glyph, layer, point and anchor identities into those engine transactions.
 `application/platform/live_edits.rs` binds actor ledgers to the exact native endpoint epoch and routes apply, receipt lookup and targeted history through the Workspace.
 `application/editor/agent_history.rs` creates one application entry per changed group and shares guarded replay and cache refresh with ordinary editor history.
-The native proof-job queue still requires application and protocol integration before clients can request asynchronous compiled proofs.
+`document::agent_proof` defines strict proof requests and schemas.
+`application/platform/live_proofs.rs` binds bounded per-document handles to one process-wide proof worker across Workspace replacements.
+The CLI forwards its completed PNG directly as MCP image content, preserving captured revision and font hash separately from the current document envelope.
 Multi-source glyph metadata uses staged layer drafts and one batch publication; Unicode replacement validates the complete source set before mutation and advances the revision once.
 `CanonicalSourceMetadataSnapshot` captures feature text, groups and exact kerning for the complete stable source set; guarded whole-snapshot restore ignores display reorder, rejects stale or changed source sets and publishes all affected canonical values in one revision.
 Auxiliary-layer copy and removal mutate canonical Babelfont layers and exact extensions directly.

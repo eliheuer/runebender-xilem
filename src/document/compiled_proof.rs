@@ -156,6 +156,7 @@ pub fn compile(input: CompileProofInput) -> Result<CompiledProofSnapshot, String
 
 /// A bounded shaping and rendering recipe for one compiled proof.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CompiledProofRecipe {
     /// UTF-8 text to shape.
     pub text: String,
