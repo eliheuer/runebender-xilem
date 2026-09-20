@@ -837,11 +837,14 @@ mod tests {
     #[test]
     #[ignore = "copies and edits the adjacent 13 MB Virtua Grotesk sources"]
     fn disposable_virtua_edit_undo_save_reopen_preserves_unrelated_data() {
-        let source =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../virtua-grotesk/sources");
+        let source = std::env::var_os("RUNEBENDER_TEST_FONTS")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../virtua-grotesk/sources")
+            });
         assert!(
             source.is_dir(),
-            "clone Virtua Grotesk beside this repository"
+            "clone Virtua Grotesk beside this repository or set RUNEBENDER_TEST_FONTS"
         );
         let root = std::env::temp_dir().join(format!(
             "runebender-xilem-virtua-trial-{}-{}",

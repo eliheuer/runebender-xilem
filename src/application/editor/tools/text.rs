@@ -621,11 +621,15 @@ mod tests {
     #[test]
     #[ignore = "loads the adjacent full Virtua Grotesk designspace"]
     fn virtua_mixed_text_uses_real_arabic_forms_marks_and_bidi_layout() {
-        let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../virtua-grotesk/sources/VirtuaGrotesk.designspace");
+        let source = std::env::var_os("RUNEBENDER_TEST_FONTS")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../virtua-grotesk/sources")
+            })
+            .join("VirtuaGrotesk.designspace");
         assert!(
             source.is_file(),
-            "clone Virtua Grotesk beside this repository"
+            "clone Virtua Grotesk beside this repository or set RUNEBENDER_TEST_FONTS"
         );
         let mut font = FontModel::open(&source).expect("Virtua Grotesk opens");
         let sample = "R لا 123 بِ";
