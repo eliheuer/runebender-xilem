@@ -1558,39 +1558,11 @@ impl Project {
             .document_source(source)
             .ok_or_else(|| "source does not exist".to_owned())?
             .default_layer();
+        let mark_theme = crate::ui::theme::load_theme("gray");
         let mut entries = self
             .glyph_names()
-            .filter_map(|name| {
-                let view = self.document_layer(name, &layer)?;
-                Some((name, view))
-            })
-            .map(|(name, view)| {
-                let address = GlyphLayerAddress {
-                    glyph: name.to_owned(),
-                    layer: layer.clone(),
-                };
-                let outline = Arc::new(
-                    self.document_layer_path(&address)
-                        .map_err(|error| error.to_string())?,
-                );
-                let ink = if outline.is_empty() {
-                    Rect::ZERO
-                } else {
-                    outline.bounding_box()
-                };
-                Ok(CanonicalGlyphEntry {
-                    name: Arc::from(name),
-                    codepoint: view.codepoints().next(),
-                    advance: view.width(),
-                    outline,
-                    ink,
-                    mark: view
-                        .mark_label()
-                        .map_err(|error| error.to_string())?
-                        .map(Arc::from),
-                })
-            })
-            .collect::<Result<Vec<_>, String>>()?;
+            .filter_map(|name| self.build_document_glyph_entry(name, &layer, mark_theme.as_ref()))
+            .collect::<Vec<_>>();
         entries.sort_by(|left, right| match (left.codepoint, right.codepoint) {
             (Some(left_codepoint), Some(right_codepoint)) => left_codepoint
                 .cmp(&right_codepoint)
@@ -1600,6 +1572,66 @@ impl Project {
             (None, None) => left.name.cmp(&right.name),
         });
         Ok(entries)
+    }
+
+    /// Build one paint-ready default-layer glyph without consulting a Master cache.
+    pub fn document_source_glyph_entry(
+        &self,
+        source: SourceId,
+        name: &str,
+    ) -> Result<Option<CanonicalGlyphEntry>, String> {
+        let layer = self
+            .document_source(source)
+            .ok_or_else(|| "source does not exist".to_owned())?
+            .default_layer();
+        let mark_theme = crate::ui::theme::load_theme("gray");
+        Ok(self.build_document_glyph_entry(name, &layer, mark_theme.as_ref()))
+    }
+
+    fn build_document_glyph_entry(
+        &self,
+        name: &str,
+        layer: &LayerId,
+        mark_theme: Option<&crate::ui::theme::Theme>,
+    ) -> Option<CanonicalGlyphEntry> {
+        let view = self.document_layer(name, layer)?;
+        let address = GlyphLayerAddress {
+            glyph: name.to_owned(),
+            layer: layer.clone(),
+        };
+        let outline = Arc::new(self.document_layer_path(&address).unwrap_or_else(|_| {
+            crate::outline::glyph_paths::ordinary_layer_contours_to_bezpath(view)
+        }));
+        let ink = if outline.is_empty() {
+            Rect::ZERO
+        } else {
+            outline.bounding_box()
+        };
+        let mark = mark_theme.and_then(|theme| {
+            view.mark_label()
+                .ok()
+                .flatten()
+                .filter(|label| theme.mark(label).is_some())
+                .map(str::to_owned)
+                .or_else(|| {
+                    let color = view.mark_color().ok().flatten()?;
+                    crate::ui::theme::label_for_rgba(
+                        &format!(
+                            "{},{},{},{}",
+                            color.red, color.green, color.blue, color.alpha
+                        ),
+                        theme,
+                    )
+                })
+        });
+        Some(CanonicalGlyphEntry {
+            name: Arc::from(name),
+            codepoint: view.codepoints().next(),
+            advance: view.width(),
+            outline,
+            ink,
+            mark: mark.map(Arc::from),
+        })
     }
 
     /// Read one source's stable identity and metadata without its UFO projection.

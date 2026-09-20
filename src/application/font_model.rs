@@ -5,6 +5,7 @@
 //! per-glyph cache the grid paints from. The shell may read the transitional active-master
 //! projection, but production writes go through Project operations.
 
+use std::collections::HashMap;
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
 
@@ -12,7 +13,7 @@ use kurbo::{BezPath, Rect};
 use runebender::analysis::category::GlyphCategory;
 use runebender::document::canonical_metadata::{CanonicalFontMetadata, KerningSide};
 use runebender::document::model::font_info::CanonicalFontInfo;
-use runebender::document::project::{DocumentEditOutcome, Master, Project};
+use runebender::document::project::{CanonicalGlyphEntry, DocumentEditOutcome, Master, Project};
 use runebender::document::proposal;
 #[cfg(test)]
 use runebender::document::variable::{SourceEdit, SourceFontEdit};
@@ -35,20 +36,16 @@ pub(crate) struct GlyphEntry {
 }
 
 impl GlyphEntry {
-    fn from_core(entry: &runebender::document::project::GlyphEntry) -> Self {
+    fn from_core(entry: &CanonicalGlyphEntry) -> Self {
         Self {
-            name: entry.name.to_string(),
-            codepoint: entry.codepoint,
-            advance: entry.advance,
-            outline: entry.path.clone(),
-            ink: if entry.path.elements().is_empty() {
-                Rect::ZERO
-            } else {
-                entry.ink
-            },
-            mark: entry.mark.as_deref().map(str::to_string),
+            name: entry.name().to_owned(),
+            codepoint: entry.codepoint(),
+            advance: entry.advance(),
+            outline: entry.outline().clone(),
+            ink: entry.ink(),
+            mark: entry.mark().map(str::to_owned),
             category: entry
-                .codepoint
+                .codepoint()
                 .map(GlyphCategory::from_codepoint)
                 .unwrap_or(GlyphCategory::Other),
         }
@@ -58,9 +55,10 @@ impl GlyphEntry {
 pub(crate) struct FontModel {
     /// The engine project: the masters, the designspace, and the undo piles.
     pub project: Project,
-    /// The active master's glyphs, in engine order, so an index here
-    /// is an index into the master.
+    /// The active source's canonical glyph entries in display order.
     pub glyphs: Vec<GlyphEntry>,
+    /// Constant-time lookup into the display-ordered canonical entries.
+    name_map: HashMap<String, usize>,
     pub axes: Vec<Axis>,
 }
 
@@ -144,30 +142,51 @@ impl FontModel {
         let mut model = Self {
             project,
             glyphs: Vec::new(),
+            name_map: HashMap::new(),
             axes,
         };
         model.rebuild_cache();
         model
     }
 
-    /// Rebuild every shell entry from the active master's cache.
+    /// Rebuild every shell entry from the active canonical source.
     pub(crate) fn rebuild_cache(&mut self) {
+        let source = self
+            .project
+            .source_id(self.active())
+            .expect("the active source has a stable identity");
         self.glyphs = self
-            .master()
-            .glyphs
+            .project
+            .document_source_glyph_entries(source)
+            .expect("the active source remains canonical")
             .iter()
             .map(GlyphEntry::from_core)
             .collect();
+        self.name_map = self
+            .glyphs
+            .iter()
+            .enumerate()
+            .map(|(index, entry)| (entry.name.clone(), index))
+            .collect();
     }
 
-    /// Refresh one shell entry from the master's, after an edit.
+    /// Refresh one shell entry from its canonical default layer after an edit.
     pub(crate) fn refresh_entry(&mut self, index: usize) {
-        if let Some(entry) = self.master().glyphs.get(index) {
-            let fresh = GlyphEntry::from_core(entry);
-            if let Some(slot) = self.glyphs.get_mut(index) {
-                *slot = fresh;
-            }
-        }
+        let Some(name) = self.glyphs.get(index).map(|entry| entry.name.clone()) else {
+            return;
+        };
+        let source = self
+            .project
+            .source_id(self.active())
+            .expect("the active source has a stable identity");
+        let Some(entry) = self
+            .project
+            .document_source_glyph_entry(source, &name)
+            .expect("the active source remains canonical")
+        else {
+            return;
+        };
+        self.glyphs[index] = GlyphEntry::from_core(&entry);
     }
 
     // ---- the active master ----
@@ -265,7 +284,7 @@ impl FontModel {
     }
 
     pub(crate) fn index_of(&self, name: &str) -> Option<usize> {
-        self.master().name_map.get(name).copied()
+        self.name_map.get(name).copied()
     }
 
     /// Add an empty glyph to every master.
@@ -368,14 +387,14 @@ impl FontModel {
     pub(crate) fn interpolate_outline(
         &self,
         glyph_name: &str,
-        location: &std::collections::HashMap<String, f64>,
+        location: &HashMap<String, f64>,
     ) -> Option<BezPath> {
         if self.project.model.is_none() || self.axes.is_empty() {
             return None;
         }
         // The engine already stores master locations normalized. Normalize the
         // user-coordinate slider location once, preserving any axis map.
-        let target: std::collections::HashMap<String, f64> = self
+        let target: HashMap<String, f64> = self
             .axes
             .iter()
             .map(|ax| {

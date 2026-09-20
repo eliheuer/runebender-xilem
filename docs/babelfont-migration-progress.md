@@ -2663,3 +2663,15 @@ It preserves the established Unicode-then-name ordering and supplies exact advan
 
 The focused variable-project regression compares every field with the transitional cache and covers an unknown stable source.
 That regression and warning-denied test Clippy passed, together with formatting and whitespace checks.
+
+### Canonical application grid cache
+
+Evidence commit: `Read the application glyph cache canonically` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Read the application glyph cache canonically$' -1`.
+
+`FontModel::rebuild_cache` and `refresh_entry` now consume canonical paint entries instead of `Master::glyphs`.
+The application derives an O(1) name-to-index map alongside those display-ordered entries, so editor lookup does not regress to a linear scan.
+Malformed component references retain the glyph's intrinsic contours, matching the transitional cache's resilient display behavior, while semantic labels still fall back from an explicit label to the source mark color.
+
+The six FontModel tests, two canonical-entry parity regressions and warning-denied binary Clippy passed.
+Formatting and whitespace checks passed.

@@ -540,6 +540,34 @@ fn canonical_glyph_entries_match_the_transitional_paint_cache() {
 }
 
 #[test]
+fn canonical_glyph_entries_keep_intrinsic_paint_when_components_do_not_resolve() {
+    let scratch = Scratch::new();
+    let mut font = Font::new();
+    let mut glyph = glyph("broken", 0.0);
+    glyph.components.push(Component::new(
+        Name::new("missing").unwrap(),
+        norad::AffineTransform::default(),
+        None,
+    ));
+    glyph.lib.insert(
+        "public.markColor".into(),
+        plist::Value::String("0.93,0.45,0.2,1".into()),
+    );
+    font.default_layer_mut().insert_glyph(glyph);
+    let master = Master::from_font(font, scratch.0.join("Broken.ufo"));
+    let projected = master.glyphs[0].clone();
+    let project = Project::from_source(master);
+
+    let entry = project
+        .document_source_glyph_entry(SourceId(0), "broken")
+        .unwrap()
+        .unwrap();
+    assert_eq!(entry.outline().as_ref(), projected.path.as_ref());
+    assert_eq!(entry.ink(), projected.ink);
+    assert_eq!(entry.mark(), projected.mark.as_deref());
+}
+
+#[test]
 fn all_source_codepoint_edits_publish_once_and_round_trip_exactly() {
     let (scratch, mut project) = fixture();
     let original = project

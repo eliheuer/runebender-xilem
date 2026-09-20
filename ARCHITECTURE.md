@@ -144,7 +144,7 @@ Source-wide feature text, groups and exact fractional kerning have canonical own
 Source image-resource insertion uses a stable-`SourceId` Project operation that validates UFO image rules and updates persistence state without exposing a mutable source font.
 `document_snapshot` clones Babelfont glyph geometry, exact extensions, typed source metadata and stable source order without cloning UFO templates or Master projections.
 Interpolation compatibility diagnostics compare canonical contour and point topology under stable source identities rather than reading Master projections.
-`document_source_glyph_entries` derives sorted grid names, Unicode, advances, semantic marks and fully resolved paint paths directly from canonical default layers.
+`document_source_glyph_entries` derives sorted grid names, Unicode, advances, semantic marks and paint paths directly from canonical default layers; unresolved components retain their intrinsic contours in the grid.
 `CanonicalLayerSnapshot` captures one opaque addressed layer with the same geometry and extensions; guarded restore compares the complete live state before replacing it, advances the revision once and refreshes the compatibility projection without recording legacy history.
 Multi-source glyph metadata uses staged layer drafts and one batch publication; Unicode replacement validates the complete source set before mutation, advances the revision once and refreshes every changed projection.
 `CanonicalSourceMetadataSnapshot` captures feature text, groups and exact kerning for the complete stable source set; guarded whole-snapshot restore ignores display reorder, rejects stale or changed source sets and refreshes all affected projections in one revision.
@@ -162,7 +162,7 @@ The native file watcher resolves nested feature includes through Project and fin
 Headless source information, SVG proof and proposal commands open one explicit Project source, read canonical layers and metadata, and save proposal mutations through Project persistence.
 Transient experiment proof and Designbot adapters accept detached source-font values directly and do not construct an editable Master wrapper.
 
-`document::source::Master` is a compatibility UFO projection with source-local history and paint caches.
+`document::source::Master` is a compatibility UFO projection with source-local history and transitional paint caches.
 Project exposes immutable projections through `sources()` and scoped mutations through `edit_source`, `edit_sources`, and `active_font_mut`.
 Dropping an edit guard reconciles additions, removals, geometry and metadata into canonical glyph storage before the next Project operation.
 Use `edit_layer` and `undo_layer` for a specific glyph layer without switching the active editor source.
