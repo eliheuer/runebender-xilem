@@ -149,7 +149,8 @@ pub struct GraphGuard {
 }
 
 /// Guard for execution, intentionally independent of layout changes.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GraphSemanticGuard {
     /// Exact graph and document lifetime.
     pub identity: GraphIdentity,
@@ -619,7 +620,17 @@ pub struct GraphRunRequest {
 
 /// Opaque session-local run handle.
 #[derive(
-    Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, schemars::JsonSchema,
+    Clone,
+    Copy,
+    Debug,
+    Deserialize,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+    schemars::JsonSchema,
 )]
 pub struct GraphRunHandle(u64);
 
@@ -833,7 +844,8 @@ pub struct GraphRunResponse {
 }
 
 /// Actor-scoped cancellation request for one exact run.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GraphCancelRequest {
     /// Exact graph and document lifetime.
     pub identity: GraphIdentity,

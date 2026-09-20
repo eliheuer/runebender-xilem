@@ -175,6 +175,7 @@ pub fn tools() -> Vec<agent::Tool> {
         }
     }
     result.extend(super::agent_edit::tools());
+    result.extend(super::agent_nodes::tools());
     result.extend(super::agent_proof::tools());
     result
 }
