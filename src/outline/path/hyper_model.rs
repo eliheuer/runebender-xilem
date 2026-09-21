@@ -19,7 +19,7 @@
 use kurbo::Affine;
 use std::collections::HashMap;
 
-use crate::document::model::entity_id::EntityId;
+use crate::font::model::entity_id::EntityId;
 
 // ============================================================================
 // DATA STRUCTURES

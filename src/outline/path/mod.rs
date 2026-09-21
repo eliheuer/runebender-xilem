@@ -31,8 +31,8 @@ pub use quadratic::QuadraticPath;
 pub use segment::{Segment, SegmentInfo};
 
 use self::hyper_model as workspace;
-use crate::document::model::entity_id::EntityId;
-use crate::document::{ContourView, LayerPointType};
+use crate::font::model::entity_id::EntityId;
+use crate::font::{ContourView, LayerPointType};
 use kurbo::BezPath;
 
 #[derive(Clone, Copy)]

@@ -58,7 +58,7 @@ impl Workspace {
             self.note = format!("Cannot add component {base}");
             return;
         };
-        let Ok(runebender::document::project::DocumentEditOutcome::Changed { .. }) = self
+        let Ok(runebender::font::project::DocumentEditOutcome::Changed { .. }) = self
             .font
             .project
             .commit_document_layer_transaction(transaction)
@@ -73,7 +73,7 @@ impl Workspace {
             component_selection: (self.session.selected_component, Some(component_id)),
             layer_history_depth: self.font.project.document_layer_history_depth(
                 &address,
-                runebender::document::history::HistoryDirection::Undo,
+                runebender::font::history::HistoryDirection::Undo,
             ),
         });
         self.metadata_redo.clear();
@@ -130,7 +130,7 @@ impl Workspace {
         if disabled {
             let layer = address.layer.clone();
             let project = &self.font.project;
-            if let Err(error) = runebender::document::composites::realign_document_layer(
+            if let Err(error) = runebender::font::composites::realign_document_layer(
                 transaction.draft_mut(),
                 |name| project.document_layer(name, &layer),
                 true,
@@ -139,7 +139,7 @@ impl Workspace {
                 return;
             }
         }
-        let Ok(runebender::document::project::DocumentEditOutcome::Changed { .. }) = self
+        let Ok(runebender::font::project::DocumentEditOutcome::Changed { .. }) = self
             .font
             .project
             .commit_document_layer_transaction(transaction)
@@ -154,7 +154,7 @@ impl Workspace {
             component_selection: (Some(component_id), Some(component_id)),
             layer_history_depth: self.font.project.document_layer_history_depth(
                 &address,
-                runebender::document::history::HistoryDirection::Undo,
+                runebender::font::history::HistoryDirection::Undo,
             ),
         });
         self.metadata_redo.clear();
@@ -270,7 +270,7 @@ impl Workspace {
         };
         if matches!(
             outcome,
-            runebender::document::project::DocumentEditOutcome::Changed { .. }
+            runebender::font::project::DocumentEditOutcome::Changed { .. }
         ) {
             self.metadata_undo.push(MetadataEdit::DocumentLayer {
                 glyph: name.clone(),
@@ -282,7 +282,7 @@ impl Workspace {
                 ),
                 layer_history_depth: self.font.project.document_layer_history_depth(
                     &address,
-                    runebender::document::history::HistoryDirection::Undo,
+                    runebender::font::history::HistoryDirection::Undo,
                 ),
             });
             self.metadata_redo.clear();
@@ -300,8 +300,8 @@ impl Workspace {
     /// Apply Glyphs-style sidebearing formulas in every master.
     pub(crate) fn command_update_metrics(&mut self) {
         use kurbo::Shape as _;
-        use runebender::document::project::Project;
-        use runebender::document::variable::{GlyphLayerAddress, LayerId};
+        use runebender::font::project::Project;
+        use runebender::font::variable::{GlyphLayerAddress, LayerId};
         use runebender::formats::metrics_keys::MetricsFormula;
 
         let resolve = |project: &Project,
@@ -389,16 +389,16 @@ impl Workspace {
                                         kurbo::Affine::translate((delta, 0.0)) * transform,
                                     )?;
                                 }
-                                Ok::<_, runebender::document::DocumentEditError>(changed)
+                                Ok::<_, runebender::font::DocumentEditError>(changed)
                             })();
                             if edited == Ok(true)
                                 && matches!(
                                     self.font
                                         .project
                                         .commit_document_layer_transaction(transaction),
-                                    Ok(runebender::document::project::DocumentEditOutcome::Changed {
-                                        ..
-                                    })
+                                    Ok(
+                                        runebender::font::project::DocumentEditOutcome::Changed { .. }
+                                    )
                                 )
                             {
                                 moved = true;
@@ -424,9 +424,7 @@ impl Workspace {
                                 self.font
                                     .project
                                     .commit_document_layer_transaction(transaction),
-                                Ok(
-                                    runebender::document::project::DocumentEditOutcome::Changed { .. }
-                                )
+                                Ok(runebender::font::project::DocumentEditOutcome::Changed { .. })
                             )
                         {
                             moved = true;
@@ -523,7 +521,7 @@ impl Workspace {
             self.note = "Compose: the active source is unavailable".into();
             return;
         };
-        let plan = match runebender::document::compose::plan_project(
+        let plan = match runebender::font::compose::plan_project(
             &self.font.project,
             source,
             only.as_deref(),
@@ -537,7 +535,7 @@ impl Workspace {
         let report = if plan.replacements.is_empty() {
             plan.report
         } else {
-            match runebender::document::proposal::write_composition_project(
+            match runebender::font::proposal::write_composition_project(
                 &mut self.font.project,
                 source,
                 plan,
@@ -578,7 +576,7 @@ impl Workspace {
             .project
             .document_sources()
             .filter_map(|source| {
-                let address = runebender::document::variable::GlyphLayerAddress {
+                let address = runebender::font::variable::GlyphLayerAddress {
                     glyph: name.clone(),
                     layer: source.default_layer(),
                 };
@@ -603,7 +601,7 @@ impl Workspace {
                 self.font
                     .project
                     .commit_document_layer_transaction(transaction),
-                Ok(runebender::document::project::DocumentEditOutcome::Changed { .. })
+                Ok(runebender::font::project::DocumentEditOutcome::Changed { .. })
             ) {
                 baked += 1;
                 if Some(source) == active_source {
@@ -625,7 +623,7 @@ impl Workspace {
                     ),
                     layer_history_depth: self.font.project.document_layer_history_depth(
                         address,
-                        runebender::document::history::HistoryDirection::Undo,
+                        runebender::font::history::HistoryDirection::Undo,
                     ),
                 });
                 self.metadata_redo.clear();
@@ -823,7 +821,7 @@ impl Workspace {
             .unwrap_or_else(|| "image.png".into());
         let scale =
             ((self.font.ascender() - self.font.descender()) / f64::from(height).max(1.0)).max(1e-6);
-        let placed = match runebender::document::LayerImage::new(
+        let placed = match runebender::font::LayerImage::new(
             std::path::PathBuf::from(&file_name),
             None,
             kurbo::Affine::new([scale, 0.0, 0.0, scale, 0.0, self.font.descender()]),
@@ -1281,7 +1279,7 @@ impl Workspace {
             self.note = "The copied contours are no longer valid".into();
             return;
         };
-        let Ok(runebender::document::project::DocumentEditOutcome::Changed { .. }) = self
+        let Ok(runebender::font::project::DocumentEditOutcome::Changed { .. }) = self
             .font
             .project
             .commit_document_layer_transaction(transaction)
@@ -1299,7 +1297,7 @@ impl Workspace {
             ),
             layer_history_depth: self.font.project.document_layer_history_depth(
                 &address,
-                runebender::document::history::HistoryDirection::Undo,
+                runebender::font::history::HistoryDirection::Undo,
             ),
         });
         self.metadata_redo.clear();
@@ -1371,7 +1369,7 @@ impl Workspace {
         };
         let undo_depth = self
             .font
-            .history_depth(&name, runebender::document::history::HistoryDirection::Undo);
+            .history_depth(&name, runebender::font::history::HistoryDirection::Undo);
         let before = self.font.project.document_snapshot();
         match self
             .font
@@ -1426,7 +1424,7 @@ impl Workspace {
         }
         let undo_depth = self
             .font
-            .history_depth(&name, runebender::document::history::HistoryDirection::Undo);
+            .history_depth(&name, runebender::font::history::HistoryDirection::Undo);
         let before = self.font.project.document_snapshot();
         match self
             .font
@@ -1474,7 +1472,7 @@ impl Workspace {
         };
         let undo_depth = self
             .font
-            .history_depth(&name, runebender::document::history::HistoryDirection::Undo);
+            .history_depth(&name, runebender::font::history::HistoryDirection::Undo);
         let before = self.font.project.document_snapshot();
         match self.font.project.clear_document_background(&name, source) {
             Ok(true) => {}
@@ -2036,7 +2034,7 @@ mod tests {
         assert_eq!(
             workspace.font.project.document_layer_history_depth(
                 &address,
-                runebender::document::history::HistoryDirection::Undo,
+                runebender::font::history::HistoryDirection::Undo,
             ),
             2
         );
@@ -2045,7 +2043,7 @@ mod tests {
             .project
             .replay_document_layer_history(
                 &address,
-                runebender::document::history::HistoryDirection::Undo,
+                runebender::font::history::HistoryDirection::Undo,
             )
             .unwrap();
         assert_eq!(
@@ -2062,7 +2060,7 @@ mod tests {
             .project
             .replay_document_layer_history(
                 &address,
-                runebender::document::history::HistoryDirection::Undo,
+                runebender::font::history::HistoryDirection::Undo,
             )
             .unwrap();
         assert_eq!(
@@ -2081,7 +2079,7 @@ mod tests {
                 .project
                 .replay_document_layer_history(
                     &address,
-                    runebender::document::history::HistoryDirection::Redo,
+                    runebender::font::history::HistoryDirection::Redo,
                 )
                 .unwrap();
         }

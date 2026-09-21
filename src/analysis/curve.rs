@@ -16,7 +16,7 @@
 //! unit-tests on native `cargo test`. Formulas verified against Simon Cozens'
 //! `SuperTool` and Linus Romer's Curvatura.
 
-use crate::document::LayerView;
+use crate::font::LayerView;
 use crate::outline::glyph_paths::round_units;
 use kurbo::{Point, Vec2};
 

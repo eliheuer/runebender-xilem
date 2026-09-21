@@ -8,10 +8,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use runebender::document::nodes::Registry;
-use runebender::document::nodes_live;
-use runebender::document::nodes_session::{GraphDocumentState, GraphRunHandle, GraphSession};
-use runebender::document::variable::SourceId;
+use runebender::font::variable::SourceId;
+use runebender::workflows::nodes::Registry;
+use runebender::workflows::nodes_live;
+use runebender::workflows::nodes_session::{GraphDocumentState, GraphRunHandle, GraphSession};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
@@ -286,7 +286,7 @@ impl Workspace {
 fn fresh_live_nodes(
     document_id: u64,
     epoch: String,
-    graph: runebender::document::nodes::NodeGraph,
+    graph: runebender::workflows::nodes::NodeGraph,
     file: Option<LiveGraphFileMetadata>,
 ) -> Result<LiveNodesState, String> {
     let generation = NEXT_GRAPH_SESSION.fetch_add(1, Ordering::Relaxed);
@@ -316,7 +316,7 @@ fn parse<T: serde::de::DeserializeOwned>(arguments: &Value) -> Result<T, String>
 impl Workspace {
     pub(crate) fn call_agent_nodes(
         &mut self,
-        call: &runebender::document::agent::ToolCall,
+        call: &runebender::automation::agent::ToolCall,
     ) -> Option<Value> {
         if !matches!(
             call.name.as_str(),
@@ -342,14 +342,14 @@ impl Workspace {
 
     fn handle_agent_nodes(
         &mut self,
-        call: &runebender::document::agent::ToolCall,
+        call: &runebender::automation::agent::ToolCall,
     ) -> Result<Value, String> {
         use super::nodes_execution::LiveGraphSubmitRequest;
         use base64::Engine as _;
-        use runebender::document::agent_nodes::*;
-        use runebender::document::compiled_proof;
-        use runebender::document::script_recipe;
-        use runebender::document::variable::SourceId;
+        use runebender::automation::agent_nodes::*;
+        use runebender::automation::script_recipe;
+        use runebender::font::compiled_proof;
+        use runebender::font::variable::SourceId;
         use serde_json::json;
 
         let epoch = self
@@ -544,7 +544,7 @@ impl Workspace {
                     }
                     let mut replay = response.clone();
                     if response.get("receipt").is_some() {
-                        replay = self.call_agent_edit(&runebender::document::agent::ToolCall {
+                        replay = self.call_agent_edit(&runebender::automation::agent::ToolCall {
                             name: "agent_receipt".into(),
                             arguments: json!({"expected_document_epoch":request.expected_document_epoch,
                                 "actor":request.actor,"operation_key":request.operation_key}),
@@ -576,7 +576,7 @@ impl Workspace {
                     )
                     .map_err(|error| error.to_string())?;
                 let response = self
-                    .call_agent_edit(&runebender::document::agent::ToolCall {
+                    .call_agent_edit(&runebender::automation::agent::ToolCall {
                         name: "agent_apply".into(),
                         arguments: serde_json::to_value(edit).map_err(|error| error.to_string())?,
                     })
@@ -627,7 +627,7 @@ impl Workspace {
 
 fn check_identity(
     session: &GraphSession,
-    identity: &runebender::document::nodes_session::GraphIdentity,
+    identity: &runebender::workflows::nodes_session::GraphIdentity,
 ) -> Result<(), String> {
     if &session.snapshot().identity != identity {
         return Err("stale graph session".into());
@@ -637,7 +637,7 @@ fn check_identity(
 
 fn run_is_current(
     session: &GraphSession,
-    run: &runebender::document::nodes_session::GraphRunInspection,
+    run: &runebender::workflows::nodes_session::GraphRunInspection,
     current: &GraphDocumentState,
 ) -> bool {
     let snapshot = session.snapshot();
@@ -652,11 +652,11 @@ fn run_is_current(
 mod tests {
     use super::*;
     use crate::application::font_model::FontModel;
-    use runebender::document::agent::ToolCall;
-    use runebender::document::nodes_session::{
+    use runebender::automation::agent::ToolCall;
+    use runebender::font::project::Project;
+    use runebender::workflows::nodes_session::{
         GraphEdit, GraphGuard, GraphInteractiveMutationRequest, GraphMutation,
     };
-    use runebender::document::project::Project;
     use serde_json::json;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{Duration, Instant};

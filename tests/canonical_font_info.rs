@@ -6,15 +6,15 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use runebender::document::history::HistoryDirection;
-use runebender::document::model::font_info::{
+use runebender::font::history::HistoryDirection;
+use runebender::font::model::font_info::{
     CanonicalFontInfo, CanonicalFontInfoError, OpenTypeWidthClass, clear_canonical_font_info_fields,
 };
-use runebender::document::project::{
+use runebender::font::project::{
     DocumentEditOutcome, DocumentHistoryReplayOutcome, DocumentSourceMetadataHistoryError, Project,
     SourceInput,
 };
-use runebender::document::variable::SourceId;
+use runebender::font::variable::SourceId;
 
 static SCRATCH_ID: AtomicUsize = AtomicUsize::new(0);
 
@@ -162,7 +162,7 @@ fn editor_metric_defaults_are_resolved_without_becoming_stored_values() {
     let metrics = CanonicalFontInfo::default().metrics;
     assert_eq!(
         metrics.resolved(),
-        runebender::document::model::font_info::ResolvedFontMetrics {
+        runebender::font::model::font_info::ResolvedFontMetrics {
             units_per_em: 1000.0,
             ascender: 800.0,
             descender: -200.0,
@@ -273,7 +273,7 @@ fn project_rejects_invalid_font_info_without_changing_canonical_or_projected_sta
                 assert!(draft.set_font_info(invalid));
                 Ok(())
             }),
-            Err(runebender::document::DocumentEditError::InvalidFontInfo)
+            Err(runebender::font::DocumentEditError::InvalidFontInfo)
         );
         assert_eq!(project.document_font_info(source_id), Some(&canonical));
         assert_eq!(project.encode_ufo_source(source_id).unwrap(), projection);

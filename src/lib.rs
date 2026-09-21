@@ -6,14 +6,16 @@
 //! The graphical editor and headless commands share this library.
 //! UFO and Designspace are Runebender's first-class formats.
 //! Importers support most other common font formats.
-//! A [`document::project::Project`] stores canonical Babelfont glyph layers plus exact-value and
+//! A [`font::project::Project`] stores canonical Babelfont glyph layers plus exact-value and
 //! metadata extensions, grouping them with one or more source records and their designspace data.
 //! Text preview builds a temporary, outline-free OpenType font for shaping.
 //!
 //! - [`analysis`] computes measurements, curvature, categories, and search results.
 //!   It borrows the in-memory source model and does not change it.
-//! - [`document`] owns canonical glyph layers, source records and designspace metadata.
-//!   It also handles interpolation, edit history, proposed changes, and node workflows.
+//! - [`font`] owns canonical glyph layers, source records and designspace metadata.
+//!   It also handles interpolation, edit history, and proposed changes.
+//! - [`automation`] defines the guarded agent and live-editor operation contracts.
+//! - [`workflows`] defines saved and live node graphs.
 //! - [`formats`] interprets UFO lib keys and reads or writes data at the document boundary.
 //!   Its converters cover Glyphs sources, OpenType binaries, SVG, and traced images.
 //! - [`outline`] reads and mutates canonical paths and contains representation-neutral geometry
@@ -43,7 +45,8 @@ use {
 
 // These modules form the public, domain-oriented font-engine API.
 pub mod analysis;
-pub mod document;
+pub mod automation;
+pub mod font;
 pub mod formats;
 pub mod outline;
 // Test fixtures stay private so downstream crates cannot depend on them.
@@ -51,8 +54,9 @@ pub mod outline;
 mod testing;
 pub mod text;
 pub mod ui;
+pub mod workflows;
 
 // Common data types are available at the crate root; other APIs stay under their domain module.
 pub use analysis::category::GlyphCategory;
-pub use document::model::GlyphMetadata;
+pub use font::model::GlyphMetadata;
 pub use formats::mark_color::MarkColor;

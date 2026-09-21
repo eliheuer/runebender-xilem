@@ -7,18 +7,18 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use runebender::document::font_memory::designspace_from_str;
-use runebender::document::font_ops::{
+use runebender::font::font_memory::designspace_from_str;
+use runebender::font::font_ops::{
     CanonicalFontMetadata, CanonicalMetadataError, KerningParticipant, KerningSide,
 };
-use runebender::document::history::{
+use runebender::font::history::{
     HistoryDirection, HistoryReplayError, HistoryReplayOutcome, SourceMetadataHistory,
 };
-use runebender::document::model::glyph_metadata::{
+use runebender::font::model::glyph_metadata::{
     CanonicalGlyphMetadata, GlyphMetadataError, OpenTypeGlyphCategory, parse_codepoints,
 };
-use runebender::document::project::{DocumentEditOutcome, Project, SourceInput};
-use runebender::document::variable::SourceId;
+use runebender::font::project::{DocumentEditOutcome, Project, SourceInput};
+use runebender::font::variable::SourceId;
 
 static SCRATCH_ID: AtomicUsize = AtomicUsize::new(0);
 
@@ -468,9 +468,9 @@ fn project_source_metadata_is_atomic_and_survives_save_reload() {
     assert_eq!(
         project.edit_document_source_metadata(source, |draft| {
             assert!(draft.set_font_metadata(rejected));
-            Err(runebender::document::DocumentEditError::Rejected)
+            Err(runebender::font::DocumentEditError::Rejected)
         }),
-        Err(runebender::document::DocumentEditError::Rejected)
+        Err(runebender::font::DocumentEditError::Rejected)
     );
     assert_eq!(project.document_revision(), unchanged_revision);
     assert_eq!(project.document_font_metadata(source), Some(&edited));

@@ -5,9 +5,9 @@
 
 use sha2::{Digest as _, Sha256};
 
-use crate::document::project::Project;
-use crate::document::variable::{LayerId, SourceId};
-use crate::document::{ImportedContours, LayerView};
+use crate::font::project::Project;
+use crate::font::variable::{LayerId, SourceId};
+use crate::font::{ImportedContours, LayerView};
 
 /// Convert one closed path into a detached UFO contour at a format boundary.
 pub(crate) fn bezpath_to_contour(
@@ -160,35 +160,35 @@ pub(crate) fn drawing_contours(
 /// This is a read-only format boundary for fixtures and external codecs.
 /// The returned value is not editable document state and cannot be reconciled into a Project.
 pub fn glyph_from_layer(layer: LayerView<'_>) -> norad::Glyph {
-    crate::document::ufo_codec::encode_layer_view(layer)
+    crate::font::ufo_codec::encode_layer_view(layer)
 }
 
 impl Project {
     /// Materialize one canonical layer as a detached UFO codec value.
     pub fn encode_ufo_layer(&self, name: &str, layer: &LayerId) -> Option<norad::Glyph> {
-        crate::document::ufo_codec::encode_layer(self.codec_data(), name, layer)
+        crate::font::ufo_codec::encode_layer(self.codec_data(), name, layer)
     }
 
     /// Materialize one canonical source as a detached UFO codec value.
     pub fn encode_ufo_source(&self, source: SourceId) -> Option<norad::Font> {
-        crate::document::ufo_codec::encode_source(self.codec_data(), source)
+        crate::font::ufo_codec::encode_source(self.codec_data(), source)
     }
 
     /// Materialize canonical interpolation at an arbitrary normalized location.
     pub fn try_encode_interpolated_ufo_at(
         &self,
         glyph_name: &str,
-        location: &crate::document::var_model::Location,
+        location: &crate::font::var_model::Location,
     ) -> Result<norad::Glyph, String> {
         let (interpolated, base) = self.interpolation_codec_parts(glyph_name, location)?;
-        crate::document::ufo_codec::encode_interpolated(&interpolated, base)
+        crate::font::ufo_codec::encode_interpolated(&interpolated, base)
     }
 
     /// Materialize canonical interpolation, suppressing an explicit interpolation error.
     pub fn encode_interpolated_ufo_at(
         &self,
         glyph_name: &str,
-        location: &crate::document::var_model::Location,
+        location: &crate::font::var_model::Location,
     ) -> Option<norad::Glyph> {
         self.try_encode_interpolated_ufo_at(glyph_name, location)
             .ok()
@@ -203,7 +203,7 @@ impl Project {
     }
 }
 
-impl crate::document::experiments::Experiment {
+impl crate::font::experiments::Experiment {
     /// Materialize this isolated version at an explicit UFO export or proof boundary.
     pub fn encode_ufo_source(&self, project: &Project) -> Result<norad::Font, String> {
         let mut font = project
@@ -216,7 +216,7 @@ impl crate::document::experiments::Experiment {
                 .map_err(|error| error.to_string())?;
             layer.insert_glyph(glyph_from_layer(draft.view()));
         }
-        crate::document::ufo_codec::encode_font_metadata(&mut font, self.font_metadata())
+        crate::font::ufo_codec::encode_font_metadata(&mut font, self.font_metadata())
             .map_err(|error| error.to_string())?;
         Ok(font)
     }

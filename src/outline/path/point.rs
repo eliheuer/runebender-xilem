@@ -12,7 +12,7 @@
 //! determines drawing style (filled circle vs. open square) and drag
 //! behavior (smooth points maintain tangent continuity).
 
-use crate::document::model::entity_id::EntityId;
+use crate::font::model::entity_id::EntityId;
 use crate::outline::path::hyper_model::{self as workspace, PointType as WsPointType};
 use kurbo::Point;
 

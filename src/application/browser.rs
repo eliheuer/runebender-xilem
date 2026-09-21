@@ -48,7 +48,7 @@ impl RawProxy for BrowserProxy {
 }
 
 fn demo_state() -> AppState {
-    let project = runebender::document::font_memory::project_from_embedded_glif_json(
+    let project = runebender::font::font_memory::project_from_embedded_glif_json(
         "VirtuaGrotesk-Regular.ufo".into(),
         include_str!("../../web/demo-font.json"),
     )

@@ -11,12 +11,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Mutex, OnceLock};
 
 use base64::Engine as _;
-use runebender::document::agent::ToolCall;
-use runebender::document::agent_proof::{
+use runebender::automation::agent::ToolCall;
+use runebender::automation::agent_proof::{
     ProofHandleRequest, ProofStartRequest, ProofStatusRequest,
 };
-use runebender::document::compiled_proof;
-use runebender::document::proof_jobs::{
+use runebender::font::compiled_proof;
+use runebender::font::proof_jobs::{
     ProofJobCancelOutcome, ProofJobHandle, ProofJobLineage, ProofJobOutcome, ProofJobQueue,
     ProofJobRequest, ProofJobStatus,
 };
@@ -295,7 +295,7 @@ impl Workspace {
 mod tests {
     use super::*;
     use crate::application::font_model::FontModel;
-    use runebender::document::project::Project;
+    use runebender::font::project::Project;
 
     fn app() -> Workspace {
         Workspace::from_model(FontModel::from_project(Project::new_font(

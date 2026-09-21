@@ -3,9 +3,7 @@
 
 //! UFO serialization for editable metaball groups.
 
-pub use crate::document::model::glyph_metadata::{
-    METABALLS_KEY, Metaball, MetaballGroup, Metaballs,
-};
+pub use crate::font::model::glyph_metadata::{METABALLS_KEY, Metaball, MetaballGroup, Metaballs};
 
 /// Reads and validates live metaballs. A missing key returns an empty source.
 /// Malformed or newer metadata returns an error, so a caller can preserve it untouched.

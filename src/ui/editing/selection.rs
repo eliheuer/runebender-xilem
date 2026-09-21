@@ -9,7 +9,7 @@
 //! deterministic iteration order, which matters for multi-point
 //! operations like nudging.
 
-use crate::document::model::EntityId;
+use crate::font::model::EntityId;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 

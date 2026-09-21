@@ -9,10 +9,10 @@ use crate::application::view::canvas;
 use crate::application::view::canvas::grid::cells_of;
 use crate::application::view::panels::sections::metric_bufs;
 use crate::application::workspace::{MetadataEdit, Mode, OverviewEditBatch, Workspace};
-use runebender::document::CanonicalSourceMetadataSnapshot;
-use runebender::document::canonical_metadata::{KerningParticipant, KerningSide};
-use runebender::document::history::HistoryDirection;
-use runebender::document::project::DocumentHistoryReplayOutcome;
+use runebender::font::CanonicalSourceMetadataSnapshot;
+use runebender::font::canonical_metadata::{KerningParticipant, KerningSide};
+use runebender::font::history::HistoryDirection;
+use runebender::font::project::DocumentHistoryReplayOutcome;
 use runebender::outline::glyph_paths::round_units;
 use std::sync::Arc;
 
@@ -315,7 +315,7 @@ impl Workspace {
             return;
         };
         let Ok(codepoints) =
-            runebender::document::model::glyph_metadata::parse_codepoints(self.unicode_buf.trim())
+            runebender::font::model::glyph_metadata::parse_codepoints(self.unicode_buf.trim())
         else {
             return;
         };
@@ -737,7 +737,7 @@ impl Workspace {
 
     fn reorder_source_snapshot<T: Clone>(
         &self,
-        ids: &[runebender::document::variable::SourceId],
+        ids: &[runebender::font::variable::SourceId],
         values: &[T],
     ) -> Option<Vec<T>> {
         if ids.len() != self.font.master_count() {
@@ -828,7 +828,7 @@ impl Workspace {
                 let Some(name) = self.font.glyphs.get(index).map(|glyph| glyph.name.clone()) else {
                     continue;
                 };
-                let address = runebender::document::variable::GlyphLayerAddress {
+                let address = runebender::font::variable::GlyphLayerAddress {
                     glyph: name.clone(),
                     layer: layer.clone(),
                 };
@@ -844,7 +844,7 @@ impl Workspace {
                     self.font
                         .project
                         .commit_document_layer_transaction(transaction),
-                    Ok(runebender::document::project::DocumentEditOutcome::Changed { .. })
+                    Ok(runebender::font::project::DocumentEditOutcome::Changed { .. })
                 ) {
                     changed.push(name);
                 }
@@ -927,7 +927,7 @@ impl Workspace {
                     draft.set_font_metadata(metadata);
                     Ok(())
                 }),
-            Ok(runebender::document::project::DocumentEditOutcome::Changed { .. })
+            Ok(runebender::font::project::DocumentEditOutcome::Changed { .. })
         ) {
             return;
         }
@@ -981,7 +981,7 @@ impl Workspace {
                     draft.set_font_metadata(metadata);
                     Ok(())
                 }),
-            Ok(runebender::document::project::DocumentEditOutcome::Changed { .. })
+            Ok(runebender::font::project::DocumentEditOutcome::Changed { .. })
         ) {
             self.note = format!("{first} · {second} already equals {value}");
             return;
@@ -1030,7 +1030,7 @@ impl Workspace {
                             draft.set_font_metadata(metadata);
                             Ok(())
                         }),
-                    Ok(runebender::document::project::DocumentEditOutcome::Changed { .. })
+                    Ok(runebender::font::project::DocumentEditOutcome::Changed { .. })
                 )
             {
                 added += source_added;
@@ -1085,7 +1085,7 @@ impl Workspace {
                             draft.set_font_metadata(metadata);
                             Ok(())
                         }),
-                    Ok(runebender::document::project::DocumentEditOutcome::Changed { .. })
+                    Ok(runebender::font::project::DocumentEditOutcome::Changed { .. })
                 )
             {
                 removed += 1;
@@ -1257,7 +1257,7 @@ mod size_tests {
             .expect("the active source exists")
             .default_layer();
         for glyph in ["mark_a", "mark_b"] {
-            let address = runebender::document::variable::GlyphLayerAddress {
+            let address = runebender::font::variable::GlyphLayerAddress {
                 glyph: glyph.into(),
                 layer: layer.clone(),
             };

@@ -322,7 +322,7 @@ pub fn write_annotations(glyph: &mut norad::Glyph, notes: &[Annotation]) {
 /// design coordinates, keyed `"contour,point"`. The key is the
 /// source of truth for re-editing; compilers consume the baked
 /// brace layers.
-pub use crate::document::model::hoi::HOI_INTERMEDIATE_KEY;
+pub use crate::font::model::hoi::HOI_INTERMEDIATE_KEY;
 
 /// Reads HOI intermediate points from the glyph lib, keyed by `(contour, point)` index, as absolute design coordinates.
 pub fn read_hoi_intermediates(
@@ -331,7 +331,7 @@ pub fn read_hoi_intermediates(
     glyph
         .lib
         .get(HOI_INTERMEDIATE_KEY)
-        .and_then(|value| crate::document::model::hoi::HoiIntermediates::from_plist(value).ok())
+        .and_then(|value| crate::font::model::hoi::HoiIntermediates::from_plist(value).ok())
         .map(|value| value.points().collect())
         .unwrap_or_default()
 }
@@ -341,7 +341,7 @@ pub fn write_hoi_intermediates(
     glyph: &mut norad::Glyph,
     map: &std::collections::HashMap<(usize, usize), (f64, f64)>,
 ) {
-    crate::document::model::hoi::HoiIntermediates::from_points(
+    crate::font::model::hoi::HoiIntermediates::from_points(
         map.iter().map(|(index, point)| (*index, *point)),
     )
     .expect("HOI source points must be finite")

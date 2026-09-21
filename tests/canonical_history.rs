@@ -7,12 +7,12 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use norad::{Contour, ContourPoint, Font, Glyph, PointType};
-use runebender::document::history::{
+use runebender::font::history::{
     CanonicalHistory, DocumentHistory, HistoryDirection, HistoryReplayError, HistoryReplayOutcome,
     SourceMetadataHistory,
 };
-use runebender::document::project::{DocumentEditOutcome, Project, SourceInput};
-use runebender::document::variable::{GlyphLayerAddress, LayerId, SourceId};
+use runebender::font::project::{DocumentEditOutcome, Project, SourceInput};
+use runebender::font::variable::{GlyphLayerAddress, LayerId, SourceId};
 
 #[derive(Clone, Debug, PartialEq)]
 struct LayerState {

@@ -13,7 +13,7 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use runebender::document::nodes::{EXTENSION, FILE_VERSION, NodeGraph};
+use runebender::workflows::nodes::{EXTENSION, FILE_VERSION, NodeGraph};
 use sha2::{Digest, Sha256};
 
 const MAX_GRAPH_BYTES: usize = 2 * 1024 * 1024;
@@ -332,8 +332,8 @@ fn hex_digest(digest: impl AsRef<[u8]>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use runebender::document::nodes_live;
-    use runebender::document::variable::SourceId;
+    use runebender::font::variable::SourceId;
+    use runebender::workflows::nodes_live;
     use serde_json::json;
 
     struct TestDirectory(PathBuf);

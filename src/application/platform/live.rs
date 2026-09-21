@@ -7,7 +7,7 @@ use crate::application::editor::tools::local_ai::InstalledProposalEdit;
 use crate::application::workspace::Workspace;
 
 fn installed_in_active_source(
-    project: &runebender::document::project::Project,
+    project: &runebender::font::project::Project,
     result: &serde_json::Value,
 ) -> Option<Vec<String>> {
     if result["root_changed"] != true {
@@ -19,7 +19,7 @@ fn installed_in_active_source(
         .and_then(|value| {
             usize::try_from(value)
                 .ok()
-                .map(runebender::document::variable::SourceId)
+                .map(runebender::font::variable::SourceId)
         })?;
     if project.source_id(project.active) != Some(changed_source) {
         return None;
@@ -58,7 +58,7 @@ impl Workspace {
     /// Dispatch through the same application refresh/history path for IPC and headless checks.
     pub(crate) fn call_live(
         &mut self,
-        call: &runebender::document::agent::ToolCall,
+        call: &runebender::automation::agent::ToolCall,
     ) -> serde_json::Value {
         let mut result = self.handle_live(call);
         result["document_revision"] = serde_json::json!(self.font.project.document_revision());
@@ -66,7 +66,7 @@ impl Workspace {
         result
     }
 
-    fn handle_live(&mut self, call: &runebender::document::agent::ToolCall) -> serde_json::Value {
+    fn handle_live(&mut self, call: &runebender::automation::agent::ToolCall) -> serde_json::Value {
         use serde_json::json;
         if let Some(result) = self.call_agent_nodes(call) {
             return result;
@@ -98,7 +98,7 @@ impl Workspace {
             return json!({"ok":false,"error":"finish the canvas gesture before installing", "error_code":"busy_gesture"});
         }
         let result =
-            runebender::document::live::call(&mut self.font.project, &call.name, &call.arguments);
+            runebender::automation::live::call(&mut self.font.project, &call.name, &call.arguments);
         if let Some(installed) = installed_in_active_source(&self.font.project, &result) {
             let edits = installed
                 .iter()
@@ -106,7 +106,7 @@ impl Workspace {
                 .map(|address| InstalledProposalEdit {
                     layer_history_depth: self.font.project.document_layer_history_depth(
                         &address,
-                        runebender::document::history::HistoryDirection::Undo,
+                        runebender::font::history::HistoryDirection::Undo,
                     ),
                     address,
                 })
@@ -200,10 +200,10 @@ impl Workspace {
                 "max_retained_proofs":super::live_proofs::MAX_SESSION_PROOFS,
                 "edit_cancellation":true,
                 "cancellation_identity":"document_epoch+actor+operation_key",
-                "max_pending_live_requests":runebender::document::live_socket::MAX_PENDING_REQUESTS,
-                "max_live_connections":runebender::document::live_socket::MAX_LIVE_CONNECTIONS,
-                "cancellation_entries":runebender::document::live_socket::CANCELLATION_CAPACITY,
-                "max_live_frame_bytes":runebender::document::live_socket::MAX_FRAME_BYTES,
+                "max_pending_live_requests":runebender::automation::live_socket::MAX_PENDING_REQUESTS,
+                "max_live_connections":runebender::automation::live_socket::MAX_LIVE_CONNECTIONS,
+                "cancellation_entries":runebender::automation::live_socket::CANCELLATION_CAPACITY,
+                "max_live_frame_bytes":runebender::automation::live_socket::MAX_FRAME_BYTES,
                 "max_agent_actors":super::live_edits::MAX_ACTORS,
                 "receipts_per_actor":super::live_edits::RECEIPTS_PER_ACTOR,
                 "application_context":true,
@@ -253,14 +253,14 @@ impl Workspace {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use runebender::document::project::{Project, SourceInput};
-    use runebender::document::variable::SourceId;
+    use runebender::font::project::{Project, SourceInput};
+    use runebender::font::variable::SourceId;
 
     fn two_source_project() -> Project {
         let font = Project::new_font("synthetic.ufo".into())
             .encode_ufo_source(SourceId(0))
             .unwrap();
-        let document = runebender::document::font_memory::designspace_from_str(
+        let document = runebender::font::font_memory::designspace_from_str(
             r#"<designspace format="5.0"><axes><axis name="Weight" tag="wght" minimum="0" default="0" maximum="1"/></axes><sources><source filename="first.ufo"><location><dimension name="Weight" xvalue="0"/></location></source><source filename="second.ufo"><location><dimension name="Weight" xvalue="1"/></location></source></sources></designspace>"#,
         )
         .unwrap();
@@ -275,7 +275,7 @@ mod tests {
         name: &str,
         arguments: serde_json::Value,
     ) -> serde_json::Value {
-        use runebender::document::{agent::ToolCall, live_socket};
+        use runebender::automation::{agent::ToolCall, live_socket};
         use std::time::{Duration, Instant};
         let path = app
             .live
@@ -457,7 +457,7 @@ mod tests {
             Workspace::from_model(FontModel::from_project(Project::new_font(path))).unwrap();
         let before = app.live_context();
         // Replace only the endpoint lifetime, leaving every font and UI value identical.
-        app.live = Some(runebender::document::live_socket::Server::start().unwrap());
+        app.live = Some(runebender::automation::live_socket::Server::start().unwrap());
         let after = app.live_context();
         assert_ne!(
             before["context"]["document_epoch"],

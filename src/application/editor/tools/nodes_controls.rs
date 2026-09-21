@@ -7,23 +7,23 @@
 //! edits, explicit run/cancel/release/apply requests, and the presentation byte cache.
 
 use crate::application::workspace::Workspace;
-use runebender::document::nodes_session::GraphGuard;
-use runebender::document::variable::SourceId;
+use runebender::font::variable::SourceId;
+use runebender::workflows::nodes_session::GraphGuard;
 
 #[cfg(unix)]
 use crate::application::platform::dialogs;
 #[cfg(unix)]
 use crate::application::platform::nodes_proofs::NodeProofInspection;
 #[cfg(unix)]
-use runebender::document::agent::ToolCall;
-#[cfg(unix)]
-use runebender::document::nodes::NodeGraph;
-#[cfg(unix)]
-use runebender::document::nodes_session::{
-    GraphEdit, GraphInteractiveMutationRequest, GraphMutation, GraphRunStatus,
-};
+use runebender::automation::agent::ToolCall;
 #[cfg(unix)]
 use runebender::ui::nodes::ImmutablePng;
+#[cfg(unix)]
+use runebender::workflows::nodes::NodeGraph;
+#[cfg(unix)]
+use runebender::workflows::nodes_session::{
+    GraphEdit, GraphInteractiveMutationRequest, GraphMutation, GraphRunStatus,
+};
 #[cfg(unix)]
 use std::sync::Arc;
 
@@ -200,8 +200,8 @@ pub(crate) fn change_live_graph(
 pub(crate) fn change_live_graph(
     app: &mut Workspace,
     _guard: GraphGuard,
-    _before: runebender::document::nodes::NodeGraph,
-    _after: runebender::document::nodes::NodeGraph,
+    _before: runebender::workflows::nodes::NodeGraph,
+    _after: runebender::workflows::nodes::NodeGraph,
 ) {
     app.note = "Live graph editing is available in the native editor".into();
 }

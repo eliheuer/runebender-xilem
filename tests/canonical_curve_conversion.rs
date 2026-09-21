@@ -9,12 +9,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use kurbo::ParamCurve as _;
 use norad::{Anchor, Component, Contour, ContourPoint, Font, Glyph, Name, PointType};
-use runebender::document::history::HistoryDirection;
-use runebender::document::project::{
+use runebender::font::history::HistoryDirection;
+use runebender::font::project::{
     DocumentEditOutcome, DocumentHistoryReplayOutcome, Project, SourceInput,
 };
-use runebender::document::variable::{GlyphLayerAddress, LayerId, SourceId};
-use runebender::document::{DocumentEditError, LayerPointType};
+use runebender::font::variable::{GlyphLayerAddress, LayerId, SourceId};
+use runebender::font::{DocumentEditError, LayerPointType};
 
 struct Scratch(PathBuf);
 

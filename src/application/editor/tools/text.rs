@@ -234,8 +234,8 @@ impl TextState {
             glyph.codepoints.insert(codepoint);
             font.default_layer_mut().insert_glyph(glyph);
         }
-        let project = runebender::document::project::Project::from_source(
-            runebender::document::project::SourceInput::from_font(font, "text-test.ufo".into()),
+        let project = runebender::font::project::Project::from_source(
+            runebender::font::project::SourceInput::from_font(font, "text-test.ufo".into()),
         );
         let source = project.source_id(0).unwrap();
         Self::new(&TextInputs {
@@ -556,8 +556,8 @@ mod tests {
         other.width = 500.0;
         other.codepoints.insert('A');
         font.default_layer_mut().insert_glyph(other);
-        let project = runebender::document::project::Project::from_source(
-            runebender::document::project::SourceInput::from_font(font, "text-test.ufo".into()),
+        let project = runebender::font::project::Project::from_source(
+            runebender::font::project::SourceInput::from_font(font, "text-test.ufo".into()),
         );
         let source = project.source_id(0).unwrap();
         let mut inputs = TextInputs {

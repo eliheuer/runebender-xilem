@@ -15,8 +15,8 @@ use kurbo::{CubicBez, Line, ParamCurveNearest, PathSeg, Point, QuadBez};
 #[cfg(test)]
 use norad::{ContourPoint, Glyph, PointType};
 
-pub use crate::document::DocumentSegmentEndpoint;
-use crate::document::{LayerPointType, LayerView, PointId as DocumentPointId};
+pub use crate::font::DocumentSegmentEndpoint;
+use crate::font::{LayerPointType, LayerView, PointId as DocumentPointId};
 #[cfg(test)]
 use crate::outline::glyph_ops::PointId;
 

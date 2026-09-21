@@ -134,8 +134,8 @@ fn validate_localized(value: &Value) -> Result<(), String> {
 
 /// Import a Python Babelfont package as a variable project without writing its source.
 /// Sources and intermediate layers receive new UFO/Designspace save destinations.
-pub fn import_project(path: &Path) -> Result<crate::document::project::Project, String> {
-    use crate::document::project::Project;
+pub fn import_project(path: &Path) -> Result<crate::font::project::Project, String> {
+    use crate::font::project::Project;
     use norad::designspace::{Axis, AxisMapping, DesignSpaceDocument, Dimension, Instance, Source};
 
     if !path.is_dir() {
@@ -550,7 +550,7 @@ fn import_master(
             .or_default()
             .insert(side(right, "public.kern2.")?, *value);
     }
-    crate::document::model::glyph_metadata::set_skipped_exports(&mut font, skipped);
+    crate::font::model::glyph_metadata::set_skipped_exports(&mut font, skipped);
     let features = path.join("features.fea");
     if features.exists() {
         font.features = std::fs::read_to_string(features).map_err(|e| e.to_string())?;
@@ -589,7 +589,7 @@ fn point(node: &Value) -> Result<ContourPoint, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::project::Project;
+    use crate::font::project::Project;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -655,7 +655,7 @@ mod tests {
         );
         assert_eq!(font.kerning.get("A").unwrap().get("V"), Some(&-80.0));
         assert_eq!(
-            crate::document::model::glyph_metadata::skipped_exports(&font).next(),
+            crate::font::model::glyph_metadata::skipped_exports(&font).next(),
             Some("A.alt")
         );
     }
@@ -680,7 +680,7 @@ mod tests {
                 draft.set_width(701.0)?;
                 Ok(())
             }),
-            Ok(crate::document::project::DocumentEditOutcome::Changed { .. })
+            Ok(crate::font::project::DocumentEditOutcome::Changed { .. })
         ));
         project.save().unwrap();
         assert_eq!(
@@ -755,8 +755,8 @@ mod tests {
                 .width,
             731.123_456_789
         );
-        let layer = crate::document::variable::LayerId {
-            source: crate::document::variable::SourceId(0),
+        let layer = crate::font::variable::LayerId {
+            source: crate::font::variable::SourceId(0),
             name: "public.background".into(),
         };
         assert_eq!(

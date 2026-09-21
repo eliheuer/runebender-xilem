@@ -10,10 +10,10 @@
 use std::collections::BTreeMap;
 
 #[cfg(unix)]
-use runebender::document::agent::ToolCall;
+use runebender::automation::agent::ToolCall;
 #[cfg(unix)]
-use runebender::document::agent_edit::AgentEditRequest;
-use runebender::document::script_recipe::{ScriptRecipeInput, ScriptRecipeResult};
+use runebender::automation::agent_edit::AgentEditRequest;
+use runebender::automation::script_recipe::{ScriptRecipeInput, ScriptRecipeResult};
 use serde_json::Value;
 #[cfg(unix)]
 use serde_json::json;
@@ -331,7 +331,7 @@ impl Workspace {
             .ok_or("The active source is unavailable")?;
         let job_id = format!("scripts-{}-{}", self.document_id, self.scripts.next_job);
         self.scripts.next_job = self.scripts.next_job.saturating_add(1);
-        let input = runebender::document::script_recipe::capture(
+        let input = runebender::automation::script_recipe::capture(
             &self.font.project,
             source,
             &glyphs,
@@ -640,8 +640,8 @@ fn python_fence_name(line: &str) -> Option<String> {
 mod tests {
     use super::*;
     use crate::application::font_model::FontModel;
-    use runebender::document::agent_edit::{AgentEditOperation, AgentLayerEdits};
-    use runebender::document::project::Project;
+    use runebender::automation::agent_edit::{AgentEditOperation, AgentLayerEdits};
+    use runebender::font::project::Project;
 
     fn workspace() -> Workspace {
         let path = std::env::temp_dir().join(format!(

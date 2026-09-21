@@ -10,13 +10,13 @@ use norad::designspace::{
     Axis, AxisMapping, AxisMappings, Condition, ConditionSet, DesignSpaceDocument, Dimension,
     Instance, LocalizedString, Rule, RuleProcessing, Rules, Source, Substitution,
 };
-use runebender::document::model::designspace::{
+use runebender::font::model::designspace::{
     CanonicalDesignspace, CanonicalLocation, SourceDescriptor, SourceOrderEntry,
     SparseSourceDescriptor,
 };
-use runebender::document::project::{Project, SourceInput};
-use runebender::document::var_model::Location;
-use runebender::document::variable::{LayerId, SourceId};
+use runebender::font::project::{Project, SourceInput};
+use runebender::font::var_model::Location;
+use runebender::font::variable::{LayerId, SourceId};
 
 fn dimension(name: &str, user: Option<f32>, design: Option<f32>) -> Dimension {
     Dimension {

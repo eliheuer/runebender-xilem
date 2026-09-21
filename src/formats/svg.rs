@@ -5,9 +5,9 @@
 
 use kurbo::{Affine, BezPath, PathEl};
 
-use crate::document::experiments::Experiment;
-use crate::document::project::Project;
-use crate::document::variable::{GlyphLayerAddress, LayerId, SourceId};
+use crate::font::experiments::Experiment;
+use crate::font::project::Project;
+use crate::font::variable::{GlyphLayerAddress, LayerId, SourceId};
 use crate::formats::ufo::bezpath_to_contour;
 #[cfg(test)]
 use crate::outline::glyph_paths;
@@ -45,7 +45,7 @@ pub fn svg_to_contours(
     svg_text: &str,
     ascender: f64,
     descender: f64,
-) -> Result<crate::document::ImportedContours, String> {
+) -> Result<crate::font::ImportedContours, String> {
     let contours = svg_to_ufo_contours(svg_text, ascender, descender)?;
     crate::formats::ufo::decode_contours(&contours)
 }
@@ -133,7 +133,7 @@ pub fn proof_sheet(
         return Err("no glyph to draw".into());
     }
     let preview = layer
-        .map(|name| crate::document::proposal::preview_font(font, name))
+        .map(|name| crate::font::proposal::preview_font(font, name))
         .transpose()?;
     let font = preview.as_ref().unwrap_or(font);
     let layer = match layer {

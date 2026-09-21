@@ -12,10 +12,10 @@ use std::path::Path;
 
 use norad::{Font, Glyph};
 
-use crate::document::edit_batch::{self, EditBatch};
-use crate::document::project::{Project, SourceInput};
-use crate::document::proposal::{ProposalError, ProposalSummary, layer_name};
-use crate::document::variable::{LayerId, SourceId};
+use crate::font::edit_batch::{self, EditBatch};
+use crate::font::project::{Project, SourceInput};
+use crate::font::proposal::{ProposalError, ProposalSummary, layer_name};
+use crate::font::variable::{LayerId, SourceId};
 
 fn compatible(foreground: &Glyph, proposed: &Glyph) -> bool {
     foreground

@@ -3,7 +3,7 @@
 
 //! Glyphs-style metrics keys: sidebearings derived from another glyph.
 
-pub use crate::document::model::glyph_metadata::{
+pub use crate::font::model::glyph_metadata::{
     LEFT_METRICS_KEY, MetricsFormula, RIGHT_METRICS_KEY, parse_metrics_key,
 };
 

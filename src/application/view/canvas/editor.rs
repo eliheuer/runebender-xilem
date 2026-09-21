@@ -18,7 +18,7 @@ use masonry::imaging::Painter;
 use masonry::kurbo;
 use masonry::kurbo::{Affine, Axis, Circle, Line, Point, Rect, Size, Stroke};
 use masonry::layout::{LenReq, Length};
-use runebender::document::{AnchorId, ContourId, PointId};
+use runebender::font::{AnchorId, ContourId, PointId};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
@@ -3026,7 +3026,7 @@ mod tests {
                 .session
                 .stage_canonical_string_edit("test point kind", |draft| {
                     draft
-                        .set_point_type(first, runebender::document::LayerPointType::OffCurve)
+                        .set_point_type(first, runebender::font::LayerPointType::OffCurve)
                         .map_err(|error| error.to_string())
                 })
                 .unwrap()
@@ -3042,7 +3042,7 @@ mod tests {
                 .session
                 .stage_canonical_string_edit("test open path", |draft| {
                     draft
-                        .set_point_type(first, runebender::document::LayerPointType::Move)
+                        .set_point_type(first, runebender::font::LayerPointType::Move)
                         .map_err(|error| error.to_string())
                 })
                 .unwrap()
@@ -3663,7 +3663,7 @@ mod tests {
         let address = workspace.font.active_layer_address("A").unwrap();
         assert!(workspace.font.project.can_replay_document_layer_history(
             &address,
-            runebender::document::history::HistoryDirection::Redo,
+            runebender::font::history::HistoryDirection::Redo,
         ));
 
         workspace.modified = false;
@@ -3709,7 +3709,7 @@ mod tests {
         assert_eq!(workspace.metadata_redo.len(), redo);
         assert!(workspace.font.project.can_replay_document_layer_history(
             &address,
-            runebender::document::history::HistoryDirection::Redo,
+            runebender::font::history::HistoryDirection::Redo,
         ));
         std::fs::remove_dir_all(path).expect("the fixture is removed");
     }
@@ -3754,7 +3754,7 @@ mod tests {
         let address = workspace.font.active_layer_address("A").unwrap();
         assert!(workspace.font.project.can_replay_document_layer_history(
             &address,
-            runebender::document::history::HistoryDirection::Redo,
+            runebender::font::history::HistoryDirection::Redo,
         ));
 
         let mut editor = widget();
@@ -3811,7 +3811,7 @@ mod tests {
         assert_eq!(workspace.metadata_redo.len(), redo);
         assert!(workspace.font.project.can_replay_document_layer_history(
             &address,
-            runebender::document::history::HistoryDirection::Redo,
+            runebender::font::history::HistoryDirection::Redo,
         ));
 
         let next =

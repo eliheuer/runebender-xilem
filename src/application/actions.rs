@@ -123,7 +123,7 @@ impl Entry {
                     app.font.glyphs.get(index).is_some_and(|glyph| {
                         app.font.can_replay_history(
                             &glyph.name,
-                            runebender::document::history::HistoryDirection::Undo,
+                            runebender::font::history::HistoryDirection::Undo,
                         )
                     }) || app.can_metadata_history_step(false)
                 }
@@ -137,7 +137,7 @@ impl Entry {
                     app.font.glyphs.get(index).is_some_and(|glyph| {
                         app.font.can_replay_history(
                             &glyph.name,
-                            runebender::document::history::HistoryDirection::Redo,
+                            runebender::font::history::HistoryDirection::Redo,
                         )
                     }) || app.can_metadata_history_step(true)
                 }

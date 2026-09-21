@@ -5,11 +5,11 @@
 
 use serde_json::{Value, json};
 
-use crate::document::LayerView;
-use crate::document::canonical_metadata::CanonicalFontMetadata;
-use crate::document::experiments::Experiment;
-use crate::document::project::Project;
-use crate::document::variable::{GlyphLayerAddress, LayerId, SourceId};
+use crate::font::LayerView;
+use crate::font::canonical_metadata::CanonicalFontMetadata;
+use crate::font::experiments::Experiment;
+use crate::font::project::Project;
+use crate::font::variable::{GlyphLayerAddress, LayerId, SourceId};
 
 /// Build an isolated-glyph proof from the supplied source font or proposal layer.
 /// Geometry is resolved before transport; no source files are read by Designbot.
@@ -24,7 +24,7 @@ pub fn scene(font: &norad::Font, layer: Option<&str>, names: &[String]) -> Resul
         return Err("proof requires 1 to 256 glyphs".into());
     }
     let preview = layer
-        .map(|l| crate::document::proposal::preview_font(font, l))
+        .map(|l| crate::font::proposal::preview_font(font, l))
         .transpose()?;
     let font = preview.as_ref().unwrap_or(font);
     let columns = names.len().min(6);

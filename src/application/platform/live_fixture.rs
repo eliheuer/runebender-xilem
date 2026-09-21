@@ -9,7 +9,7 @@ use serde_json::json;
 
 use crate::application::font_model::FontModel;
 use crate::application::workspace::Workspace;
-use runebender::document::project::Project;
+use runebender::font::project::Project;
 
 fn workspace() -> Result<Workspace, String> {
     let nonce = SystemTime::now()

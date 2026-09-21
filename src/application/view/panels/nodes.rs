@@ -24,12 +24,12 @@ use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
 use masonry::properties::LineBreaking;
 use masonry::properties::types::CrossAxisAlignment;
-use runebender::document::nodes::{NodeGraph, Registry};
-use runebender::document::nodes_session::GraphGuard;
-use runebender::document::variable::SourceId;
+use runebender::font::variable::SourceId;
 use runebender::ui::nodes::{
     ContentState, ImageContent, ImmutablePng, NodeContent, NodeContentMap, ScriptContent,
 };
+use runebender::workflows::nodes::{NodeGraph, Registry};
+use runebender::workflows::nodes_session::GraphGuard;
 use std::sync::Arc;
 use xilem::WidgetView;
 use xilem::style::Style;
@@ -41,7 +41,7 @@ use crate::application::editor::tools::nodes_execution::LiveGraphPhase;
 #[cfg(unix)]
 use crate::application::platform::nodes_proofs::NodeProofInspection;
 #[cfg(unix)]
-use runebender::document::nodes_session::{GraphRunHandle, GraphRunStatus};
+use runebender::workflows::nodes_session::{GraphRunHandle, GraphRunStatus};
 
 struct CanvasProjection {
     graph: Arc<NodeGraph>,
@@ -663,11 +663,11 @@ fn nodes_choices(app: &Workspace) -> Option<impl WidgetView<Workspace> + use<>> 
         .map(String::from);
     let options: Vec<String> = match node.type_name.as_str() {
         "core.master" => app.font.master_names().clone(),
-        "core.model" => runebender::document::nodes_run::installed(None, false)
+        "core.model" => runebender::workflows::nodes_run::installed(None, false)
             .into_iter()
             .map(|(n, _)| n)
             .collect(),
-        "core.adapter" => runebender::document::nodes_run::installed(None, true)
+        "core.adapter" => runebender::workflows::nodes_run::installed(None, true)
             .into_iter()
             .map(|(n, _)| n)
             .collect(),

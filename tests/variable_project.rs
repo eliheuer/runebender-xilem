@@ -9,17 +9,17 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use kurbo::Shape as _;
 use norad::{Anchor, Component, Contour, ContourPoint, Font, Glyph, Name, PointType};
-use runebender::document::canonical_metadata::{KerningParticipant, KerningSide};
-use runebender::document::font_memory::designspace_from_str;
-use runebender::document::history::{HistoryDirection, HistoryReplayError};
-use runebender::document::model::glyph_metadata::OpenTypeGlyphCategory;
-use runebender::document::project::{
+use runebender::font::canonical_metadata::{KerningParticipant, KerningSide};
+use runebender::font::font_memory::designspace_from_str;
+use runebender::font::history::{HistoryDirection, HistoryReplayError};
+use runebender::font::model::glyph_metadata::OpenTypeGlyphCategory;
+use runebender::font::project::{
     DocumentEditOutcome, DocumentHistoryError, DocumentHistoryReplayOutcome,
     DocumentSourceMetadataHistoryError, Project, SourceInput,
 };
-use runebender::document::var_model::Location;
-use runebender::document::variable::{GlyphLayerAddress, LayerId, SourceId};
-use runebender::document::{DocumentEditError as EditError, LayerEditDraft, LayerPointType};
+use runebender::font::var_model::Location;
+use runebender::font::variable::{GlyphLayerAddress, LayerId, SourceId};
+use runebender::font::{DocumentEditError as EditError, LayerEditDraft, LayerPointType};
 
 const DESIGNSPACE: &str = include_str!("fixtures/variable/TwoAxes.designspace");
 
@@ -561,8 +561,8 @@ fn document_views_read_exact_canonical_layers_and_stable_source_identity() {
     let shape_kinds: Vec<_> = layer
         .shapes()
         .map(|shape| match shape {
-            runebender::document::LayerShapeView::Contour(_) => "contour",
-            runebender::document::LayerShapeView::Component(_) => "component",
+            runebender::font::LayerShapeView::Contour(_) => "contour",
+            runebender::font::LayerShapeView::Component(_) => "component",
         })
         .collect();
     assert_eq!(
@@ -739,7 +739,7 @@ fn all_source_codepoint_edits_publish_once_and_round_trip_exactly() {
     let revision = project.document_revision();
     assert_eq!(
         project.set_document_glyph_codepoints("A", &expected[..expected.len() - 1]),
-        Err(runebender::document::DocumentEditError::SourceCountMismatch)
+        Err(runebender::font::DocumentEditError::SourceCountMismatch)
     );
     assert_eq!(project.document_snapshot(), snapshot);
     assert_eq!(project.document_revision(), revision);
@@ -768,7 +768,7 @@ fn all_source_codepoint_edit_rejects_a_later_missing_layer_without_mutation() {
 
     assert_eq!(
         project.set_document_glyph_codepoints("A", &values),
-        Err(runebender::document::DocumentEditError::MissingLayer)
+        Err(runebender::font::DocumentEditError::MissingLayer)
     );
     assert_eq!(project.document_snapshot(), snapshot);
     assert_eq!(project.document_revision(), revision);
@@ -1265,7 +1265,7 @@ fn canonical_point_roles_keep_contour_closure_coherent() {
             draft.set_point_type(open_second, LayerPointType::Move)?;
             Ok(())
         }),
-        Err(runebender::document::DocumentEditError::NonInitialMove(
+        Err(runebender::font::DocumentEditError::NonInitialMove(
             open_second
         ))
     );
@@ -1411,7 +1411,7 @@ fn canonical_pen_builds_closed_contours_with_stable_new_identities() {
             draft.close_contour(contour_id, None)?;
             Ok(())
         }),
-        Err(runebender::document::DocumentEditError::NotOpenContour(
+        Err(runebender::font::DocumentEditError::NotOpenContour(
             contour_id
         ))
     );
@@ -1485,7 +1485,7 @@ fn canonical_hyper_pen_uses_stable_typed_contours() {
             draft.append_hyper_point(ordinary, kurbo::Point::new(500.0, 0.0), false)?;
             Ok(())
         }),
-        Err(runebender::document::DocumentEditError::NotHyperContour(
+        Err(runebender::font::DocumentEditError::NotHyperContour(
             ordinary_id.unwrap()
         ))
     );
@@ -1496,7 +1496,7 @@ fn canonical_hyper_pen_uses_stable_typed_contours() {
             draft.start_hyper_contour(kurbo::Point::new(f64::INFINITY, 0.0))?;
             Ok(())
         }),
-        Err(runebender::document::DocumentEditError::NonFinite)
+        Err(runebender::font::DocumentEditError::NonFinite)
     );
 
     project.save().unwrap();
@@ -1585,7 +1585,7 @@ fn canonical_shape_creation_matches_existing_geometry_with_stable_identities() {
             draft.add_shape_contour(kurbo::Rect::new(0.0, 0.0, f64::INFINITY, 1.0), false)?;
             Ok(())
         }),
-        Err(runebender::document::DocumentEditError::NonFinite)
+        Err(runebender::font::DocumentEditError::NonFinite)
     );
     assert_eq!(project.document_snapshot(), snapshot);
     assert_eq!(project.document_revision(), revision);
@@ -1638,7 +1638,7 @@ fn canonical_layer_transactions_commit_atomically_and_skip_noops() {
         .unwrap_err();
     assert_eq!(
         error,
-        runebender::document::DocumentEditError::NonFinite,
+        runebender::font::DocumentEditError::NonFinite,
         "invalid draft returned the wrong error"
     );
     assert_eq!(
@@ -1835,9 +1835,7 @@ fn canonical_selection_transform_matches_legacy_geometry_atomically() {
             draft.transform_points(&[missing], kurbo::Affine::IDENTITY)?;
             Ok(())
         }),
-        Err(runebender::document::DocumentEditError::MissingPoint(
-            missing
-        ))
+        Err(runebender::font::DocumentEditError::MissingPoint(missing))
     );
     assert_eq!(project.document_snapshot(), snapshot);
     assert_eq!(project.document_revision(), revision);
@@ -1849,7 +1847,7 @@ fn canonical_selection_transform_matches_legacy_geometry_atomically() {
             )?;
             Ok(())
         }),
-        Err(runebender::document::DocumentEditError::NonFinite)
+        Err(runebender::font::DocumentEditError::NonFinite)
     );
     assert_eq!(project.document_snapshot(), snapshot);
     assert_eq!(project.document_revision(), revision);
@@ -1858,7 +1856,7 @@ fn canonical_selection_transform_matches_legacy_geometry_atomically() {
             draft.transform_points(&[], kurbo::Affine::scale(f64::MAX))?;
             Ok(())
         }),
-        Err(runebender::document::DocumentEditError::NonFinite)
+        Err(runebender::font::DocumentEditError::NonFinite)
     );
     assert_eq!(project.document_snapshot(), snapshot);
     assert_eq!(project.document_revision(), revision);
@@ -2010,9 +2008,7 @@ fn canonical_point_drag_matches_legacy_handle_behavior_atomically() {
             .edit_document_layer("drag", &layer_id, |draft| {
                 assert_eq!(
                     draft.translate_points(&[missing], &[], kurbo::Vec2::new(10.0, 0.0), false,),
-                    Err(runebender::document::DocumentEditError::MissingPoint(
-                        missing
-                    ))
+                    Err(runebender::font::DocumentEditError::MissingPoint(missing))
                 );
                 assert_eq!(
                     draft.translate_points(
@@ -2027,7 +2023,7 @@ fn canonical_point_drag_matches_legacy_handle_behavior_atomically() {
                         kurbo::Vec2::new(2.0, 0.0),
                         false,
                     ),
-                    Err(runebender::document::DocumentEditError::MissingDragOrigin(
+                    Err(runebender::font::DocumentEditError::MissingDragOrigin(
                         point_ids[2]
                     ))
                 );
@@ -2038,7 +2034,7 @@ fn canonical_point_drag_matches_legacy_handle_behavior_atomically() {
                         kurbo::Vec2::new(f64::MAX, 0.0),
                         false,
                     ),
-                    Err(runebender::document::DocumentEditError::NonFinite)
+                    Err(runebender::font::DocumentEditError::NonFinite)
                 );
                 assert_eq!(
                     draft.translate_points(
@@ -2047,7 +2043,7 @@ fn canonical_point_drag_matches_legacy_handle_behavior_atomically() {
                         kurbo::Vec2::new(f64::NAN, 0.0),
                         false,
                     ),
-                    Err(runebender::document::DocumentEditError::NonFinite)
+                    Err(runebender::font::DocumentEditError::NonFinite)
                 );
                 Ok(())
             })
@@ -2142,21 +2138,19 @@ fn canonical_smoothing_and_sidebearing_shift_match_legacy_geometry_atomically() 
             .edit_document_layer("A", &layer_id, |draft| {
                 assert_eq!(
                     draft.toggle_smooth_points(&[selected[0], missing]),
-                    Err(runebender::document::DocumentEditError::MissingPoint(
-                        missing
-                    ))
+                    Err(runebender::font::DocumentEditError::MissingPoint(missing))
                 );
                 assert!(
                     draft.set_point_position(last, kurbo::Point::new(f64::MAX, last_position.y),)?
                 );
                 assert_eq!(
                     draft.shift_points_and_anchors_x(f64::MAX),
-                    Err(runebender::document::DocumentEditError::NonFinite)
+                    Err(runebender::font::DocumentEditError::NonFinite)
                 );
                 assert!(draft.set_point_position(last, last_position)?);
                 assert_eq!(
                     draft.shift_points_and_anchors_x(f64::NAN),
-                    Err(runebender::document::DocumentEditError::NonFinite)
+                    Err(runebender::font::DocumentEditError::NonFinite)
                 );
                 assert!(!draft.toggle_smooth_points(&[])?);
                 assert!(!draft.shift_points_and_anchors_x(0.0)?);
@@ -2286,15 +2280,13 @@ fn canonical_line_segments_convert_with_stable_endpoint_identity() {
             .edit_document_layer("A", &layer_id, |draft| {
                 assert_eq!(
                     draft.convert_line_to_curve(first, second),
-                    Err(runebender::document::DocumentEditError::NotLineSegment(
+                    Err(runebender::font::DocumentEditError::NotLineSegment(
                         first, second
                     ))
                 );
                 assert_eq!(
                     draft.convert_line_to_curve(first, missing),
-                    Err(runebender::document::DocumentEditError::MissingPoint(
-                        missing
-                    ))
+                    Err(runebender::font::DocumentEditError::MissingPoint(missing))
                 );
                 Ok(())
             })
@@ -2543,7 +2535,7 @@ fn canonical_segment_insertion_preserves_existing_control_identities() {
             draft.insert_point_on_segment(ids[0][0], ids[1][0], 0.5)?;
             Ok(())
         }),
-        Err(runebender::document::DocumentEditError::NotDirectSegment(
+        Err(runebender::font::DocumentEditError::NotDirectSegment(
             ids[0][0], ids[1][0]
         ))
     );
@@ -2555,7 +2547,7 @@ fn canonical_segment_insertion_preserves_existing_control_identities() {
             .edit_document_layer("insert-segments", &layer_id, |draft| {
                 assert_eq!(
                     draft.insert_point_on_segment(ids[4][0], ids[4][1], 0.5),
-                    Err(runebender::document::DocumentEditError::NonFinite)
+                    Err(runebender::font::DocumentEditError::NonFinite)
                 );
                 Ok(())
             })
@@ -2570,7 +2562,7 @@ fn canonical_segment_insertion_preserves_existing_control_identities() {
 #[test]
 fn canonical_implied_quadratic_insertion_materializes_stable_endpoints() {
     use kurbo::ParamCurve;
-    use runebender::document::DocumentSegmentEndpoint;
+    use runebender::font::DocumentSegmentEndpoint;
 
     let scratch = Scratch::new();
     let point = |x, y, typ, label: Option<&str>| {
@@ -2734,7 +2726,7 @@ fn canonical_implied_quadratic_insertion_materializes_stable_endpoints() {
                         overflow_hit.end,
                         0.5,
                     ),
-                    Err(runebender::document::DocumentEditError::NonFinite)
+                    Err(runebender::font::DocumentEditError::NonFinite)
                 );
                 Ok(())
             })
@@ -2811,7 +2803,7 @@ fn canonical_implied_quadratic_insertion_rejects_stale_segment_identity() {
                         stale.end,
                         0.5,
                     ),
-                    Err(runebender::document::DocumentEditError::NotDirectSegment(
+                    Err(runebender::font::DocumentEditError::NotDirectSegment(
                         stale.point_ids()[0],
                         stale.point_ids()[1]
                     ))
@@ -2967,9 +2959,7 @@ fn canonical_point_deletion_preserves_surviving_identities_and_metadata() {
             .edit_document_layer("delete-points", &layer_id, |draft| {
                 assert_eq!(
                     draft.delete_points(&[ids[1][0]]),
-                    Err(runebender::document::DocumentEditError::MissingPoint(
-                        ids[1][0]
-                    ))
+                    Err(runebender::font::DocumentEditError::MissingPoint(ids[1][0]))
                 );
                 assert!(!draft.delete_points(&[])?);
                 Ok(())
@@ -3145,7 +3135,7 @@ fn canonical_point_deletion_is_atomic_across_contours() {
             .edit_document_layer("atomic-delete", &layer_id, |draft| {
                 assert_eq!(
                     draft.delete_points(&[ids[0][1], ids[1][0]]),
-                    Err(runebender::document::DocumentEditError::NonFinite)
+                    Err(runebender::font::DocumentEditError::NonFinite)
                 );
                 Ok(())
             })
@@ -3348,7 +3338,7 @@ fn canonical_contour_reversal_preserves_identities_metadata_and_storage() {
             .edit_document_layer("reverse-contours", &layer_id, |draft| {
                 assert_eq!(
                     draft.reverse_contours(&[point_ids[2][0]]),
-                    Err(runebender::document::DocumentEditError::MissingPoint(
+                    Err(runebender::font::DocumentEditError::MissingPoint(
                         point_ids[2][0],
                     ))
                 );
@@ -3870,18 +3860,18 @@ fn canonical_copy_paste_and_duplicate_assign_fresh_identities() {
             .edit_document_layer("copy-contours", &layer_id, |draft| {
                 assert_eq!(
                     draft.paste_contours(&[])?,
-                    runebender::document::PastedContours::default()
+                    runebender::font::PastedContours::default()
                 );
                 assert_eq!(
                     draft.duplicate_contours(&[], kurbo::Vec2::new(20.0, 20.0))?,
-                    runebender::document::PastedContours::default()
+                    runebender::font::PastedContours::default()
                 );
                 assert_eq!(
                     draft.duplicate_contours(
                         &[original_point_ids[0][0]],
                         kurbo::Vec2::new(f64::INFINITY, f64::INFINITY),
                     ),
-                    Err(runebender::document::DocumentEditError::NonFinite)
+                    Err(runebender::font::DocumentEditError::NonFinite)
                 );
                 Ok(())
             })
@@ -4131,9 +4121,7 @@ fn canonical_hyper_conversion_replaces_only_selected_topology() {
             draft.convert_hyper_to_cubic(&[foreign])?;
             Ok(())
         }),
-        Err(runebender::document::DocumentEditError::MissingPoint(
-            foreign
-        ))
+        Err(runebender::font::DocumentEditError::MissingPoint(foreign))
     );
     assert_eq!(project.document_snapshot(), snapshot);
 
@@ -4383,7 +4371,7 @@ fn canonical_filter_effects_replace_only_targeted_topology() {
                 assert!(!draft.roughen_contours(&[], 0.5, 4.0, 4.0, 7)?);
                 assert_eq!(
                     draft.expand_stroke(&[], f64::INFINITY),
-                    Err(runebender::document::DocumentEditError::NonFinite)
+                    Err(runebender::font::DocumentEditError::NonFinite)
                 );
                 Ok(())
             })
@@ -4752,7 +4740,7 @@ fn canonical_metaball_collapse_is_selected_atomic_and_persistable() {
             assert_eq!(
                 draft
                     .collapse_metaballs(Some(&[1]), OutlineOptions::default())
-                    .map_err(|_| runebender::document::DocumentEditError::Rejected)?,
+                    .map_err(|_| runebender::font::DocumentEditError::Rejected)?,
                 1
             );
             Ok(())
@@ -4812,7 +4800,7 @@ fn canonical_metaball_collapse_is_selected_atomic_and_persistable() {
             assert_eq!(
                 draft
                     .collapse_metaballs(None, OutlineOptions::default())
-                    .map_err(|_| runebender::document::DocumentEditError::Rejected)?,
+                    .map_err(|_| runebender::font::DocumentEditError::Rejected)?,
                 1
             );
             Ok(())
@@ -6172,9 +6160,9 @@ fn canonical_source_metadata_edits_are_atomic_and_round_trip_exactly() {
     assert_eq!(
         project.edit_document_source_metadata(source, |draft| {
             draft.set_font_metadata(rejected);
-            Err(runebender::document::DocumentEditError::Rejected)
+            Err(runebender::font::DocumentEditError::Rejected)
         }),
-        Err(runebender::document::DocumentEditError::Rejected)
+        Err(runebender::font::DocumentEditError::Rejected)
     );
     assert_eq!(project.document_revision(), unchanged_revision);
     assert_eq!(project.document_font_metadata(source), Some(&edited));
@@ -6234,7 +6222,7 @@ fn source_image_install_is_validated_and_saved_without_mutable_font_access() {
     assert_eq!(project.document_revision(), revision.wrapping_add(1));
     assert_eq!(project.document_source_is_modified(source), dirty);
 
-    let placed = runebender::document::LayerImage::new(
+    let placed = runebender::font::LayerImage::new(
         image_path.clone(),
         None,
         kurbo::Affine::new([0.5, 0.0, 0.0, 0.5, 0.0, -200.0]),
@@ -6319,7 +6307,7 @@ fn invalid_font_info_edits_are_rejected_before_document_mutation() {
             draft.set_font_info(invalid);
             Ok(())
         }),
-        Err(runebender::document::DocumentEditError::InvalidFontInfo)
+        Err(runebender::font::DocumentEditError::InvalidFontInfo)
     );
     assert_eq!(project.document_snapshot(), before);
     assert_eq!(project.document_revision(), revision);
@@ -7673,7 +7661,7 @@ fn imported_contour_append_and_replace_are_atomic_and_persistable() {
                 draft.append_imported_contours(decoded)?;
                 Ok(())
             }),
-            Err(runebender::document::DocumentEditError::InvalidLayerMetadata)
+            Err(runebender::font::DocumentEditError::InvalidLayerMetadata)
         );
         assert_eq!(project.document_snapshot(), before);
         assert_eq!(project.document_revision(), before_revision);
@@ -7684,7 +7672,7 @@ fn imported_contour_append_and_replace_are_atomic_and_persistable() {
                 draft.replace_imported_contours(decoded)?;
                 Ok(())
             }),
-            Err(runebender::document::DocumentEditError::InvalidLayerMetadata)
+            Err(runebender::font::DocumentEditError::InvalidLayerMetadata)
         );
         assert_eq!(project.document_snapshot(), before);
         assert_eq!(project.document_revision(), before_revision);
@@ -7799,7 +7787,7 @@ fn imported_contour_append_and_replace_are_atomic_and_persistable() {
     assert_eq!(
         replaced
             .shapes()
-            .map(|shape| matches!(shape, runebender::document::LayerShapeView::Contour(_)))
+            .map(|shape| matches!(shape, runebender::font::LayerShapeView::Contour(_)))
             .collect::<Vec<_>>(),
         [true, false, true],
         "equal-count replacement changed contour/component paint order"
@@ -8086,7 +8074,7 @@ fn background_copy_transfers_object_metadata_and_swap_retains_shape_order() {
             .document_layer("A", &foreground_layer)
             .unwrap()
             .shapes()
-            .map(|shape| matches!(shape, runebender::document::LayerShapeView::Contour(_)))
+            .map(|shape| matches!(shape, runebender::font::LayerShapeView::Contour(_)))
             .collect::<Vec<_>>()
     };
     assert_eq!(shape_order(&project), [true, false, true]);

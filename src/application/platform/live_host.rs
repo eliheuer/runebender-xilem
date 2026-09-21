@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 
 use crate::application::font_model::FontModel;
 use crate::application::workspace::Workspace;
-use runebender::document::history::HistoryDirection;
+use runebender::font::history::HistoryDirection;
 
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]

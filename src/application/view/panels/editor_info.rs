@@ -429,7 +429,7 @@ pub(crate) fn groups_section(app: &Workspace) -> impl WidgetView<Workspace> + us
 }
 
 /// One vertical metric off canonical source information.
-type Pick = fn(&runebender::document::model::font_info::CanonicalFontMetrics) -> Option<f64>;
+type Pick = fn(&runebender::font::model::font_info::CanonicalFontMetrics) -> Option<f64>;
 
 /// Compare: each other master against the active one.
 pub(crate) fn compare_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {

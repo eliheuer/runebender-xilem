@@ -8,6 +8,11 @@ No release has been published yet.
 
 ## [Unreleased]
 
+### Changed
+
+- Reorganized the reusable font engine into `font`, `automation`, and `workflows` domains.
+  Canonical font ownership remains in `font`; agent and live-editor contracts now live in `automation`; saved and live node graphs now live in `workflows`.
+
 ### Added
 
 - Added live `editor_open_glyph` navigation for agent clients.

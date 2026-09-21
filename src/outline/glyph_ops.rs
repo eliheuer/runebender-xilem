@@ -1126,7 +1126,7 @@ pub fn duplicate_anchor(glyph: &mut Glyph, index: usize) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::font_ops::*;
+    use crate::font::font_ops::*;
     use crate::outline::component_ops::*;
     use norad::Font;
 

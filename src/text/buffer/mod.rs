@@ -21,7 +21,7 @@
 //! back to a cursor position or a sort, which is what the Runebender
 //! application draws and clicks on.
 
-use crate::{document::model::kerning::lookup_kerning as lookup_xilem_kerning, text::joining};
+use crate::{font::model::kerning::lookup_kerning as lookup_xilem_kerning, text::joining};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -270,8 +270,8 @@ impl TextGlyphInventory {
 
     /// Build the native text inventory from one canonical document source.
     pub fn from_project(
-        project: &crate::document::project::Project,
-        source: crate::document::variable::SourceId,
+        project: &crate::font::project::Project,
+        source: crate::font::variable::SourceId,
     ) -> Option<Self> {
         let layer_id = project.document_source(source)?.default_layer();
         let mut unicode = HashMap::new();
@@ -354,8 +354,8 @@ impl TextKerningModel {
 
     /// Build the native text kerning model from canonical source metadata.
     pub fn from_project(
-        project: &crate::document::project::Project,
-        source: crate::document::variable::SourceId,
+        project: &crate::font::project::Project,
+        source: crate::font::variable::SourceId,
     ) -> Option<Self> {
         let metadata = project.document_font_metadata(source)?;
         let mut groups = HashMap::new();

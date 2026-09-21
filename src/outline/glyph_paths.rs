@@ -12,13 +12,13 @@ use kurbo::{Affine, BezPath, Point};
 #[cfg(test)]
 use norad::{Contour, ContourPoint, Font, Glyph, PointType};
 
-use crate::document::model::smart_components::SmartComponentAxes;
+use crate::font::model::smart_components::SmartComponentAxes;
 #[cfg(test)]
-use crate::document::model::smart_components::{
+use crate::font::model::smart_components::{
     SMART_COMPONENT_AXES_KEY, SMART_COMPONENT_POLE_KEY, SMART_COMPONENT_VALUES_KEY,
     SmartComponentPole, SmartComponentValues,
 };
-use crate::document::{ComponentView, ContourView, LayerPointType, LayerShapeView, LayerView};
+use crate::font::{ComponentView, ContourView, LayerPointType, LayerShapeView, LayerView};
 
 /// Why canonical component resolution could not produce an outline.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -888,10 +888,10 @@ fn append_points(path: &mut BezPath, points: &[OutlinePoint], closed: bool) {
 #[cfg(test)]
 mod canonical_render_tests {
     use super::*;
-    use crate::document::model::glyph_metadata::{Metaball, MetaballGroup, Metaballs};
-    use crate::document::project::Project;
-    use crate::document::source::SourceInput;
-    use crate::document::variable::{GlyphLayerAddress, LayerId, SourceId};
+    use crate::font::model::glyph_metadata::{Metaball, MetaballGroup, Metaballs};
+    use crate::font::project::Project;
+    use crate::font::source::SourceInput;
+    use crate::font::variable::{GlyphLayerAddress, LayerId, SourceId};
     use crate::formats::metaballs::write_metaballs;
     use kurbo::Shape;
     use norad::{AffineTransform, Component, Name};
@@ -946,7 +946,7 @@ mod canonical_render_tests {
         let component = root.components().nth(index).unwrap();
         let default_layer = project
             .document_source(selected.source)
-            .map(crate::document::project::SourceView::default_layer);
+            .map(crate::font::project::SourceView::default_layer);
         canonical_component_to_bezpath(
             root,
             component,

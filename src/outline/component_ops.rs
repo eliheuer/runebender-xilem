@@ -13,7 +13,7 @@ use crate::outline::glyph_paths;
 #[derive(Clone, Debug)]
 pub struct ResolvedDocumentComponent {
     /// Stable identity of the top-level component.
-    pub id: crate::document::ComponentId,
+    pub id: crate::font::ComponentId,
     /// Exact rendered path used for hit testing and selection feedback.
     ///
     /// This includes canonical smart-component interpolation, hyperbeziers and metaballs.
@@ -22,22 +22,22 @@ pub struct ResolvedDocumentComponent {
     ///
     /// This intentionally preserves the existing decomposition contract rather than flattening
     /// rendered smart-component or metaball outlines.
-    pub contours: Vec<crate::document::CopiedContour>,
+    pub contours: Vec<crate::font::CopiedContour>,
 }
 
 fn collect_document_component_contours<'a>(
-    layer: crate::document::LayerView<'a>,
+    layer: crate::font::LayerView<'a>,
     transform: kurbo::Affine,
-    resolve: &mut impl FnMut(&str) -> Option<crate::document::LayerView<'a>>,
+    resolve: &mut impl FnMut(&str) -> Option<crate::font::LayerView<'a>>,
     stack: &mut Vec<String>,
-    output: &mut Vec<crate::document::CopiedContour>,
+    output: &mut Vec<crate::font::CopiedContour>,
 ) -> Result<(), glyph_paths::ComponentResolveError> {
     if stack.len() > 64 {
         return Err(glyph_paths::ComponentResolveError::TooDeep);
     }
     for shape in layer.shapes() {
         match shape {
-            crate::document::LayerShapeView::Contour(contour) => {
+            crate::font::LayerShapeView::Contour(contour) => {
                 output.push(
                     contour
                         .copied()
@@ -45,7 +45,7 @@ fn collect_document_component_contours<'a>(
                         .ok_or(glyph_paths::ComponentResolveError::NonFinite)?,
                 );
             }
-            crate::document::LayerShapeView::Component(component) => {
+            crate::font::LayerShapeView::Component(component) => {
                 let name = component.reference();
                 if let Some(start) = stack.iter().position(|entry| entry == name) {
                     let mut cycle = stack[start..].to_vec();
@@ -76,9 +76,9 @@ fn collect_document_component_contours<'a>(
 /// matching the existing decomposition command, while contour and point source metadata remains
 /// attached for the canonical paste boundary to re-identify safely.
 pub fn resolved_document_component_contours<'a>(
-    layer: crate::document::LayerView<'a>,
-    mut resolve: impl FnMut(&str) -> Option<crate::document::LayerView<'a>>,
-) -> Result<Vec<crate::document::CopiedContour>, glyph_paths::ComponentResolveError> {
+    layer: crate::font::LayerView<'a>,
+    mut resolve: impl FnMut(&str) -> Option<crate::font::LayerView<'a>>,
+) -> Result<Vec<crate::font::CopiedContour>, glyph_paths::ComponentResolveError> {
     let mut output = Vec::new();
     let mut stack = vec![layer.glyph_name().to_owned()];
     for component in layer.components() {
@@ -110,9 +110,9 @@ pub fn resolved_document_component_contours<'a>(
 /// The contour copies separately retain the existing integer-rounded structural decomposition
 /// contract and canonical source metadata.
 pub fn resolved_document_components<'a>(
-    layer: crate::document::LayerView<'a>,
-    mut resolve: impl FnMut(&str) -> Option<crate::document::LayerView<'a>>,
-    mut layers: impl FnMut(&str) -> Vec<crate::document::LayerView<'a>>,
+    layer: crate::font::LayerView<'a>,
+    mut resolve: impl FnMut(&str) -> Option<crate::font::LayerView<'a>>,
+    mut layers: impl FnMut(&str) -> Vec<crate::font::LayerView<'a>>,
 ) -> Result<Vec<ResolvedDocumentComponent>, glyph_paths::ComponentResolveError> {
     let mut output = Vec::new();
     for component in layer.components() {
@@ -278,10 +278,10 @@ pub fn duplicate_component(glyph: &mut Glyph, index: usize) -> Option<usize> {
 #[cfg(test)]
 mod canonical_tests {
     use super::*;
-    use crate::document::model::glyph_metadata::{Metaball, MetaballGroup, Metaballs};
-    use crate::document::project::Project;
-    use crate::document::source::SourceInput;
-    use crate::document::variable::{GlyphLayerAddress, SourceId};
+    use crate::font::model::glyph_metadata::{Metaball, MetaballGroup, Metaballs};
+    use crate::font::project::Project;
+    use crate::font::source::SourceInput;
+    use crate::font::variable::{GlyphLayerAddress, SourceId};
     use crate::formats::metaballs::write_metaballs;
     use norad::{AffineTransform, Component, Name};
 

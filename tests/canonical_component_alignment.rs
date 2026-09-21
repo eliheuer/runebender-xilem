@@ -6,9 +6,9 @@
 use std::path::PathBuf;
 
 use norad::{Component, Font, Glyph, Name};
-use runebender::document::history::HistoryDirection;
-use runebender::document::project::{DocumentEditOutcome, Project, SourceInput};
-use runebender::document::variable::{GlyphLayerAddress, SourceId};
+use runebender::font::history::HistoryDirection;
+use runebender::font::project::{DocumentEditOutcome, Project, SourceInput};
+use runebender::font::variable::{GlyphLayerAddress, SourceId};
 
 const ALIGNMENT_KEY: &str = "com.glyphsapp.component.alignment";
 

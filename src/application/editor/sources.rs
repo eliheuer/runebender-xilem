@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use runebender::document::variable::LayerId;
+use runebender::font::variable::LayerId;
 
 use crate::application::{
     view::canvas::grid::cells_of,

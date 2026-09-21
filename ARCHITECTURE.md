@@ -29,11 +29,13 @@ src/
 ├── lib.rs                 font-engine public map
 ├── main.rs                executable composition root
 ├── analysis/              read and measure font data
-├── document/              projects, sources, history, workflows
+├── font/                  canonical font, edits, history, persistence, compilation
+├── automation/            agent, script, and live-editor operation contracts
 ├── formats/               source formats and persistent metadata
 ├── outline/               reusable geometry and outline operations
 ├── text/                  shaping, joining, features, text layout
 ├── ui/                    toolkit-independent editor data
+├── workflows/             saved and live node graphs
 └── application/           Xilem application
     ├── mod.rs             application map
     ├── actions.rs         shared menu and shortcut action table
@@ -76,15 +78,15 @@ second set of module names to keep in sync.
 | Add or change an editor tool | `application/editor/tools/` | usually `outline/` or `text/` |
 | Change Metaballs | `application/editor/tools/metaballs.rs` | `outline/metaballs.rs`, `formats/metaballs.rs` |
 | Change text-mode interaction | `application/editor/tools/text.rs` | `text/buffer/`, `text/shape.rs` |
-| Change Nodes interaction | `application/editor/tools/nodes.rs`, `nodes_workspace.rs`, `nodes_execution.rs` | `document/nodes*.rs`, `ui/nodes.rs` |
-| Change selection or undo | `application/editor/session.rs` | `ui/editing/`, `document/history.rs` |
+| Change Nodes interaction | `application/editor/tools/nodes.rs`, `nodes_workspace.rs`, `nodes_execution.rs` | `workflows/nodes*.rs`, `ui/nodes.rs` |
+| Change selection or undo | `application/editor/session.rs` | `ui/editing/`, `font/history.rs` |
 | Add a menu item or shortcut | `application/actions.rs` | `application/editor/commands.rs` |
 | Change the edit canvas | `application/view/canvas/editor.rs` | `application/editor/session.rs` |
-| Change a panel | `application/view/panels/` | matching editor or document module |
+| Change a panel | `application/view/panels/` | matching editor or font module |
 | Change reusable control styling | `application/view/recipes.rs` | `application/view/design.rs`, `theme.rs` |
-| Add a file format | `formats/` | dispatch in `document/project.rs` |
-| Change variable-font ownership or source edits | `document/project.rs`, `document/variable.rs` | `document/ufo_codec.rs`, `document/source_format.rs` |
-| Change axis conversion or interpolation | `document/axis.rs`, `document/var_model.rs`, `document/interpolation.rs` | `formats/designspace.rs` |
+| Add a file format | `formats/` | dispatch in `font/project.rs` |
+| Change variable-font ownership or source edits | `font/project.rs`, `font/variable.rs` | `font/ufo_codec.rs`, `font/source_format.rs` |
+| Change axis conversion or interpolation | `font/axis.rs`, `font/var_model.rs`, `font/interpolation.rs` | `formats/designspace.rs` |
 | Add a headless command | `application/cli.rs` | operation in the matching library domain |
 | Change native or browser hosting | `application/platform/`, `application/launch.rs`, `application/browser.rs` | none |
 
@@ -99,8 +101,8 @@ For a first reading, follow this path:
 
 ## Variable font document
 
-`document::project::Project` owns a variable font, even when opened from a single UFO.
-`document::variable` stores one glyph with all of its source, intermediate and auxiliary layers, addressed by `SourceId` and `LayerId`.
+`font::project::Project` owns a variable font, even when opened from a single UFO.
+`font::variable` stores one glyph with all of its source, intermediate and auxiliary layers, addressed by `SourceId` and `LayerId`.
 `Project::glyph_sources` identifies the subset participating in that glyph's interpolation; an auxiliary layer does not become a source merely by existing.
 Babelfont owns geometry; the preserving adapter retains exact UFO values and metadata that Babelfont cannot represent.
 Stable source identities survive insertion, removal and display-order changes.
@@ -149,24 +151,24 @@ Source image-resource insertion uses a stable-`SourceId` Project operation that 
 Interpolation compatibility diagnostics compare canonical contour and point topology under stable source identities rather than reading Master projections.
 `document_source_glyph_entries` derives sorted grid names, Unicode, advances, semantic marks and paint paths directly from canonical default layers; unresolved components retain their intrinsic contours in the grid.
 `CanonicalLayerSnapshot` captures one opaque addressed layer with the same geometry and extensions; guarded restore compares the complete live state before replacing it and advances the revision once.
-`document::project::edit_transactions` stages bounded nonstructural edits and read dependencies across layers of one source, publishes once and records a Project-owned history group.
+`font::project::edit_transactions` stages bounded nonstructural edits and read dependencies across layers of one source, publishes once and records a Project-owned history group.
 Targeted and ordinary application undo must route through the same group handle; the engine primitive does not by itself connect application history or live receipts.
-`document::compiled_proof` captures owned canonical compiler inputs and produces immutable OpenType snapshots for shaping and PNG proofing on workers.
+`font::compiled_proof` captures owned canonical compiler inputs and produces immutable OpenType snapshots for shaping and PNG proofing on workers.
 Its staged-edit projection derives a full-family compiler input from the retained baseline and a guard-checked canonical transaction without publishing a document edit or recording history.
 All unrelated source layers, axes and feature inputs remain captured, and a changed document or compiler input rejects the derivation.
 The application adapter owns document-epoch binding, asynchronous job dispatch, stale-result handling and client image delivery around those primitives.
-`document::agent_session` retains bounded, immutable operation receipts without owning font data; the application supplies the socket epoch and complete semantic payload identity.
-`document::proof_jobs` provides a bounded native worker queue for owned compiled-proof captures, preserving exact epoch/revision lineage across cancellation, failure and late completion.
-`document::agent_edit` validates strict live edit payloads and resolves guarded glyph, layer, point and anchor identities into those engine transactions.
+`automation::agent_session` retains bounded, immutable operation receipts without owning font data; the application supplies the socket epoch and complete semantic payload identity.
+`font::proof_jobs` provides a bounded native worker queue for owned compiled-proof captures, preserving exact epoch/revision lineage across cancellation, failure and late completion.
+`automation::agent_edit` validates strict live edit payloads and resolves guarded glyph, layer, point and anchor identities into those engine transactions.
 `application/platform/live_edits.rs` binds actor ledgers to the exact native endpoint epoch and routes apply, receipt lookup and targeted history through the Workspace.
 `application/editor/agent_history.rs` creates one application entry per changed group and shares guarded replay and cache refresh with ordinary editor history.
-`document::agent_proof` defines strict proof requests and schemas.
+`automation::agent_proof` defines strict proof requests and schemas.
 `application/platform/live_proofs.rs` binds bounded per-document handles to one process-wide proof worker across Workspace replacements.
 Native graph specimens share that worker and must release terminal handles or transfer abandoned running handles for later collection.
-`document::script_recipe` defines immutable Python recipe captures and validates bounded reports and guarded proposals.
+`automation::script_recipe` defines immutable Python recipe captures and validates bounded reports and guarded proposals.
 `application/platform/script_jobs.rs` runs the optional interpreter with monitored file-backed standard streams, deadlines and bounded retained results.
 `application/platform/script_library.rs` owns ordinary Python files and observed-revision conflict checks; application commands own capture, preview and explicit Apply through the existing font transaction path.
-`document::nodes_session` owns the canonical live graph, guarded graph history, semantic identity and bounded run receipts.
+`workflows::nodes_session` owns the canonical live graph, guarded graph history, semantic identity and bounded run receipts.
 `application/editor/tools/nodes_workspace.rs` routes UI and agent commands to one Workspace-owned session and the shared Python queue.
 `nodes_execution.rs` stages the strict recipe result without publishing a font change; `application/platform/nodes_proofs.rs` owns paired captures on the process-wide compiler queue.
 `application/platform/nodes_file.rs` persists graph authoring intent without session authority; opening binds an explicitly chosen current source to a fresh graph session.
@@ -183,8 +185,8 @@ The external edit-batch drawing schema remains a UFO-shaped wire contract, while
 Experimental versions clone canonical layer drafts and canonical source metadata for the session, and they apply selected changes only after root-baseline conflict checks.
 The GLIF SHA and external UFO proposal format remain explicit transient codec boundaries rather than editable Norad mirrors.
 `formats::ufo` provides read-only detached UFO values for format adapters and fixtures; there is no corresponding whole-glyph reconciliation path into Project.
-`document/sources.rs` owns structural transactions and their guarded undo history; removing a source never deletes its UFO directory.
-`document/filesystem.rs` loads complete UFO and Designspace source sets before construction and stages every save artifact before replacing live destinations.
+`font/sources.rs` owns structural transactions and their guarded undo history; removing a source never deletes its UFO directory.
+`font/filesystem.rs` loads complete UFO and Designspace source sets before construction and stages every save artifact before replacing live destinations.
 The native file watcher resolves nested feature includes through Project and fingerprints those dependencies with the UFO and Designspace roots so a changed external include blocks overwrite.
 Headless source information, SVG proof and proposal commands open one explicit Project source, read canonical layers and metadata, and save proposal mutations through Project persistence.
 Experiment proof and Designbot adapters consume typed canonical proof data and do not construct source-font editing wrappers.
@@ -196,19 +198,19 @@ Application undo ordering and stale-task checks use stable canonical layer addre
 Format-boundary tests may materialize detached UFO values, but those values never become live editor state.
 
 Project save materializes UFOs from canonical Babelfont geometry and glyph-free source-format data, preserving font info, libs, layer order, features, kerning, groups, images and data.
-`document::source_format::SourceFormatData` retains glyph-free UFO layer structure, residual font metadata and opaque image/data resources without storing another complete font document.
-`document::ufo_codec` constructs detached Norad values only while loading, saving or serving an explicit serialization boundary.
+`font::source_format::SourceFormatData` retains glyph-free UFO layer structure, residual font metadata and opaque image/data resources without storing another complete font document.
+`font::ufo_codec` constructs detached Norad values only while loading, saving or serving an explicit serialization boundary.
 Native reload, live edits, proposals, experiments and browser edits use the same canonical operations.
 
-`document::axis` wraps pinned Babelfont coordinate conversion without exposing its types.
-`document::var_model` wraps the fontdrasil variation backend used by Babelfont, retaining f64 values with rounding disabled.
-`document::interpolation` reads canonical layer views directly, checks structure and paint order and interpolates exact advances, contours, anchors and six-coefficient component transforms using each glyph's own sources.
+`font::axis` wraps pinned Babelfont coordinate conversion without exposing its types.
+`font::var_model` wraps the fontdrasil variation backend used by Babelfont, retaining f64 values with rounding disabled.
+`font::interpolation` reads canonical layer views directly, checks structure and paint order and interpolates exact advances, contours, anchors and six-coefficient component transforms using each glyph's own sources.
 Component outlines resolve recursively at the same location, with explicit failures for missing or cyclic components.
 The application reads these results instead of maintaining a second interpolation implementation.
 
-`document::compile` builds a complete Babelfont snapshot and compiles it with fontc in Rust.
+`font::compile` builds a complete Babelfont snapshot and compiles it with fontc in Rust.
 The same immutable OpenType bytes feed HarfRust shaping, Skrifa variable outlines and TTF export.
-`document::compile_metadata` quantizes immutable canonical group and kerning inputs and still adapts remaining UFO metadata plus Designspace rules for that compiler.
+`font::compile_metadata` quantizes immutable canonical group and kerning inputs and still adapts remaining UFO metadata plus Designspace rules for that compiler.
 The native preview worker coalesces pending edits and publishes only the current revision; slider changes reuse the compiled font.
 The browser currently compiles synchronously and downloads exported bytes through a thin platform binding.
 Application source controls live in `application/editor/sources.rs`; views dispatch commands and never perform font mutations themselves.
@@ -260,8 +262,8 @@ new application structure should stay idiomatic to Xilem and Masonry.
 ## Live agent context
 
 `application/platform/live.rs` captures UI context and routes mailbox calls through `Workspace::call_live`, including cache refresh and existing install-history bookkeeping.
-`document/live.rs` remains the toolkit-independent font operation boundary.
-`document/live_socket.rs` owns the Unix endpoint lifetime and checks optional document epoch guards before dispatch.
+`automation/live.rs` remains the toolkit-independent live font-operation boundary.
+`automation/live_socket.rs` owns the Unix endpoint lifetime and checks optional document epoch guards before dispatch.
 Canonical glyph and object identities are exposed as opaque session-scoped strings; the [live wire notes](docs/agent-live-context.md) distinguish these identities from revisions and describe current limits.
 
 `application/platform/live_host.rs` runs a bounded headless native Workspace for file-backed fonts through `agent serve`, using the same live dispatch and history as the Xilem editor.

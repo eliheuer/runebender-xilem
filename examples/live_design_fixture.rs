@@ -6,7 +6,8 @@
 
 #[cfg(unix)]
 fn main() {
-    use runebender::document::{live, live_socket::Server, project::Project};
+    use runebender::automation::{live, live_socket::Server};
+    use runebender::font::project::Project;
     let mut project = Project::new_font("synthetic-not-saved.ufo".into());
     project
         .add_document_glyph("image_probe", 600.0, None)

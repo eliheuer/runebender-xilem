@@ -19,9 +19,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use masonry::kurbo::{self as kurbo, BezPath, Point, Rect};
-use runebender::document::model::glyph_metadata::MarkColor;
-use runebender::document::project::CanonicalLayerTransaction;
-use runebender::document::{AnchorId, ComponentId, ContourId, LayerPointType, LayerView, PointId};
+use runebender::font::model::glyph_metadata::MarkColor;
+use runebender::font::project::CanonicalLayerTransaction;
+use runebender::font::{AnchorId, ComponentId, ContourId, LayerPointType, LayerView, PointId};
 use runebender::outline::glyph_paths;
 use runebender::outline::glyph_paths::round_units;
 use runebender::ui::editing::viewport::ViewPort;
@@ -58,7 +58,7 @@ impl Metrics {
         }
     }
 
-    fn of_canonical(info: &runebender::document::model::font_info::CanonicalFontInfo) -> Self {
+    fn of_canonical(info: &runebender::font::model::font_info::CanonicalFontInfo) -> Self {
         let metrics = info.metrics.resolved();
         Self {
             upm: metrics.units_per_em,
@@ -213,8 +213,8 @@ impl Session {
 
     #[cfg(test)]
     pub(crate) fn new(font: &norad::Font, name: &str) -> Option<Self> {
-        let project = runebender::document::project::Project::from_source(
-            runebender::document::project::SourceInput::from_font(
+        let project = runebender::font::project::Project::from_source(
+            runebender::font::project::SourceInput::from_font(
                 font.clone(),
                 std::path::PathBuf::from("memory.ufo"),
             ),
@@ -223,14 +223,14 @@ impl Session {
     }
 
     fn new_from_project(
-        project: &runebender::document::project::Project,
+        project: &runebender::font::project::Project,
         name: &str,
         metrics: Metrics,
     ) -> Option<Self> {
         let source = project.source_id(project.active)?;
         let layer_id = project.document_source(source)?.default_layer();
         project.document_layer(name, &layer_id)?;
-        let address = runebender::document::variable::GlyphLayerAddress {
+        let address = runebender::font::variable::GlyphLayerAddress {
             glyph: name.to_owned(),
             layer: layer_id,
         };
@@ -487,15 +487,15 @@ impl Session {
     pub(crate) fn metaball_data(
         &self,
     ) -> Result<
-        runebender::document::model::glyph_metadata::Metaballs,
-        runebender::document::DocumentEditError,
+        runebender::font::model::glyph_metadata::Metaballs,
+        runebender::font::DocumentEditError,
     > {
         self.current_layer()
-            .ok_or(runebender::document::DocumentEditError::MissingLayer)?
+            .ok_or(runebender::font::DocumentEditError::MissingLayer)?
             .metaballs()
     }
 
-    pub(crate) fn set_image(&mut self, image: Option<runebender::document::LayerImage>) -> bool {
+    pub(crate) fn set_image(&mut self, image: Option<runebender::font::LayerImage>) -> bool {
         self.stage_canonical_edit("set image", move |draft| Ok(draft.set_image(image)))
     }
 
@@ -536,8 +536,8 @@ impl Session {
         &mut self,
         label: &'static str,
         edit: impl FnOnce(
-            &mut runebender::document::LayerEditDraft,
-        ) -> Result<bool, runebender::document::DocumentEditError>,
+            &mut runebender::font::LayerEditDraft,
+        ) -> Result<bool, runebender::font::DocumentEditError>,
     ) -> bool {
         let Some(mut transaction) = self.canonical_base.clone() else {
             return false;
@@ -553,7 +553,7 @@ impl Session {
     pub(crate) fn stage_canonical_string_edit(
         &mut self,
         label: &'static str,
-        edit: impl FnOnce(&mut runebender::document::LayerEditDraft) -> Result<bool, String>,
+        edit: impl FnOnce(&mut runebender::font::LayerEditDraft) -> Result<bool, String>,
     ) -> Result<bool, String> {
         let Some(mut transaction) = self.canonical_base.clone() else {
             return Ok(false);
@@ -646,7 +646,7 @@ impl Session {
 
     pub(crate) fn store_metaballs(
         &mut self,
-        source: runebender::document::model::glyph_metadata::Metaballs,
+        source: runebender::font::model::glyph_metadata::Metaballs,
         drag: bool,
     ) -> Result<bool, String> {
         if !drag {
@@ -893,8 +893,8 @@ impl Session {
     /// Rebase the session on the canonical layer while retaining stable selections.
     pub(crate) fn reload_from_project(
         &mut self,
-        project: &runebender::document::project::Project,
-        address: &runebender::document::variable::GlyphLayerAddress,
+        project: &runebender::font::project::Project,
+        address: &runebender::font::variable::GlyphLayerAddress,
     ) -> bool {
         if project
             .document_layer(&address.glyph, &address.layer)
@@ -1034,7 +1034,7 @@ impl Session {
                     .components()
                     .find(|candidate| candidate.id() == component)
                     .map(|candidate| candidate.transform())
-                    .ok_or(runebender::document::DocumentEditError::MissingComponent(
+                    .ok_or(runebender::font::DocumentEditError::MissingComponent(
                         component,
                     ))?;
                 draft.set_component_transform(
@@ -1866,7 +1866,7 @@ impl Session {
     /// Replace every contour decoded at an explicit import boundary.
     pub(crate) fn replace_imported_contours(
         &mut self,
-        contours: runebender::document::ImportedContours,
+        contours: runebender::font::ImportedContours,
     ) -> bool {
         let changed = self.stage_canonical_edit("replace imported contours", move |draft| {
             draft.replace_imported_contours(contours)
@@ -1880,7 +1880,7 @@ impl Session {
     /// Append contours decoded at an explicit import boundary, selecting their fresh points.
     pub(crate) fn append_imported_contours(
         &mut self,
-        contours: runebender::document::ImportedContours,
+        contours: runebender::font::ImportedContours,
     ) -> bool {
         if contours.is_empty() {
             return false;
@@ -1904,8 +1904,8 @@ impl Session {
 }
 
 fn resolved_document_components(
-    project: &runebender::document::project::Project,
-    address: &runebender::document::variable::GlyphLayerAddress,
+    project: &runebender::font::project::Project,
+    address: &runebender::font::variable::GlyphLayerAddress,
 ) -> Result<
     Vec<runebender::outline::component_ops::ResolvedDocumentComponent>,
     glyph_paths::ComponentResolveError,
@@ -2220,7 +2220,7 @@ impl Workspace {
             let alignment = if matches!(label, "add anchor" | "anchor drag" | "delete anchor") {
                 let layer = address.layer.clone();
                 let project = &self.font.project;
-                runebender::document::composites::realign_document_layer(
+                runebender::font::composites::realign_document_layer(
                     transaction.draft_mut(),
                     |glyph| project.document_layer(glyph, &layer),
                     true,
@@ -2235,11 +2235,11 @@ impl Workspace {
                     .map_err(|error| error.to_string())
             });
             match commit {
-                Ok(runebender::document::project::DocumentEditOutcome::Changed { .. }) => {
+                Ok(runebender::font::project::DocumentEditOutcome::Changed { .. }) => {
                     outcome = SessionSyncOutcome::Changed;
                     let layer_history_depth = self.font.project.document_layer_history_depth(
                         &address,
-                        runebender::document::history::HistoryDirection::Undo,
+                        runebender::font::history::HistoryDirection::Undo,
                     );
                     self.metadata_undo.push(MetadataEdit::DocumentLayer {
                         glyph: name.clone(),
@@ -2259,7 +2259,7 @@ impl Workspace {
                         retain_session = false;
                     }
                 }
-                Ok(runebender::document::project::DocumentEditOutcome::Unchanged { .. }) => {
+                Ok(runebender::font::project::DocumentEditOutcome::Unchanged { .. }) => {
                     if !session.reload_from_project(&self.font.project, &address) {
                         self.note = "The unchanged glyph layer could not be reloaded".into();
                         session.sync_rejected = true;
@@ -2299,7 +2299,7 @@ impl Workspace {
     /// Rebase the open transitional session after a canonical layer commit or replay.
     pub(crate) fn reload_canonical_layer(
         &mut self,
-        address: &runebender::document::variable::GlyphLayerAddress,
+        address: &runebender::font::variable::GlyphLayerAddress,
     ) -> bool {
         if self.font.project.source_id(self.font.active()) != Some(address.layer.source)
             || self.session.glyph_name != address.glyph
@@ -2338,15 +2338,15 @@ impl Workspace {
             return;
         };
         let direction = if redo {
-            runebender::document::history::HistoryDirection::Redo
+            runebender::font::history::HistoryDirection::Redo
         } else {
-            runebender::document::history::HistoryDirection::Undo
+            runebender::font::history::HistoryDirection::Undo
         };
         if !matches!(
             self.font
                 .project
                 .replay_document_layer_history(&address, direction),
-            Ok(runebender::document::project::DocumentHistoryReplayOutcome::Changed { .. })
+            Ok(runebender::font::project::DocumentHistoryReplayOutcome::Changed { .. })
         ) {
             self.note = if redo {
                 "Nothing to redo"
@@ -2436,14 +2436,14 @@ impl Workspace {
             return;
         };
         let direction = if redo {
-            runebender::document::history::HistoryDirection::Redo
+            runebender::font::history::HistoryDirection::Redo
         } else {
-            runebender::document::history::HistoryDirection::Undo
+            runebender::font::history::HistoryDirection::Undo
         };
         let addresses = batch
             .glyphs
             .iter()
-            .map(|glyph| runebender::document::variable::GlyphLayerAddress {
+            .map(|glyph| runebender::font::variable::GlyphLayerAddress {
                 glyph: glyph.clone(),
                 layer: layer.clone(),
             })
@@ -2945,7 +2945,7 @@ mod tests {
     #[test]
     fn decompose_undo_rebuilds_nested_transformed_component_preview() {
         use masonry::kurbo::Shape as _;
-        use runebender::document::project::SourceInput;
+        use runebender::font::project::SourceInput;
 
         let mut font = norad::Font::new();
         let mut base = norad::Glyph::new("base");
@@ -2986,11 +2986,12 @@ mod tests {
             None,
         ));
         font.default_layer_mut().insert_glyph(composite);
-        let mut project = runebender::document::project::Project::from_source(
-            SourceInput::from_font(font, std::path::PathBuf::new()),
-        );
+        let mut project = runebender::font::project::Project::from_source(SourceInput::from_font(
+            font,
+            std::path::PathBuf::new(),
+        ));
         let source = project.document_sources().next().unwrap();
-        let address = runebender::document::variable::GlyphLayerAddress {
+        let address = runebender::font::variable::GlyphLayerAddress {
             glyph: "composite".into(),
             layer: source.default_layer(),
         };
@@ -3013,7 +3014,7 @@ mod tests {
         project
             .replay_document_layer_history(
                 &address,
-                runebender::document::history::HistoryDirection::Undo,
+                runebender::font::history::HistoryDirection::Undo,
             )
             .unwrap();
         session.reload_from_project(&project, &address);

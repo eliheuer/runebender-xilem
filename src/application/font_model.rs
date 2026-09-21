@@ -11,13 +11,13 @@ use std::sync::Arc;
 
 use kurbo::{BezPath, Rect};
 use runebender::analysis::category::GlyphCategory;
-use runebender::document::canonical_metadata::{CanonicalFontMetadata, KerningSide};
-use runebender::document::model::font_info::CanonicalFontInfo;
-use runebender::document::project::{CanonicalGlyphEntry, DocumentEditOutcome, Project};
-use runebender::document::proposal;
+use runebender::font::canonical_metadata::{CanonicalFontMetadata, KerningSide};
+use runebender::font::model::font_info::CanonicalFontInfo;
+use runebender::font::project::{CanonicalGlyphEntry, DocumentEditOutcome, Project};
+use runebender::font::proposal;
 use runebender::outline::glyph_paths;
 
-pub(crate) use runebender::document::axis::Axis;
+pub(crate) use runebender::font::axis::Axis;
 
 /// Everything the grid and previews need for one glyph, without touching norad.
 #[derive(Clone)]
@@ -61,7 +61,7 @@ pub(crate) struct FontModel {
 }
 
 impl FontModel {
-    fn default_source_id(&self) -> runebender::document::variable::SourceId {
+    fn default_source_id(&self) -> runebender::font::variable::SourceId {
         let index = self
             .project
             .master_locations
@@ -110,11 +110,11 @@ impl FontModel {
     pub(crate) fn active_layer_address(
         &self,
         glyph: &str,
-    ) -> Option<runebender::document::variable::GlyphLayerAddress> {
+    ) -> Option<runebender::font::variable::GlyphLayerAddress> {
         let source = self.project.source_id(self.active())?;
         let layer = self.project.document_source(source)?.default_layer();
         self.project.document_layer(glyph, &layer).map(|_| {
-            runebender::document::variable::GlyphLayerAddress {
+            runebender::font::variable::GlyphLayerAddress {
                 glyph: glyph.to_owned(),
                 layer,
             }
@@ -125,7 +125,7 @@ impl FontModel {
     pub(crate) fn history_depth(
         &self,
         glyph: &str,
-        direction: runebender::document::history::HistoryDirection,
+        direction: runebender::font::history::HistoryDirection,
     ) -> usize {
         self.active_layer_address(glyph).map_or(0, |address| {
             self.project
@@ -137,7 +137,7 @@ impl FontModel {
     pub(crate) fn can_replay_history(
         &self,
         glyph: &str,
-        direction: runebender::document::history::HistoryDirection,
+        direction: runebender::font::history::HistoryDirection,
     ) -> bool {
         self.active_layer_address(glyph).is_some_and(|address| {
             self.project
@@ -147,7 +147,7 @@ impl FontModel {
 
     pub(crate) fn preview_font(
         &self,
-    ) -> Result<Option<Arc<runebender::document::compile::CompiledFont>>, String> {
+    ) -> Result<Option<Arc<runebender::font::compile::CompiledFont>>, String> {
         if cfg!(test) || std::env::var_os("RUNEBENDER_SCREENSHOT").is_some() {
             self.project.compiled_preview().map(Some)
         } else {
@@ -490,9 +490,9 @@ impl FontModel {
     /// read-only comparison overlay.
     pub(crate) fn proposal_outline(&self, task: &str, glyph: &str) -> Option<BezPath> {
         let source = self.project.source_id(self.active())?;
-        let address = runebender::document::variable::GlyphLayerAddress {
+        let address = runebender::font::variable::GlyphLayerAddress {
             glyph: glyph.to_owned(),
-            layer: runebender::document::variable::LayerId {
+            layer: runebender::font::variable::LayerId {
                 source,
                 name: proposal::layer_name(task),
             },
@@ -738,8 +738,8 @@ fn save_target_is_writable(target: &FsPath) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use runebender::document::canonical_metadata::KerningParticipant;
-    use runebender::document::project::SourceInput;
+    use runebender::font::canonical_metadata::KerningParticipant;
+    use runebender::font::project::SourceInput;
 
     fn two_master_model() -> (PathBuf, FontModel) {
         let dir = std::env::temp_dir().join(format!(
@@ -920,8 +920,8 @@ mod tests {
 
     #[test]
     fn cached_incompatible_count_tracks_edits_and_history() {
-        use runebender::document::history::HistoryDirection;
-        use runebender::document::variable::GlyphLayerAddress;
+        use runebender::font::history::HistoryDirection;
+        use runebender::font::variable::GlyphLayerAddress;
 
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/incompatible/Test.designspace");

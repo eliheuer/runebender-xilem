@@ -17,10 +17,10 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use runebender::document::history::HistoryDirection;
-use runebender::document::project::DocumentHistoryReplayOutcome;
-use runebender::document::proposal::{self, ProposalSummary};
-use runebender::document::variable::GlyphLayerAddress;
+use runebender::font::history::HistoryDirection;
+use runebender::font::project::DocumentHistoryReplayOutcome;
+use runebender::font::proposal::{self, ProposalSummary};
+use runebender::font::variable::GlyphLayerAddress;
 
 use crate::application::editor::session::Session;
 use crate::application::font_model::FontModel;
@@ -190,7 +190,7 @@ pub(crate) fn foreground_revisions(
                 .ok_or_else(|| format!("{name}: foreground glyph no longer exists"))?;
             Ok((
                 name,
-                runebender::document::edit_batch::canonical_glyph_revision(glyph)?,
+                runebender::font::edit_batch::canonical_glyph_revision(glyph)?,
             ))
         })
         .collect()
@@ -319,13 +319,13 @@ impl Workspace {
     /// Where models are looked for: `$RUNEBENDER_MODELS`, else
     /// `~/.runebender/models`, plus the roots core reads.
     pub(crate) fn models_dir() -> Option<PathBuf> {
-        runebender::document::nodes_run::default_models_dir()
+        runebender::workflows::nodes_run::default_models_dir()
     }
 
     /// Look at the disk again: the model directories and the tasks.
     pub(crate) fn rescan_models(&mut self) {
         self.ai.installed =
-            runebender::document::nodes_run::installed(Self::models_dir().as_deref(), false);
+            runebender::workflows::nodes_run::installed(Self::models_dir().as_deref(), false);
         self.ai.tasks = self
             .nodes
             .tasks_json
@@ -413,7 +413,7 @@ impl Workspace {
         task: &str,
         source: &Path,
     ) -> Result<ProposalSummary, String> {
-        let on_disk = runebender::document::project::Project::load(source)?;
+        let on_disk = runebender::font::project::Project::load(source)?;
         let on_disk_source = on_disk
             .document_sources()
             .next()
@@ -962,27 +962,23 @@ mod tests {
             .document_source(source)
             .unwrap()
             .default_layer();
-        let revision = runebender::document::edit_batch::canonical_glyph_revision(
+        let revision = runebender::font::edit_batch::canonical_glyph_revision(
             workspace.font.project.document_layer("A", &layer).unwrap(),
         )
         .unwrap();
-        let batch = runebender::document::edit_batch::EditBatch {
+        let batch = runebender::font::edit_batch::EditBatch {
             task: "spacing".into(),
             reason: "test application history ordering".into(),
-            edits: vec![runebender::document::edit_batch::GlyphEdit {
+            edits: vec![runebender::font::edit_batch::GlyphEdit {
                 glyph: "A".into(),
                 expected_revision: revision,
-                operations: vec![runebender::document::edit_batch::Operation::SetWidth {
+                operations: vec![runebender::font::edit_batch::Operation::SetWidth {
                     width: 620.0,
                 }],
             }],
         };
-        runebender::document::edit_batch::propose_project(
-            &mut workspace.font.project,
-            source,
-            &batch,
-        )
-        .unwrap();
+        runebender::font::edit_batch::propose_project(&mut workspace.font.project, source, &batch)
+            .unwrap();
         workspace.refresh_proposals();
         workspace.install_proposal(&batch.task, None);
         assert_eq!(workspace.session.advance(), 620.0);
@@ -1114,13 +1110,9 @@ mod tests {
         let mut font = norad::Font::new();
         font.default_layer_mut()
             .insert_glyph(norad::Glyph::new("A"));
-        let mut model =
-            FontModel::from_project(runebender::document::project::Project::from_source(
-                runebender::document::project::SourceInput::from_font(
-                    font,
-                    PathBuf::from("Revision.ufo"),
-                ),
-            ));
+        let mut model = FontModel::from_project(runebender::font::project::Project::from_source(
+            runebender::font::project::SourceInput::from_font(font, PathBuf::from("Revision.ufo")),
+        ));
         let expected = foreground_revisions(&model, &[]).expect("the layer can be revised");
 
         assert!(model.add_glyph("B", 500.0, None));

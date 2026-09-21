@@ -10,8 +10,8 @@ use norad::{
     AffineTransform, Anchor, Color, Component, Contour, ContourPoint, Font, Glyph, Guideline,
     Identifier, Image, Line, Name, PointType,
 };
-use runebender::document::project::Project;
-use runebender::document::variable::SourceId;
+use runebender::font::project::Project;
+use runebender::font::variable::SourceId;
 
 struct Scratch(PathBuf);
 

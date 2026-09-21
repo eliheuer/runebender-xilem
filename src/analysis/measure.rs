@@ -19,7 +19,7 @@ use kurbo::{BezPath, Line, ParamCurve, PathEl, PathSeg, Point, Shape};
 use crate::outline::glyph_paths::round_units;
 use crate::outline::path::Path;
 use crate::{
-    document::{ContourView, LayerPointType, LayerView},
+    font::{ContourView, LayerPointType, LayerView},
     outline::glyph_paths,
 };
 

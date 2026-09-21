@@ -14,7 +14,7 @@
 
 use super::point::{PathPoint, PointType};
 use super::point_list::PathPoints;
-use crate::document::model::entity_id::EntityId;
+use crate::font::model::entity_id::EntityId;
 use crate::outline::path::hyper_model as workspace;
 use kurbo::BezPath;
 

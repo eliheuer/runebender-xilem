@@ -11,14 +11,14 @@
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
-use runebender::document::agent;
-use runebender::document::compose;
-use runebender::document::nodes;
-use runebender::document::nodes_run;
-use runebender::document::project::Project;
-use runebender::document::proposal;
-use runebender::document::variable::{GlyphLayerAddress, LayerId};
+use runebender::automation::agent;
+use runebender::font::compose;
+use runebender::font::project::Project;
+use runebender::font::proposal;
+use runebender::font::variable::{GlyphLayerAddress, LayerId};
 use runebender::outline::embolden;
+use runebender::workflows::nodes;
+use runebender::workflows::nodes_run;
 use serde_json::json;
 
 /// Exit codes, matching font-ml so a caller can branch on them.
@@ -501,12 +501,12 @@ pub(crate) fn run() -> Startup {
             AgentAction::Tools => {
                 let live = std::env::var_os("RUNEBENDER_LIVE_SESSION").is_some();
                 let tools = if live {
-                    runebender::document::live::tools()
+                    runebender::automation::live::tools()
                 } else {
                     agent::tools()
                 };
                 let prompt = if live {
-                    runebender::document::live::system_prompt(&tools)
+                    runebender::automation::live::system_prompt(&tools)
                 } else {
                     agent::system_prompt(&tools)
                 };
@@ -553,7 +553,7 @@ pub(crate) fn run() -> Startup {
             #[cfg(unix)]
             println!(
                 "{}",
-                json!({"ok": true, "sessions": runebender::document::live_socket::sessions()})
+                json!({"ok": true, "sessions": runebender::automation::live_socket::sessions()})
             );
             #[cfg(not(unix))]
             println!(
@@ -1596,7 +1596,7 @@ fn dispatch_call(
     let inherited = std::env::var_os("RUNEBENDER_LIVE_SESSION").map(PathBuf::from);
     if let Some(session) = session.or(inherited.as_deref()) {
         #[cfg(unix)]
-        return runebender::document::live_socket::call(
+        return runebender::automation::live_socket::call(
             session,
             &agent::ToolCall {
                 name: name.into(),
@@ -1712,7 +1712,7 @@ fn agent_call_source(
                 .as_object_mut()
                 .expect("object validated")
                 .remove("master");
-            match serde_json::from_value::<runebender::document::edit_batch::EditBatch>(batch) {
+            match serde_json::from_value::<runebender::font::edit_batch::EditBatch>(batch) {
                 Ok(batch) => {
                     match runebender::formats::proposal_ufo::save_proposal(source, &batch) {
                         Ok(summary) => json!({"ok": true, "proposal": summary}),
@@ -2061,7 +2061,7 @@ fn mcp_response(
                     "version": env!("CARGO_PKG_VERSION"),
                 },
                 "instructions": if live_mode {
-                    format!("{}\n\n{}", runebender::document::live::INSTRUCTIONS, runebender::document::script_recipe::AUTHORING_INSTRUCTIONS)
+                    format!("{}\n\n{}", runebender::automation::live::INSTRUCTIONS, runebender::automation::script_recipe::AUTHORING_INSTRUCTIONS)
                 } else { mcp_instructions(font.expect("font or session")) },
             }))
         }
@@ -2179,7 +2179,7 @@ fn mcp_tools(live: bool) -> Vec<agent::Tool> {
     if !live {
         return agent::tools();
     }
-    let mut tools = runebender::document::live::tools();
+    let mut tools = runebender::automation::live::tools();
     if let Some(proof) = tools.iter_mut().find(|tool| tool.name == "proof") {
         proof.description = "Return a PNG proof image and metrics from the live unsaved source. Supply 1 to 256 explicit glyph names; use layer to view a proposal. Use small groups for legible images. Images are required for visual judgment; report if your client does not deliver them.".into();
     }
@@ -2202,7 +2202,7 @@ fn live_client_call(
     }
     #[cfg(unix)]
     {
-        use runebender::document::live_socket;
+        use runebender::automation::live_socket;
         if name == "export_proof" {
             let run = (|| -> Result<serde_json::Value, String> {
                 use std::io::Write as _;
@@ -2690,8 +2690,8 @@ fn bolden_check(
 }
 
 fn canonical_outline(
-    layer: runebender::document::LayerView<'_>,
-) -> Vec<Vec<(kurbo::Point, runebender::document::LayerPointType, bool)>> {
+    layer: runebender::font::LayerView<'_>,
+) -> Vec<Vec<(kurbo::Point, runebender::font::LayerPointType, bool)>> {
     layer
         .contours()
         .map(|contour| {
@@ -2704,8 +2704,8 @@ fn canonical_outline(
 }
 
 fn compatible_outlines(
-    first: runebender::document::LayerView<'_>,
-    second: runebender::document::LayerView<'_>,
+    first: runebender::font::LayerView<'_>,
+    second: runebender::font::LayerView<'_>,
 ) -> bool {
     let first = canonical_outline(first);
     let second = canonical_outline(second);
@@ -2719,7 +2719,7 @@ fn compatible_outlines(
         })
 }
 
-fn flat_layer_points(layer: runebender::document::LayerView<'_>) -> Vec<(f64, f64)> {
+fn flat_layer_points(layer: runebender::font::LayerView<'_>) -> Vec<(f64, f64)> {
     layer
         .contours()
         .flat_map(|contour| {
@@ -2731,7 +2731,7 @@ fn flat_layer_points(layer: runebender::document::LayerView<'_>) -> Vec<(f64, f6
 }
 
 fn emboldened_layer_points(
-    layer: runebender::document::LayerView<'_>,
+    layer: runebender::font::LayerView<'_>,
     offset: embolden::Offset,
 ) -> Vec<(f64, f64)> {
     layer

@@ -201,7 +201,7 @@ mod tests {
         // Palette + mapping written through the helpers must read
         // back identically after a norad save/load, in the exact
         // shape ufo2ft's COLR builder consumes.
-        let project = crate::document::project::Project::new_canonical_font(
+        let project = crate::font::project::Project::new_canonical_font(
             "Untitled.ufo".into(),
             "Col",
             "Regular",
@@ -209,7 +209,7 @@ mod tests {
         )
         .unwrap();
         let mut font = project
-            .encode_ufo_source(crate::document::variable::SourceId(0))
+            .encode_ufo_source(crate::font::variable::SourceId(0))
             .unwrap();
         let palette = vec![[1.0, 0.2, 0.0, 1.0], [0.0, 0.4, 1.0, 0.5]];
         write_color_palette(&mut font, &palette);

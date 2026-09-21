@@ -201,13 +201,13 @@ pub(crate) fn glyph_preview(app: &Workspace) -> impl WidgetView<Workspace> + use
             for contour in contours {
                 let n = contour.len();
                 for (i, (x, y, point_type, _)) in contour.iter().enumerate() {
-                    if *point_type != runebender::document::LayerPointType::OffCurve {
+                    if *point_type != runebender::font::LayerPointType::OffCurve {
                         continue;
                     }
                     let off = t * Point::new(*x, *y);
                     for j in [(i + n - 1) % n, (i + 1) % n] {
                         let (on_x, on_y, on_type, _) = contour[j];
-                        if on_type != runebender::document::LayerPointType::OffCurve {
+                        if on_type != runebender::font::LayerPointType::OffCurve {
                             p.stroke(
                                 Line::new(off, t * Point::new(on_x, on_y)),
                                 &stroke,
@@ -219,7 +219,7 @@ pub(crate) fn glyph_preview(app: &Workspace) -> impl WidgetView<Workspace> + use
                 }
                 for (x, y, point_type, smooth) in contour {
                     let at = t * Point::new(*x, *y);
-                    let off = *point_type == runebender::document::LayerPointType::OffCurve;
+                    let off = *point_type == runebender::font::LayerPointType::OffCurve;
                     let hue = pal.role(if off {
                         "pointOffcurve"
                     } else if *smooth {

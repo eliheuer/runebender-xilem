@@ -33,7 +33,7 @@ fn typing_after_active_sort_lays_out_beside_it() {
     let a_item = layout.items.iter().find(|i| i.index == 1).unwrap();
     let s_item = layout.items.iter().find(|i| i.index == 2).unwrap();
     assert_eq!(one_item.x, 0.0);
-    let kern_one_a = crate::document::font_ops::kern_value(&font, "one", "a");
+    let kern_one_a = crate::font::font_ops::kern_value(&font, "one", "a");
     assert!(
         (a_item.x - (one.width + kern_one_a)).abs() < 1e-6,
         "a at {} expected {}",
@@ -76,7 +76,7 @@ fn from_font_builds_working_models() {
             let Some(rc) = other.codepoints.iter().next() else {
                 continue;
             };
-            let expected = crate::document::font_ops::kern_value(
+            let expected = crate::font::font_ops::kern_value(
                 &font,
                 glyph.name().as_str(),
                 other.name().as_str(),
@@ -119,15 +119,15 @@ fn canonical_project_builds_the_same_text_inputs_as_its_source_boundary() {
         .entry(norad::Name::new("A").unwrap())
         .or_default()
         .insert(norad::Name::new("V").unwrap(), -80.5);
-    let designspace = crate::document::font_memory::designspace_from_str(
+    let designspace = crate::font::font_memory::designspace_from_str(
         r#"<designspace format="5.0">
           <axes><axis tag="wght" name="Weight" minimum="400" default="400" maximum="900"/></axes>
           <sources><source filename="Regular.ufo" name="regular"><location><dimension name="Weight" xvalue="400"/></location></source></sources>
         </designspace>"#,
     )
     .unwrap();
-    let project = crate::document::project::Project::from_designspace(designspace, |path| {
-        Ok(crate::document::project::SourceInput::from_font(
+    let project = crate::font::project::Project::from_designspace(designspace, |path| {
+        Ok(crate::font::project::SourceInput::from_font(
             font.clone(),
             path.into(),
         ))

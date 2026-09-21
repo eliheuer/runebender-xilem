@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 
 #[cfg(test)]
-use crate::document::model::glyph_metadata::{MARK_COLOR_KEY, MARK_LABEL_KEY};
+use crate::font::model::glyph_metadata::{MARK_COLOR_KEY, MARK_LABEL_KEY};
 use crate::ui::color::ColorRgba;
 
 use serde::Deserialize;
@@ -443,10 +443,7 @@ pub fn mark_label_for_glyph(glyph: &norad::Glyph, theme: &Theme) -> Option<Strin
 }
 
 /// Resolve the display mark for one canonical glyph layer.
-pub fn mark_label_for_layer(
-    layer: crate::document::LayerView<'_>,
-    theme: &Theme,
-) -> Option<String> {
+pub fn mark_label_for_layer(layer: crate::font::LayerView<'_>, theme: &Theme) -> Option<String> {
     if let Ok(Some(label)) = layer.mark_label()
         && theme.mark(label).is_some()
     {

@@ -28,10 +28,10 @@ use masonry::layout::{LenReq, Length};
 use masonry::peniko::{Blob, ImageAlphaType, ImageData, ImageFormat};
 use masonry::properties::ContentColor;
 use masonry::widgets::{Image as MasonryImage, Portal, TextAction};
-use runebender::document::nodes::{Kind, NodeGraph, Registry};
-use runebender::document::nodes_run::Status;
 use runebender::ui::editing::viewport::ViewPort;
 use runebender::ui::nodes::{self as nl, Hit, NodeBox, NodeContentMap, NodeRegion};
+use runebender::workflows::nodes::{Kind, NodeGraph, Registry};
+use runebender::workflows::nodes_run::Status;
 use xilem::Color;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewId, ViewMarker, ViewPathTracker};
 use xilem::{Pod, ViewCtx};
@@ -1289,11 +1289,11 @@ mod tests {
     use masonry::core::keyboard::{Code, Key, KeyState, KeyboardEvent, Modifiers};
     use masonry::core::{Ime, TextEvent};
     use masonry_testing::TestHarness;
-    use runebender::document::nodes_live;
-    use runebender::document::variable::SourceId;
+    use runebender::font::variable::SourceId;
     use runebender::ui::nodes::{
         ContentState, ImageContent, ImmutablePng, NodeContent, ScriptContent,
     };
+    use runebender::workflows::nodes_live;
     use std::io::Cursor;
 
     fn png() -> Arc<[u8]> {

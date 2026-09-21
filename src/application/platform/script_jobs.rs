@@ -12,7 +12,7 @@ use std::fmt;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use runebender::document::script_recipe::{ScriptRecipeInput, ScriptRecipeResult};
+use runebender::automation::script_recipe::{ScriptRecipeInput, ScriptRecipeResult};
 
 /// Maximum queued jobs accepted by one runner.
 pub(crate) const MAX_SCRIPT_QUEUE_CAPACITY: usize = 8;
@@ -950,8 +950,8 @@ mod native {
     mod tests {
         use std::collections::BTreeMap;
 
-        use runebender::document::agent_edit::AgentLayerGuard;
-        use runebender::document::script_recipe::{
+        use runebender::automation::agent_edit::AgentLayerGuard;
+        use runebender::automation::script_recipe::{
             SCRIPT_RECIPE_SCHEMA_VERSION, ScriptRecipeLayer,
         };
 

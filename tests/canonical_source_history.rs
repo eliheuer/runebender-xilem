@@ -6,13 +6,13 @@
 use std::path::PathBuf;
 
 use norad::{Contour, ContourPoint, Font, Glyph, PointType};
-use runebender::document::font_memory::designspace_from_str;
-use runebender::document::history::HistoryDirection;
-use runebender::document::model::designspace::SourceOrderEntry;
-use runebender::document::project::{
+use runebender::font::font_memory::designspace_from_str;
+use runebender::font::history::HistoryDirection;
+use runebender::font::model::designspace::SourceOrderEntry;
+use runebender::font::project::{
     DocumentEditOutcome, DocumentHistoryReplayOutcome, Project, SourceInput,
 };
-use runebender::document::variable::{GlyphLayerAddress, LayerId, SourceId};
+use runebender::font::variable::{GlyphLayerAddress, LayerId, SourceId};
 
 const DESIGNSPACE: &str = include_str!("fixtures/variable/TwoAxes.designspace");
 

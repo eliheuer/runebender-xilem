@@ -6,14 +6,14 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use runebender::document::DocumentEditError;
-use runebender::document::history::HistoryDirection;
-use runebender::document::model::glyph_metadata::{
+use runebender::font::DocumentEditError;
+use runebender::font::history::HistoryDirection;
+use runebender::font::model::glyph_metadata::{
     COMPOSITION_RECIPE_KEY, LEFT_METRICS_KEY, MARK_COLOR_KEY, MARK_LABEL_KEY, METABALLS_KEY,
     MarkColor, Metaball, MetaballGroup, Metaballs, RIGHT_METRICS_KEY,
 };
-use runebender::document::project::{DocumentEditOutcome, Project, SourceInput};
-use runebender::document::variable::{GlyphLayerAddress, SourceId};
+use runebender::font::project::{DocumentEditOutcome, Project, SourceInput};
+use runebender::font::variable::{GlyphLayerAddress, SourceId};
 
 struct Scratch(PathBuf);
 

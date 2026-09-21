@@ -12,17 +12,17 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use runebender::document::agent_edit::AgentEditRequest;
-use runebender::document::compiled_proof::{CompileProofInput, CompiledProofRecipe};
-use runebender::document::nodes_session::{
+use runebender::automation::agent_edit::AgentEditRequest;
+use runebender::automation::script_recipe::{ScriptRecipeInput, ScriptRecipeResult};
+use runebender::font::compiled_proof::{CompileProofInput, CompiledProofRecipe};
+use runebender::font::project::Project;
+use runebender::workflows::nodes_session::{
     GraphCancelOutcome, GraphCancelRequest, GraphCancelResponse, GraphDocumentState,
     GraphFontCapture, GraphNodeOutput, GraphNodeOutputValue, GraphProofScope,
     GraphReceiptDisposition, GraphRunCompletion, GraphRunHandle, GraphRunIdentity,
     GraphRunInspection, GraphRunOutcome, GraphRunRequest, GraphRunResponse, GraphRunStatus,
     GraphRunWork, GraphSemanticGuard, GraphSession,
 };
-use runebender::document::project::Project;
-use runebender::document::script_recipe::{ScriptRecipeInput, ScriptRecipeResult};
 use serde_json::Value;
 #[cfg(test)]
 use sha2::{Digest, Sha256};
@@ -870,10 +870,10 @@ fn stage_result(
     };
     let staged_edit = request.stage(project).map_err(|error| {
         let message = match error {
-            runebender::document::agent_session::AgentOperationRejection::InvalidRequest(
+            runebender::automation::agent_session::AgentOperationRejection::InvalidRequest(
                 message,
             ) => message,
-            runebender::document::agent_session::AgentOperationRejection::Transaction(error) => {
+            runebender::automation::agent_session::AgentOperationRejection::Transaction(error) => {
                 error.to_string()
             }
         };
@@ -914,15 +914,15 @@ fn stage_result(
 }
 
 fn proof_recipe(
-    graph: &runebender::document::nodes::NodeGraph,
-    proofs: &[runebender::document::nodes_session::GraphProofCapture],
+    graph: &runebender::workflows::nodes::NodeGraph,
+    proofs: &[runebender::workflows::nodes_session::GraphProofCapture],
 ) -> Result<CompiledProofRecipe, LiveGraphExecutionError> {
     let read = |node| {
         graph
             .node(node)
             .and_then(|node| node.values.get("recipe"))
             .cloned()
-            .unwrap_or_else(runebender::document::nodes_live::default_proof_recipe)
+            .unwrap_or_else(runebender::workflows::nodes_live::default_proof_recipe)
     };
     let [unchanged, changed] = proofs else {
         return Err(LiveGraphExecutionError::new(
@@ -1014,7 +1014,7 @@ impl CurrentProject for ProjectRevision<'_> {
 }
 
 fn graph_error(
-    error: runebender::document::nodes_session::GraphSessionError,
+    error: runebender::workflows::nodes_session::GraphSessionError,
 ) -> LiveGraphExecutionError {
     LiveGraphExecutionError::new(LiveGraphExecutionErrorCode::Graph, error.to_string())
 }
@@ -1046,12 +1046,12 @@ fn run_error(
     code: &str,
     message: &str,
     node: Option<u32>,
-) -> runebender::document::nodes_session::GraphRunError {
+) -> runebender::workflows::nodes_session::GraphRunError {
     let mut message = message.to_owned();
     while message.len() > 4096 {
         message.pop();
     }
-    runebender::document::nodes_session::GraphRunError {
+    runebender::workflows::nodes_session::GraphRunError {
         code: code.into(),
         message,
         node,
@@ -1079,15 +1079,15 @@ mod tests {
     use crate::application::platform::script_jobs::{
         ScriptJobConfig, ScriptJobStatus, ScriptRuntimeAvailability,
     };
-    use runebender::document::agent_edit::AgentLayerGuard;
-    use runebender::document::compiled_proof;
-    use runebender::document::edit_batch::canonical_glyph_revision;
-    use runebender::document::nodes::Registry;
-    use runebender::document::nodes_live;
-    use runebender::document::nodes_session::{
+    use runebender::automation::agent_edit::AgentLayerGuard;
+    use runebender::automation::script_recipe::{SCRIPT_RECIPE_SCHEMA_VERSION, ScriptRecipeLayer};
+    use runebender::font::compiled_proof;
+    use runebender::font::edit_batch::canonical_glyph_revision;
+    use runebender::workflows::nodes::Registry;
+    use runebender::workflows::nodes_live;
+    use runebender::workflows::nodes_session::{
         GraphEdit, GraphGuard, GraphInteractiveMutationRequest, GraphMutation,
     };
-    use runebender::document::script_recipe::{SCRIPT_RECIPE_SCHEMA_VERSION, ScriptRecipeLayer};
 
     fn python() -> Option<PathBuf> {
         let executable = std::env::var_os("PYTHON")

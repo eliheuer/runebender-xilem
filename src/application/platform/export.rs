@@ -23,7 +23,7 @@ pub(crate) struct ExportProgress;
 #[cfg(not(target_arch = "wasm32"))]
 fn run(
     source: PathBuf,
-    compiled: runebender::document::compile::CompiledFont,
+    compiled: runebender::font::compile::CompiledFont,
 ) -> Result<String, String> {
     let directory = source
         .parent()
@@ -55,21 +55,20 @@ impl Workspace {
         let worker = finished.clone();
         #[cfg(not(target_arch = "wasm32"))]
         std::thread::spawn(move || {
-            let result = runebender::document::compile::CompiledFont::build(snapshot)
+            let result = runebender::font::compile::CompiledFont::build(snapshot)
                 .and_then(|compiled| run(source, compiled));
             *worker.lock().unwrap_or_else(|error| error.into_inner()) = Some(result);
         });
         #[cfg(target_arch = "wasm32")]
         {
-            let result =
-                runebender::document::compile::CompiledFont::build(snapshot).map(|compiled| {
-                    let name = format!(
-                        "{}.ttf",
-                        source.file_stem().unwrap_or_default().to_string_lossy()
-                    );
-                    crate::application::browser::download_font(&name, compiled.bytes.as_slice());
-                    format!("Exported {name}")
-                });
+            let result = runebender::font::compile::CompiledFont::build(snapshot).map(|compiled| {
+                let name = format!(
+                    "{}.ttf",
+                    source.file_stem().unwrap_or_default().to_string_lossy()
+                );
+                crate::application::browser::download_font(&name, compiled.bytes.as_slice());
+                format!("Exported {name}")
+            });
             *worker.lock().unwrap_or_else(|error| error.into_inner()) = Some(result);
         }
         self.export_job = Some(ExportJob { finished });

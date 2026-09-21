@@ -13,7 +13,7 @@
 
 use kurbo::{CubicBez, Line, ParamCurve, ParamCurveArclen, Point, Shape as _};
 
-use crate::document::model::EntityId;
+use crate::font::model::EntityId;
 use crate::outline::path::{
     CubicPath, Path, PathPoint, PathPoints, PointType, QuadraticPath, Segment, SegmentInfo,
 };
@@ -1321,7 +1321,7 @@ pub fn knife_hit_points(glyph: &norad::Glyph, p0: Point, p1: Point) -> Vec<Point
 
 /// Find where a knife line crosses canonical document contours.
 pub fn knife_hit_points_in_layer(
-    layer: crate::document::LayerView<'_>,
+    layer: crate::font::LayerView<'_>,
     p0: Point,
     p1: Point,
 ) -> Vec<Point> {

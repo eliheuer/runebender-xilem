@@ -3,8 +3,8 @@
 
 //! Structured glyph inspection shared by disk and live editor tools.
 
-use crate::document::project::Project;
-use crate::document::variable::{GlyphLayerAddress, LayerId, SourceId};
+use crate::font::project::Project;
+use crate::font::variable::{GlyphLayerAddress, LayerId, SourceId};
 use serde_json::json;
 
 /// Return geometry, metrics and the stable GLIF revision from one canonical document layer.
@@ -54,7 +54,7 @@ pub fn read_project_glyph(
 
 /// Return geometry and metrics from one isolated canonical experiment layer.
 pub fn read_experiment_glyph(
-    experiment: &crate::document::experiments::Experiment,
+    experiment: &crate::font::experiments::Experiment,
     name: &str,
     layer: Option<&str>,
 ) -> serde_json::Value {
@@ -71,7 +71,7 @@ pub fn read_experiment_glyph(
 fn read_canonical_layer(
     name: &str,
     layer_name: &str,
-    glyph: crate::document::LayerView<'_>,
+    glyph: crate::font::LayerView<'_>,
     path: kurbo::BezPath,
 ) -> serde_json::Value {
     let drawn = !path.is_empty();
@@ -84,7 +84,7 @@ fn read_canonical_layer(
         "ok": true,
         "glyph": name,
         "layer": layer_name,
-        "revision": crate::document::edit_batch::canonical_glyph_revision(glyph).ok(),
+        "revision": crate::font::edit_batch::canonical_glyph_revision(glyph).ok(),
         "advance": glyph.width(),
         "lsb": if drawn { Some(bounds.x0.round()) } else { None },
         "rsb": if drawn { Some((glyph.width() - bounds.x1).round()) } else { None },
@@ -158,7 +158,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::document::project::SourceInput;
+    use crate::font::project::SourceInput;
 
     #[test]
     fn canonical_glyph_inspection_matches_the_ufo_boundary_contract() {

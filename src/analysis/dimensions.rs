@@ -12,9 +12,9 @@
 use kurbo::Shape as _;
 
 use crate::analysis::measure::{self, MeasureKind};
-use crate::document::LayerView;
-use crate::document::project::Project;
-use crate::document::variable::SourceId;
+use crate::font::LayerView;
+use crate::font::project::Project;
+use crate::font::variable::SourceId;
 use crate::outline::glyph_paths;
 
 /// The glyphs a Dimensions panel reads, in the order it lists them.
@@ -71,8 +71,8 @@ pub fn stem_and_bar_from_layer(layer: LayerView<'_>) -> (Option<i64>, Option<i64
 mod tests {
     use std::path::PathBuf;
 
-    use crate::document::project::{Project, SourceInput};
-    use crate::document::variable::SourceId;
+    use crate::font::project::{Project, SourceInput};
+    use crate::font::variable::SourceId;
 
     use super::*;
 

@@ -4,11 +4,11 @@
 //! Live variable compilation must agree with shaping and exported font tables.
 
 use norad::{Contour, ContourPoint, Font, Glyph, Name, PointType};
-use runebender::document::DocumentEditError;
-use runebender::document::canonical_metadata::KerningParticipant;
-use runebender::document::font_memory::designspace_from_str;
-use runebender::document::project::{DocumentEditOutcome, Project, SourceInput};
-use runebender::document::variable::{LayerId, SourceId};
+use runebender::font::DocumentEditError;
+use runebender::font::canonical_metadata::KerningParticipant;
+use runebender::font::font_memory::designspace_from_str;
+use runebender::font::project::{DocumentEditOutcome, Project, SourceInput};
+use runebender::font::variable::{LayerId, SourceId};
 use runebender::text::shape::ShapingFont;
 use skrifa::raw::TableProvider as _;
 

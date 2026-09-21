@@ -346,7 +346,7 @@ impl Workspace {
             .collect::<Vec<_>>();
         let mut names = Vec::new();
         for name in candidates {
-            let address = runebender::document::variable::GlyphLayerAddress {
+            let address = runebender::font::variable::GlyphLayerAddress {
                 glyph: name.clone(),
                 layer: layer.clone(),
             };
@@ -371,7 +371,7 @@ impl Workspace {
                 self.font
                     .project
                     .commit_document_layer_transaction(transaction),
-                Ok(runebender::document::project::DocumentEditOutcome::Changed { .. })
+                Ok(runebender::font::project::DocumentEditOutcome::Changed { .. })
             ) {
                 names.push(name);
             }

@@ -4,11 +4,11 @@
 //! Canonical document inputs must reach the interpolation and compiler pipeline unsaved.
 
 use norad::{Contour, ContourPoint, Font, Glyph, Name, PointType};
-use runebender::document::canonical_metadata::KerningParticipant;
-use runebender::document::font_memory::designspace_from_str;
-use runebender::document::model::glyph_metadata::OpenTypeGlyphCategory;
-use runebender::document::project::{DocumentEditOutcome, Project, SourceInput};
-use runebender::document::variable::SourceId;
+use runebender::font::canonical_metadata::KerningParticipant;
+use runebender::font::font_memory::designspace_from_str;
+use runebender::font::model::glyph_metadata::OpenTypeGlyphCategory;
+use runebender::font::project::{DocumentEditOutcome, Project, SourceInput};
+use runebender::font::variable::SourceId;
 use runebender::text::shape::ShapingFont;
 
 fn project() -> Project {

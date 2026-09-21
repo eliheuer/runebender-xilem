@@ -5,7 +5,7 @@
 
 #![cfg(unix)]
 
-use runebender::document::{
+use runebender::automation::{
     agent_cancellation::{
         AgentCancellationAdmission, AgentCancellationIdentity, AgentCancellationTerminal,
         AgentCommitClaim,
@@ -13,8 +13,8 @@ use runebender::document::{
     agent_edit::AgentEditRequest,
     live,
     live_socket::Server,
-    project::Project,
 };
+use runebender::font::project::Project;
 use serde_json::{Value, json};
 use std::io::{BufRead as _, Write};
 use std::process::{Command, Stdio};
@@ -35,7 +35,7 @@ fn generated_live_prompt_matches_available_tools_and_authorized_edits() {
     assert!(!prompt.contains("chosen master"));
     assert!(!prompt.contains("call docs first"));
     assert!(prompt.contains("proposal_install"));
-    assert!(prompt.contains(runebender::document::script_recipe::AUTHORING_INSTRUCTIONS));
+    assert!(prompt.contains(runebender::automation::script_recipe::AUTHORING_INSTRUCTIONS));
 }
 
 #[test]

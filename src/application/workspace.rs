@@ -57,7 +57,7 @@ pub(crate) enum Tool {
 /// after a master switch attached to the source the user actually changed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct OverviewEditBatch {
-    pub(crate) source: runebender::document::variable::SourceId,
+    pub(crate) source: runebender::font::variable::SourceId,
     pub(crate) glyphs: Vec<String>,
 }
 
@@ -67,8 +67,8 @@ pub(crate) struct OverviewEditBatch {
 pub(crate) enum MetadataEdit {
     #[cfg(unix)]
     AgentGroup {
-        group: runebender::document::project::EditHistoryGroupId,
-        addresses: Vec<runebender::document::variable::GlyphLayerAddress>,
+        group: runebender::font::project::EditHistoryGroupId,
+        addresses: Vec<runebender::font::variable::GlyphLayerAddress>,
         overview_undo_depth: usize,
     },
     Rename {
@@ -77,7 +77,7 @@ pub(crate) enum MetadataEdit {
         undo_depth: usize,
     },
     Unicode {
-        source_ids: Vec<runebender::document::variable::SourceId>,
+        source_ids: Vec<runebender::font::variable::SourceId>,
         glyph: String,
         before: Vec<Vec<char>>,
         after: Vec<Vec<char>>,
@@ -90,20 +90,20 @@ pub(crate) enum MetadataEdit {
     },
     DocumentLayer {
         glyph: String,
-        address: runebender::document::variable::GlyphLayerAddress,
+        address: runebender::font::variable::GlyphLayerAddress,
         label: String,
         layer_history_depth: usize,
         // Selection belongs to the editor; geometry and history stay in Project.
         component_selection: (
-            Option<runebender::document::ComponentId>,
-            Option<runebender::document::ComponentId>,
+            Option<runebender::font::ComponentId>,
+            Option<runebender::font::ComponentId>,
         ),
     },
     SourceStructure {
         glyph: String,
         label: String,
-        before: Box<runebender::document::variable::DocumentSnapshot>,
-        after: Box<runebender::document::variable::DocumentSnapshot>,
+        before: Box<runebender::font::variable::DocumentSnapshot>,
+        after: Box<runebender::font::variable::DocumentSnapshot>,
         undo_depth: usize,
     },
 }
@@ -115,11 +115,11 @@ pub(crate) struct Workspace {
     pub(crate) document_id: u64,
     /// The live document's private agent endpoint, serviced on the UI thread.
     #[cfg(unix)]
-    pub(crate) live: Option<runebender::document::live_socket::Server>,
+    pub(crate) live: Option<runebender::automation::live_socket::Server>,
     /// Bounded actor ledgers, bound lazily to the live endpoint's exact epoch.
     #[cfg(unix)]
     pub(crate) agent_sessions:
-        std::collections::BTreeMap<String, runebender::document::agent_session::AgentSession>,
+        std::collections::BTreeMap<String, runebender::automation::agent_session::AgentSession>,
 
     /// Bounded proof handles for this endpoint lifetime.
     #[cfg(unix)]
@@ -217,7 +217,7 @@ pub(crate) struct Workspace {
     pub(crate) kern1_buf: String,
     pub(crate) kern2_buf: String,
     /// Copied contours. The system clipboard carries text, not outlines.
-    pub(crate) clipboard: Vec<runebender::document::CopiedContour>,
+    pub(crate) clipboard: Vec<runebender::font::CopiedContour>,
     /// Draw the UFO background layer under the outline.
     pub(crate) show_background: bool,
     /// Ghost every attachable mark on the open glyph's anchors.
@@ -443,7 +443,7 @@ impl AppState {
                     .duration_since(std::time::UNIX_EPOCH)
                     .map_or(0, |duration| duration.as_nanos()),
             ));
-            let mut project = runebender::document::project::Project::new_font(path);
+            let mut project = runebender::font::project::Project::new_font(path);
             match project
                 .save()
                 .and_then(|()| Workspace::from_model(FontModel::from_project(project)))

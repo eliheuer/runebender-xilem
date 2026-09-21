@@ -46,7 +46,7 @@ impl Default for TraceConfig {
 pub fn trace_image(
     image_bytes: &[u8],
     config: &TraceConfig,
-) -> Result<crate::document::ImportedContours, String> {
+) -> Result<crate::font::ImportedContours, String> {
     if image_bytes.is_empty() {
         return Err("image bytes are empty".to_string());
     }

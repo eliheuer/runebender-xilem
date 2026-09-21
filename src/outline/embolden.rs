@@ -24,7 +24,7 @@
 #[cfg(test)]
 use norad::{Contour, Glyph};
 
-use crate::document::LayerView;
+use crate::font::LayerView;
 
 /// How far to push, per axis, in font units.
 #[derive(Clone, Copy, Debug, PartialEq)]

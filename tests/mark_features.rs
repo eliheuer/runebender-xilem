@@ -9,8 +9,8 @@
 
 use std::path::PathBuf;
 
-use runebender::document::project::Project;
-use runebender::document::variable::SourceId;
+use runebender::font::project::Project;
+use runebender::font::variable::SourceId;
 use runebender::text::features;
 use runebender::text::shape::{ShapedGlyph, ShapingFont, ShapingGlyph, ShapingSource};
 

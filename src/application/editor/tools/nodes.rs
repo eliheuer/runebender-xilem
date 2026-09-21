@@ -5,7 +5,7 @@
 //! font, and a run through the font engine.
 //!
 //! The font engine owns the file, registry, layout, and runner
-//! (`runebender::document::nodes`, `nodes_run` and `ui::nodes`).
+//! (`runebender::workflows::nodes`, `nodes_run` and `ui::nodes`).
 //! This module finds the files, opens one, validates it, runs it on a thread, and
 //! hand the widget what it draws. The widget owns the pan, the
 //! selection and the drag, and sends the graph back when it changes.
@@ -14,10 +14,10 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use runebender::document::nodes::{NodeGraph, Problem, Registry};
-use runebender::document::nodes_run::{self, Event, RunReport, Status};
-use runebender::document::proposal;
+use runebender::font::proposal;
 use runebender::ui::nodes::ImmutablePng;
+use runebender::workflows::nodes::{NodeGraph, Problem, Registry};
+use runebender::workflows::nodes_run::{self, Event, RunReport, Status};
 
 use crate::application::editor::tools::local_ai::{foreground_is_current, foreground_revisions};
 use crate::application::workspace::{Mode, Workspace};
@@ -224,8 +224,8 @@ impl Workspace {
     ///
     /// The image supplied by the view is a fixture, not a computed font proof.
     fn open_nodes_content_fixture(&mut self) {
-        let mut graph = runebender::document::nodes_live::comparison_starter(
-            runebender::document::variable::SourceId(0),
+        let mut graph = runebender::workflows::nodes_live::comparison_starter(
+            runebender::font::variable::SourceId(0),
         );
         if let Some(python) = graph
             .nodes

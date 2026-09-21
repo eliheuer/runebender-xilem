@@ -8,12 +8,12 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use norad::{Anchor, Component, Contour, ContourPoint, Font, Glyph, Name, PointType};
-use runebender::document::LayerPointType;
-use runebender::document::history::HistoryDirection;
-use runebender::document::project::{
+use runebender::font::LayerPointType;
+use runebender::font::history::HistoryDirection;
+use runebender::font::project::{
     DocumentEditOutcome, DocumentHistoryReplayOutcome, Project, SourceInput,
 };
-use runebender::document::variable::{GlyphLayerAddress, LayerId, SourceId};
+use runebender::font::variable::{GlyphLayerAddress, LayerId, SourceId};
 
 struct Scratch(PathBuf);
 
@@ -327,9 +327,7 @@ fn corner_rounding_noops_and_invalid_selection_are_atomic() {
                 );
                 assert_eq!(
                     draft.round_selected_corners(&[foreign]),
-                    Err(runebender::document::DocumentEditError::MissingPoint(
-                        foreign
-                    )),
+                    Err(runebender::font::DocumentEditError::MissingPoint(foreign)),
                     "foreign stable identity is rejected"
                 );
                 Ok(())
@@ -569,9 +567,7 @@ fn harmonize_selection_scope_and_errors_are_atomic() {
                 );
                 assert_eq!(
                     draft.harmonize_handles(&[foreign]),
-                    Err(runebender::document::DocumentEditError::MissingPoint(
-                        foreign
-                    )),
+                    Err(runebender::font::DocumentEditError::MissingPoint(foreign)),
                     "foreign point identity is rejected"
                 );
                 Ok(())
@@ -872,21 +868,19 @@ fn optimize_rejects_invalid_parameters_atomically() {
             .edit_document_layer("handles", &layer, |draft| {
                 assert_eq!(
                     draft.optimize_handles(&[open_handle], f64::NAN),
-                    Err(runebender::document::DocumentEditError::NonFinite)
+                    Err(runebender::font::DocumentEditError::NonFinite)
                 );
                 assert_eq!(
                     draft.optimize_handles(&[open_handle], f64::INFINITY),
-                    Err(runebender::document::DocumentEditError::NonFinite)
+                    Err(runebender::font::DocumentEditError::NonFinite)
                 );
                 assert_eq!(
                     draft.optimize_handles(&[open_handle], -0.01),
-                    Err(runebender::document::DocumentEditError::Rejected)
+                    Err(runebender::font::DocumentEditError::Rejected)
                 );
                 assert_eq!(
                     draft.optimize_handles(&[foreign], 0.12),
-                    Err(runebender::document::DocumentEditError::MissingPoint(
-                        foreign
-                    ))
+                    Err(runebender::font::DocumentEditError::MissingPoint(foreign))
                 );
                 assert!(
                     !draft.optimize_handles(&[open_handle], 0.0)?,

@@ -3,17 +3,17 @@
 
 //! Receipt-backed native live edits over the real Workspace and its application history.
 
-use runebender::document::agent::ToolCall;
-use runebender::document::agent_cancellation::{
+use runebender::automation::agent::ToolCall;
+use runebender::automation::agent_cancellation::{
     AgentCancellationError, AgentCancellationIdentity, AgentCancellationTerminal, AgentCommitClaim,
 };
-use runebender::document::agent_edit::AgentEditRequest;
-use runebender::document::agent_session::{
+use runebender::automation::agent_edit::AgentEditRequest;
+use runebender::automation::agent_session::{
     AgentOperationKey, AgentOperationOutcome, AgentOperationReceipt, AgentOperationRejection,
     AgentReceiptDisposition, AgentSession, AgentSessionError, AgentSessionMetadata,
 };
-use runebender::document::history::HistoryDirection;
-use runebender::document::project::{DocumentEditObjectKind, EditHistoryGroupState, Project};
+use runebender::font::history::HistoryDirection;
+use runebender::font::project::{DocumentEditObjectKind, EditHistoryGroupState, Project};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -368,9 +368,10 @@ mod tests {
 
     use super::*;
     use crate::application::font_model::FontModel;
-    use runebender::document::project::SourceInput;
-    use runebender::document::variable::SourceId;
-    use runebender::document::{edit_batch, live_socket};
+    use runebender::automation::live_socket;
+    use runebender::font::edit_batch;
+    use runebender::font::project::SourceInput;
+    use runebender::font::variable::SourceId;
 
     fn project() -> Project {
         let path = std::env::temp_dir().join("agent-transaction-never-saved.ufo");
@@ -882,7 +883,7 @@ mod tests {
     #[test]
     fn inactive_reordered_source_is_explicit_and_refreshes_when_selected() {
         let font = project().encode_ufo_source(SourceId(0)).unwrap();
-        let document=runebender::document::font_memory::designspace_from_str(r#"<designspace format="5.0"><axes><axis name="Weight" tag="wght" minimum="0" default="0" maximum="1"/></axes><sources><source filename="first.ufo"><location><dimension name="Weight" xvalue="0"/></location></source><source filename="second.ufo"><location><dimension name="Weight" xvalue="1"/></location></source></sources></designspace>"#).unwrap();
+        let document=runebender::font::font_memory::designspace_from_str(r#"<designspace format="5.0"><axes><axis name="Weight" tag="wght" minimum="0" default="0" maximum="1"/></axes><sources><source filename="first.ufo"><location><dimension name="Weight" xvalue="0"/></location></source><source filename="second.ufo"><location><dimension name="Weight" xvalue="1"/></location></source></sources></designspace>"#).unwrap();
         let mut project = Project::from_designspace(document, |path| {
             Ok(SourceInput::from_font(font.clone(), path.into()))
         })

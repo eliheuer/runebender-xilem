@@ -357,7 +357,7 @@ impl Workspace {
             features_edited: false,
             features_status: None,
             #[cfg(unix)]
-            live: runebender::document::live_socket::Server::start()
+            live: runebender::automation::live_socket::Server::start()
                 .map_err(|e| eprintln!("Live tools unavailable: {e}"))
                 .ok(),
             #[cfg(unix)]
@@ -602,7 +602,7 @@ impl Workspace {
             path = dir.join(format!("Untitled-{n}.ufo"));
             n += 1;
         }
-        let mut project = runebender::document::project::Project::new_font(path.clone());
+        let mut project = runebender::font::project::Project::new_font(path.clone());
         if let Err(e) = project.save() {
             self.note = format!("could not write {}: {e}", path.display());
             return;
@@ -711,7 +711,7 @@ mod tests {
         assert_eq!(
             app.font.project.document_layer_history_depth(
                 &address,
-                runebender::document::history::HistoryDirection::Undo,
+                runebender::font::history::HistoryDirection::Undo,
             ),
             1
         );
@@ -1224,13 +1224,13 @@ mod tests {
         );
         assert!(workspace.font.project.can_replay_document_layer_history(
             &address,
-            runebender::document::history::HistoryDirection::Undo,
+            runebender::font::history::HistoryDirection::Undo,
         ));
         workspace.reload_from_disk();
         assert_eq!(workspace.session.advance(), 620.0);
         assert!(workspace.font.project.can_replay_document_layer_history(
             &address,
-            runebender::document::history::HistoryDirection::Undo,
+            runebender::font::history::HistoryDirection::Undo,
         ));
         workspace.undo_active_edit(false);
         assert_eq!(workspace.session.advance(), 500.0);
@@ -1298,20 +1298,20 @@ mod tests {
         assert_eq!(
             marked
                 .lib
-                .get(runebender::document::model::glyph_metadata::MARK_LABEL_KEY),
+                .get(runebender::font::model::glyph_metadata::MARK_LABEL_KEY),
             Some(&plist::Value::String("blue".into()))
         );
         assert!(
             marked
                 .lib
-                .contains_key(runebender::document::model::glyph_metadata::MARK_COLOR_KEY)
+                .contains_key(runebender::font::model::glyph_metadata::MARK_COLOR_KEY)
         );
         workspace.undo_active_edit(false);
         let unmarked = projected_glyph(&workspace.session);
         assert!(
             !unmarked
                 .lib
-                .contains_key(runebender::document::model::glyph_metadata::MARK_LABEL_KEY)
+                .contains_key(runebender::font::model::glyph_metadata::MARK_LABEL_KEY)
         );
         workspace.undo_active_edit(true);
 
@@ -1380,7 +1380,7 @@ mod tests {
         assert_eq!(
             glyph
                 .lib
-                .get(runebender::document::model::glyph_metadata::MARK_LABEL_KEY),
+                .get(runebender::font::model::glyph_metadata::MARK_LABEL_KEY),
             Some(&plist::Value::String("blue".into()))
         );
         std::fs::remove_dir_all(path).expect("the metadata fixture is removed");
@@ -2047,9 +2047,7 @@ mod tests {
         );
         let mut lib = component.lib().cloned().unwrap_or_default();
         let mut alignment =
-            runebender::document::model::glyph_metadata::ComponentAlignment::take_from_lib(
-                &mut lib,
-            );
+            runebender::font::model::glyph_metadata::ComponentAlignment::take_from_lib(&mut lib);
         assert!(alignment.set_disabled(true));
         alignment.write_to_lib(&mut lib);
         component.replace_lib(lib);
@@ -2089,10 +2087,8 @@ mod tests {
         assert_eq!(component.transform.y_offset, 0.0);
         let mut lib = component.lib().cloned().unwrap_or_default();
         assert!(
-            runebender::document::model::glyph_metadata::ComponentAlignment::take_from_lib(
-                &mut lib,
-            )
-            .is_disabled()
+            runebender::font::model::glyph_metadata::ComponentAlignment::take_from_lib(&mut lib,)
+                .is_disabled()
         );
         std::fs::remove_dir_all(path).expect("the attachment fixture is removed");
     }
@@ -2184,8 +2180,8 @@ mod tests {
 
     #[test]
     fn save_reports_failure_for_an_unwritable_source() {
-        let project = runebender::document::project::Project::from_source(
-            runebender::document::project::SourceInput::from_font(
+        let project = runebender::font::project::Project::from_source(
+            runebender::font::project::SourceInput::from_font(
                 norad::Font::new(),
                 "/dev/null/runebender-test.ufo".into(),
             ),

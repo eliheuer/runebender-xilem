@@ -6,8 +6,8 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use runebender::document::history::HistoryDirection;
-use runebender::document::project::{
+use runebender::font::history::HistoryDirection;
+use runebender::font::project::{
     DocumentChange, DocumentEditHistoryReplayOutcome, EditHistoryGroupId,
 };
 

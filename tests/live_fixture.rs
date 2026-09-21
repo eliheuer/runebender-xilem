@@ -8,7 +8,7 @@
 use std::io::{BufRead as _, BufReader, Write as _};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
-use runebender::document::{agent::ToolCall, live_socket};
+use runebender::automation::{agent::ToolCall, live_socket};
 use serde_json::{Value, json};
 
 struct Fixture {
@@ -229,7 +229,7 @@ fn mcp_receipt_tools_reconcile_retry_and_real_application_undo() {
 
 #[test]
 fn file_backed_host_edits_and_undoes_without_rewriting_source() {
-    use runebender::document::project::Project;
+    use runebender::font::project::Project;
     use std::path::Path;
 
     fn files(path: &Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {

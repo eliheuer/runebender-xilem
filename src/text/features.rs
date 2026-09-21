@@ -34,10 +34,10 @@ use std::path::{Path, PathBuf};
 #[cfg(test)]
 use norad::{Font, Glyph};
 
-use crate::document::LayerView;
-use crate::document::composites::effective_document_anchors;
-use crate::document::project::Project;
-use crate::document::variable::SourceId;
+use crate::font::LayerView;
+use crate::font::composites::effective_document_anchors;
+use crate::font::project::Project;
+use crate::font::variable::SourceId;
 use crate::outline::glyph_paths::round_units;
 
 /// The line `features.fea` gets so a compiled font positions marks
@@ -416,8 +416,8 @@ mod tests {
     use super::*;
     use norad::{Anchor, Component, Name};
 
-    use crate::document::project::{Project, SourceInput};
-    use crate::document::variable::SourceId;
+    use crate::font::project::{Project, SourceInput};
+    use crate::font::variable::SourceId;
 
     fn anchor(name: &str, x: f64, y: f64) -> Anchor {
         Anchor::new(x, y, Some(Name::new(name).unwrap()), None, None)
