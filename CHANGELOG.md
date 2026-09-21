@@ -91,6 +91,7 @@ No release has been published yet.
 
 ### Changed
 
+- Simplified the native Metaballs panel with quieter, evenly inset sliders, integer-style readouts and standard panel actions.
 - Completed the canonical editing-model cutover by removing persistent Norad source/glyph projections, mutable source guards and legacy source-local history.
   Norad now remains behind reviewed source-format and proposal codecs, enforced by an item-aware architecture test.
 - Headless font information, SVG proofs and proposal list/install/discard now read and edit the canonical Project document and save through the shared persistence boundary.

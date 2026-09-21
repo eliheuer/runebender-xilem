@@ -117,6 +117,8 @@ pub(crate) const PROOF_STRIP_HEIGHT: f64 = 140.0;
 pub(crate) const SEARCH_TOGGLE_WIDTH: f64 = 24.0;
 /// Width shared by the proof-blur and zoom sliders in the editor footer.
 pub(crate) const STATUS_SLIDER_WIDTH: f64 = 96.0;
+/// Radius shared by stock sliders and the separate thumb keyline drawn over them.
+pub(crate) const SLIDER_THUMB_RADIUS: f64 = 7.0;
 /// Square size shared by the overview footer's five icon controls.
 pub(crate) const STATUS_ICON_SIZE: f64 = 16.0;
 /// Compact native title bar: 21px tabs and 20px tools sit on one 30px centerline.

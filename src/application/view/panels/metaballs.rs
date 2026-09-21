@@ -6,10 +6,9 @@
 use crate::application::editor::tools::metaballs::MetaballSelection;
 use crate::application::view::design::{Region, TextSize, column as xcolumn, row as xrow};
 use crate::application::view::label;
-use crate::application::view::recipes::button;
+use crate::application::view::recipes;
 use crate::application::widgets::gesture_slider::gesture_slider;
 use crate::application::workspace::Workspace;
-use masonry::layout::Length;
 use std::sync::Arc;
 use xilem::WidgetView;
 use xilem::style::Style;
@@ -38,7 +37,12 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 if text.is_empty() {
                     "Mixed".into()
                 } else {
-                    text
+                    let value = text.parse::<f64>().unwrap_or(value);
+                    if field == "Radius" {
+                        format!("{value:.0}")
+                    } else {
+                        format!("{:.0}%", value * 100.0)
+                    }
                 }
             };
             xcolumn(
@@ -68,8 +72,7 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     )
                     .accessibility_name(field)
                     .step(step)
-                    .disabled(!selected)
-                    .width(Length::px(214.0)),
+                    .disabled(!selected),
                 ),
             )
             .boxed()
@@ -79,26 +82,17 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         Region::Form,
         (
             label("Metaballs").color(pal.text),
-            label(format!(
-                "{} centers selected",
-                app.session.metaballs.selected.len()
-            ))
-            .text_size(TextSize::Caption.px())
-            .color(pal.text_muted),
-            label("Click to add · Shift-click to select")
-                .text_size(TextSize::Caption.px())
-                .color(pal.text_muted),
             xcolumn(Region::Form, fields),
-            button(label("Select all centers"), |app: &mut Workspace| {
+            recipes::action(pal, "Select all centers".into(), |app: &mut Workspace| {
                 Arc::make_mut(&mut app.session).select_all_metaballs();
             }),
-            button(label("Start a new group"), |app: &mut Workspace| {
+            recipes::action(pal, "Start a new group".into(), |app: &mut Workspace| {
                 Arc::make_mut(&mut app.session).metaballs = MetaballSelection::default();
             }),
-            button(label("Groups to cubic"), |app: &mut Workspace| {
+            recipes::action(pal, "Groups to cubic".into(), |app: &mut Workspace| {
                 app.edit_metaballs(|s| s.collapse_metaballs(true));
             }),
-            button(label("Glyph to cubic"), |app: &mut Workspace| {
+            recipes::action(pal, "Glyph to cubic".into(), |app: &mut Workspace| {
                 app.edit_metaballs(|s| s.collapse_metaballs(false));
             }),
             app.session.metaballs.error.clone().map(|error| {

@@ -9,13 +9,14 @@ use masonry::core::{
     PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, PropertySet, RegisterCtx,
     TextEvent, Widget, WidgetMut, WidgetPod,
 };
-use masonry::kurbo::{Axis, Point, Size};
+use masonry::kurbo::{Axis, Circle, Point, Size, Stroke};
 use masonry::layout::{LenReq, Length};
-use masonry::properties::{BorderColor, ThumbColor, TrackColor};
+use masonry::properties::{BorderColor, ThumbColor, ThumbRadius, TrackColor};
 use masonry::widgets::{Slider, SliderMoved};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
+use crate::application::view::design::SLIDER_THUMB_RADIUS;
 use crate::application::view::theme::Palette;
 use crate::application::workspace::Workspace;
 
@@ -29,6 +30,10 @@ pub(crate) struct GestureSliderWidget {
     pointer_down: bool,
     value_from_pointer: bool,
     accessibility_name: Option<String>,
+    min: f64,
+    max: f64,
+    value: f64,
+    thumb_outline: Color,
 }
 
 impl GestureSliderWidget {
@@ -71,6 +76,28 @@ impl Widget for GestureSliderWidget {
         _: &PropertiesRef<'_>,
         _: &mut masonry::imaging::Painter<'_>,
     ) {
+    }
+
+    fn post_paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        _: &PropertiesRef<'_>,
+        painter: &mut masonry::imaging::Painter<'_>,
+    ) {
+        let progress =
+            ((self.value - self.min) / (self.max - self.min).max(f64::EPSILON)).clamp(0.0, 1.0);
+        let width = ctx.content_box().width();
+        let thumb_x = SLIDER_THUMB_RADIUS + progress * (width - SLIDER_THUMB_RADIUS * 2.0).max(0.0);
+        let thumb = Circle::new(
+            (thumb_x, ctx.content_box().height() / 2.0),
+            SLIDER_THUMB_RADIUS - 1.0,
+        );
+        let outline = if ctx.is_disabled() {
+            self.thumb_outline.with_alpha(0.4)
+        } else {
+            self.thumb_outline
+        };
+        painter.stroke(thumb, &Stroke::new(2.0), outline).draw();
     }
 
     fn on_pointer_event(
@@ -155,6 +182,7 @@ pub(crate) struct GestureSliderView<F, E> {
     accessibility_name: Option<String>,
     track: Color,
     thumb: Color,
+    thumb_outline: Color,
     on_change: F,
     on_end: E,
 }
@@ -181,8 +209,9 @@ where
         step: None,
         disabled: false,
         accessibility_name: None,
-        track: pal.text_muted,
+        track: pal.control,
         thumb: pal.button,
+        thumb_outline: pal.handle_line,
         on_change,
         on_end,
     }
@@ -227,6 +256,7 @@ where
             inactive: self.track,
         });
         props.insert(ThumbColor(self.thumb));
+        props.insert(ThumbRadius(Length::px(SLIDER_THUMB_RADIUS)));
         props.insert(BorderColor {
             color: Color::TRANSPARENT,
         });
@@ -238,6 +268,10 @@ where
                 pointer_down: false,
                 value_from_pointer: false,
                 accessibility_name: self.accessibility_name.clone(),
+                min: self.min,
+                max: self.max,
+                value: self.value,
+                thumb_outline: self.thumb_outline,
             })
         });
         pod.new_widget.options.disabled = self.disabled;
@@ -258,6 +292,17 @@ where
         if self.accessibility_name != prev.accessibility_name {
             element.widget.accessibility_name = self.accessibility_name.clone();
             element.ctx.request_accessibility_update();
+        }
+        if self.min != prev.min
+            || self.max != prev.max
+            || self.value != prev.value
+            || self.thumb_outline != prev.thumb_outline
+        {
+            element.widget.min = self.min;
+            element.widget.max = self.max;
+            element.widget.value = self.value;
+            element.widget.thumb_outline = self.thumb_outline;
+            element.ctx.request_post_paint();
         }
         let mut child = GestureSliderWidget::child_mut(&mut element);
         if self.min != prev.min || self.max != prev.max {
@@ -332,6 +377,10 @@ mod tests {
                 pointer_down: false,
                 value_from_pointer: false,
                 accessibility_name: Some("Radius".into()),
+                min: 0.0,
+                max: 100.0,
+                value: 25.0,
+                thumb_outline: Color::BLACK,
             }
             .prepare(),
             (200, 32),
