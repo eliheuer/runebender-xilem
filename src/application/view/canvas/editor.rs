@@ -1622,6 +1622,36 @@ impl Widget for EditorWidget {
             && let Ok(source) = self.session.metaball_data()
         {
             for group in source.groups {
+                for link in &group.links {
+                    let Some(a) = group.balls.iter().find(|b| b.id == link.start) else {
+                        continue;
+                    };
+                    let Some(b) = group.balls.iter().find(|b| b.id == link.end) else {
+                        continue;
+                    };
+                    let start = affine * Point::new(a.x, a.y);
+                    let end = affine * Point::new(b.x, b.y);
+                    let selected =
+                        self.session.metaballs.selected_link == Some((group.id, link.id));
+                    let ink = if selected {
+                        pal.tool_feedback()
+                    } else {
+                        pal.editor_control_ink()
+                    };
+                    painter
+                        .stroke(
+                            Line::new(start, end),
+                            &Stroke::new(DesignStroke::Hairline.px()),
+                            ink.with_alpha(0.35),
+                        )
+                        .draw();
+                    let mid = start.midpoint(end);
+                    let size = 2.0
+                        * (POINT_CURVE_RADIUS + if selected { POINT_SELECTED_GROW } else { 0.0 });
+                    painter
+                        .fill(Rect::from_center_size(mid, (size, size)), ink)
+                        .draw();
+                }
                 for ball in group.balls {
                     let center = affine * Point::new(ball.x, ball.y);
                     let selected = self

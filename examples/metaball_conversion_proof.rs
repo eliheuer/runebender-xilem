@@ -138,6 +138,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             id: 1,
             threshold: 0.5,
             balls,
+            links: Vec::new(),
         };
         let paths = [
             preview(&group, OutlineOptions::default())?,

@@ -40,6 +40,7 @@ fn source_metaballs() -> Metaballs {
     Metaballs {
         version: 1,
         groups: vec![MetaballGroup {
+            links: vec![],
             id: 7,
             threshold: 1.25,
             balls: vec![Metaball {

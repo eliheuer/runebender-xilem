@@ -7,7 +7,9 @@ use std::collections::BTreeMap;
 #[cfg(test)]
 use std::collections::HashSet;
 
-use kurbo::{BezPath, Point, Vec2};
+#[cfg(test)]
+use kurbo::Vec2;
+use kurbo::{BezPath, ParamCurve, Point, Shape};
 
 use crate::formats::metaballs::{MetaballGroup, Metaballs};
 #[cfg(test)]
@@ -31,29 +33,19 @@ impl Default for OutlineOptions {
     }
 }
 
-/// Evaluates `sum(stiffness * max(0, 1 - distance²/radius²)³)`.
+/// Evaluates the additive compact radial and capsule-link fields.
 /// Parameters must have passed [`Metaballs::validate`]. Does not mutate source data.
 pub fn field(group: &MetaballGroup, point: Point) -> f64 {
-    group
-        .balls
-        .iter()
-        .map(|b| {
-            let d = point - Point::new(b.x, b.y);
-            let q = (1.0 - d.hypot2() / b.radius.powi(2)).max(0.0);
-            b.stiffness * q.powi(3)
-        })
-        .sum()
+    evaluator::PreparedField::new(group).value(point)
 }
 
+#[cfg(test)]
 fn tangent(group: &MetaballGroup, point: Point) -> Vec2 {
-    let mut gradient = Vec2::ZERO;
-    for b in &group.balls {
-        let d = point - Point::new(b.x, b.y);
-        let q = (1.0 - d.hypot2() / b.radius.powi(2)).max(0.0);
-        gradient += d * (-6.0 * b.stiffness * q.powi(2) / b.radius.powi(2));
-    }
-    Vec2::new(gradient.y, -gradient.x)
+    evaluator::PreparedField::new(group).tangent(point)
 }
+
+mod evaluator;
+pub mod parameters;
 
 mod fitting;
 
@@ -86,7 +78,7 @@ fn sample_outline(
     structured: bool,
 ) -> Result<Vec<BezPath>, String> {
     Metaballs {
-        version: 1,
+        version: if group.links.is_empty() { 1 } else { 2 },
         groups: vec![group.clone()],
     }
     .validate()?;
@@ -97,35 +89,24 @@ fn sample_outline(
     {
         return Err("invalid metaball resolution or fitting accuracy".into());
     }
-    let positive: Vec<_> = group.balls.iter().filter(|b| b.stiffness > 0.0).collect();
-    if positive.is_empty() {
+    let evaluator = evaluator::PreparedField::new(group);
+    let Some(bounds) = evaluator.bounds() else {
         return Ok(Vec::new());
-    }
-    let step = options.resolution;
-    let x0 = positive
+    };
+    // Resolve even the narrowest accepted link with several cells across its width.
+    let step = group
+        .links
         .iter()
-        .map(|b| b.x - b.radius)
-        .fold(f64::INFINITY, f64::min)
-        - step;
-    let y0 = positive
-        .iter()
-        .map(|b| b.y - b.radius)
-        .fold(f64::INFINITY, f64::min)
-        - step;
-    let x1 = positive
-        .iter()
-        .map(|b| b.x + b.radius)
-        .fold(f64::NEG_INFINITY, f64::max)
-        + step;
-    let y1 = positive
-        .iter()
-        .map(|b| b.y + b.radius)
-        .fold(f64::NEG_INFINITY, f64::max)
-        + step;
+        .map(|link| link.width / 4.0)
+        .fold(options.resolution, f64::min);
+    let x0 = bounds.x0 - step;
+    let y0 = bounds.y0 - step;
+    let x1 = bounds.x1 + step;
+    let y1 = bounds.y1 + step;
     let nx = ((x1 - x0) / step).ceil();
     let ny = ((y1 - y0) / step).ceil();
     if nx * ny > 1_000_000.0 {
-        return Err("metaball sampling grid exceeds one million cells; increase resolution spacing or split the group".into());
+        return Err("metaball sampling grid exceeds one million cells; increase resolution spacing, widen narrow links or split the group".into());
     }
     // The checked cell budget bounds both dimensions and their integer conversions.
     #[allow(clippy::cast_possible_truncation, reason = "bounded grid dimensions")]
@@ -138,7 +119,7 @@ fn sample_outline(
         )
     };
     let values: Vec<_> = (0..stride * (ny + 1))
-        .map(|i| field(group, point(i)) - group.threshold)
+        .map(|i| evaluator.value(point(i)) - group.threshold)
         .collect();
     let mut links = BTreeMap::<Edge, Edge>::new();
     let mut crossings = BTreeMap::<Edge, Point>::new();
@@ -161,7 +142,7 @@ fn sample_outline(
                         let inside = values[edge.0] >= 0.0;
                         for _ in 0..24 {
                             let mid = lo.lerp(hi, 0.5);
-                            if (field(group, mid) >= group.threshold) == inside {
+                            if (evaluator.value(mid) >= group.threshold) == inside {
                                 lo = mid;
                             } else {
                                 hi = mid;
@@ -199,7 +180,7 @@ fn sample_outline(
             continue;
         }
         let fitted = if structured {
-            fitting::fit(group, &points, options.accuracy)?
+            fitting::fit(&evaluator, &points, options.accuracy)?
         } else {
             let mut path = BezPath::new();
             path.move_to(points[0]);
@@ -208,7 +189,7 @@ fn sample_outline(
                 let b = points[(i + 1) % points.len()];
                 let chord = b - a;
                 let control = |p| {
-                    let t = tangent(group, p);
+                    let t = evaluator.tangent(p);
                     if t.hypot() > 1e-12 {
                         t.normalize() * (chord.hypot() / 3.0)
                     } else {
@@ -218,11 +199,16 @@ fn sample_outline(
                 path.curve_to(a + control(a), b - control(b), b);
             }
             path.close_path();
-            kurbo::simplify::simplify_bezpath(
-                path,
+            let simplified = kurbo::simplify::simplify_bezpath(
+                path.clone(),
                 options.accuracy,
                 &kurbo::simplify::SimplifyOptions::default(),
-            )
+            );
+            if preview_fit_is_bounded(&simplified, &path, &evaluator, options.accuracy) {
+                simplified
+            } else {
+                path
+            }
         };
         // Kurbo can leave a floating-point-sized closing line. Snap that seam
         // instead of turning it into an extra, effectively coincident UFO node.
@@ -253,6 +239,43 @@ fn sample_outline(
         paths.push(cubic);
     }
     Ok(paths)
+}
+
+// A whole-loop simplification can become ill-conditioned around long straight
+// bridges. Keep the already sampled Hermite contour if it invents a spike or
+// departs from the source field. This guard is bounded work per fitted cubic;
+// live preview never invokes the more expensive editable-outline fitter.
+fn preview_fit_is_bounded(
+    fitted: &BezPath,
+    sampled: &BezPath,
+    field: &evaluator::PreparedField,
+    accuracy: f64,
+) -> bool {
+    if fitted.is_empty()
+        || fitted.segments().any(|segment| {
+            let c = segment.to_cubic();
+            [c.p0, c.p1, c.p2, c.p3].iter().any(|p| !p.is_finite())
+        })
+    {
+        return false;
+    }
+    let tolerance = accuracy * 2.0 + 1e-6;
+    let allowed = sampled.bounding_box().inflate(tolerance, tolerance);
+    let bounds = fitted.bounding_box();
+    if bounds.x0 < allowed.x0
+        || bounds.y0 < allowed.y0
+        || bounds.x1 > allowed.x1
+        || bounds.y1 > allowed.y1
+    {
+        return false;
+    }
+    fitted.segments().all(|segment| {
+        (0..=32).all(|i| {
+            let p = segment.eval(f64::from(i) / 32.0);
+            let gradient = field.derivatives(p).0.hypot();
+            gradient > 1e-12 && (field.value(p) - field.threshold).abs() <= tolerance * gradient
+        })
+    })
 }
 
 #[cfg(test)]
@@ -367,7 +390,107 @@ mod tests {
             id: 1,
             threshold: 0.5,
             balls,
+            links: vec![],
         }
+    }
+
+    #[test]
+    fn long_narrow_link_converts_as_one_closed_outline() {
+        use crate::formats::metaballs::MetaballLink;
+        for rise in [0.0, 120.0] {
+            let mut right = ball(2, 600.0);
+            right.y = rise;
+            let mut g = group(vec![ball(1, 0.0), right]);
+            assert_eq!(preview(&g, OutlineOptions::default()).unwrap().len(), 2);
+            g.links.push(MetaballLink {
+                id: 1,
+                start: 1,
+                end: 2,
+                width: 12.0,
+            });
+            let source = g.clone();
+            let axis = Vec2::new(600.0, rise).normalize();
+            let normal = Vec2::new(-axis.y, axis.x);
+            let midpoint = Point::new(300.0, rise * 0.5);
+            assert!((field(&g, midpoint + normal * 6.0) - g.threshold).abs() < 1e-10);
+            assert_eq!(preview(&g, OutlineOptions::default()).unwrap().len(), 1);
+            let paths = cubic_outline(&g, OutlineOptions::default()).unwrap();
+            assert_eq!(paths.len(), 1);
+            assert!(paths[0].area() > 0.0);
+            let count = paths[0].segments().count();
+            assert!(
+                count <= 40,
+                "keep the link editable: {count} segments, rise {rise}"
+            );
+            let segments: Vec<_> = paths[0].segments().collect();
+            assert_eq!(segments[0].start(), segments.last().unwrap().end());
+            for segment in segments {
+                for i in 0..=100 {
+                    let p = segment.eval(f64::from(i) / 100.0);
+                    let error = (field(&g, p) - g.threshold).abs() / tangent(&g, p).hypot();
+                    assert!(error < 0.4, "normal discrepancy {error}");
+                }
+            }
+            assert_eq!(g, source, "fitting retains live source data");
+        }
+    }
+
+    #[test]
+    fn unequal_ball_link_preview_stays_near_the_source() {
+        use crate::formats::metaballs::MetaballLink;
+        let visible_scale = (1.0 - 0.25_f64.cbrt()).sqrt();
+        for rise in [0.0, 120.0] {
+            let mut g = group(vec![ball(1, 150.0), ball(2, 750.0)]);
+            g.balls[0].y = 400.0;
+            g.balls[1].y = 400.0 + rise;
+            g.balls[0].radius = 100.0 / visible_scale;
+            g.balls[1].radius = 50.0 / visible_scale;
+            g.links.push(MetaballLink {
+                id: 1,
+                start: 1,
+                end: 2,
+                width: 24.0,
+            });
+            let paths = preview(&g, OutlineOptions::default()).unwrap();
+            assert_eq!(paths.len(), 1);
+            let bounds = paths[0].bounding_box();
+            assert!(bounds.x0 >= 49.0 && bounds.x1 <= 801.0, "{bounds:?}");
+            assert!(
+                bounds.y0 >= 299.0 && bounds.y1 <= (451.0 + rise).max(501.0),
+                "{bounds:?}"
+            );
+            let field = evaluator::PreparedField::new(&g);
+            for segment in paths[0].segments() {
+                for i in 0..=32 {
+                    let p = segment.eval(f64::from(i) / 32.0);
+                    let error =
+                        (field.value(p) - g.threshold).abs() / field.derivatives(p).0.hypot();
+                    assert!(error < 0.51, "preview discrepancy {error}, rise {rise}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn link_endcaps_set_bounds_even_when_centers_have_zero_strength() {
+        use crate::formats::metaballs::MetaballLink;
+        let mut g = group(vec![ball(1, 0.0), ball(2, 100.0)]);
+        for b in &mut g.balls {
+            b.stiffness = 0.0;
+        }
+        g.links.push(MetaballLink {
+            id: 1,
+            start: 1,
+            end: 2,
+            width: 20.0,
+        });
+        let paths = preview(&g, OutlineOptions::default()).unwrap();
+        assert_eq!(paths.len(), 1);
+        let bounds = paths[0].bounding_box();
+        assert!((bounds.x0 + 10.0).abs() < 0.3);
+        assert!((bounds.x1 - 110.0).abs() < 0.3);
+        assert!((bounds.y0 + 10.0).abs() < 0.3);
+        assert!((bounds.y1 - 10.0).abs() < 0.3);
     }
 
     #[test]
@@ -589,7 +712,7 @@ mod tests {
         glyph.lib.insert(
             METABALLS_KEY.into(),
             plist::to_value(&Metaballs {
-                version: 2,
+                version: 3,
                 groups: vec![],
             })
             .unwrap(),

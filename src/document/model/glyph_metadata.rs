@@ -201,6 +201,20 @@ pub struct Metaball {
     pub stiffness: f64,
 }
 
+/// A compact capsule field joining two centers in the same group.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MetaballLink {
+    /// Stable link identifier, unique within its group.
+    pub id: u32,
+    /// Identifier of the first center.
+    pub start: u32,
+    /// Identifier of the second center, distinct from `start`.
+    pub end: u32,
+    /// Isolated visible full width in font units; blended joins may be wider.
+    pub width: f64,
+}
+
 /// Elements whose fields blend together.
 /// Separate groups never influence each other.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -212,6 +226,9 @@ pub struct MetaballGroup {
     pub threshold: f64,
     /// Editable centers, retained until explicit conversion.
     pub balls: Vec<Metaball>,
+    /// Optional capsule links; absent in legacy version-one sources.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub links: Vec<MetaballLink>,
 }
 
 /// Editable metaball source data for one glyph layer.
@@ -219,7 +236,7 @@ pub struct MetaballGroup {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Metaballs {
-    /// Schema version; currently only version one is supported.
+    /// Schema version: one for legacy centers, two permits capsule links.
     pub version: u32,
     /// Independent blending groups.
     pub groups: Vec<MetaballGroup>,
@@ -237,14 +254,20 @@ impl Default for Metaballs {
 impl Metaballs {
     /// Validate schema, identifiers, finite coordinates and bounded field parameters.
     ///
-    /// At most 128 groups and 256 centers are accepted.
+    /// At most 128 groups, 256 centers and 256 links are accepted.
+    /// Version one must not contain links; readers never upgrade the version.
     pub fn validate(&self) -> Result<(), String> {
-        if self.version != 1 {
+        if !matches!(self.version, 1 | 2) {
             return Err(format!("unsupported metaball version {}", self.version));
         }
-        if self.groups.len() > 128 || self.groups.iter().map(|g| g.balls.len()).sum::<usize>() > 256
+        if self.groups.len() > 128
+            || self.groups.iter().map(|g| g.balls.len()).sum::<usize>() > 256
+            || self.groups.iter().map(|g| g.links.len()).sum::<usize>() > 256
         {
-            return Err("too many metaball groups or centers".into());
+            return Err("too many metaball groups, centers or links".into());
+        }
+        if self.version == 1 && self.groups.iter().any(|g| !g.links.is_empty()) {
+            return Err("metaball links require schema version two".into());
         }
         let mut groups = HashSet::new();
         for group in &self.groups {
@@ -266,6 +289,20 @@ impl Metaballs {
                     || ball.stiffness.abs() > 100.0
                 {
                     return Err("invalid metaball identifier, position, radius or stiffness".into());
+                }
+            }
+            let mut link_ids = HashSet::new();
+            let mut pairs = HashSet::new();
+            for link in &group.links {
+                if !link_ids.insert(link.id)
+                    || link.start == link.end
+                    || !ids.contains(&link.start)
+                    || !ids.contains(&link.end)
+                    || !pairs.insert((link.start.min(link.end), link.start.max(link.end)))
+                    || !link.width.is_finite()
+                    || !(2.0..=100_000.0).contains(&link.width)
+                {
+                    return Err("invalid metaball link identifier, endpoints or width".into());
                 }
             }
         }
@@ -895,6 +932,7 @@ mod tests {
             groups: vec![MetaballGroup {
                 id: 7,
                 threshold: 1.0,
+                links: vec![],
                 balls: vec![Metaball {
                     id: 11,
                     x: 12.25,
@@ -910,6 +948,104 @@ mod tests {
         let invalid = source.clone();
         assert!(source.validate().is_err());
         assert_eq!(source, invalid);
+    }
+
+    #[test]
+    fn metaball_links_require_v2_and_valid_same_group_endpoints() {
+        let group = MetaballGroup {
+            id: 1,
+            threshold: 0.5,
+            balls: [1, 2, 3]
+                .into_iter()
+                .map(|id| Metaball {
+                    id,
+                    x: f64::from(id) * 100.0,
+                    y: 0.0,
+                    radius: 80.0,
+                    stiffness: 2.0,
+                })
+                .collect(),
+            links: vec![MetaballLink {
+                id: 1,
+                start: 1,
+                end: 2,
+                width: 12.0,
+            }],
+        };
+        let mut source = Metaballs {
+            version: 1,
+            groups: vec![group],
+        };
+        assert!(
+            source.validate().is_err(),
+            "v1 cannot silently accept links"
+        );
+        source.version = 2;
+        assert_eq!(source.validate(), Ok(()));
+        for link in [
+            MetaballLink {
+                id: 2,
+                start: 2,
+                end: 1,
+                width: 12.0,
+            },
+            MetaballLink {
+                id: 1,
+                start: 2,
+                end: 3,
+                width: 12.0,
+            },
+            MetaballLink {
+                id: 2,
+                start: 1,
+                end: 1,
+                width: 12.0,
+            },
+            MetaballLink {
+                id: 2,
+                start: 1,
+                end: 99,
+                width: 12.0,
+            },
+            MetaballLink {
+                id: 2,
+                start: 2,
+                end: 3,
+                width: f64::NAN,
+            },
+            MetaballLink {
+                id: 2,
+                start: 2,
+                end: 3,
+                width: 1.99,
+            },
+            MetaballLink {
+                id: 2,
+                start: 2,
+                end: 3,
+                width: 100_001.0,
+            },
+        ] {
+            let mut invalid = source.clone();
+            invalid.groups[0].links.push(link);
+            assert!(invalid.validate().is_err());
+        }
+        let mut foreign = source.groups[0].clone();
+        foreign.id = 2;
+        foreign.balls[0].id = 99;
+        foreign.links.clear();
+        source.groups.push(foreign);
+        source.groups[0].links[0].end = 99;
+        assert!(
+            source.validate().is_err(),
+            "another group's center is not an endpoint"
+        );
+        source.groups[0].links.clear();
+        assert_eq!(source.validate(), Ok(()));
+        assert_eq!(
+            source.version, 2,
+            "removing links does not rewrite schema history"
+        );
     }
 
     #[test]

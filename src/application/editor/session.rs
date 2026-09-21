@@ -1999,7 +1999,10 @@ impl Workspace {
     pub(crate) fn select_tool(&mut self, tool: Tool) {
         self.tool_before_space_pan = None;
         self.tool = tool;
-        if tool == Tool::Metaball && self.session.metaballs.selected.is_empty() {
+        if tool == Tool::Metaball
+            && self.session.metaballs.selected.is_empty()
+            && self.session.metaballs.selected_link.is_none()
+        {
             Arc::make_mut(&mut self.session).select_all_metaballs();
         }
         if tool == Tool::Text {

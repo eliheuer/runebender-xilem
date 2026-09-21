@@ -10,6 +10,10 @@ No release has been published yet.
 
 ### Added
 
+- Added editable metaball connections between two centers, with a reference Width control and source-preserving cubic conversion.
+  Connections follow their endpoints and persist in version-2 metadata; ordinary version-1 sources keep their existing geometry and serialization.
+  Disposable geometry fixtures cover separation, near contact, broad unions, long unequal bridges, chains, branches and counters.
+
 - Added live `editor_open_glyph` navigation for agent clients.
   It switches the current editor tab to a named glyph while preserving text, preview, source and tool context, without editing or saving the font.
 
@@ -91,6 +95,9 @@ No release has been published yet.
 
 ### Changed
 
+- Positive metaball controls now use isolated visible Size and Blend reach instead of requiring users to coordinate support Radius and Strength.
+  Legacy values that cannot use this representation retain raw controls without silent clamping or reinterpretation.
+
 - Simplified the native Metaballs panel with quieter, evenly inset sliders, integer-style readouts and standard panel actions.
 - Completed the canonical editing-model cutover by removing persistent Norad source/glyph projections, mutable source guards and legacy source-local history.
   Norad now remains behind reviewed source-format and proposal codecs, enforced by an item-aware architecture test.
@@ -146,6 +153,8 @@ No release has been published yet.
 - Reduced themes to Dark, Gray (default), and Light.
 
 ### Fixed
+
+- Metaball previews retain the sampled contour when whole-loop simplification produces a spike or leaves the source boundary.
 
 - The bottom preview now follows live metaball dragging, including occurrences in proof text.
   Metaball parameters use sliders with numeric readouts; each drag is one undo step.

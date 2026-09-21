@@ -414,11 +414,24 @@ pub(crate) fn action<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     text: String,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
+    action_enabled(pal, text, true, on_click)
+}
+
+/// A standard action whose availability is reflected in keyboard and pointer interaction.
+pub(crate) fn action_enabled<F: Fn(&mut Workspace) + Send + Sync + 'static>(
+    pal: &Palette,
+    text: String,
+    enabled: bool,
+    on_click: F,
+) -> impl WidgetView<Workspace> + use<F> {
     sized_box(
-        button(
-            label(text).text_size(TextSize::Body.px()).color(pal.text),
+        xilem_button(
+            label(text)
+                .text_size(TextSize::Body.px())
+                .color(if enabled { pal.text } else { pal.text_muted }),
             move |app: &mut Workspace| on_click(app),
         )
+        .disabled(!enabled)
         .background_color(pal.button)
         .border_color(pal.outline)
         .border_width(Stroke::Hairline.length())
