@@ -209,7 +209,7 @@ where
         step: None,
         disabled: false,
         accessibility_name: None,
-        track: pal.control,
+        track: pal.slider_track(),
         thumb: pal.button,
         thumb_outline: pal.handle_line,
         on_change,

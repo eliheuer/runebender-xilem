@@ -206,6 +206,16 @@ impl Palette {
         self.text_muted
     }
 
+    /// A quiet slider rail halfway between its original ink and the control surface.
+    pub(crate) fn slider_track(&self) -> Color {
+        Color::new([
+            (self.text_muted.components[0] + self.control.components[0]) * 0.5,
+            (self.text_muted.components[1] + self.control.components[1]) * 0.5,
+            (self.text_muted.components[2] + self.control.components[2]) * 0.5,
+            (self.text_muted.components[3] + self.control.components[3]) * 0.5,
+        ])
+    }
+
     /// The metrics lines: their own token, never the accent.
     pub(crate) fn metrics_line(&self) -> Color {
         self.role("metricsLine")
@@ -303,5 +313,20 @@ mod tests {
         assert!(palette.editor_control_ink().components[0] > palette.outline.components[0]);
         assert!(palette.editor_ink().components[0] > palette.outline.components[0]);
         assert!(palette.editor_ink().components[0] > palette.editor_control_ink().components[0]);
+    }
+
+    #[test]
+    fn gray_slider_track_sits_halfway_between_ink_and_control_surface() {
+        let palette = Palette::load("gray");
+        let track = palette.slider_track().components;
+        for (component, (ink, surface)) in track.iter().zip(
+            palette
+                .text_muted
+                .components
+                .iter()
+                .zip(palette.control.components.iter()),
+        ) {
+            assert!((*component - (*ink + *surface) * 0.5).abs() < f32::EPSILON);
+        }
     }
 }
