@@ -36,18 +36,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             version: 1,
             groups: vec![
                 MetaballGroup {
-                    blend: None,
                     id: 1,
                     threshold: 0.5,
                     balls: vec![ball(1, 700.0, 110.0)],
-                    links: Vec::new(),
                 },
                 MetaballGroup {
-                    blend: None,
                     id: 2,
                     threshold: 0.5,
                     balls: vec![ball(1, 160.0, 200.0), ball(2, 370.0, 200.0)],
-                    links: Vec::new(),
                 },
             ],
         },

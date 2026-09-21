@@ -16,21 +16,18 @@ use xilem::view::FlexSpacer;
 
 pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
-    let selected =
-        !app.session.metaballs.selected.is_empty() || app.session.metaballs.selected_link.is_some();
-    let field_names: &[&str] = if app.session.metaballs.selected_link.is_some() {
-        &["Width"]
-    } else if app.session.metaball_uses_size_controls() {
-        &["X", "Y", "Size", "Blend"]
-    } else {
-        &["X", "Y", "Radius", "Strength", "Threshold"]
-    };
-    let fields = field_names
-        .iter()
-        .copied()
+    let selected = !app.session.metaballs.selected.is_empty();
+    let upm = app.session.metrics.upm;
+    let fields = ["X", "Y", "Radius", "Strength", "Threshold"]
+        .into_iter()
         .map(|field| {
             let value = app.session.metaball_slider_value(field);
-            let (min, max, step) = app.session.metaball_slider_range(field);
+            let (min, max, step) = match field {
+                "X" | "Y" => (-2.0 * upm, 2.0 * upm, 1.0),
+                "Radius" => (1.0, upm, 1.0),
+                "Strength" => (-5.0, 5.0, 0.01),
+                _ => (0.01, 2.0, 0.01),
+            };
             let readout = if !selected {
                 "—".into()
             } else if matches!(field, "X" | "Y") {
@@ -41,7 +38,7 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     "Mixed".into()
                 } else {
                     let value = text.parse::<f64>().unwrap_or(value);
-                    if matches!(field, "Radius" | "Size" | "Width") {
+                    if field == "Radius" {
                         format!("{value:.0}")
                     } else {
                         format!("{:.0}%", value * 100.0)
@@ -54,13 +51,9 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     xrow(
                         Region::Inline,
                         (
-                            label(if field == "Blend" {
-                                "Group blend"
-                            } else {
-                                field
-                            })
-                            .text_size(TextSize::Body.px())
-                            .color(pal.text_muted),
+                            label(field)
+                                .text_size(TextSize::Body.px())
+                                .color(pal.text_muted),
                             FlexSpacer::Flex(1.0),
                             label(readout)
                                 .text_size(TextSize::Body.px())
@@ -90,25 +83,6 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         (
             label("Metaballs").color(pal.text),
             xcolumn(Region::Form, fields),
-            app.session.has_legacy_metaball_selection().then(|| {
-                recipes::action(pal, "Use organic blend".into(), |app: &mut Workspace| {
-                    app.edit_metaballs(|s| s.use_organic_metaballs());
-                })
-            }),
-            recipes::action_enabled(
-                pal,
-                if app.session.metaball_selection_has_negative() {
-                    "Add ink"
-                } else {
-                    "Subtract ink"
-                }
-                .into(),
-                !app.session.metaballs.selected.is_empty(),
-                |app: &mut Workspace| {
-                    let positive = app.session.metaball_selection_has_negative();
-                    app.edit_metaballs(|s| s.set_metaball_sign(positive));
-                },
-            ),
             recipes::action(pal, "Select all centers".into(), |app: &mut Workspace| {
                 Arc::make_mut(&mut app.session).select_all_metaballs();
             }),
@@ -130,7 +104,3 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     )
     .boxed()
 }
-
-#[cfg(test)]
-#[path = "metaballs_tests.rs"]
-mod tests;

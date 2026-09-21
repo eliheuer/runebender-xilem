@@ -293,8 +293,6 @@ mod canonical_tests {
             &Metaballs {
                 version: 1,
                 groups: vec![MetaballGroup {
-                    blend: None,
-                    links: vec![],
                     id: 1,
                     threshold: 0.5,
                     balls: vec![Metaball {

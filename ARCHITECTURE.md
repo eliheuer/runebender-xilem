@@ -139,9 +139,7 @@ Component decomposition resolves nested canonical layer shapes, rounds transform
 Editable hyperbezier kind is an explicit contour-preservation field rather than an inference from the current UFO identifier; copy, duplicate and decomposition assign fresh hyper-marked UFO identifiers without changing the contour kind.
 Explicit hyperbezier conversion solves selected canonical contours directly and replaces only that topology with fresh cubic identities and empty source metadata.
 Explicit metaball collapse samples and fits selected or all live groups on a staged canonical layer draft, retaining the editable source data until every replacement contour succeeds.
-Runebender owns legacy metaball field sampling and exact feature detection; `img2bez::fit_smooth_contours` owns smooth cubic fitting.
-New organic groups use `outline/metaballs/organic.rs` to derive tangent circle bridges and their Boolean silhouette from editable centers and one group blend rate.
-Version-three metadata selects this geometry explicitly; version-one and version-two groups retain their original field until a user switches them.
+Runebender owns metaball field sampling and exact feature detection; `img2bez::fit_smooth_contours` owns the cubic fitting.
 Shared tracing, fitting, and cleanup improvements belong in img2bez, while editor behavior and metaball parameters stay in Runebender.
 Stroke expansion, offset, extrusion and roughening consume canonical paths directly; replaced topology receives fresh identities and empty source metadata while untargeted contours, components and anchors retain their exact objects.
 The committed `DocumentChange` identifies direct and component-dependent layers and whether geometry, metrics, metadata or compilation became stale.
