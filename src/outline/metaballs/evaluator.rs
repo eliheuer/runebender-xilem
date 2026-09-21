@@ -155,6 +155,7 @@ mod tests {
 
     fn linked_group() -> MetaballGroup {
         MetaballGroup {
+            blend: None,
             id: 1,
             threshold: 0.5,
             balls: [(0.0, 0.0), (200.0, 150.0)]

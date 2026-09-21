@@ -23,6 +23,33 @@ pub fn visible_size(ball: &Metaball, threshold: f64) -> Option<(f64, f64)> {
     (size > 0.0 && reach > 0.0).then_some((size, reach))
 }
 
+/// Returns the isolated circle radius for either additive or subtractive ink.
+/// Zero and subthreshold elements have no standalone circle.
+pub fn circle_size(ball: &Metaball, threshold: f64) -> Option<f64> {
+    let mut positive = ball.clone();
+    positive.stiffness = positive.stiffness.abs();
+    visible_size(&positive, threshold).map(|(size, _)| size)
+}
+
+/// Changes the isolated circle size while preserving strength and blending character.
+/// Rejects unsupported sizes without modifying the source element.
+pub fn set_circle_size(ball: &mut Metaball, threshold: f64, size: f64) -> Result<(), String> {
+    let current = circle_size(ball, threshold).ok_or("This element has no isolated circle")?;
+    if current == size {
+        return Ok(());
+    }
+    let radius = ball.radius * (size / current);
+    if !size.is_finite()
+        || size <= 0.0
+        || !radius.is_finite()
+        || !(1.0..=100_000.0).contains(&radius)
+    {
+        return Err("Size exceeds the supported circle range".into());
+    }
+    ball.radius = radius;
+    Ok(())
+}
+
 /// Sets isolated radius and reach without changing the kernel or group threshold.
 /// Rejects unrepresentable values without mutating the element; no values are clamped.
 pub fn set_size_and_reach(
@@ -106,6 +133,27 @@ mod tests {
         for strength in [-2.0, 0.0, 0.25, 0.5] {
             ball.stiffness = strength;
             assert!(visible_size(&ball, 0.5).is_none());
+        }
+    }
+    #[test]
+    fn circle_size_edits_preserve_strength_for_both_ink_signs() {
+        for strength in [2.0, -2.0] {
+            let mut ball = Metaball {
+                id: 1,
+                x: 12.0,
+                y: 34.0,
+                radius: 180.0,
+                stiffness: strength,
+            };
+            set_circle_size(&mut ball, 0.5, 72.0).unwrap();
+            assert!((circle_size(&ball, 0.5).unwrap() - 72.0).abs() < 1e-12);
+            assert_eq!(ball.stiffness, strength);
+            assert_eq!((ball.x, ball.y), (12.0, 34.0));
+            let before = ball.clone();
+            for size in [0.0, -1.0, f64::NAN, 1e9] {
+                assert!(set_circle_size(&mut ball, 0.5, size).is_err());
+                assert_eq!(ball, before);
+            }
         }
     }
 }

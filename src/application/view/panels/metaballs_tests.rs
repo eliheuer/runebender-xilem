@@ -68,7 +68,7 @@ fn dispatch<V: WidgetView<Workspace>>(
 }
 
 #[cfg(test)]
-fn check_raw_slider_rebuild(field: &str, cancel: bool) {
+fn check_slider_rebuild(field: &str, cancel: bool) {
     let path = std::env::temp_dir().join(format!(
         "runebender-metaball-panel-{field}-{}.ufo",
         std::process::id()
@@ -77,11 +77,15 @@ fn check_raw_slider_rebuild(field: &str, cancel: bool) {
         "Strength" => (180.0, 0.25, 0.5, 3, [0.6, 0.7]),
         "Threshold" => (180.0, 1.0, 1.5, 4, [0.3, 0.2]),
         "Radius" => (5000.0, -2.0, 0.5, 2, [0.9, 0.8]),
+        "Size" => (180.0, 2.0, 0.5, 2, [0.15, 0.20]),
+        "Blend" => (180.0, 2.0, 0.5, 3, [0.65, 0.80]),
         _ => panic!("unexpected fixture"),
     };
-    let source = Metaballs {
-        version: 1,
+    let organic = matches!(field, "Size" | "Blend");
+    let mut source = Metaballs {
+        version: if organic { 3 } else { 1 },
         groups: vec![MetaballGroup {
+            blend: organic.then_some(0.5),
             id: 1,
             threshold,
             balls: vec![Metaball {
@@ -94,6 +98,12 @@ fn check_raw_slider_rebuild(field: &str, cancel: bool) {
             links: Vec::new(),
         }],
     };
+    if organic {
+        let mut other = source.groups[0].balls[0].clone();
+        other.id = 2;
+        other.x = 580.0;
+        source.groups[0].balls.push(other);
+    }
     let mut font = norad::Font::new();
     let mut glyph = norad::Glyph::new("a");
     glyph.width = 600.0;
@@ -123,8 +133,8 @@ fn check_raw_slider_rebuild(field: &str, cancel: bool) {
     let initial_sliders = sliders(harness.root_widget().as_dyn());
     assert_eq!(
         initial_sliders.len(),
-        5,
-        "the fixture starts with raw controls"
+        if organic { 4 } else { 5 },
+        "organic groups have Size and Group blend; legacy groups keep raw controls"
     );
     let slider = initial_sliders[index];
     let at_fraction = |harness: &TestHarness<_>, fraction| {
@@ -166,6 +176,16 @@ fn check_raw_slider_rebuild(field: &str, cancel: bool) {
         } else if field == "Threshold" {
             assert!(group.threshold < group.balls[0].stiffness);
             assert_eq!(group.balls[0].stiffness, stiffness);
+        } else if field == "Blend" {
+            assert_eq!(
+                group.balls, source.groups[0].balls,
+                "group blend preserves every circle exactly"
+            );
+            assert!(group.blend.unwrap() > 0.5);
+        } else if field == "Size" {
+            assert_eq!(group.blend, Some(0.5));
+            assert_eq!(group.balls[0].stiffness, stiffness);
+            assert!(group.balls[0].radius > radius);
         } else {
             assert!(group.balls[0].radius < radius);
         }
@@ -190,15 +210,25 @@ fn check_raw_slider_rebuild(field: &str, cancel: bool) {
 
 #[test]
 fn raw_strength_crosses_threshold_without_rebinding_the_captured_slider() {
-    check_raw_slider_rebuild("Strength", false);
+    check_slider_rebuild("Strength", false);
 }
 
 #[test]
 fn raw_threshold_crosses_strength_and_pointer_cancel_restores_the_source() {
-    check_raw_slider_rebuild("Threshold", true);
+    check_slider_rebuild("Threshold", true);
 }
 
 #[test]
 fn legacy_radius_range_remains_stable_across_pointer_rebuilds() {
-    check_raw_slider_rebuild("Radius", false);
+    check_slider_rebuild("Radius", false);
+}
+
+#[test]
+fn organic_group_blend_drag_keeps_circle_sizes_and_commits_once() {
+    check_slider_rebuild("Blend", false);
+}
+
+#[test]
+fn organic_size_drag_preserves_blend_and_cancels_without_source_changes() {
+    check_slider_rebuild("Size", true);
 }

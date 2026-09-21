@@ -10,9 +10,10 @@ No release has been published yet.
 
 ### Added
 
-- Added editable metaball connections between two centers, with a reference Width control and source-preserving cubic conversion.
-  Connections follow their endpoints and persist in version-2 metadata; ordinary version-1 sources keep their existing geometry and serialization.
-  Disposable geometry fixtures cover separation, near contact, broad unions, long unequal bridges, chains, branches and counters.
+- Added automatic organic metaball blending with independently editable circle sizes and a group Blend control.
+  Tangent Bézier bridges merge into curved hourglasses, unequal pairs and multi-circle arrangements, with subtractive circles for counters and explicit img2bez conversion.
+  Version-3 metadata selects this new model; saved version-1 fields and version-2 constant-width links retain their original behavior until an explicit undoable change.
+  Disposable source and silhouette proofs include the unequal 100/60 pair at distance 480 and a fixed-position separate-to-broad Blend sweep.
 
 - Added live `editor_open_glyph` navigation for agent clients.
   It switches the current editor tab to a named glyph while preserving text, preview, source and tool context, without editing or saving the font.
@@ -95,8 +96,8 @@ No release has been published yet.
 
 ### Changed
 
-- Positive metaball controls now use isolated visible Size and Blend reach instead of requiring users to coordinate support Radius and Strength.
-  Legacy values that cannot use this representation retain raw controls without silent clamping or reinterpretation.
+- New metaball groups use Size and Blend controls and automatic curved connections.
+  Legacy groups retain raw field controls and an explicit Use organic blend action; the default workflow no longer creates constant-width links.
 
 - Simplified the native Metaballs panel with quieter, evenly inset sliders, integer-style readouts and standard panel actions.
 - Completed the canonical editing-model cutover by removing persistent Norad source/glyph projections, mutable source guards and legacy source-local history.

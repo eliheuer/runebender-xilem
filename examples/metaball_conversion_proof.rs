@@ -135,6 +135,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     for (row, (name, balls)) in cases.into_iter().enumerate() {
         let group = MetaballGroup {
+            blend: None,
             id: 1,
             threshold: 0.5,
             balls,

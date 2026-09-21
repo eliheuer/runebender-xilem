@@ -4704,6 +4704,7 @@ fn canonical_metaball_collapse_is_selected_atomic_and_persistable() {
         version: 1,
         groups: vec![
             MetaballGroup {
+                blend: None,
                 links: vec![],
                 id: 1,
                 threshold: 0.5,
@@ -4716,6 +4717,7 @@ fn canonical_metaball_collapse_is_selected_atomic_and_persistable() {
                 }],
             },
             MetaballGroup {
+                blend: None,
                 links: vec![],
                 id: 2,
                 threshold: 0.5,

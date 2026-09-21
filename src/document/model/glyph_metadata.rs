@@ -229,6 +229,11 @@ pub struct MetaballGroup {
     /// Optional capsule links; absent in legacy version-one sources.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub links: Vec<MetaballLink>,
+    /// Automatic tangent-curve blending rate from zero to one.
+    /// `None` retains the legacy summed field; `Some` uses the isolated circles
+    /// derived from each element and requires schema version three.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blend: Option<f64>,
 }
 
 /// Editable metaball source data for one glyph layer.
@@ -236,7 +241,7 @@ pub struct MetaballGroup {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Metaballs {
-    /// Schema version: one for legacy centers, two permits capsule links.
+    /// Schema version: one for legacy centers, two permits links, three adds organic blending.
     pub version: u32,
     /// Independent blending groups.
     pub groups: Vec<MetaballGroup>,
@@ -255,9 +260,9 @@ impl Metaballs {
     /// Validate schema, identifiers, finite coordinates and bounded field parameters.
     ///
     /// At most 128 groups, 256 centers and 256 links are accepted.
-    /// Version one must not contain links; readers never upgrade the version.
+    /// Versions one and two retain the summed field; readers never upgrade a version.
     pub fn validate(&self) -> Result<(), String> {
-        if !matches!(self.version, 1 | 2) {
+        if !matches!(self.version, 1..=3) {
             return Err(format!("unsupported metaball version {}", self.version));
         }
         if self.groups.len() > 128
@@ -269,8 +274,16 @@ impl Metaballs {
         if self.version == 1 && self.groups.iter().any(|g| !g.links.is_empty()) {
             return Err("metaball links require schema version two".into());
         }
+        if self.version < 3 && self.groups.iter().any(|g| g.blend.is_some()) {
+            return Err("organic metaballs require schema version three".into());
+        }
         let mut groups = HashSet::new();
         for group in &self.groups {
+            if let Some(blend) = group.blend
+                && (!blend.is_finite() || !(0.0..=1.0).contains(&blend) || !group.links.is_empty())
+            {
+                return Err("invalid organic blend rate or incompatible capsule links".into());
+            }
             if !groups.insert(group.id)
                 || !group.threshold.is_finite()
                 || !(0.01..=100.0).contains(&group.threshold)
@@ -930,6 +943,7 @@ mod tests {
         let mut source = Metaballs {
             version: 1,
             groups: vec![MetaballGroup {
+                blend: None,
                 id: 7,
                 threshold: 1.0,
                 links: vec![],
@@ -953,6 +967,7 @@ mod tests {
     #[test]
     fn metaball_links_require_v2_and_valid_same_group_endpoints() {
         let group = MetaballGroup {
+            blend: None,
             id: 1,
             threshold: 0.5,
             balls: [1, 2, 3]

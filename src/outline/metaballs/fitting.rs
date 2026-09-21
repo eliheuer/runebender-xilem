@@ -172,6 +172,7 @@ mod tests {
     fn straight_capsule_sides_do_not_invent_inflections() {
         for rise in [0.0, 120.0] {
             let group = MetaballGroup {
+                blend: None,
                 id: 1,
                 threshold: 0.5,
                 balls: [(0.0, 0.0), (600.0, rise)]
@@ -209,6 +210,7 @@ mod tests {
     fn blends_use_few_nodes_without_sacrificing_shape() {
         for (dx, dy, radius, max_nodes) in [(0.0, 210.0, 180.0, 8), (95.0, 252.0, 205.0, 10)] {
             let group = MetaballGroup {
+                blend: None,
                 id: 1,
                 threshold: 0.5,
                 links: vec![],

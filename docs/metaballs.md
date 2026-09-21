@@ -1,189 +1,196 @@
 # Metaballs
 
 Metaballs remain editable source objects until explicit conversion.
-They are not UFO anchors, and previewing or saving them does not add ordinary contour points.
+Previewing or saving them does not add ordinary contour points.
 
-## Xilem editor
+## Organic blending
+
+New groups use organic blending: circles connect automatically through curved, tangent Bézier bridges.
+The **Group blend** slider controls the transition from separate circles through a pinched neck to a broad connection.
+Circle positions and sizes remain independently editable.
+There is no separate Connect action in the default workflow.
+
+This is a new geometry model inspired by the Paper.js example and SATO Hiroyuki's Illustrator circle-connector script.
+It builds circles and bridges, merges their overlapping regions, and subtracts negative circles.
+It does not evaluate a summed density field.
+Saved legacy groups continue using their original density-field behavior until an explicit change.
+
+### Editing
 
 Choose the paired-circle metaball icon beside Rectangle and Ellipse in the native Xilem application.
 Click to place a center, drag to move it, and Shift-click to select several.
 Cmd/Ctrl+A selects all centers in the glyph.
 Arrow keys nudge selected centers; Shift makes a ten-unit step.
-Delete removes selected centers and connections that depend on those centers.
+Delete removes selected centers.
+Each pointer drag is one undo step, and pointer cancellation restores the source.
 
-The right inspector uses sliders for X, Y, Size and Blend reach when selected positive elements can be expressed that way.
-Size is the radius of the visible circle when an element is alone, in font units.
-Blend reach is the distance from that isolated circle to the outer edge of its influence.
-Increasing Blend reach adjusts the underlying radius and strength together, preserving the element's isolated Size.
-Other elements in the group still contribute to the actual blended silhouette.
-X/Y moves a multi-selection by the change in its mean coordinate, preserving spacing between selected centers.
-Each slider drag or center drag is one undo step.
-Pointer cancellation restores the source without adding an undo step.
+The inspector presents X, Y, Size and Group blend for organic groups.
+Size is the visible circle radius in font units.
+X/Y moves a multi-selection by the change in its mean coordinate, preserving spacing.
+Size edits the selected circles; Blend changes each selected circle's entire group.
+The Add ink / Subtract ink action changes the sign of selected elements.
+A subtractive circle removes its region from the positive result, making an explicit counter when it is enclosed.
 
-Negative, zero-strength, subthreshold and otherwise unmappable legacy elements retain raw Radius, Strength and Threshold controls where needed.
-Mixed selections retain their raw representation when a shared Size/Blend presentation is not available.
-Radius is the finite support radius, Strength is the signed field value at the center, and Threshold is a positive boundary level shared by a group.
-Negative strength subtracts density; the resulting counter depends on surrounding elements, rather than having a fixed circular size.
-Opening a document or selecting a control never rewrites these stored values.
+**Start a new group** prepares an independent organic group for the next click.
+Separate groups never influence each other.
+Select a legacy group and choose **Use organic blend** to change its model explicitly.
+That action is undoable and can change the silhouette.
+It is not an exact conversion of a density field.
+It retains the centers and replaces explicit legacy links with automatic organic connections; Undo restores the previous source, including those links.
 
-### Connections
+### Expectations and limits
 
-Select exactly two centers in one group, then choose **Connect selected**.
-A connection contributes a constant-width segment field between those centers and follows their stable identities when they move.
-Click its midpoint to select the connection and adjust **Width** in the inspector.
-Delete removes a selected connection without deleting its endpoint centers.
+The outer circle lobes remain the reference geometry while curved bridges fill the gaps between them.
+A small Blend value can leave distant circles separate.
+Increasing Blend enables connections at distances relative to the two circle sizes and then broadens their necks.
+Very distant circles can remain separate even at the maximum Blend.
+At a connection's exact onset, there need not be a regular smooth contour suitable for ordinary cubic editing.
 
-Width is the full visible width of the isolated segment field.
-Other fields broaden the junctions, and subtractive elements can narrow or interrupt the bridge.
-It is a reference width, not a constraint on the final blended contour.
-Connections have rounded end caps and no taper controls.
-Ordinary nearby centers still blend automatically; a connection makes a deliberate bridge between more distant centers.
+The MVP chooses nearby pairs automatically and gradually weakens a pair when another center is closer to both of its endpoints.
+The occlusion fade retains full strength at equal-distance ties rather than abruptly deleting a bridge after a small movement.
+That avoids many unwanted diagonal bridges in chains, but it is not a general network editor.
+Rearranging several circles can change which pairs are connected.
+Multiple bridges can meet in corners or make central holes; complex junctions are not guaranteed to be smooth everywhere.
+The proof fixtures expose these cases for visual review.
+Ellipses, per-pair blending, manual connection graphs, noise and interpolation between masters remain future work.
 
-### Conversion and preview
+## Preview and explicit conversion
 
-Centers and connections in a group blend together.
-**Start a new group** prepares an independent group for the next click.
+Live previews appear in the canvas, preview strip, glyph grid and component references.
+Saving retains the centers and their group model as glyph metadata.
+Choose the metaball tool to edit those sources; ordinary point tools operate on ordinary contours.
+
 **Groups to cubic** converts complete groups containing selected objects.
 **Glyph to cubic** converts every group in the glyph.
 Both are also under **Path → Metaballs**, using normal Undo/Redo.
+Conversion replaces the selected source groups with ordinary cubic contours only after the geometry succeeds.
+An error retains the editable sources.
 
-From the overview, **Path → Metaballs → Font to Cubic** converts the current master's foreground glyphs as one undoable batch.
+From the overview, **Path → Metaballs → Font to Cubic** converts the current master's foreground glyphs as an undoable batch.
 Other masters and background layers remain separate.
-The command below converts every layer of one UFO.
-
-Live previews appear in the canvas, preview strip, glyph grid and component references.
-Saving keeps centers and connections as glyph metadata.
-Ordinary point tools operate on ordinary contours; choose the metaball tool to edit source objects.
-Roundness, noise, ellipses, tapering, quadratic and hyperbezier conversion, and interpolation of parameters between masters are future work.
 Convert before using external font compilers.
+Quadratic and hyperbezier conversion are not implemented.
 
-## Whole-font conversion
+Organic previews merge generated circle and connector paths with Linesweeper.
+Explicit conversion sends the merged boundary through img2bez.
+Smooth boundaries with at most 256 extrema-split source curves receive an optimized img2bez fit only when it uses no more segments and stays within the requested accuracy at sampled points in both directions.
+That distance check is sampled, not a proof of the maximum error everywhere.
+Genuine corners, more complex boundaries, failed fits and fits that fail either check retain the generated extrema-split cubics.
+Those retained curves still pass through img2bez's outline model and bottom-start normalization.
+Consequently, conversion does not optimize every contour or guarantee a reduction in point count.
+Bottommost contour starts, economical segments and retained extrema remain conversion goals.
+Keeping extrema does not guarantee a globally minimal outline or replace a designer's judgment.
 
-The command line converts all groups in all layers of one UFO into a separate UFO:
-
-```sh
-cargo run -- collapse-metaballs Source.ufo --out Cubic.ufo
-```
-
-The destination must not exist.
-The input is never written.
-`--resolution 2` sets the grid spacing in font units; smaller values sample finer details.
-`--accuracy 0.25` sets img2bez's cubic fitting accuracy relative to the sampled boundary.
-Conversion across glyphs is prepared before any in-memory installation.
-Errors retain the source; a group with no sampled boundary cannot be collapsed.
-
-A disposable font matching the dot-and-stem idea can be generated with:
+The command line converts all groups in all layers of a UFO into a separate UFO:
 
 ```sh
-nice -n 15 cargo run -j 1 --locked --no-default-features \
-  --example metaball_fixture -- /tmp/MetaballStudy.ufo
+nice -n 15 cargo run -j 1 --locked -- collapse-metaballs Source.ufo --out Cubic.ufo
 ```
 
-## Implementation
+The destination must not exist, and the input is never written.
+`--accuracy 0.25` controls fitting accuracy relative to the supplied boundary.
+`--resolution 2` sets density-field sampling spacing for legacy groups.
+That sampling grid is not part of the organic circle-connector construction.
 
-`formats::metaballs` owns the versioned `com.runebender.metaballs` glyph lib key.
-Version 1 stores groups with stable IDs, thresholds, and centers with stable IDs, coordinates, support radii and stiffness.
-Size and Blend reach only reparameterize those existing values; they do not introduce a new kernel or upgrade the source version.
-For positive strength `s > T`, the mapping is:
+## Saved versions and legacy groups
+
+`formats::metaballs` owns the `com.runebender.metaballs` glyph lib key.
+It uses ordinary plist values that round-trip through UFO GLIF XML.
+Readers reject unknown fields, unsupported versions and malformed references rather than replacing them with empty data.
+
+| Version | Source geometry |
+|---|---|
+| 1 | Signed centers with support radius and stiffness, summed at a group threshold. |
+| 2 | The same field, optionally with explicit constant-width segment links. |
+| 3 | Groups can additionally select organic circle connectors using `blend: Some(rate)`, with `0 <= rate <= 1`. |
+
+A missing `blend` keeps the original field evaluator, including version-2 links.
+A version-3 glyph can therefore preserve legacy groups alongside new organic groups.
+Empty link lists and absent blend values are omitted.
+Opening, selecting or saving a legacy group does not migrate or reinterpret it.
+
+The original center IDs, coordinates, support radii, stiffness and group thresholds remain the stored representation.
+For a valid visible circle, organic Size is derived from the magnitude of its strength:
 
 ```text
-visible_size = R * sqrt(1 - (T / s)^(1/3))
-blend_reach = R - visible_size
-
-R = visible_size + blend_reach
-s = T / (1 - (visible_size / R)^2)^3
+visible_radius = support_radius * sqrt(1 - (threshold / abs(strength))^(1/3))
 ```
 
-Unrepresentable settings and existing raw values must not be silently clamped or reinterpreted.
-Size and Blend reach are not defined for every valid version-1 element.
+This requires `abs(strength) > threshold`.
+Zero-strength and subthreshold elements do not define visible circles.
+The legacy controls retain raw values that cannot use a visible-size representation.
+The explicit organic action rejects nonzero subthreshold elements instead of silently dropping or clamping them.
+Zero-strength elements can remain stored without contributing a visible circle.
 
-Adding the first connection upgrades the glyph's metaball metadata to version 2.
-Each group can then store `links`, with stable connection IDs, `start` and `end` center IDs, and a full reference `width`.
-Endpoint references must resolve to distinct centers in that same group.
-Empty link lists are omitted, so version-1 source serialization remains unchanged.
-Readers reject unknown fields, unknown versions and malformed references rather than replacing them with empty data.
-Older Runebender versions that only understand version 1 cannot edit version-2 metadata.
-The data remains ordinary plist values and round-trips through UFO GLIF XML.
+Legacy groups expose Radius, Strength and Threshold.
+Radius is finite support, Strength is signed center density, and Threshold is a shared positive boundary level.
+Version-2 links remain readable and editable through their midpoint and Width control, and they can be deleted.
+Deleting a legacy center also removes links referencing it.
+These saved links retain their original constant-width field behavior; the default organic workflow does not create them.
 
-`outline::metaballs` evaluates the compact polynomial field:
+The legacy field remains:
 
 ```text
-center contribution = stiffness * max(0, 1 - distance_to_center² / radius²)³
+center contribution = strength * max(0, 1 - distance_to_center² / support_radius²)³
 link contribution = 4*T * max(0, 1 - distance_to_segment² / link_support²)³
 link_support = (width / 2) / sqrt(1 - (1/4)^(1/3))
 F(x, y) = sum(center contributions) + sum(link contributions)
 inside = F(x, y) >= T
 ```
 
-Distance to a segment uses its nearest point, including either endpoint outside the segment's projected span.
-Thus its support is a capsule with round end caps.
-Coincident endpoint positions reduce geometrically to a round field even though the two endpoint IDs remain distinct.
-Bounds, gradients and Hessians must use the same source geometry as field evaluation.
-The segment-to-cap join has a continuous first derivative but can change second derivative; fitting must not assume one radial formula throughout.
+A legacy link has round end caps and follows stable center IDs.
+Its Width is the full visible width of the isolated segment field; overlapping fields broaden its junctions.
+Gradients, Hessians and bounds use the same field geometry.
+Legacy preview uses a bounded triangular grid and guarded Kurbo simplification.
+Explicit conversion locates extrema and inflections on the sampled implicit boundary and supplies them to `img2bez::fit_smooth_contours`.
 
-A triangular grid extracts oriented boundary loops.
-Bisection locates field crossings; analytic gradients supply cubic tangents.
-The interactive preview fits the whole loop with Kurbo's `simplify::simplify_bezpath`.
-A bounds and sampled field check rejects simplifications that introduce spikes or leave the boundary; those previews retain the dense sampled Hermite contour.
-This fallback does not invoke img2bez while dragging.
+The legacy grid is capped at one million cells per group.
+Very small holes or bridges can be missed, especially near a merge or split.
+Sampling spacing is not an error bound against the analytic field.
+An oversized request returns an error instead of silently coarsening the result.
 
-Explicit conversion additionally locates horizontal and vertical extrema and curvature sign changes on the implicit field.
-It projects these feature points back onto the boundary and passes the ordered samples, tangents and feature labels to `img2bez::fit_smooth_contours`.
-Img2bez owns the constrained cubic fitting, using Kurbo internally to fit each span.
-This retains extrema and their tangents while optimizing segment count between them.
-Inflections can fall inside a cubic and no longer require an extra node.
-Converted contours start at their bottommost on-curve point, with ties resolved to the left.
-Extremum handles are exactly horizontal or vertical, and conversion retains fractional coordinates without rounding to a font-unit grid.
-A feature that cannot be resolved safely returns an error and leaves the source intact.
+## Disposable proofs
 
-[img2bez](https://github.com/eliheuer/img2bez) is the conversion library; Runebender supplies the metaball field information.
-The pinned img2bez dependency also offers `trace_sdf`, which can fit a sampled field without a PNG intermediate.
-Its optional `cleanup_max_deviation` checks cleanup candidates against the original fitted contour, preserving earlier geometry when a candidate exceeds the sampled limit.
-The exact-boundary entry point uses the supplied geometry directly, without image cleanup.
-The comparison below exercises that alternative rather than assuming it improves every shape.
-
-Generate a reproducible SVG with nodes, handles, segment counts, and sampled field discrepancy:
+Generate the organic silhouettes, converted nodes and handles, and editable source UFO without touching a real font:
 
 ```sh
 nice -n 15 cargo run -j 1 --locked --no-default-features \
-  --example metaball_conversion_proof -- /tmp/metaball-comparison.svg
-```
-
-The proof compares the previous whole-loop preview, img2bez's sampled-field tracing with bounded cleanup, and img2bez's exact-boundary fitting on a circle, a blended stem, an unequal diagonal blend, and a counter.
-These compare input information and pipeline choices, not img2bez against Kurbo.
-The diagonal blend needs more segments with constrained fitting; retaining extrema does not guarantee a globally minimal outline or replace a designer's judgment.
-The reported discrepancy is a first-order normal-distance estimate sampled along the fitted curves, not a Hausdorff error bound.
-
-Sampling spacing is not a guaranteed error bound against the analytic field.
-Very small holes or bridges, or multiple feature roots within a grid edge, can be missed, especially near a merge or split.
-Exact first contact can be a singular boundary rather than a regular smooth outline.
-The grid is capped at one million cells per group, including connection bounds; an oversized request returns an error instead of silently coarsening the result.
-Interactive previews and conversion use a 2-unit grid by default.
-A later adaptive sampler can improve both speed and small-feature fidelity without changing the source format.
-
-## Disposable MVP proofs
-
-Generate seven fixed source fixtures, an SVG comparing preview and converted cubic nodes, and a text summary without touching a real font:
-
-```sh
-nice -n 15 cargo run -j 1 --locked --no-default-features \
-  --example metaball_mvp_proof -- /tmp/metaball-mvp-proof
+  --example metaball_organic_proof -- /tmp/metaball-organic-proof
 ```
 
 The output directory must not exist.
-It contains `MetaballMvp.ufo`, `metaballs.svg` and `summary.txt`.
-Glyphs `a` through `g` cover separated circles, near contact, broad union, an unequal long bridge, a chain, a branch and a counter.
-The near-contact fixture is slightly connected, not exactly at the singular contact distance.
-The example checks expected contour counts and verifies that the generated UFO retains its exact source metadata after reopening.
-The SVG is a monochrome geometry proof; it does not establish native pointer behavior or preview latency.
+It contains `OrganicMetaballs.ufo`, `organic-metaballs.svg` and `summary.txt`.
+Glyphs `a` through `j` cover an equal-circle hourglass, the unequal radius-100/radius-60 pair at distance 480, a filled three-lobed junction, a four-step fixed-position Blend sweep, a bent arrangement, a subtractive counter and a three-lobed ring with a natural central hole.
+The sweep changes only Blend.
+The example checks contour counts, retained outer lobe bounds, the hole, increasing sweep neck widths, a pinched long bridge, and exact source metadata after UFO save/reopen.
+These are deterministic geometry checks, not proof of every possible junction or of native input performance.
+The SVG uses Gray and shows actual preview and conversion output, not a hand-drawn target.
+
+Earlier fixtures remain available to test compatibility:
+
+```sh
+nice -n 15 cargo run -j 1 --locked --no-default-features \
+  --example metaball_fixture -- /tmp/MetaballStudy.ufo
+
+nice -n 15 cargo run -j 1 --locked --no-default-features \
+  --example metaball_mvp_proof -- /tmp/metaball-legacy-links
+
+nice -n 15 cargo run -j 1 --locked --no-default-features \
+  --example metaball_conversion_proof -- /tmp/metaball-legacy-fitting.svg
+```
+
+The first creates a version-1 dot-and-stem source.
+The second exercises version-1 fields and version-2 constant-width links.
+The third compares legacy preview, img2bez sampled-field tracing and img2bez exact-boundary fitting.
+Its discrepancy measure is a sampled first-order normal-distance estimate, not a Hausdorff bound.
+It compares input pipelines, not img2bez against Kurbo.
 
 ## References
 
-- [Blender metaball properties](https://docs.blender.org/manual/en/4.4/modeling/metas/properties.html): separate element radius/stiffness and group threshold.
-- [Blender metaball evaluation](https://github.com/blender/blender/blob/main/source/blender/blenkernel/intern/mball_tessellate.cc): compact fields for round and tube elements.
-- [Houdini metaball controls](https://www.sidefx.com/docs/houdini/nodes/sop/metaball.html): threshold-radius controls that preserve isolated visible size while changing influence.
-- [Metaballs](https://en.wikipedia.org/wiki/Metaballs): summed implicit fields and compact support.
-- [User-supplied Desmos example](https://www.desmos.com/calculator/j6jheyeh7x): the interactive graph could not be retrieved during this implementation; its exact formula was not assumed.
+- [Paper.js metaballs](https://paperjs.org/examples/meta-balls/) and [example source](https://github.com/paperjs/paper.js/blob/develop/examples/Paperjs.org/MetaBalls.html): tangent Bézier bridges between circles, ported from SATO Hiroyuki's Illustrator script.
+- [img2bez](https://github.com/eliheuer/img2bez): explicit outline fitting and normalization.
+- [Blender metaball evaluation](https://github.com/blender/blender/blob/main/source/blender/blenkernel/intern/mball_tessellate.cc): the compact field used by legacy circle and tube elements.
+- [Houdini metaball controls](https://www.sidefx.com/docs/houdini/nodes/sop/metaball.html): separate isolated size from influence in a field-based system.
 
-The user's wireframe guided the tool placement, center controls, preview and explicit conversion workflow.
-It was treated as a visual reference.
+The user's screenshots and wireframe are visual references, not instructions embedded in source files.
+They guide the organic silhouettes, independently editable circles, live preview and explicit conversion workflow.

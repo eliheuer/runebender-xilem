@@ -35,6 +35,7 @@ impl Default for OutlineOptions {
 
 /// Evaluates the additive compact radial and capsule-link fields.
 /// Parameters must have passed [`Metaballs::validate`]. Does not mutate source data.
+/// This evaluates only the legacy field; organic groups use generated circle and bridge geometry.
 pub fn field(group: &MetaballGroup, point: Point) -> f64 {
     evaluator::PreparedField::new(group).value(point)
 }
@@ -48,6 +49,7 @@ mod evaluator;
 pub mod parameters;
 
 mod fitting;
+mod organic;
 
 type Edge = (usize, usize);
 
@@ -78,7 +80,13 @@ fn sample_outline(
     structured: bool,
 ) -> Result<Vec<BezPath>, String> {
     Metaballs {
-        version: if group.links.is_empty() { 1 } else { 2 },
+        version: if group.blend.is_some() {
+            3
+        } else if group.links.is_empty() {
+            1
+        } else {
+            2
+        },
         groups: vec![group.clone()],
     }
     .validate()?;
@@ -88,6 +96,9 @@ fn sample_outline(
         || !(0.001..=100.0).contains(&options.accuracy)
     {
         return Err("invalid metaball resolution or fitting accuracy".into());
+    }
+    if group.blend.is_some() {
+        return organic::outline(group, options, structured);
     }
     let evaluator = evaluator::PreparedField::new(group);
     let Some(bounds) = evaluator.bounds() else {
@@ -387,6 +398,7 @@ mod tests {
 
     fn group(balls: Vec<Metaball>) -> MetaballGroup {
         MetaballGroup {
+            blend: None,
             id: 1,
             threshold: 0.5,
             balls,
@@ -712,7 +724,7 @@ mod tests {
         glyph.lib.insert(
             METABALLS_KEY.into(),
             plist::to_value(&Metaballs {
-                version: 3,
+                version: 4,
                 groups: vec![],
             })
             .unwrap(),

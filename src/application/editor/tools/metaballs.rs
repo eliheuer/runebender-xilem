@@ -6,9 +6,11 @@
 use crate::application::editor::session::Session;
 use crate::application::view::canvas::grid::cells_of;
 use crate::application::workspace::{Mode, OverviewEditBatch, Workspace};
-use runebender::formats::metaballs::{Metaball, MetaballGroup, MetaballLink};
+#[cfg(test)]
+use runebender::formats::metaballs::MetaballLink;
+use runebender::formats::metaballs::{Metaball, MetaballGroup};
 use runebender::outline::metaballs::OutlineOptions;
-use runebender::outline::metaballs::parameters::{set_size_and_reach, visible_size};
+use runebender::outline::metaballs::parameters::{circle_size, set_circle_size};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -122,7 +124,9 @@ impl Session {
                     .unwrap_or(0)
                     .checked_add(1)
                     .ok_or("group identifiers exhausted")?;
+                source.version = 3;
                 source.groups.push(MetaballGroup {
+                    blend: Some(0.5),
                     id,
                     threshold: 0.5,
                     balls: vec![],
@@ -229,7 +233,8 @@ impl Session {
         changed
     }
 
-    /// Only a new, same-group pair can become a connection.
+    // Legacy-link authoring is retained only as a persistence test fixture.
+    #[cfg(test)]
     pub(crate) fn metaball_connect_pair(&self) -> Option<(u32, u32, u32)> {
         if self.metaballs.selected.len() != 2 || self.metaballs.selected_link.is_some() {
             return None;
@@ -244,6 +249,9 @@ impl Session {
         }
         let source = self.metaball_data().ok()?;
         let group = source.groups.iter().find(|group| group.id == *g)?;
+        if group.blend.is_some() {
+            return None;
+        }
         if !group.balls.iter().any(|ball| ball.id == *a)
             || !group.balls.iter().any(|ball| ball.id == *b)
             || group
@@ -256,6 +264,7 @@ impl Session {
         Some((*g, *a, *b))
     }
 
+    #[cfg(test)]
     pub(crate) fn connect_metaballs(&mut self) -> bool {
         let result = (|| {
             let Some((g, start, end)) = self.metaball_connect_pair() else {
@@ -294,6 +303,69 @@ impl Session {
         self.metaball_result(result)
     }
 
+    fn selected_metaball_groups(&self) -> HashSet<u32> {
+        self.metaballs
+            .selected
+            .iter()
+            .map(|id| id.0)
+            .chain(self.metaballs.selected_link.map(|id| id.0))
+            .collect()
+    }
+
+    pub(crate) fn has_legacy_metaball_selection(&self) -> bool {
+        let selected = self.selected_metaball_groups();
+        self.metaball_data().is_ok_and(|source| {
+            source
+                .groups
+                .iter()
+                .any(|g| selected.contains(&g.id) && g.blend.is_none())
+        })
+    }
+
+    /// Explicitly switches complete selected legacy groups, retaining centers and undo history.
+    pub(crate) fn use_organic_metaballs(&mut self) -> bool {
+        let result =
+            (|| {
+                let selected = self.selected_metaball_groups();
+                let mut source = self.metaball_data().map_err(|error| error.to_string())?;
+                let mut changed = false;
+                for group in &mut source.groups {
+                    if selected.contains(&group.id) && group.blend.is_none() {
+                        if group.balls.iter().any(|b| {
+                            b.stiffness != 0.0 && circle_size(b, group.threshold).is_none()
+                        }) {
+                            return Err(
+                                "Subthreshold elements require the legacy field controls".into()
+                            );
+                        }
+                        group.blend = Some(0.5);
+                        group.links.clear();
+                        changed = true;
+                    }
+                }
+                if !changed {
+                    return Ok(false);
+                }
+                source.version = 3;
+                source.validate()?;
+                let changed = self.store_metaballs(source, false)?;
+                if changed {
+                    self.metaballs.selected_link = None;
+                    self.metaballs.selected = self
+                        .metaball_data()
+                        .map_err(|error| error.to_string())?
+                        .groups
+                        .iter()
+                        .filter(|g| selected.contains(&g.id))
+                        .flat_map(|g| g.balls.iter().map(move |b| (g.id, b.id)))
+                        .collect();
+                    self.refresh_metaball_preview();
+                }
+                Ok(changed)
+            })();
+        self.metaball_result(result)
+    }
+
     pub(crate) fn metaball_selection_has_negative(&self) -> bool {
         self.metaball_values("Strength")
             .iter()
@@ -304,7 +376,8 @@ impl Session {
         let upm = self.metrics.upm;
         let (min, max, step): (f64, f64, f64) = match field {
             "X" | "Y" => (-2.0 * upm, 2.0 * upm, 1.0),
-            "Radius" | "Size" | "Blend reach" => (1.0, upm, 1.0),
+            "Radius" | "Size" => (1.0, upm, 1.0),
+            "Blend" => (0.0, 1.0, 0.01),
             "Width" => (2.0, upm, 1.0),
             "Strength" => (-5.0, 5.0, 0.01),
             _ => (0.01, 2.0, 0.01),
@@ -351,7 +424,7 @@ impl Session {
         source.groups.iter().all(|g| {
             g.balls.iter().all(|b| {
                 !self.metaballs.selected.contains(&(g.id, b.id))
-                    || visible_size(b, g.threshold).is_some()
+                    || (g.blend.is_some() && circle_size(b, g.threshold).is_some())
             })
         })
     }
@@ -360,6 +433,15 @@ impl Session {
         let Ok(source) = self.metaball_data() else {
             return Vec::new();
         };
+        if field == "Blend" {
+            let selected = self.selected_metaball_groups();
+            return source
+                .groups
+                .iter()
+                .filter(|g| selected.contains(&g.id))
+                .filter_map(|g| g.blend)
+                .collect();
+        }
         if field == "Width" {
             return source
                 .groups
@@ -384,8 +466,7 @@ impl Session {
                         "Y" => b.y,
                         "Radius" => b.radius,
                         "Strength" => b.stiffness,
-                        "Size" => visible_size(b, g.threshold)?.0,
-                        "Blend reach" => visible_size(b, g.threshold)?.1,
+                        "Size" => circle_size(b, g.threshold)?,
                         "Threshold" => g.threshold,
                         _ => return None,
                     })
@@ -428,7 +509,11 @@ impl Session {
         let offset = value - self.metaball_slider_value(field);
         let result = (|| {
             let mut source = self.metaball_data().map_err(|error| error.to_string())?;
+            let groups = self.selected_metaball_groups();
             for g in &mut source.groups {
+                if field == "Blend" && groups.contains(&g.id) && g.blend.is_some() {
+                    g.blend = Some(value);
+                }
                 if field == "Width" {
                     for link in &mut g.links {
                         if self.metaballs.selected_link == Some((g.id, link.id)) {
@@ -443,16 +528,7 @@ impl Session {
                             "Y" => b.y += offset,
                             "Radius" => b.radius = value,
                             "Strength" => b.stiffness = value,
-                            "Size" | "Blend reach" => {
-                                let (size, reach) = visible_size(b, g.threshold)
-                                    .ok_or("This selection requires raw field controls")?;
-                                set_size_and_reach(
-                                    b,
-                                    g.threshold,
-                                    if field == "Size" { value } else { size },
-                                    if field == "Blend reach" { value } else { reach },
-                                )?;
-                            }
+                            "Size" => set_circle_size(b, g.threshold, value)?,
                             "Threshold" => g.threshold = value,
                             _ => {}
                         }
@@ -633,6 +709,13 @@ mod tests {
                 changed
             });
         }
+        // Seed a legacy group explicitly; new clicks now create organic groups.
+        app.edit_metaballs(|session| {
+            let mut source = session.metaball_data().unwrap();
+            source.version = 1;
+            source.groups[0].blend = None;
+            session.store_metaballs(source, false).unwrap()
+        });
         Arc::make_mut(&mut app.session).select_all_metaballs();
         let v1 = app.session.metaball_data().unwrap();
         assert_eq!(v1.version, 1);
@@ -706,6 +789,24 @@ mod tests {
         assert_eq!(
             reopened.session.metaball_preview,
             app.session.metaball_preview
+        );
+
+        // Switching a legacy group is explicit and reversible, including its saved links.
+        let legacy_balls = moved.groups[0].balls.clone();
+        assert!(app.session.has_legacy_metaball_selection());
+        app.edit_metaballs(|s| s.use_organic_metaballs());
+        let organic = app.session.metaball_data().unwrap();
+        assert_eq!(organic.version, 3);
+        assert_eq!(organic.groups[0].blend, Some(0.5));
+        assert_eq!(organic.groups[0].balls, legacy_balls);
+        assert!(organic.groups[0].links.is_empty());
+        app.undo_open_glyph(false);
+        assert_eq!(app.session.metaball_data().unwrap(), moved);
+        Arc::make_mut(&mut app.session).metaballs.selected.clear();
+        Arc::make_mut(&mut app.session).metaball_click(
+            kurbo::Point::new(800.0, 400.0),
+            10.0,
+            false,
         );
 
         // Deleting an endpoint removes dangling links; undo restores exact source metadata.
@@ -802,21 +903,34 @@ mod tests {
         assert_eq!(app.session.metaball_data().unwrap(), original);
         Arc::make_mut(&mut app.session).select_all_metaballs();
         let size = app.session.metaball_slider_value("Size");
-        app.slide_metaball_value("Blend reach", 250.0, true);
+        app.slide_metaball_value("Blend", 0.8, true);
         assert!((app.session.metaball_slider_value("Size") - size).abs() < 1e-9);
-        assert_eq!(app.session.metaball_data().unwrap().version, 1);
+        let blended = app.session.metaball_data().unwrap();
+        assert_eq!(blended.version, 3);
+        assert_eq!(blended.groups[0].balls, original.groups[0].balls);
+        assert_eq!(blended.groups[0].blend, Some(0.8));
         app.finish_metaball_slider(true);
         assert_eq!(app.session.metaball_data().unwrap(), original);
-        app.slide_metaball_value("Blend reach", 0.0, false);
+        app.slide_metaball_value("Blend", f64::NAN, false);
         assert_eq!(app.session.metaball_data().unwrap(), original);
         assert!(app.session.metaballs.error.is_some());
-        app.slide_metaball_value("Radius", 250.0, true);
+        app.slide_metaball_value("Size", 140.0, true);
+        assert_eq!(
+            app.session.metaball_data().unwrap().groups[0].blend,
+            Some(0.5)
+        );
         assert_ne!(app.session.outline_arc(), before);
         app.finish_metaball_slider(true);
         assert_eq!(app.session.metaball_data().unwrap(), original);
         assert_eq!(app.session.outline_arc(), before);
         assert_eq!(app.metadata_undo.len(), history);
-        app.slide_metaball_value("Strength", 2.5, false);
+        // One selected center still controls the whole group's blend, without resizing any circle.
+        Arc::make_mut(&mut app.session).metaballs.selected = HashSet::from([(1, 1)]);
+        app.slide_metaball_value("Blend", 0.6, false);
+        assert_eq!(
+            app.session.metaball_data().unwrap().groups[0].balls,
+            original.groups[0].balls
+        );
         assert_eq!(
             app.metadata_undo.len(),
             history + 1,

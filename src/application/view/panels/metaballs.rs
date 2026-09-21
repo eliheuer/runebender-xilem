@@ -21,7 +21,7 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let field_names: &[&str] = if app.session.metaballs.selected_link.is_some() {
         &["Width"]
     } else if app.session.metaball_uses_size_controls() {
-        &["X", "Y", "Size", "Blend reach"]
+        &["X", "Y", "Size", "Blend"]
     } else {
         &["X", "Y", "Radius", "Strength", "Threshold"]
     };
@@ -41,7 +41,7 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     "Mixed".into()
                 } else {
                     let value = text.parse::<f64>().unwrap_or(value);
-                    if matches!(field, "Radius" | "Size" | "Blend reach" | "Width") {
+                    if matches!(field, "Radius" | "Size" | "Width") {
                         format!("{value:.0}")
                     } else {
                         format!("{:.0}%", value * 100.0)
@@ -54,9 +54,13 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     xrow(
                         Region::Inline,
                         (
-                            label(field)
-                                .text_size(TextSize::Body.px())
-                                .color(pal.text_muted),
+                            label(if field == "Blend" {
+                                "Group blend"
+                            } else {
+                                field
+                            })
+                            .text_size(TextSize::Body.px())
+                            .color(pal.text_muted),
                             FlexSpacer::Flex(1.0),
                             label(readout)
                                 .text_size(TextSize::Body.px())
@@ -86,14 +90,11 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         (
             label("Metaballs").color(pal.text),
             xcolumn(Region::Form, fields),
-            recipes::action_enabled(
-                pal,
-                "Connect selected".into(),
-                app.session.metaball_connect_pair().is_some(),
-                |app: &mut Workspace| {
-                    app.edit_metaballs(|s| s.connect_metaballs());
-                },
-            ),
+            app.session.has_legacy_metaball_selection().then(|| {
+                recipes::action(pal, "Use organic blend".into(), |app: &mut Workspace| {
+                    app.edit_metaballs(|s| s.use_organic_metaballs());
+                })
+            }),
             recipes::action_enabled(
                 pal,
                 if app.session.metaball_selection_has_negative() {

@@ -34,6 +34,7 @@ fn link(id: u32, start: u32, end: u32, width: f64) -> MetaballLink {
 
 fn cases() -> Vec<(&'static str, MetaballGroup, usize)> {
     let group = |balls, links| MetaballGroup {
+        blend: None,
         id: 1,
         threshold: 0.5,
         balls,

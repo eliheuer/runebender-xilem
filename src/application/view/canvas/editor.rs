@@ -1664,9 +1664,18 @@ impl Widget for EditorWidget {
                     } else {
                         pal.editor_control_ink()
                     };
+                    let radius = if group.blend.is_some() {
+                        runebender::outline::metaballs::parameters::circle_size(
+                            &ball,
+                            group.threshold,
+                        )
+                        .unwrap_or(0.0)
+                    } else {
+                        ball.radius
+                    };
                     painter
                         .stroke(
-                            Circle::new(center, ball.radius * self.session.viewport.zoom),
+                            Circle::new(center, radius * self.session.viewport.zoom),
                             &Stroke::new(DesignStroke::Hairline.px()),
                             ink.with_alpha(0.35),
                         )
