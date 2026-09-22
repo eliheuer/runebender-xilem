@@ -10,8 +10,7 @@ No release has been published yet.
 
 ### Changed
 
-- Metaball Strength is now Reach.
-  Radius controls an isolated ball's visible size, while Reach controls how far its influence extends for blends.
+- Metaball Radius controls an isolated ball's visible size while Threshold remains available for shaping.
   Existing editable metaballs and newly created centers retain the previous field profile.
 
 - Blended metaball cubic conversion now accepts a small bounded fidelity trade-off to merge visually redundant on-curve points.
