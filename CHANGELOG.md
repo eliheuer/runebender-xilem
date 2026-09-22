@@ -10,6 +10,9 @@ No release has been published yet.
 
 ### Changed
 
+- Blended metaball cubic conversion now accepts a small bounded fidelity trade-off to merge visually redundant on-curve points.
+  Single-ball circles retain their exact four cardinal extrema.
+
 - Selected metaball support-ring keylines now reuse GlyphGrid's orange mark color.
 
 - Native live-editor sessions no longer rebuild the entire widget tree while their mailbox is idle.

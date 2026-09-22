@@ -121,7 +121,7 @@ linesweeper = "0.4"
 skrifa = "0.44"
 # Imports Glyphs sources and traces images into editable outlines.
 glyphslib = "0.2.7"
-img2bez = { git = "https://github.com/eliheuer/img2bez", rev = "4204e695594b46ef280fec6c9a90c90764eb06e7", default-features = false }
+img2bez = { git = "https://github.com/eliheuer/img2bez", rev = "80bdb2e6d0226449a5e9bf05a49b3339276020c8", default-features = false }
 plist = { version = "1.4", features = ["serde"] }
 quick-xml = { version = "0.41", features = ["serialize"] }
 # Structured font metadata and agent contracts.
