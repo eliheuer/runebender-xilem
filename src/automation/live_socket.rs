@@ -120,6 +120,7 @@ pub struct Server {
     path: PathBuf,
     epoch: String,
     receiver: mpsc::Receiver<Pending>,
+    pending: Arc<AtomicBool>,
     cancellations: AgentCancellationRegistry,
     stop: Arc<AtomicBool>,
     active_connections: Arc<AtomicUsize>,
@@ -155,6 +156,7 @@ impl Server {
         };
         listener.set_nonblocking(true)?;
         let (sender, receiver) = mpsc::sync_channel(MAX_PENDING_REQUESTS);
+        let pending = Arc::new(AtomicBool::new(false));
         let cancellations = AgentCancellationRegistry::new(&epoch, CANCELLATION_CAPACITY)
             .map_err(io::Error::other)?;
         let stop = Arc::new(AtomicBool::new(false));
@@ -163,6 +165,7 @@ impl Server {
         let worker_cancellations = cancellations.clone();
         let active_connections = Arc::new(AtomicUsize::new(0));
         let worker_connections = active_connections.clone();
+        let worker_pending = pending.clone();
         let listener_worker = std::thread::spawn(move || {
             while !stopping.load(Ordering::Relaxed) {
                 match listener.accept() {
@@ -186,13 +189,21 @@ impl Server {
                         let sender = sender.clone();
                         let epoch = worker_epoch.clone();
                         let cancellations = worker_cancellations.clone();
+                        let pending = worker_pending.clone();
                         let stop = stopping.clone();
                         let active = worker_connections.clone();
                         std::thread::spawn(move || {
                             // `serve` writes at most one response frame.
                             // A write error may occur after partial bytes, so never append a second
                             // JSON error frame here.
-                            let _ = serve(&mut stream, &sender, &epoch, &cancellations, &stop);
+                            let _ = serve(
+                                &mut stream,
+                                &sender,
+                                &epoch,
+                                &cancellations,
+                                &pending,
+                                &stop,
+                            );
                             active.fetch_sub(1, Ordering::AcqRel);
                         });
                     }
@@ -207,6 +218,7 @@ impl Server {
             path,
             epoch,
             receiver,
+            pending,
             cancellations,
             stop,
             active_connections,
@@ -230,9 +242,20 @@ impl Server {
         self.cancellations.clone()
     }
 
+    /// Shared signal set after a socket worker queues an application request.
+    pub fn pending_signal(&self) -> Arc<AtomicBool> {
+        self.pending.clone()
+    }
+
     /// Takes the next request without blocking the UI thread.
     pub fn try_recv(&self) -> Option<Pending> {
-        self.receiver.try_recv().ok()
+        match self.receiver.try_recv() {
+            Ok(request) => Some(request),
+            Err(mpsc::TryRecvError::Empty | mpsc::TryRecvError::Disconnected) => {
+                self.pending.store(false, Ordering::Release);
+                None
+            }
+        }
     }
 }
 
@@ -270,6 +293,7 @@ fn serve(
     sender: &mpsc::SyncSender<Pending>,
     epoch: &str,
     cancellations: &AgentCancellationRegistry,
+    pending: &AtomicBool,
     stop: &AtomicBool,
 ) -> io::Result<()> {
     let call: ToolCall = serde_json::from_str(&read_frame(stream, MAX_FRAME_BYTES)?)?;
@@ -396,6 +420,7 @@ fn serve(
         }
         return Err(io::Error::other(error.to_string()));
     }
+    pending.store(true, Ordering::Release);
     let deadline = Instant::now() + TIMEOUT;
     let result = loop {
         match receive.recv_timeout(STOP_POLL) {
@@ -548,6 +573,41 @@ mod tests {
         assert_eq!(result["document_epoch"], server.document_epoch());
         drop(server);
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn pending_signal_tracks_queued_requests_until_the_mailbox_is_drained() {
+        let server = Server::start().unwrap();
+        let signal = server.pending_signal();
+        assert!(!signal.load(Ordering::Acquire));
+        let path = server.path().to_path_buf();
+        let client = std::thread::spawn(move || {
+            call(
+                &path,
+                &ToolCall {
+                    name: "read_glyph".into(),
+                    arguments: serde_json::json!({"glyph":"n"}),
+                },
+            )
+            .unwrap()
+        });
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !signal.load(Ordering::Acquire) {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let pending = loop {
+            if let Some(pending) = server.try_recv() {
+                break pending;
+            }
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        pending.respond(|_| serde_json::json!({"ok":true}));
+        assert!(signal.load(Ordering::Acquire));
+        assert!(server.try_recv().is_none());
+        assert!(!signal.load(Ordering::Acquire));
+        assert_eq!(client.join().unwrap()["ok"], true);
     }
 
     #[test]

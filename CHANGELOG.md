@@ -10,6 +10,9 @@ No release has been published yet.
 
 ### Changed
 
+- Native live-editor sessions no longer rebuild the entire widget tree while their mailbox is idle.
+  Background polling now runs only while a live request or comparison job needs the application thread.
+
 - Reorganized the reusable font engine into `font`, `automation`, and `workflows` domains.
   Canonical font ownership remains in `font`; agent and live-editor contracts now live in `automation`; saved and live node graphs now live in `workflows`.
 

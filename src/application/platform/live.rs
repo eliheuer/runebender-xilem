@@ -3,6 +3,11 @@
 
 //! Service the font engine's live document mailbox through Xilem application messages.
 
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
+
 use crate::application::editor::tools::local_ai::InstalledProposalEdit;
 use crate::application::workspace::Workspace;
 
@@ -30,21 +35,34 @@ fn installed_in_active_source(
 /// Pumps the mailbox on the UI thread; socket workers never touch font data.
 pub(crate) fn with_live<V: xilem::WidgetView<Workspace>>(
     view: V,
+    pending: Option<Arc<AtomicBool>>,
+    live_nodes_running: bool,
 ) -> impl xilem::WidgetView<Workspace> + use<V> {
     xilem::core::fork(
         view,
         xilem::view::task_raw(
-            |proxy: xilem::core::MessageProxy<()>, _: &mut Workspace| async move {
-                loop {
-                    tokio::time::sleep(std::time::Duration::from_millis(40)).await;
-                    if proxy.message(()).is_err() {
-                        return;
+            move |proxy: xilem::core::MessageProxy<()>, _: &mut Workspace| {
+                let pending = pending.clone();
+                async move {
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+                        let has_request = pending
+                            .as_ref()
+                            .is_some_and(|pending| pending.load(Ordering::Acquire));
+                        if !(has_request || live_nodes_running) {
+                            continue;
+                        }
+                        if proxy.message(()).is_err() {
+                            return;
+                        }
                     }
                 }
             },
             |app: &mut Workspace, ()| {
-                app.live_nodes_pump();
-                app.sync_live_nodes_presentation();
+                if app.live_nodes_need_pump() {
+                    app.live_nodes_pump();
+                    app.sync_live_nodes_presentation();
+                }
                 let request = app.live.as_ref().and_then(|server| server.try_recv());
                 if let Some(request) = request {
                     request.respond(|call| app.call_live(call));

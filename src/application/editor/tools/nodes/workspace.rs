@@ -35,6 +35,23 @@ pub(crate) struct LiveNodesState {
 }
 
 impl Workspace {
+    /// Whether a retained live comparison still needs its owned jobs observed.
+    pub(crate) fn live_nodes_need_pump(&self) -> bool {
+        self.live_nodes.as_ref().is_some_and(|state| {
+            state.handles.iter().copied().any(|handle| {
+                matches!(
+                    state.execution.phase(handle),
+                    Some(
+                        LiveGraphPhase::ScriptQueued
+                            | LiveGraphPhase::ScriptRunning
+                            | LiveGraphPhase::RecipeStaged
+                            | LiveGraphPhase::ProofsRunning
+                    )
+                )
+            })
+        })
+    }
+
     /// Access the canonical live graph used by both UI and agent commands.
     pub(crate) fn live_graph_session(&self) -> Option<&GraphSession> {
         self.live_nodes.as_ref().map(|state| &state.session)
