@@ -40,7 +40,7 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     if field == "Radius" {
                         format!("{value:.0}")
                     } else if field == "Reach" {
-                        format!("{value:.2}\u{00d7}")
+                        format!("{value:.2}")
                     } else {
                         format!("{:.0}%", value * 100.0)
                     }

@@ -11,6 +11,18 @@ use runebender::outline::metaballs::OutlineOptions;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+const DEFAULT_METABALL_SUPPORT_RADIUS: f64 = 0.18;
+const DEFAULT_METABALL_STRENGTH: f64 = 2.0;
+
+fn default_reach(threshold: f64) -> f64 {
+    let edge = (threshold / DEFAULT_METABALL_STRENGTH).cbrt();
+    1.0 / (1.0 - edge).sqrt()
+}
+
+fn default_radius(upm: f64, threshold: f64) -> f64 {
+    upm * DEFAULT_METABALL_SUPPORT_RADIUS / default_reach(threshold)
+}
+
 #[derive(Clone, Default)]
 pub(crate) struct MetaballSelection {
     pub selected: HashSet<(u32, u32)>,
@@ -137,8 +149,8 @@ impl Session {
                 id,
                 x: at.x,
                 y: at.y,
-                radius: self.metrics.upm * 0.18,
-                reach: 2.0_f64.sqrt(),
+                radius: default_radius(self.metrics.upm, group.threshold),
+                reach: default_reach(group.threshold),
                 weight: group.threshold,
             });
             let selected = (group.id, id);
@@ -437,6 +449,30 @@ impl Workspace {
 mod tests {
     use super::*;
     use crate::application::workspace::Tool;
+
+    #[test]
+    fn new_center_defaults_preserve_the_legacy_field() {
+        let threshold = 0.5;
+        let radius = default_radius(1_000.0, threshold);
+        let reach = default_reach(threshold);
+        assert!((radius * reach - 180.0).abs() < 1e-12);
+
+        let group = MetaballGroup {
+            id: 1,
+            threshold,
+            balls: vec![Metaball {
+                id: 1,
+                x: 0.0,
+                y: 0.0,
+                radius,
+                reach,
+                weight: threshold,
+            }],
+        };
+        let point = kurbo::Point::new(90.0, 0.0);
+        let old = 2.0 * (1.0 - 90.0_f64.powi(2) / 180.0_f64.powi(2)).powi(3);
+        assert!((runebender::outline::metaballs::field(&group, point) - old).abs() < 1e-12);
+    }
 
     fn projected_glyph(session: &Session) -> norad::Glyph {
         session
