@@ -11,7 +11,7 @@ No release has been published yet.
 ### Changed
 
 - Metaball Radius controls an isolated ball's visible size while Threshold remains available for shaping.
-  Existing editable metaballs and newly created centers retain the previous field profile.
+  New groups start with Radius 128 and Threshold 100%; existing editable metaballs retain their field profile.
 
 - Blended metaball cubic conversion now accepts a small bounded fidelity trade-off to merge visually redundant on-curve points.
   Single-ball circles retain their exact four cardinal extrema.

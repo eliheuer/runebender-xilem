@@ -11,16 +11,17 @@ use runebender::outline::metaballs::OutlineOptions;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-const DEFAULT_METABALL_SUPPORT_RADIUS: f64 = 0.18;
+const DEFAULT_METABALL_RADIUS: f64 = 128.0;
+const DEFAULT_METABALL_REFERENCE_THRESHOLD: f64 = 0.5;
 const DEFAULT_METABALL_STRENGTH: f64 = 2.0;
 
-fn default_reach(threshold: f64) -> f64 {
-    let edge = (threshold / DEFAULT_METABALL_STRENGTH).cbrt();
+fn default_reach() -> f64 {
+    let edge = (DEFAULT_METABALL_REFERENCE_THRESHOLD / DEFAULT_METABALL_STRENGTH).cbrt();
     1.0 / (1.0 - edge).sqrt()
 }
 
-fn default_radius(upm: f64, threshold: f64) -> f64 {
-    upm * DEFAULT_METABALL_SUPPORT_RADIUS / default_reach(threshold)
+fn default_radius() -> f64 {
+    DEFAULT_METABALL_RADIUS
 }
 
 #[derive(Clone, Default)]
@@ -131,7 +132,7 @@ impl Session {
                     .ok_or("group identifiers exhausted")?;
                 source.groups.push(MetaballGroup {
                     id,
-                    threshold: 0.5,
+                    threshold: 1.0,
                     balls: vec![],
                 });
                 source.groups.len() - 1
@@ -149,8 +150,8 @@ impl Session {
                 id,
                 x: at.x,
                 y: at.y,
-                radius: default_radius(self.metrics.upm, group.threshold),
-                reach: default_reach(group.threshold),
+                radius: default_radius(),
+                reach: default_reach(),
                 weight: group.threshold,
             });
             let selected = (group.id, id);
@@ -451,11 +452,12 @@ mod tests {
     use crate::application::workspace::Tool;
 
     #[test]
-    fn new_center_defaults_preserve_the_legacy_field() {
-        let threshold = 0.5;
-        let radius = default_radius(1_000.0, threshold);
-        let reach = default_reach(threshold);
-        assert!((radius * reach - 180.0).abs() < 1e-12);
+    fn new_center_defaults_use_the_shared_radius_and_threshold() {
+        let threshold = 1.0;
+        let radius = default_radius();
+        let reach = default_reach();
+        assert_eq!(radius, 128.0);
+        assert!((reach - 1.0 / (1.0 - 0.25_f64.cbrt()).sqrt()).abs() < 1e-12);
 
         let group = MetaballGroup {
             id: 1,
@@ -469,9 +471,11 @@ mod tests {
                 weight: threshold,
             }],
         };
-        let point = kurbo::Point::new(90.0, 0.0);
-        let old = 2.0 * (1.0 - 90.0_f64.powi(2) / 180.0_f64.powi(2)).powi(3);
-        assert!((runebender::outline::metaballs::field(&group, point) - old).abs() < 1e-12);
+        let point = kurbo::Point::new(radius * reach / 2.0, 0.0);
+        let normalized = runebender::outline::metaballs::field(&group, point) / threshold;
+        let legacy_normalized =
+            2.0 * (1.0 - 0.5_f64.powi(2)).powi(3) / DEFAULT_METABALL_REFERENCE_THRESHOLD;
+        assert!((normalized - legacy_normalized).abs() < 1e-12);
     }
 
     fn projected_glyph(session: &Session) -> norad::Glyph {
