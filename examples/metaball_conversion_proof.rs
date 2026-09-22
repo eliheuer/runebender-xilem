@@ -10,13 +10,14 @@ use kurbo::{Affine, BezPath, ParamCurve, Point, Shape, Vec2};
 use runebender::formats::metadata::metaballs::{Metaball, MetaballGroup};
 use runebender::outline::metaballs::{OutlineOptions, cubic_outline, field, preview};
 
-fn ball(id: u32, x: f64, y: f64, radius: f64, stiffness: f64) -> Metaball {
+fn ball(id: u32, x: f64, y: f64, radius: f64, weight: f64) -> Metaball {
     Metaball {
         id,
         x,
         y,
         radius,
-        stiffness,
+        reach: 2.0_f64.sqrt(),
+        weight,
     }
 }
 
@@ -28,25 +29,25 @@ fn ball(id: u32, x: f64, y: f64, radius: f64, stiffness: f64) -> Metaball {
 )]
 fn image_fit(group: &MetaballGroup) -> Vec<BezPath> {
     let step = 0.5;
-    let positive: Vec<_> = group.balls.iter().filter(|b| b.stiffness > 0.0).collect();
+    let positive: Vec<_> = group.balls.iter().filter(|b| b.weight > 0.0).collect();
     let x0 = positive
         .iter()
-        .map(|b| b.x - b.radius)
+        .map(|b| b.x - b.radius * b.reach)
         .fold(f64::INFINITY, f64::min)
         - 2.0 * step;
     let y0 = positive
         .iter()
-        .map(|b| b.y - b.radius)
+        .map(|b| b.y - b.radius * b.reach)
         .fold(f64::INFINITY, f64::min)
         - 2.0 * step;
     let x1 = positive
         .iter()
-        .map(|b| b.x + b.radius)
+        .map(|b| b.x + b.radius * b.reach)
         .fold(f64::NEG_INFINITY, f64::max)
         + 2.0 * step;
     let y1 = positive
         .iter()
-        .map(|b| b.y + b.radius)
+        .map(|b| b.y + b.radius * b.reach)
         .fold(f64::NEG_INFINITY, f64::max)
         + 2.0 * step;
     let width = ((x1 - x0) / step).ceil() as usize + 1;
@@ -95,26 +96,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nth(1)
         .ok_or("usage: metaball_conversion_proof <new.svg>")?;
     let cases = [
-        ("Circle", vec![ball(1, 250.0, 700.0, 110.0, 2.0)]),
+        ("Circle", vec![ball(1, 250.0, 700.0, 110.0, 0.5)]),
         (
             "Blended stem",
             vec![
-                ball(1, 250.0, 160.0, 180.0, 2.0),
-                ball(2, 250.0, 370.0, 180.0, 2.0),
+                ball(1, 250.0, 160.0, 180.0, 0.5),
+                ball(2, 250.0, 370.0, 180.0, 0.5),
             ],
         ),
         (
             "Unequal diagonal",
             vec![
-                ball(1, 150.0, 150.0, 180.0, 2.0),
-                ball(2, 290.0, 300.0, 140.0, 2.0),
+                ball(1, 150.0, 150.0, 180.0, 0.5),
+                ball(2, 290.0, 300.0, 140.0, 0.5),
             ],
         ),
         (
             "Counter",
             vec![
-                ball(1, 250.0, 250.0, 220.0, 2.0),
-                ball(2, 250.0, 250.0, 80.0, -2.0),
+                ball(1, 250.0, 250.0, 220.0, 0.5),
+                ball(2, 250.0, 250.0, 80.0, -0.5),
             ],
         ),
     ];

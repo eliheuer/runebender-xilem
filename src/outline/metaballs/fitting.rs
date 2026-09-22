@@ -3,7 +3,7 @@
 
 //! Supply exact metaball boundary features and tangents to img2bez for cubic fitting.
 
-use super::{field, tangent};
+use super::{field, field_scale, support_radius, tangent};
 use crate::formats::metadata::metaballs::MetaballGroup;
 use kurbo::{BezPath, Point, Vec2};
 
@@ -20,19 +20,19 @@ struct Knot {
     feature: Option<Feature>,
 }
 
-// Gradient and symmetric Hessian of sum(strength * (1 - distance² / radius²)³).
+// Gradient and symmetric Hessian of the normalized compact metaball field.
 fn derivatives(group: &MetaballGroup, point: Point) -> (Vec2, [f64; 3]) {
     let mut gradient = Vec2::ZERO;
     let mut hessian = [0.0; 3];
     for ball in &group.balls {
         let delta = point - Point::new(ball.x, ball.y);
-        let radius2 = ball.radius * ball.radius;
+        let radius2 = support_radius(ball).powi(2);
         let q = 1.0 - delta.hypot2() / radius2;
         if q <= 0.0 {
             continue;
         }
-        let radial = -6.0 * ball.stiffness * q * q / radius2;
-        let outer = 24.0 * ball.stiffness * q / (radius2 * radius2);
+        let radial = -6.0 * field_scale(ball) * q * q / radius2;
+        let outer = 24.0 * field_scale(ball) * q / (radius2 * radius2);
         gradient += radial * delta;
         hessian[0] += radial + outer * delta.x * delta.x;
         hessian[1] += outer * delta.x * delta.y;
@@ -197,7 +197,8 @@ mod tests {
                         x,
                         y,
                         radius,
-                        stiffness: 2.0,
+                        reach: 2.0_f64.sqrt(),
+                        weight: 0.5,
                     })
                     .collect(),
             };

@@ -138,7 +138,8 @@ impl Session {
                 x: at.x,
                 y: at.y,
                 radius: self.metrics.upm * 0.18,
-                stiffness: 2.0,
+                reach: 2.0_f64.sqrt(),
+                weight: group.threshold,
             });
             let selected = (group.id, id);
             let changed = self.store_metaballs(source, true)?;
@@ -222,7 +223,7 @@ impl Session {
                 "X" => b.x,
                 "Y" => b.y,
                 "Radius" => b.radius,
-                "Strength" => b.stiffness,
+                "Reach" => b.reach,
                 _ => g.threshold,
             });
         let Some(value) = values.next() else {
@@ -251,7 +252,7 @@ impl Session {
                         "X" => b.x,
                         "Y" => b.y,
                         "Radius" => b.radius,
-                        "Strength" => b.stiffness,
+                        "Reach" => b.reach,
                         _ => g.threshold,
                     })
             })
@@ -273,7 +274,7 @@ impl Session {
                             "X" => b.x += offset,
                             "Y" => b.y += offset,
                             "Radius" => b.radius = value,
-                            "Strength" => b.stiffness = value,
+                            "Reach" => b.reach = value,
                             _ => g.threshold = value,
                         }
                     }
@@ -502,7 +503,7 @@ mod tests {
         assert_eq!(app.session.metaball_data().unwrap(), original);
         assert_eq!(app.session.outline_arc(), before);
         assert_eq!(app.metadata_undo.len(), history);
-        app.slide_metaball_value("Strength", 2.5, false);
+        app.slide_metaball_value("Reach", 2.5, false);
         assert_eq!(
             app.metadata_undo.len(),
             history + 1,

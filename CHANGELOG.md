@@ -10,6 +10,10 @@ No release has been published yet.
 
 ### Changed
 
+- Metaball Strength is now Reach.
+  Radius controls an isolated ball's visible size, while Reach controls how far its influence extends for blends.
+  Existing editable metaballs migrate without changing their shapes.
+
 - Blended metaball cubic conversion now accepts a small bounded fidelity trade-off to merge visually redundant on-curve points.
   Single-ball circles retain their exact four cardinal extrema.
 

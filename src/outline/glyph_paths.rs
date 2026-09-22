@@ -1180,7 +1180,7 @@ mod canonical_render_tests {
         write_metaballs(
             &mut blob,
             &Metaballs {
-                version: 1,
+                version: 2,
                 groups: vec![MetaballGroup {
                     id: 1,
                     threshold: 0.5,
@@ -1189,7 +1189,8 @@ mod canonical_render_tests {
                         x: 40.0,
                         y: 55.0,
                         radius: 45.0,
-                        stiffness: 2.0,
+                        reach: 2.0_f64.sqrt(),
+                        weight: 0.5,
                     }],
                 }],
             },

@@ -4689,7 +4689,7 @@ fn canonical_metaball_collapse_is_selected_atomic_and_persistable() {
     );
     existing.replace_lib(object_lib("existing"));
     let data = Metaballs {
-        version: 1,
+        version: 2,
         groups: vec![
             MetaballGroup {
                 id: 1,
@@ -4699,7 +4699,8 @@ fn canonical_metaball_collapse_is_selected_atomic_and_persistable() {
                     x: 0.0,
                     y: 0.0,
                     radius: 100.0,
-                    stiffness: 2.0,
+                    reach: 2.0_f64.sqrt(),
+                    weight: 0.5,
                 }],
             },
             MetaballGroup {
@@ -4710,7 +4711,8 @@ fn canonical_metaball_collapse_is_selected_atomic_and_persistable() {
                     x: 250.0,
                     y: 0.0,
                     radius: 100.0,
-                    stiffness: 2.0,
+                    reach: 2.0_f64.sqrt(),
+                    weight: 0.5,
                 }],
             },
         ],

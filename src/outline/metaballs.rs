@@ -9,7 +9,7 @@ use std::collections::HashSet;
 
 use kurbo::{BezPath, Point, Vec2};
 
-use crate::formats::metadata::metaballs::{MetaballGroup, Metaballs};
+use crate::formats::metadata::metaballs::{Metaball, MetaballGroup, Metaballs};
 #[cfg(test)]
 use crate::formats::metadata::metaballs::{read_metaballs, write_metaballs};
 
@@ -31,7 +31,17 @@ impl Default for OutlineOptions {
     }
 }
 
-/// Evaluates `sum(stiffness * max(0, 1 - distance²/radius²)³)`.
+fn support_radius(ball: &Metaball) -> f64 {
+    ball.radius * ball.reach
+}
+
+fn field_scale(ball: &Metaball) -> f64 {
+    let edge = 1.0 - ball.reach.recip().powi(2);
+    ball.weight / edge.powi(3)
+}
+
+/// Evaluates the normalized compact field for every center.
+/// Reach changes the support range while retaining an isolated ball's visible radius.
 /// Parameters must have passed [`Metaballs::validate`]. Does not mutate source data.
 pub fn field(group: &MetaballGroup, point: Point) -> f64 {
     group
@@ -39,8 +49,8 @@ pub fn field(group: &MetaballGroup, point: Point) -> f64 {
         .iter()
         .map(|b| {
             let d = point - Point::new(b.x, b.y);
-            let q = (1.0 - d.hypot2() / b.radius.powi(2)).max(0.0);
-            b.stiffness * q.powi(3)
+            let q = (1.0 - d.hypot2() / support_radius(b).powi(2)).max(0.0);
+            field_scale(b) * q.powi(3)
         })
         .sum()
 }
@@ -49,8 +59,9 @@ fn tangent(group: &MetaballGroup, point: Point) -> Vec2 {
     let mut gradient = Vec2::ZERO;
     for b in &group.balls {
         let d = point - Point::new(b.x, b.y);
-        let q = (1.0 - d.hypot2() / b.radius.powi(2)).max(0.0);
-        gradient += d * (-6.0 * b.stiffness * q.powi(2) / b.radius.powi(2));
+        let support = support_radius(b);
+        let q = (1.0 - d.hypot2() / support.powi(2)).max(0.0);
+        gradient += d * (-6.0 * field_scale(b) * q.powi(2) / support.powi(2));
     }
     Vec2::new(gradient.y, -gradient.x)
 }
@@ -88,7 +99,7 @@ fn sample_outline(
     structured: bool,
 ) -> Result<Vec<BezPath>, String> {
     Metaballs {
-        version: 1,
+        version: 2,
         groups: vec![group.clone()],
     }
     .validate()?;
@@ -99,29 +110,29 @@ fn sample_outline(
     {
         return Err("invalid metaball resolution or fitting accuracy".into());
     }
-    let positive: Vec<_> = group.balls.iter().filter(|b| b.stiffness > 0.0).collect();
+    let positive: Vec<_> = group.balls.iter().filter(|b| b.weight > 0.0).collect();
     if positive.is_empty() {
         return Ok(Vec::new());
     }
     let step = options.resolution;
     let x0 = positive
         .iter()
-        .map(|b| b.x - b.radius)
+        .map(|b| b.x - support_radius(b))
         .fold(f64::INFINITY, f64::min)
         - step;
     let y0 = positive
         .iter()
-        .map(|b| b.y - b.radius)
+        .map(|b| b.y - support_radius(b))
         .fold(f64::INFINITY, f64::min)
         - step;
     let x1 = positive
         .iter()
-        .map(|b| b.x + b.radius)
+        .map(|b| b.x + support_radius(b))
         .fold(f64::NEG_INFINITY, f64::max)
         + step;
     let y1 = positive
         .iter()
-        .map(|b| b.y + b.radius)
+        .map(|b| b.y + support_radius(b))
         .fold(f64::NEG_INFINITY, f64::max)
         + step;
     let nx = ((x1 - x0) / step).ceil();
@@ -360,7 +371,8 @@ mod tests {
             x,
             y: 0.0,
             radius: 100.0,
-            stiffness: 2.0,
+            reach: 2.0_f64.sqrt(),
+            weight: 0.5,
         }
     }
 
@@ -377,7 +389,7 @@ mod tests {
         let g = group(vec![ball(1, 0.0)]);
         let paths = preview(&g, OutlineOptions::default()).unwrap();
         assert_eq!(paths.len(), 1);
-        let radius = 100.0 * (1.0 - 0.25_f64.cbrt()).sqrt();
+        let radius = 100.0;
         assert!(
             paths[0].area() > 0.0,
             "outer contour must be counterclockwise"
@@ -410,7 +422,7 @@ mod tests {
             let mut b = ball(1, 123.125);
             b.y = -47.375;
             let center = Point::new(b.x, b.y);
-            let radius = b.radius * (1.0 - 0.25_f64.cbrt()).sqrt();
+            let radius = b.radius;
             let paths = cubic_outline(
                 &group(vec![b]),
                 OutlineOptions {
@@ -437,7 +449,27 @@ mod tests {
                 }
                 for i in 0..=100 {
                     let error = (c.eval(f64::from(i) / 100.0).distance(center) - radius).abs();
-                    assert!(error < 0.025, "circle radial error {error}");
+                    assert!(error < 0.04, "circle radial error {error}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn reach_changes_connection_range_without_resizing_an_isolated_ball() {
+        for reach in [1.05, 2.0_f64.sqrt(), 4.0, 8.0] {
+            let mut b = ball(1, 0.0);
+            b.reach = reach;
+            let path = preview(&group(vec![b]), OutlineOptions::default())
+                .unwrap()
+                .remove(0);
+            for segment in path.segments() {
+                for i in 0..=20 {
+                    let distance = segment.eval(f64::from(i) / 20.0).distance(Point::ZERO);
+                    assert!(
+                        (distance - 100.0).abs() < 0.6,
+                        "reach {reach} changed radius"
+                    );
                 }
             }
         }
@@ -452,7 +484,7 @@ mod tests {
         large.radius = 180.0;
         let mut negative = ball(2, 0.0);
         negative.radius = 40.0;
-        negative.stiffness = -4.0;
+        negative.weight = -0.5;
         for g in [
             group(vec![ball(1, -45.0), ball(2, 45.0)]),
             group(vec![ball(1, -150.0), ball(2, 150.0)]),
@@ -505,7 +537,7 @@ mod tests {
         );
         let mut negative = ball(2, 0.0);
         negative.radius = 40.0;
-        negative.stiffness = -4.0;
+        negative.weight = -0.5;
         let paths = preview(&group(vec![ball(1, 0.0), negative]), options).unwrap();
         assert_eq!(paths.len(), 2);
         assert!(
@@ -524,7 +556,7 @@ mod tests {
         second.id = 2;
         second.balls[0].x = 350.25;
         let source = Metaballs {
-            version: 1,
+            version: 2,
             groups: vec![first, second.clone()],
         };
         assert!(write_metaballs(&mut glyph, &source).unwrap());
@@ -574,7 +606,7 @@ mod tests {
         write_metaballs(
             &mut glyph,
             &Metaballs {
-                version: 1,
+                version: 2,
                 groups: vec![good, invisible],
             },
         )
@@ -591,7 +623,7 @@ mod tests {
         glyph.lib.insert(
             METABALLS_KEY.into(),
             plist::to_value(&Metaballs {
-                version: 2,
+                version: 3,
                 groups: vec![],
             })
             .unwrap(),
@@ -619,7 +651,7 @@ mod tests {
             write_metaballs(
                 &mut glyph,
                 &Metaballs {
-                    version: 1,
+                    version: 2,
                     groups: vec![g],
                 },
             )

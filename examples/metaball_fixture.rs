@@ -30,12 +30,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         x: 250.0,
         y,
         radius,
-        stiffness: 2.0,
+        reach: 2.0_f64.sqrt(),
+        weight: 0.5,
     };
     write_metaballs(
         &mut glyph,
         &Metaballs {
-            version: 1,
+            version: 2,
             groups: vec![
                 MetaballGroup {
                     id: 1,

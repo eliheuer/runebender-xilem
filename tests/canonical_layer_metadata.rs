@@ -38,7 +38,7 @@ impl Drop for Scratch {
 
 fn source_metaballs() -> Metaballs {
     Metaballs {
-        version: 1,
+        version: 2,
         groups: vec![MetaballGroup {
             id: 7,
             threshold: 1.25,
@@ -47,7 +47,8 @@ fn source_metaballs() -> Metaballs {
                 x: 12.5,
                 y: -30.25,
                 radius: 80.125,
-                stiffness: -0.75,
+                reach: 2.0_f64.sqrt(),
+                weight: -0.75,
             }],
         }],
     }
@@ -366,7 +367,7 @@ fn cubic_metaballs_survive_canonical_conversion_save_and_undo() {
     let (mut project, address) = fixture();
     let mut source = source_metaballs();
     source.groups[0].threshold = 0.5;
-    source.groups[0].balls[0].stiffness = 2.0;
+    source.groups[0].balls[0].weight = 0.5;
     let ball = source.groups[0].balls[0].clone();
     let mut setup = project.begin_document_layer_transaction(&address).unwrap();
     setup.draft_mut().set_metaballs(source.clone()).unwrap();
@@ -409,14 +410,14 @@ fn cubic_metaballs_survive_canonical_conversion_save_and_undo() {
         4
     );
     let center = Point::new(ball.x, ball.y);
-    let radius = ball.radius * (1.0 - 0.25_f64.cbrt()).sqrt();
+    let radius = ball.radius;
     for segment in path.segments() {
         let c = segment.to_cubic();
         for handle in [c.p1 - c.p0, c.p3 - c.p2] {
             assert!(handle.x == 0.0 || handle.y == 0.0);
         }
         for i in 0..=100 {
-            assert!((c.eval(f64::from(i) / 100.0).distance(center) - radius).abs() < 0.025);
+            assert!((c.eval(f64::from(i) / 100.0).distance(center) - radius).abs() < 0.04);
         }
     }
     project

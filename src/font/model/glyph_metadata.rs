@@ -194,11 +194,13 @@ pub struct Metaball {
     pub x: f64,
     /// Vertical position in font units, increasing upwards.
     pub y: f64,
-    /// Support radius in font units; the field is zero beyond this radius.
+    /// Visible radius in font units at the default threshold.
     pub radius: f64,
-    /// Field strength at the center.
-    /// Positive values add ink and negative values subtract it.
-    pub stiffness: f64,
+    /// Influence-support multiplier; larger values let centers blend over longer distances.
+    pub reach: f64,
+    /// Normalized field contribution; negative values subtract ink.
+    /// This is retained for source compatibility but is not an ordinary inspector control.
+    pub weight: f64,
 }
 
 /// Elements whose fields blend together.
@@ -219,7 +221,7 @@ pub struct MetaballGroup {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Metaballs {
-    /// Schema version; currently only version one is supported.
+    /// Schema version; currently only version two is supported.
     pub version: u32,
     /// Independent blending groups.
     pub groups: Vec<MetaballGroup>,
@@ -228,7 +230,7 @@ pub struct Metaballs {
 impl Default for Metaballs {
     fn default() -> Self {
         Self {
-            version: 1,
+            version: 2,
             groups: Vec::new(),
         }
     }
@@ -239,7 +241,7 @@ impl Metaballs {
     ///
     /// At most 128 groups and 256 centers are accepted.
     pub fn validate(&self) -> Result<(), String> {
-        if self.version != 1 {
+        if self.version != 2 {
             return Err(format!("unsupported metaball version {}", self.version));
         }
         if self.groups.len() > 128 || self.groups.iter().map(|g| g.balls.len()).sum::<usize>() > 256
@@ -261,11 +263,15 @@ impl Metaballs {
                     || !ball.y.is_finite()
                     || ball.x.abs().max(ball.y.abs()) > 1_000_000.0
                     || !ball.radius.is_finite()
-                    || !(1.0..=100_000.0).contains(&ball.radius)
-                    || !ball.stiffness.is_finite()
-                    || ball.stiffness.abs() > 100.0
+                    || !(0.01..=100_000.0).contains(&ball.radius)
+                    || !ball.reach.is_finite()
+                    || !(1.05..=100.0).contains(&ball.reach)
+                    || !ball.weight.is_finite()
+                    || ball.weight.abs() > 100.0
                 {
-                    return Err("invalid metaball identifier, position, radius or stiffness".into());
+                    return Err(
+                        "invalid metaball identifier, position, radius, reach or weight".into(),
+                    );
                 }
             }
         }
@@ -891,7 +897,7 @@ mod tests {
         assert_eq!(MarkColor::parse("0,0,0,NaN"), None);
 
         let mut source = Metaballs {
-            version: 1,
+            version: 2,
             groups: vec![MetaballGroup {
                 id: 7,
                 threshold: 1.0,
@@ -900,7 +906,8 @@ mod tests {
                     x: 12.25,
                     y: -34.5,
                     radius: 80.125,
-                    stiffness: -0.75,
+                    reach: 2.0_f64.sqrt(),
+                    weight: -0.75,
                 }],
             }],
         };

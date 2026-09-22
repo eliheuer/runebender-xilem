@@ -1659,7 +1659,10 @@ impl Widget for EditorWidget {
                     } else {
                         (pal.editor_control_ink(), pal.app)
                     };
-                    let support = Circle::new(center, ball.radius * self.session.viewport.zoom);
+                    let support = Circle::new(
+                        center,
+                        ball.radius * ball.reach * self.session.viewport.zoom,
+                    );
                     if selected {
                         let keyline = pal.mark("orange").unwrap_or(marker_ring);
                         painter

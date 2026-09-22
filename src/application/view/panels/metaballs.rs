@@ -17,14 +17,14 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     let selected = !app.session.metaballs.selected.is_empty();
     let upm = app.session.metrics.upm;
-    let fields = ["X", "Y", "Radius", "Strength", "Threshold"]
+    let fields = ["X", "Y", "Radius", "Reach", "Threshold"]
         .into_iter()
         .map(|field| {
             let value = app.session.metaball_slider_value(field);
             let (min, max, step) = match field {
                 "X" | "Y" => (-2.0 * upm, 2.0 * upm, 1.0),
                 "Radius" => (1.0, upm, 1.0),
-                "Strength" => (-5.0, 5.0, 0.01),
+                "Reach" => (1.05, 8.0, 0.05),
                 _ => (0.01, 2.0, 0.01),
             };
             let readout = if !selected {
@@ -39,6 +39,8 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     let value = text.parse::<f64>().unwrap_or(value);
                     if field == "Radius" {
                         format!("{value:.0}")
+                    } else if field == "Reach" {
+                        format!("{value:.2}\u{00d7}")
                     } else {
                         format!("{:.0}%", value * 100.0)
                     }
