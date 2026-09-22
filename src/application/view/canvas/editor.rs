@@ -1637,9 +1637,12 @@ impl Widget for EditorWidget {
             }
         }
 
-        if self.tool == Tool::Metaball
+        if matches!(self.tool, Tool::Select | Tool::Metaball)
             && let Ok(source) = self.session.metaball_data()
         {
+            let marker_scale = point_marker_scale(self.session.viewport.zoom);
+            let ring_width = (POINT_RING_WIDTH * marker_scale).max(DesignStroke::Hairline.px());
+            let halo_width = ring_width + POINT_HALO_EXTRA;
             for group in source.groups {
                 for ball in group.balls {
                     let center = affine * Point::new(ball.x, ball.y);
@@ -1648,34 +1651,33 @@ impl Widget for EditorWidget {
                         .metaballs
                         .selected
                         .contains(&(group.id, ball.id));
-                    let ink = if selected {
-                        pal.tool_feedback()
+                    let (ring, interior) = if selected {
+                        (
+                            pal.point_outline.unwrap_or(pal.text),
+                            pal.role("pointSelected"),
+                        )
                     } else {
-                        pal.editor_control_ink()
+                        (pal.editor_control_ink(), pal.app)
                     };
                     painter
                         .stroke(
                             Circle::new(center, ball.radius * self.session.viewport.zoom),
                             &Stroke::new(DesignStroke::Hairline.px()),
-                            ink.with_alpha(0.35),
+                            ring.with_alpha(if selected { 0.55 } else { 0.35 }),
                         )
                         .draw();
+                    let radius = (POINT_CURVE_RADIUS
+                        + if selected { POINT_SELECTED_GROW } else { 0.0 })
+                        * marker_scale;
+                    let marker = Circle::new(center, radius);
+                    if pal.point_halo {
+                        painter
+                            .stroke(marker, &Stroke::new(halo_width), pal.app.with_alpha(0.85))
+                            .draw();
+                    }
+                    painter.fill(marker, interior).draw();
                     painter
-                        .fill(
-                            Circle::new(
-                                center,
-                                POINT_CURVE_RADIUS
-                                    + if selected { POINT_SELECTED_GROW } else { 0.0 },
-                            ),
-                            ink,
-                        )
-                        .draw();
-                    painter
-                        .stroke(
-                            Circle::new(center, HIT_RADIUS_PX),
-                            &Stroke::new(DesignStroke::Hairline.px()),
-                            ink,
-                        )
+                        .stroke(marker, &Stroke::new(ring_width), ring)
                         .draw();
                 }
             }
@@ -1916,6 +1918,24 @@ impl Widget for EditorWidget {
                     }
                     Some(PointerButton::Primary) => {
                         let shift = state.modifiers.shift();
+                        if self.tool == Tool::Select {
+                            let design = self.screen_to_glyph_design(at);
+                            if self.session.select_metaball_at(
+                                design,
+                                HIT_RADIUS_PX / self.session.viewport.zoom,
+                                shift,
+                            ) {
+                                ctx.request_focus();
+                                self.drag = Drag::Metaballs {
+                                    last: design,
+                                    changed: false,
+                                };
+                                self.emit(ctx, false);
+                                ctx.request_render();
+                                ctx.set_handled();
+                                return;
+                            }
+                        }
                         // Sidebearing lines (only when not near a point).
                         let affine = self.glyph_affine();
                         let adv_x = (affine * Point::new(self.session.advance(), 0.0)).x;
@@ -1937,6 +1957,7 @@ impl Widget for EditorWidget {
                             self.screen_to_glyph_design(at),
                             HIT_RADIUS_PX / self.session.viewport.zoom,
                         ) {
+                            self.session.metaballs.selected.clear();
                             self.session.selected_anchor = Some(anchor);
                             self.session.selected_component = None;
                             self.session.selection.clear();
@@ -1948,6 +1969,7 @@ impl Widget for EditorWidget {
                         self.session.selected_anchor = None;
                         match self.hit_point(at) {
                             Some(id) => {
+                                self.session.metaballs.selected.clear();
                                 if shift {
                                     if !self.session.selection.remove(&id) {
                                         self.session.selection.insert(id);
@@ -1964,6 +1986,7 @@ impl Widget for EditorWidget {
                             None => {
                                 let design = self.screen_to_glyph_design(at);
                                 if let Some(component) = self.session.component_at(design) {
+                                    self.session.metaballs.selected.clear();
                                     self.session.select_component_id(component);
                                     self.drag = Drag::Component { last: design };
                                     self.emit(ctx, false);
@@ -1971,6 +1994,7 @@ impl Widget for EditorWidget {
                                     return;
                                 }
                                 if !shift {
+                                    self.session.metaballs.selected.clear();
                                     self.session.selection.clear();
                                     self.session.selected_component = None;
                                     self.emit(ctx, false);
@@ -2293,7 +2317,13 @@ impl Widget for EditorWidget {
             }
         }
 
-        if self.tool == Tool::Metaball && self.field.is_none() {
+        let edits_metaballs = self.tool == Tool::Metaball
+            || (self.tool == Tool::Select
+                && !self.session.metaballs.selected.is_empty()
+                && self.session.selection.is_empty()
+                && self.session.selected_anchor.is_none()
+                && self.session.selected_component.is_none());
+        if edits_metaballs && self.field.is_none() {
             let mut edited = false;
             let handled = match &key.key {
                 Key::Character(c) if cmd && c.eq_ignore_ascii_case("a") => {
@@ -3573,6 +3603,49 @@ mod tests {
             assert!(session.pending_canonical.is_some());
             assert!(!session.gesture_in_progress());
             assert!(!session.metaball_preview.elements().is_empty());
+        });
+    }
+
+    #[test]
+    fn select_tool_moves_an_existing_metaball_without_creating_one() {
+        let mut editor = widget();
+        editor.tool = Tool::Metaball;
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+
+        let center = Point::new(300.0, 200.0);
+        harness.mouse_move(center);
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        let (id, original) = harness.edit_root_widget(|root| {
+            root.widget.tool = Tool::Select;
+            root.widget.session.metaballs.selected.clear();
+            let source = root.widget.session.metaball_data().unwrap();
+            let ball = &source.groups[0].balls[0];
+            ((source.groups[0].id, ball.id), Point::new(ball.x, ball.y))
+        });
+
+        harness.mouse_move(center);
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_move(Point::new(330.0, 220.0));
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        harness.edit_root_widget(|root| {
+            let source = root.widget.session.metaball_data().unwrap();
+            assert_eq!(source.groups.len(), 1);
+            assert_eq!(source.groups[0].balls.len(), 1);
+            assert!(root.widget.session.metaballs.selected.contains(&id));
+            let ball = &source.groups[0].balls[0];
+            assert_ne!(Point::new(ball.x, ball.y), original);
+        });
+
+        harness.mouse_move(Point::new(20.0, 20.0));
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        harness.edit_root_widget(|root| {
+            let source = root.widget.session.metaball_data().unwrap();
+            assert_eq!(source.groups.len(), 1);
+            assert_eq!(source.groups[0].balls.len(), 1);
+            assert!(root.widget.session.metaballs.selected.is_empty());
         });
     }
 

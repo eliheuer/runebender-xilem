@@ -20,6 +20,47 @@ pub(crate) struct MetaballSelection {
 }
 
 impl Session {
+    fn metaball_at(&self, at: kurbo::Point, radius: f64) -> Option<(u32, u32)> {
+        self.metaball_data()
+            .ok()?
+            .groups
+            .iter()
+            .flat_map(|group| group.balls.iter().map(move |ball| (group.id, ball)))
+            .filter(|(_, ball)| kurbo::Point::new(ball.x, ball.y).distance(at) <= radius)
+            .min_by(|(_, a), (_, b)| {
+                kurbo::Point::new(a.x, a.y)
+                    .distance(at)
+                    .total_cmp(&kurbo::Point::new(b.x, b.y).distance(at))
+            })
+            .map(|(group, ball)| (group, ball.id))
+    }
+
+    /// Select an existing center without creating one when the pointer misses.
+    pub(crate) fn select_metaball_at(
+        &mut self,
+        at: kurbo::Point,
+        radius: f64,
+        shift: bool,
+    ) -> bool {
+        let Some(id) = self.metaball_at(at, radius) else {
+            return false;
+        };
+        self.selection.clear();
+        self.selected_anchor = None;
+        self.selected_component = None;
+        self.metaballs.drafts.clear();
+        if shift {
+            if !self.metaballs.selected.insert(id) {
+                self.metaballs.selected.remove(&id);
+            }
+        } else if !self.metaballs.selected.contains(&id) {
+            self.metaballs.selected.clear();
+            self.metaballs.selected.insert(id);
+        }
+        self.metaballs.active_group = Some(id.0);
+        true
+    }
+
     pub(crate) fn refresh_metaball_preview(&mut self) {
         self.metaballs.drafts.clear();
         let source = self.metaball_data().map_err(|error| error.to_string());
@@ -53,34 +94,14 @@ impl Session {
 
     pub(crate) fn metaball_click(&mut self, at: kurbo::Point, radius: f64, shift: bool) -> bool {
         let result = (|| {
+            if self.select_metaball_at(at, radius, shift) {
+                return Ok(false);
+            }
             let mut source = self.metaball_data().map_err(|error| error.to_string())?;
-            let hit = source
-                .groups
-                .iter()
-                .flat_map(|g| g.balls.iter().map(move |b| (g.id, b)))
-                .filter(|(_, b)| kurbo::Point::new(b.x, b.y).distance(at) <= radius)
-                .min_by(|(_, a), (_, b)| {
-                    kurbo::Point::new(a.x, a.y)
-                        .distance(at)
-                        .total_cmp(&kurbo::Point::new(b.x, b.y).distance(at))
-                })
-                .map(|(g, b)| (g, b.id));
             self.selection.clear();
             self.selected_anchor = None;
             self.selected_component = None;
             self.metaballs.drafts.clear();
-            if let Some(id) = hit {
-                if shift {
-                    if !self.metaballs.selected.insert(id) {
-                        self.metaballs.selected.remove(&id);
-                    }
-                } else if !self.metaballs.selected.contains(&id) {
-                    self.metaballs.selected.clear();
-                    self.metaballs.selected.insert(id);
-                }
-                self.metaballs.active_group = Some(id.0);
-                return Ok(false);
-            }
             let group_index = self
                 .metaballs
                 .active_group
