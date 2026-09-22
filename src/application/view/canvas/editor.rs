@@ -1651,18 +1651,40 @@ impl Widget for EditorWidget {
                         .metaballs
                         .selected
                         .contains(&(group.id, ball.id));
-                    let (ring, interior) = if selected {
-                        (pal.role("pointSelected"), pal.role("pointSelected"))
+                    let (marker_ring, interior) = if selected {
+                        (
+                            pal.point_outline.unwrap_or(pal.text),
+                            pal.role("pointSelected"),
+                        )
                     } else {
                         (pal.editor_control_ink(), pal.app)
                     };
-                    painter
-                        .stroke(
-                            Circle::new(center, ball.radius * self.session.viewport.zoom),
-                            &Stroke::new(DesignStroke::Hairline.px()),
-                            ring.with_alpha(if selected { 0.55 } else { 0.35 }),
-                        )
-                        .draw();
+                    let support = Circle::new(center, ball.radius * self.session.viewport.zoom);
+                    if selected {
+                        let keyline = pal.point_outline.unwrap_or(pal.text);
+                        painter
+                            .stroke(
+                                support,
+                                &Stroke::new(DesignStroke::Hairline.px() * 3.0),
+                                keyline,
+                            )
+                            .draw();
+                        painter
+                            .stroke(
+                                support,
+                                &Stroke::new(DesignStroke::Hairline.px()),
+                                pal.role("pointSelected"),
+                            )
+                            .draw();
+                    } else {
+                        painter
+                            .stroke(
+                                support,
+                                &Stroke::new(DesignStroke::Hairline.px()),
+                                marker_ring.with_alpha(0.35),
+                            )
+                            .draw();
+                    }
                     let radius = (POINT_CURVE_RADIUS
                         + if selected { POINT_SELECTED_GROW } else { 0.0 })
                         * marker_scale;
@@ -1673,17 +1695,8 @@ impl Widget for EditorWidget {
                             .draw();
                     }
                     painter.fill(marker, interior).draw();
-                    if selected {
-                        painter
-                            .stroke(
-                                marker,
-                                &Stroke::new(ring_width + DesignStroke::Hairline.px() * 2.0),
-                                pal.point_outline.unwrap_or(pal.text),
-                            )
-                            .draw();
-                    }
                     painter
-                        .stroke(marker, &Stroke::new(ring_width), ring)
+                        .stroke(marker, &Stroke::new(ring_width), marker_ring)
                         .draw();
                 }
             }
