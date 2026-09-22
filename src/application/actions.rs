@@ -87,7 +87,7 @@ impl Entry {
     pub(crate) fn submenu(&self) -> Option<&'static str> {
         use AppAction as A;
         match self.action {
-            A::MetaballsToCubic | A::MetaballGroupsToCubic | A::FontMetaballsToCubic => {
+            A::MetaballsToCubic | A::MetaballsToHyperbezier | A::FontMetaballsToCubic => {
                 Some("Metaballs")
             }
             A::GridDots | A::GridLines => Some("Grid"),
@@ -146,7 +146,7 @@ impl Entry {
                 }
                 Mode::Nodes => app.can_metadata_history_step(true),
             },
-            A::MetaballsToCubic | A::MetaballGroupsToCubic => editor,
+            A::MetaballsToCubic | A::MetaballsToHyperbezier => editor,
             A::FontMetaballsToCubic => matches!(app.mode, Mode::Overview),
             A::Copy | A::SelectAll => editor,
             A::Paste => editor && !app.clipboard.is_empty(),
@@ -567,13 +567,13 @@ pub(crate) const ACTIONS: &[Entry] = &[
     },
     Entry {
         menu: "Path",
-        title: "Selected Groups to Cubic",
+        title: "Metaballs to Hyperbezier",
         accelerator: None,
-        action: AppAction::MetaballGroupsToCubic,
+        action: AppAction::MetaballsToHyperbezier,
     },
     Entry {
         menu: "Path",
-        title: "Glyph to Cubic",
+        title: "Metaballs to Cubic",
         accelerator: None,
         action: AppAction::MetaballsToCubic,
     },

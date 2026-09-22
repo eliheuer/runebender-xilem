@@ -72,7 +72,7 @@ pub(crate) enum AppAction {
     CorrectPathDirection,
     HyperToCubic,
     MetaballsToCubic,
-    MetaballGroupsToCubic,
+    MetaballsToHyperbezier,
     FontMetaballsToCubic,
     QuadsToCubics,
     CubicsToQuads,

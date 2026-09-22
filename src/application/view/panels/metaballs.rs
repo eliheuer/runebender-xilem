@@ -3,7 +3,6 @@
 
 //! The live metaball inspector, shown beside the glyph while its tool is active.
 
-use crate::application::editor::tools::metaballs::MetaballSelection;
 use crate::application::view::design::{Region, TextSize, column as xcolumn, row as xrow};
 use crate::application::view::label;
 use crate::application::view::recipes;
@@ -86,15 +85,16 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             recipes::action(pal, "Select all centers".into(), |app: &mut Workspace| {
                 Arc::make_mut(&mut app.session).select_all_metaballs();
             }),
-            recipes::action(pal, "Start a new group".into(), |app: &mut Workspace| {
-                Arc::make_mut(&mut app.session).metaballs = MetaballSelection::default();
-            }),
-            recipes::action(pal, "Groups to cubic".into(), |app: &mut Workspace| {
-                app.edit_metaballs(|s| s.collapse_metaballs(true));
-            }),
-            recipes::action(pal, "Glyph to cubic".into(), |app: &mut Workspace| {
+            recipes::action(pal, "Convert to cubic".into(), |app: &mut Workspace| {
                 app.edit_metaballs(|s| s.collapse_metaballs(false));
             }),
+            recipes::action(
+                pal,
+                "Convert to hyperbezier".into(),
+                |app: &mut Workspace| {
+                    app.edit_metaballs(|s| s.collapse_metaballs_to_hyperbezier());
+                },
+            ),
             app.session.metaballs.error.clone().map(|error| {
                 label(error)
                     .text_size(TextSize::Caption.px())

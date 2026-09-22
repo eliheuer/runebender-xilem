@@ -1652,10 +1652,7 @@ impl Widget for EditorWidget {
                         .selected
                         .contains(&(group.id, ball.id));
                     let (ring, interior) = if selected {
-                        (
-                            pal.point_outline.unwrap_or(pal.text),
-                            pal.role("pointSelected"),
-                        )
+                        (pal.role("pointSelected"), pal.role("pointSelected"))
                     } else {
                         (pal.editor_control_ink(), pal.app)
                     };
@@ -1676,6 +1673,15 @@ impl Widget for EditorWidget {
                             .draw();
                     }
                     painter.fill(marker, interior).draw();
+                    if selected {
+                        painter
+                            .stroke(
+                                marker,
+                                &Stroke::new(ring_width + DesignStroke::Hairline.px() * 2.0),
+                                pal.point_outline.unwrap_or(pal.text),
+                            )
+                            .draw();
+                    }
                     painter
                         .stroke(marker, &Stroke::new(ring_width), ring)
                         .draw();

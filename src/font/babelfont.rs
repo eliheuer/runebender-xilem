@@ -83,6 +83,12 @@ struct PreservedPoint {
     metadata: ObjectMetadata,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MetaballCollapseKind {
+    Cubic,
+    Hyperbezier,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 struct PreservedComponent {
     id: ComponentId,
@@ -4489,6 +4495,27 @@ impl LayerEditDraft {
         groups: Option<&[u32]>,
         options: crate::outline::metaballs::OutlineOptions,
     ) -> Result<usize, String> {
+        self.collapse_metaballs_with_kind(groups, options, MetaballCollapseKind::Cubic)
+    }
+
+    /// Convert selected live metaball groups to editable hyperbezier contours.
+    ///
+    /// The generated spline keeps the fitted metaball outline's on-curve points and derives its
+    /// handles through the hyperbezier solver.
+    pub fn collapse_metaballs_to_hyperbezier(
+        &mut self,
+        groups: Option<&[u32]>,
+        options: crate::outline::metaballs::OutlineOptions,
+    ) -> Result<usize, String> {
+        self.collapse_metaballs_with_kind(groups, options, MetaballCollapseKind::Hyperbezier)
+    }
+
+    fn collapse_metaballs_with_kind(
+        &mut self,
+        groups: Option<&[u32]>,
+        options: crate::outline::metaballs::OutlineOptions,
+        kind: MetaballCollapseKind,
+    ) -> Result<usize, String> {
         let mut data = self.view().metaballs().map_err(|error| error.to_string())?;
         let selected: HashSet<_> = groups
             .map(|groups| groups.iter().copied().collect())
@@ -4541,6 +4568,9 @@ impl LayerEditDraft {
                     contour.nodes.rotate_left(index);
                     converted.1.points.rotate_left(index);
                 }
+                if kind == MetaballCollapseKind::Hyperbezier {
+                    Self::convert_metaball_contour_to_hyperbezier(&mut converted)?;
+                }
                 generated.push(converted);
             }
         }
@@ -4575,6 +4605,34 @@ impl LayerEditDraft {
             .map_err(|error| error.to_string())?;
         *self = staged;
         Ok(selected.len())
+    }
+
+    fn convert_metaball_contour_to_hyperbezier(
+        converted: &mut (Shape, PreservedContour),
+    ) -> Result<(), String> {
+        let Shape::Path(path) = &mut converted.0 else {
+            return Err("metaball outline did not produce a path".into());
+        };
+        let mut nodes = Vec::new();
+        let mut points = Vec::new();
+        for (node, point) in path.nodes.drain(..).zip(converted.1.points.drain(..)) {
+            if node.nodetype != NodeType::OffCurve {
+                nodes.push(node);
+                points.push(point);
+            }
+        }
+        if nodes.len() < 3 {
+            return Err("metaball outline needs at least three points for a hyperbezier".into());
+        }
+        for node in &mut nodes {
+            node.nodetype = NodeType::Curve;
+            node.smooth = true;
+        }
+        path.nodes = nodes;
+        converted.1.points = points;
+        converted.1.hyper = true;
+        converted.1.metadata.identifier = Some(fresh_hyper_identifier());
+        Ok(())
     }
 
     /// Replace typed HOI intermediate points without materializing a UFO glyph.

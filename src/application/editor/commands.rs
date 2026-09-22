@@ -1067,7 +1067,9 @@ impl Workspace {
             A::RoundCoordinates => self.apply_op(|s| s.round_coordinates()),
             A::CorrectPathDirection => self.apply_op(|s| s.correct_path_direction()),
             A::MetaballsToCubic => self.edit_metaballs(|s| s.collapse_metaballs(false)),
-            A::MetaballGroupsToCubic => self.edit_metaballs(|s| s.collapse_metaballs(true)),
+            A::MetaballsToHyperbezier => {
+                self.edit_metaballs(|s| s.collapse_metaballs_to_hyperbezier());
+            }
             A::FontMetaballsToCubic => self.collapse_font_metaballs(),
             A::HyperToCubic => self.apply_op(|s| s.hyper_to_cubic()),
             A::QuadsToCubics => self.apply_op(|s| s.quads_to_cubics()),

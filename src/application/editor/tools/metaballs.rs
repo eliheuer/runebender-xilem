@@ -311,6 +311,25 @@ impl Session {
         })();
         self.metaball_result(result)
     }
+
+    /// Convert every live metaball group into editable hyperbezier contours.
+    pub(crate) fn collapse_metaballs_to_hyperbezier(&mut self) -> bool {
+        let result = (|| {
+            let changed =
+                self.stage_canonical_string_edit("convert metaballs to hyperbeziers", |draft| {
+                    draft
+                        .collapse_metaballs_to_hyperbezier(None, OutlineOptions::default())
+                        .map(|count| count > 0)
+                })?;
+            if !changed {
+                return Ok(false);
+            }
+            self.metaballs = MetaballSelection::default();
+            self.refresh_metaball_preview();
+            Ok(true)
+        })();
+        self.metaball_result(result)
+    }
 }
 
 impl Workspace {
@@ -618,6 +637,58 @@ mod tests {
         assert!(
             !app.session.outline_is_empty(),
             "parked tabs load the converted glyph"
+        );
+        std::fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn live_metaballs_convert_to_editable_hyperbeziers() {
+        let path =
+            std::env::temp_dir().join(format!("xilem-metaball-hyper-{}.ufo", std::process::id()));
+        let mut font = norad::Font::new();
+        let mut glyph = norad::Glyph::new("i");
+        glyph.width = 500.0;
+        font.default_layer_mut().insert_glyph(glyph);
+        font.save(&path).unwrap();
+
+        let mut app = Workspace::open(&path).unwrap();
+        app.open_glyph(app.font.index_of("i").unwrap());
+        app.select_tool(Tool::Metaball);
+        for point in [
+            kurbo::Point::new(180.0, 240.0),
+            kurbo::Point::new(320.0, 360.0),
+        ] {
+            app.edit_metaballs(|s| {
+                let changed = s.metaball_click(point, 10.0, false);
+                s.end_metaball_drag();
+                changed
+            });
+        }
+        app.edit_metaballs(|s| s.collapse_metaballs_to_hyperbezier());
+
+        let converted = projected_glyph(&app.session);
+        assert!(!converted.contours.is_empty());
+        for contour in &converted.contours {
+            assert!(
+                contour
+                    .identifier()
+                    .as_ref()
+                    .is_some_and(|identifier| identifier.as_ref().contains("hyperbezier"))
+            );
+            assert!(
+                contour
+                    .points
+                    .iter()
+                    .all(|point| point.typ != norad::PointType::OffCurve)
+            );
+        }
+        assert!(!app.session.outline_is_empty());
+
+        app.undo_open_glyph(false);
+        assert!(app.session.outline_is_empty());
+        assert_eq!(
+            app.session.metaball_data().unwrap().groups[0].balls.len(),
+            2
         );
         std::fs::remove_dir_all(path).unwrap();
     }
