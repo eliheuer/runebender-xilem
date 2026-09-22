@@ -10,6 +10,8 @@ No release has been published yet.
 
 ### Changed
 
+- Selected metaball support-ring keylines now reuse GlyphGrid's orange mark color.
+
 - Native live-editor sessions no longer rebuild the entire widget tree while their mailbox is idle.
   Background polling now runs only while a live request or comparison job needs the application thread.
 
