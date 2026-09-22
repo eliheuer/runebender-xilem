@@ -160,15 +160,7 @@ pub(super) fn fit(
             }
         })
         .collect();
-    let fitted = if group.balls.len() == 1 {
-        img2bez::fit_smooth_contours(&[samples], accuracy)
-    } else {
-        // Preserve a lone circle's four cardinal extrema exactly.
-        // Blends can contain several genuine but visually negligible extrema
-        // at a neck, so accept one small additional fit pass for fewer nodes.
-        img2bez::fit_smooth_contours_economical(&[samples], accuracy, accuracy * 1.8)
-    };
-    fitted
+    img2bez::fit_smooth_contours(&[samples], accuracy)
         .map_err(|error| error.to_string())?
         .to_bezpaths()
         .into_iter()
@@ -225,7 +217,7 @@ mod tests {
                     let p = cubic.eval(f64::from(j) / 200.0);
                     let error =
                         (field(&group, p) - group.threshold).abs() / tangent(&group, p).hypot();
-                    assert!(error < 0.5, "normal discrepancy {error}");
+                    assert!(error < 0.25, "normal discrepancy {error}");
                     assert!(p.y >= start.y - 1e-8, "start at the bottom of the curve");
                 }
             }
