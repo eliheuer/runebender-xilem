@@ -24,7 +24,7 @@ use super::variable::{
 };
 use crate::font::var_model::{Location, VariationModel};
 use crate::formats::binary_import::import_binary_font;
-use crate::formats::lib_keys::hoi_quad_at;
+use crate::formats::metadata::lib_keys::hoi_quad_at;
 
 #[path = "project/glyph_transactions.rs"]
 mod glyph_transactions;
@@ -517,7 +517,7 @@ impl Project {
             .style_name
             .clone()
             .unwrap_or_else(|| "Regular".into());
-        let variable = super::ufo_codec::decode_source(&input.font)
+        let variable = super::persistence::ufo_codec::decode_source(&input.font)
             .expect("a Project source input must satisfy the UFO boundary contract");
         let mut project = Self {
             variable,
@@ -579,7 +579,7 @@ impl Project {
                     crate::formats::glyphs_import::glyphs_to_ufo_files(&text)?
                 }
             };
-            let open = super::filesystem::publish_glyphs_import(path, result)?;
+            let open = super::persistence::publish_glyphs_import(path, result)?;
             let mut project = Self::load_inner(&open)?;
             project.export_source = Some(open);
             return Ok(project);
@@ -596,13 +596,13 @@ impl Project {
         {
             let font = import_binary_font(path)?;
             let ufo_path =
-                super::filesystem::unused_import_destination(&path.with_extension("ufo"))?;
+                super::persistence::unused_import_destination(&path.with_extension("ufo"))?;
             let mut project = Self::from_imported_ufo_boundary(ufo_path.clone(), &font)?;
             project.export_source = Some(ufo_path);
             return Ok(project);
         }
-        match super::filesystem::ImportPlan::read(path)? {
-            super::filesystem::ImportPlan::Designspace {
+        match super::persistence::ImportPlan::read(path)? {
+            super::persistence::ImportPlan::Designspace {
                 path,
                 document,
                 mut sources,
@@ -615,7 +615,7 @@ impl Project {
                         .ok_or_else(|| format!("missing validated source {filename}"))
                 })
             }
-            super::filesystem::ImportPlan::Ufo { path, source } => {
+            super::persistence::ImportPlan::Ufo { path, source } => {
                 Ok(Self::from_source((*source).into_source_input(path)))
             }
         }
@@ -782,7 +782,9 @@ impl Project {
         }
         let mut variable = match canonical_variable {
             Some(variable) => variable,
-            None => super::ufo_codec::decode_sources(inputs.iter().map(|source| &source.font))?,
+            None => super::persistence::ufo_codec::decode_sources(
+                inputs.iter().map(|source| &source.font),
+            )?,
         };
         if variable.source_ids.len() != inputs.len() {
             return Err("canonical source count does not match Designspace sources".into());
@@ -2273,13 +2275,13 @@ impl Project {
     pub fn save(&mut self) -> Result<(), String> {
         let mut exports = Vec::with_capacity(self.sources.len());
         for index in 0..self.sources.len() {
-            let font = super::ufo_codec::encode_source(
+            let font = super::persistence::ufo_codec::encode_source(
                 &self.variable,
                 self.source_id(index).expect("source identity"),
             )
             .ok_or("missing source data")?;
             let source = &self.sources[index];
-            exports.push(super::filesystem::SourceExport {
+            exports.push(super::persistence::SourceExport {
                 destination: source.source_path.clone(),
                 font,
                 preserved: source.preserved_files.clone(),
@@ -2297,7 +2299,7 @@ impl Project {
         } else {
             None
         };
-        super::filesystem::ExportPlan::new(exports, designspace)?.execute()?;
+        super::persistence::ExportPlan::new(exports, designspace)?.execute()?;
         for source in &mut self.sources {
             source.dirty = false;
         }

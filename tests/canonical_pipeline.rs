@@ -5,8 +5,8 @@
 
 use norad::{Contour, ContourPoint, Font, Glyph, Name, PointType};
 use runebender::font::canonical_metadata::KerningParticipant;
-use runebender::font::font_memory::designspace_from_str;
 use runebender::font::model::glyph_metadata::OpenTypeGlyphCategory;
+use runebender::font::persistence::memory::designspace_from_str;
 use runebender::font::project::{DocumentEditOutcome, Project, SourceInput};
 use runebender::font::variable::SourceId;
 use runebender::text::shape::ShapingFont;

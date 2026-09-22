@@ -363,7 +363,8 @@ mod tests {
         };
         let regular = font(500.125);
         let bold = font(650.875);
-        let variable = crate::font::ufo_codec::decode_sources([&regular, &bold]).unwrap();
+        let variable =
+            crate::font::persistence::ufo_codec::decode_sources([&regular, &bold]).unwrap();
         let mut project = Project::from_source(SourceInput::from_font(
             regular,
             PathBuf::from("Regular.ufo"),

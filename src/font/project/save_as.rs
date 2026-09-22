@@ -12,7 +12,7 @@ use fea_rs::parse::{FileSystemResolver, SourceLoadError, SourceResolver};
 use super::*;
 
 struct SaveAsPlan {
-    export: super::super::filesystem::ExportPlan,
+    export: super::super::persistence::ExportPlan,
     source_targets: Vec<PathBuf>,
     designspace: Option<(
         PathBuf,
@@ -35,7 +35,7 @@ impl Project {
             if !text.contains("include") {
                 continue;
             }
-            let source_root = super::super::filesystem::destination_key(source.path())?;
+            let source_root = super::super::persistence::destination_key(source.path())?;
             dependencies.extend(feature_dependencies(&source_root, text)?);
         }
         dependencies.sort();
@@ -84,7 +84,7 @@ impl SaveAsPlan {
                 directory.display()
             ));
         }
-        let directory_key = super::super::filesystem::destination_key(directory)?;
+        let directory_key = super::super::persistence::destination_key(directory)?;
         let source_targets = project
             .sources
             .iter()
@@ -105,7 +105,7 @@ impl SaveAsPlan {
             .enumerate()
             .map(|(index, (source, destination))| {
                 let id = project.source_id(index).expect("source identity");
-                Ok(super::super::filesystem::SourceExport {
+                Ok(super::super::persistence::SourceExport {
                     destination: destination.clone(),
                     font: project
                         .encode_ufo_source(id)
@@ -117,7 +117,7 @@ impl SaveAsPlan {
         let designspace_export = designspace
             .as_ref()
             .map(|(target, document, _)| (target.clone(), document.clone()));
-        let export = super::super::filesystem::ExportPlan::new(sources, designspace_export)?
+        let export = super::super::persistence::ExportPlan::new(sources, designspace_export)?
             .with_files(files)?
             .require_new_destinations()?;
         Ok(Self {
@@ -173,7 +173,7 @@ fn plan_feature_includes(
     project: &Project,
     source_targets: &[PathBuf],
     directory_key: &Path,
-) -> Result<Vec<super::super::filesystem::FileExport>, String> {
+) -> Result<Vec<super::super::persistence::FileExport>, String> {
     let mut planned: BTreeMap<PathBuf, (PathBuf, Vec<u8>)> = BTreeMap::new();
     for (index, target_source) in source_targets.iter().enumerate() {
         let source = project.source_id(index).expect("source identity");
@@ -184,14 +184,14 @@ fn plan_feature_includes(
             continue;
         }
         let source_root =
-            super::super::filesystem::destination_key(&project.sources[index].source_path)?;
+            super::super::persistence::destination_key(&project.sources[index].source_path)?;
         for dependency in feature_dependencies(&source_root, text)? {
             if dependency.starts_with(&source_root) {
                 continue;
             }
             let relative = relative_path(&source_root, &dependency)?;
             let destination =
-                super::super::filesystem::destination_key(&target_source.join(relative))?;
+                super::super::persistence::destination_key(&target_source.join(relative))?;
             if !destination.starts_with(directory_key) || destination == directory_key {
                 return Err(format!(
                     "feature include would escape the Save As directory: {}",
@@ -215,7 +215,10 @@ fn plan_feature_includes(
     Ok(planned
         .into_iter()
         .map(
-            |(destination, (_, bytes))| super::super::filesystem::FileExport { destination, bytes },
+            |(destination, (_, bytes))| super::super::persistence::FileExport {
+                destination,
+                bytes,
+            },
         )
         .collect())
 }
@@ -400,7 +403,7 @@ mod tests {
         )
         .unwrap();
         let designspace = scratch.0.join("Family.designspace");
-        let document = crate::font::font_memory::designspace_from_str(
+        let document = crate::font::persistence::memory::designspace_from_str(
             r#"<designspace format="5.0">
   <axes><axis tag="wght" name="Weight" minimum="0" default="0" maximum="1"/></axes>
   <sources>
@@ -470,7 +473,7 @@ mod tests {
             std::fs::write(root.join("shared.fea"), contents).unwrap();
         }
         let designspace = scratch.0.join("Family.designspace");
-        let document = crate::font::font_memory::designspace_from_str(
+        let document = crate::font::persistence::memory::designspace_from_str(
             r#"<designspace format="5.0">
   <axes><axis tag="wght" name="Weight" minimum="0" default="0" maximum="1"/></axes>
   <sources>

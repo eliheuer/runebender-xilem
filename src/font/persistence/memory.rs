@@ -430,7 +430,7 @@ mod tests {
     fn embedded_glif_json_enters_project_canonically() {
         let project = project_from_embedded_glif_json(
             PathBuf::from("VirtuaGrotesk-Regular.ufo"),
-            include_str!("../../web/demo-font.json"),
+            include_str!("../../../web/demo-font.json"),
         )
         .expect("the browser demo imports");
         let source = project.source_id(0).unwrap();

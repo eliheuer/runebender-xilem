@@ -6,6 +6,11 @@
 //! Preview and export share Babelfont's fontc source. No saved UFO, subprocess,
 //! Python environment or repository build script participates in this pipeline.
 
+mod metadata;
+pub mod proof;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod proof_jobs;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -334,8 +339,7 @@ impl Project {
         let info = self
             .document_font_info(default_id)
             .expect("default source retains canonical font info");
-        font.upm =
-            super::compile_metadata::units_per_em(info.metrics.units_per_em.unwrap_or(1000.0))?;
+        font.upm = metadata::units_per_em(info.metrics.units_per_em.unwrap_or(1000.0))?;
         font.names.family_name = info
             .names
             .family_name
@@ -354,14 +358,14 @@ impl Project {
             .collect::<Vec<_>>()
             .join("\n");
         font.features = babelfont::Features::from_fea(&features);
-        super::compile_metadata::apply(&mut font, info)?;
-        super::compile_metadata::rules(structure.as_ref(), &mut font)?;
+        metadata::apply(&mut font, info)?;
+        metadata::rules(structure.as_ref(), &mut font)?;
         font.source = Some(default_source.path.join("features.fea"));
         font.masters.clear();
         let default_metadata = self
             .document_font_metadata(default_id)
             .expect("default source metadata");
-        super::compile_metadata::apply_groups(
+        metadata::apply_groups(
             &mut font,
             default_metadata
                 .groups()
@@ -378,7 +382,7 @@ impl Project {
             let info = self
                 .document_font_info(source_id)
                 .expect("source identity retains canonical font info");
-            super::compile_metadata::metrics(&mut master, info)?;
+            metadata::metrics(&mut master, info)?;
             for (key, value) in [
                 (babelfont::MetricType::Ascender, info.metrics.ascender),
                 (babelfont::MetricType::Descender, info.metrics.descender),
@@ -391,12 +395,10 @@ impl Project {
             ] {
                 if let Some(value) = value {
                     let name = format!("{key:?}");
-                    master
-                        .metrics
-                        .insert(key, super::compile_metadata::metric(&name, value)?);
+                    master.metrics.insert(key, metadata::metric(&name, value)?);
                 }
             }
-            super::compile_metadata::apply_kerning(
+            metadata::apply_kerning(
                 &mut master,
                 self.document_font_metadata(source_id)
                     .expect("source metadata")
@@ -436,7 +438,7 @@ impl Project {
                 glyph.codepoints = layer.codepoints().map(u32::from).collect();
                 let explicit_category =
                     source_glyph_metadata.and_then(|metadata| metadata.category());
-                glyph.category = super::compile_metadata::glyph_category_from_values(
+                glyph.category = metadata::glyph_category_from_values(
                     &glyph.name,
                     explicit_category,
                     layer.codepoints(),

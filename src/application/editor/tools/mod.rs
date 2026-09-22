@@ -12,11 +12,5 @@ pub(crate) mod chat;
 pub(crate) mod local_ai;
 pub(crate) mod metaballs;
 pub(crate) mod nodes;
-pub(crate) mod nodes_controls;
-#[cfg(unix)]
-pub(crate) mod nodes_execution;
 pub(crate) mod scripts;
 pub(crate) mod text;
-
-#[cfg(unix)]
-pub(crate) mod nodes_workspace;

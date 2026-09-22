@@ -147,7 +147,7 @@ impl FontModel {
 
     pub(crate) fn preview_font(
         &self,
-    ) -> Result<Option<Arc<runebender::font::compile::CompiledFont>>, String> {
+    ) -> Result<Option<Arc<runebender::font::compiler::CompiledFont>>, String> {
         if cfg!(test) || std::env::var_os("RUNEBENDER_SCREENSHOT").is_some() {
             self.project.compiled_preview().map(Some)
         } else {

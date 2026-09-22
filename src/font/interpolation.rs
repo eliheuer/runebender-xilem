@@ -457,7 +457,8 @@ mod tests {
         assert_eq!(result.anchors[0].id, base.anchors().next().unwrap().id());
 
         result.point_at_mut(0, 0).unwrap().position = (33.25, 44.75).into();
-        let projected = crate::font::ufo_codec::encode_interpolated(&result, base).unwrap();
+        let projected =
+            crate::font::persistence::ufo_codec::encode_interpolated(&result, base).unwrap();
         assert_eq!(
             (
                 projected.contours[0].points[0].x,
@@ -522,7 +523,8 @@ mod tests {
             &location(0.5),
         )
         .unwrap();
-        let projected = crate::font::ufo_codec::encode_interpolated(&result, base).unwrap();
+        let projected =
+            crate::font::persistence::ufo_codec::encode_interpolated(&result, base).unwrap();
 
         assert_eq!(
             result.contours_to_bezpath(),

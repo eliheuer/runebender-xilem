@@ -190,7 +190,8 @@ pub struct DocumentSnapshot {
 pub struct CanonicalSourceStructureSnapshot {
     glyph_geometry: babelfont::GlyphList,
     glyphs: BTreeMap<String, VariableGlyph>,
-    pub(super) source_formats: BTreeMap<SourceId, super::source_format::SourceFormatData>,
+    pub(super) source_formats:
+        BTreeMap<SourceId, super::persistence::source_format::SourceFormatData>,
     pub(super) source_metadata: BTreeMap<SourceId, SourceMetadata>,
     source_ids: Vec<SourceId>,
     designspace: Option<super::model::designspace::CanonicalDesignspace>,
@@ -293,9 +294,10 @@ impl<'a> GlyphView<'a> {
 pub(crate) struct VariableData {
     pub(super) font: babelfont::Font,
     pub(super) revision: u64,
-    pub(super) compiled: std::sync::Mutex<super::compile::CompileCache>,
+    pub(super) compiled: std::sync::Mutex<super::compiler::CompileCache>,
     pub(super) glyphs: BTreeMap<String, VariableGlyph>,
-    pub(super) source_formats: BTreeMap<SourceId, super::source_format::SourceFormatData>,
+    pub(super) source_formats:
+        BTreeMap<SourceId, super::persistence::source_format::SourceFormatData>,
     pub(super) source_metadata: BTreeMap<SourceId, SourceMetadata>,
     designspace: Option<super::model::designspace::CanonicalDesignspace>,
     pub(super) source_ids: Vec<SourceId>,
@@ -794,12 +796,12 @@ mod tests {
     fn structural_restore_is_guarded_and_preserves_allocator() {
         let mut original = Font::new();
         original.default_layer_mut().insert_glyph(Glyph::new("A"));
-        let original_data = crate::font::ufo_codec::decode_source(&original).unwrap();
+        let original_data = crate::font::persistence::ufo_codec::decode_source(&original).unwrap();
         let before = original_data.source_structure_snapshot();
 
         let mut edited = original;
         edited.default_layer_mut().insert_glyph(Glyph::new("B"));
-        let mut data = crate::font::ufo_codec::decode_source(&edited).unwrap();
+        let mut data = crate::font::persistence::ufo_codec::decode_source(&edited).unwrap();
         data.next_source = 17;
         let after = data.source_structure_snapshot();
         let revision = data.revision;

@@ -9,8 +9,8 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use runebender::font::compiled_proof::{CompileProofInput, CompiledProof, CompiledProofRecipe};
-use runebender::font::proof_jobs::{
+use runebender::font::compiler::proof::{CompileProofInput, CompiledProof, CompiledProofRecipe};
+use runebender::font::compiler::proof_jobs::{
     ProofJobHandle, ProofJobLineage, ProofJobOutcome, ProofJobRequest,
 };
 
@@ -196,7 +196,7 @@ impl Drop for NodeProofJobs {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use runebender::font::compiled_proof::capture;
+    use runebender::font::compiler::proof::capture;
     use runebender::font::project::{DocumentEditOperation, DocumentLayerEdit, Project};
     use runebender::font::variable::GlyphLayerAddress;
     use std::time::{Duration, Instant};

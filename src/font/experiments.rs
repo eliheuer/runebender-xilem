@@ -799,7 +799,7 @@ mod tests {
         let font = Project::new_font("synthetic.ufo".into())
             .encode_ufo_source(SourceId(0))
             .unwrap();
-        let document = crate::font::font_memory::designspace_from_str(
+        let document = crate::font::persistence::memory::designspace_from_str(
             r#"<designspace format="5.0"><axes><axis name="Weight" tag="wght" minimum="0" default="0" maximum="1"/></axes><sources><source filename="first.ufo"><location><dimension name="Weight" xvalue="0"/></location></source><source filename="second.ufo"><location><dimension name="Weight" xvalue="1"/></location></source></sources></designspace>"#,
         )
         .unwrap();

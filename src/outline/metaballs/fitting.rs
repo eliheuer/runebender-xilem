@@ -4,7 +4,7 @@
 //! Supply exact metaball boundary features and tangents to img2bez for cubic fitting.
 
 use super::{field, tangent};
-use crate::formats::metaballs::MetaballGroup;
+use crate::formats::metadata::metaballs::MetaballGroup;
 use kurbo::{BezPath, Point, Vec2};
 
 #[derive(Clone, Copy)]
@@ -171,7 +171,7 @@ pub(super) fn fit(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::formats::metaballs::Metaball;
+    use crate::formats::metadata::metaballs::Metaball;
     use crate::outline::metaballs::{OutlineOptions, cubic_outline};
     use kurbo::ParamCurve;
 

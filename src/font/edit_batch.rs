@@ -462,7 +462,7 @@ pub fn propose(font: &mut Font, batch: &EditBatch) -> Result<ProposalSummary, St
         if glyph == *original {
             return Err(format!("{}: operations make no change", edit.glyph));
         }
-        crate::formats::lib_keys::write_proposal_base(
+        crate::formats::metadata::lib_keys::write_proposal_base(
             &mut glyph,
             &edit.expected_revision,
             &batch.reason,

@@ -9,12 +9,12 @@
 //! selected Master, Model or Adapter node offers its choices in a
 //! second row.
 
-use crate::application::editor::tools::nodes::file_label;
-use crate::application::editor::tools::nodes_controls::{
+use crate::application::editor::tools::nodes::controls::{
     apply_live_comparison, cancel_live_comparison, change_live_graph, clear_live_results,
     edit_live_code, edit_live_scope, move_live_node, open_live_comparison_file,
     run_live_comparison, save_live_comparison_file, select_live_comparison,
 };
+use crate::application::editor::tools::nodes::file_label;
 use crate::application::view::canvas::nodes::{NodesEvent, nodes_canvas};
 use crate::application::view::design::{Region, Space, TextSize, row as xrow};
 use crate::application::view::render::{bottom_keyline, px32};
@@ -37,7 +37,7 @@ use xilem::view::FlexExt as _;
 use xilem::view::{FlexSpacer, flex_col, portal, sized_box};
 
 #[cfg(unix)]
-use crate::application::editor::tools::nodes_execution::LiveGraphPhase;
+use crate::application::editor::tools::nodes::execution::LiveGraphPhase;
 #[cfg(unix)]
 use crate::application::platform::nodes_proofs::NodeProofInspection;
 #[cfg(unix)]
@@ -161,7 +161,7 @@ fn content_size(app: &Workspace, node: u32, height: f64) -> [f32; 2] {
 
 #[cfg(unix)]
 fn proof_images(
-    state: &crate::application::editor::tools::nodes_workspace::LiveNodesState,
+    state: &crate::application::editor::tools::nodes::workspace::LiveNodesState,
     handle: GraphRunHandle,
     cache: &std::collections::BTreeMap<String, ImmutablePng>,
 ) -> Option<std::collections::BTreeMap<u32, ImmutablePng>> {

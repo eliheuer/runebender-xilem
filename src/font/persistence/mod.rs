@@ -7,6 +7,10 @@
 //! Project construction consumes a completely loaded import plan, while saving first writes and
 //! reloads every staged artifact before any live destination is replaced.
 
+pub mod memory;
+pub(in crate::font) mod source_format;
+pub(crate) mod ufo_codec;
+
 use std::collections::{BTreeMap, HashSet};
 use std::ffi::OsString;
 use std::fs;
@@ -915,7 +919,7 @@ mod tests {
                 .unwrap()
                 .unwrap()
                 .as_ref(),
-            include_bytes!("../../tests/fixtures/variable/reference.png")
+            include_bytes!("../../../tests/fixtures/variable/reference.png")
         );
         assert_eq!(
             fs::read(path.join("vendor/opaque.bin")).unwrap(),
@@ -1213,7 +1217,7 @@ mod tests {
             fs::create_dir(path.join("images")).unwrap();
             fs::write(
                 path.join("images/reference.png"),
-                include_bytes!("../../tests/fixtures/variable/reference.png"),
+                include_bytes!("../../../tests/fixtures/variable/reference.png"),
             )
             .unwrap();
             fs::create_dir(path.join("vendor")).unwrap();

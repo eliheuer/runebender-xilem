@@ -10,9 +10,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use kurbo::Shape as _;
 use norad::{Anchor, Component, Contour, ContourPoint, Font, Glyph, Name, PointType};
 use runebender::font::canonical_metadata::{KerningParticipant, KerningSide};
-use runebender::font::font_memory::designspace_from_str;
 use runebender::font::history::{HistoryDirection, HistoryReplayError};
 use runebender::font::model::glyph_metadata::OpenTypeGlyphCategory;
+use runebender::font::persistence::memory::designspace_from_str;
 use runebender::font::project::{
     DocumentEditOutcome, DocumentHistoryError, DocumentHistoryReplayOutcome,
     DocumentSourceMetadataHistoryError, Project, SourceInput,
@@ -4606,7 +4606,7 @@ fn canonical_mask_baking_replaces_topology_and_clears_the_boundary_key() {
         square(0.0, 0.0, 200.0, 200.0, "keep"),
         square(100.0, 50.0, 250.0, 150.0, "mask"),
     ];
-    runebender::formats::lib_keys::write_masks(&mut glyph, &[1].into());
+    runebender::formats::metadata::lib_keys::write_masks(&mut glyph, &[1].into());
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(glyph);
     let source_path = scratch.0.join("MaskBake.ufo");
@@ -4636,7 +4636,7 @@ fn canonical_mask_baking_replaces_topology_and_clears_the_boundary_key() {
             .all(|contour| !old_contours.contains(&contour.id()))
     );
     let projected = project.encode_ufo_layer("mask-bake", &layer_id).unwrap();
-    assert!(runebender::formats::lib_keys::read_masks(&projected).is_empty());
+    assert!(runebender::formats::metadata::lib_keys::read_masks(&projected).is_empty());
     let actual = codec_contours_path(&projected);
     assert!(!actual.is_empty());
     assert!((actual.area().abs() - 30_000.0).abs() < 1e-6);
@@ -4674,7 +4674,7 @@ fn canonical_mask_baking_replaces_topology_and_clears_the_boundary_key() {
 
 #[test]
 fn canonical_metaball_collapse_is_selected_atomic_and_persistable() {
-    use runebender::formats::metaballs::{Metaball, MetaballGroup, Metaballs};
+    use runebender::formats::metadata::metaballs::{Metaball, MetaballGroup, Metaballs};
     use runebender::outline::metaballs::OutlineOptions;
 
     let scratch = Scratch::new();
@@ -4717,7 +4717,7 @@ fn canonical_metaball_collapse_is_selected_atomic_and_persistable() {
     };
     let mut glyph = Glyph::new("metaball-collapse");
     glyph.contours.push(existing.clone());
-    runebender::formats::metaballs::write_metaballs(&mut glyph, &data).unwrap();
+    runebender::formats::metadata::metaballs::write_metaballs(&mut glyph, &data).unwrap();
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(glyph);
     let source_path = scratch.0.join("MetaballCollapse.ufo");

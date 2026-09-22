@@ -445,7 +445,7 @@ fn import_master(
                 }
             }
             let mut glyph = Glyph::new(&source.name);
-            super::lib_keys::write_babelfont_layer(
+            super::metadata::lib_keys::write_babelfont_layer(
                 &mut glyph,
                 &layer.master,
                 layer.id.as_deref(),
@@ -760,7 +760,7 @@ mod tests {
             name: "public.background".into(),
         };
         assert_eq!(
-            super::super::lib_keys::read_babelfont_layer(
+            super::super::metadata::lib_keys::read_babelfont_layer(
                 &project.encode_ufo_layer("A", &layer).unwrap()
             ),
             Some(("M1", Some("A-M1"), true))

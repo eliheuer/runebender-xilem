@@ -7,9 +7,10 @@
 //! `source` supplies guarded UFO projections for existing tools.
 //! `axis` and `var_model` wrap the private Babelfont/fontdrasil backend;
 //! `interpolation` checks and combines each glyph's participating sources.
-//! `composites` places components; `filesystem` stages UFO and Designspace I/O;
-//! `font_memory` and `new_font` build fonts without a filesystem. `model` keeps the
-//! kerning lookup, glyph metadata, and entity ids. `history` is the
+//! `composites` places components; `persistence` stages UFO and Designspace I/O
+//! and provides in-memory construction; `compiler` builds detached OpenType and proof inputs.
+//! `new_font` builds fonts without a filesystem. `model` keeps the kerning lookup, glyph metadata,
+//! and entity ids. `history` is the
 //! one undo pile, and `proposal` is how a model or a tool offers an
 //! edit the designer can install or discard.
 
@@ -23,27 +24,20 @@ pub use babelfont::{
 };
 pub use variable::{CanonicalSourceMetadataSnapshot, CanonicalSourceStructureSnapshot};
 pub mod canonical_metadata;
-pub mod compile;
-mod compile_metadata;
-pub mod compiled_proof;
+pub mod compiler;
 pub mod compose;
 pub mod composites;
 pub mod edit_batch;
-pub mod font_memory;
 pub mod font_ops;
 pub mod history;
 mod interpolation;
 pub mod model;
 pub mod new_font;
+pub mod persistence;
 pub mod project;
-#[cfg(not(target_arch = "wasm32"))]
-pub mod proof_jobs;
 pub mod proposal;
 pub mod source;
-mod source_format;
-pub(crate) mod ufo_codec;
 pub mod var_model;
 pub mod variable;
 
 pub mod experiments;
-mod filesystem;

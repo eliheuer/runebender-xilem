@@ -119,7 +119,7 @@ fn canonical_project_builds_the_same_text_inputs_as_its_source_boundary() {
         .entry(norad::Name::new("A").unwrap())
         .or_default()
         .insert(norad::Name::new("V").unwrap(), -80.5);
-    let designspace = crate::font::font_memory::designspace_from_str(
+    let designspace = crate::font::persistence::memory::designspace_from_str(
         r#"<designspace format="5.0">
           <axes><axis tag="wght" name="Weight" minimum="400" default="400" maximum="900"/></axes>
           <sources><source filename="Regular.ufo" name="regular"><location><dimension name="Weight" xvalue="400"/></location></source></sources>

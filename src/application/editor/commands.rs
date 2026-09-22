@@ -302,7 +302,7 @@ impl Workspace {
         use kurbo::Shape as _;
         use runebender::font::project::Project;
         use runebender::font::variable::{GlyphLayerAddress, LayerId};
-        use runebender::formats::metrics_keys::MetricsFormula;
+        use runebender::formats::metadata::metrics_keys::MetricsFormula;
 
         let resolve = |project: &Project,
                        layer: &LayerId,
@@ -2007,8 +2007,8 @@ mod tests {
         font.default_layer_mut()
             .insert_glyph(rectangle("n", 50.0, 450.0));
         let mut h = rectangle("h", 0.0, 400.0);
-        runebender::formats::metrics_keys::write_metrics_key(&mut h, true, "=n+10");
-        runebender::formats::metrics_keys::write_metrics_key(&mut h, false, "=n");
+        runebender::formats::metadata::metrics_keys::write_metrics_key(&mut h, true, "=n+10");
+        runebender::formats::metadata::metrics_keys::write_metrics_key(&mut h, false, "=n");
         font.default_layer_mut().insert_glyph(h);
         font.save(&path).expect("the fixture saves");
 

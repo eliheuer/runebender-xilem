@@ -16,8 +16,8 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
-use super::compile::CompiledFont;
-use super::project::{CanonicalDocumentEditTransaction, Project};
+use super::super::project::{CanonicalDocumentEditTransaction, Project};
+use super::CompiledFont;
 use crate::text::shape::ShapingFont;
 
 const MAX_TEXT_BYTES: usize = 4 * 1024;
@@ -108,7 +108,7 @@ impl CompileProofInput {
         let mut derived = self.clone();
         for replacement in replacements {
             let address = replacement.address().clone();
-            let key = super::babelfont::layer_key(&address.layer);
+            let key = super::super::babelfont::layer_key(&address.layer);
             let target = derived
                 .font
                 .glyphs
@@ -603,8 +603,8 @@ mod tests {
 
     #[test]
     fn capture_freezes_feature_include_content_before_worker_compilation() {
-        use super::super::project::{DocumentEditOperation, DocumentLayerEdit};
-        use super::super::variable::GlyphLayerAddress;
+        use super::super::super::project::{DocumentEditOperation, DocumentLayerEdit};
+        use super::super::super::variable::GlyphLayerAddress;
 
         let root = std::env::temp_dir().join(format!(
             "runebender-compiled-proof-features-{}",
@@ -618,8 +618,9 @@ mod tests {
         font.features = "include(includes/captured.fea);\n".into();
         font.default_layer_mut()
             .insert_glyph(norad::Glyph::new("A"));
-        let project =
-            Project::from_source(super::super::project::SourceInput::from_font(font, ufo));
+        let project = Project::from_source(super::super::super::project::SourceInput::from_font(
+            font, ufo,
+        ));
 
         let input = capture(&project).unwrap();
         let source = project.document_sources().next().unwrap();
@@ -685,8 +686,9 @@ mod tests {
         fs::write(&include, "# captured include\n").unwrap();
         let mut font = norad::Font::new();
         font.features = "include (includes/captured.fea);\n".into();
-        let project =
-            Project::from_source(super::super::project::SourceInput::from_font(font, ufo));
+        let project = Project::from_source(super::super::super::project::SourceInput::from_font(
+            font, ufo,
+        ));
 
         let error = capture(&project).unwrap_err();
         assert!(error.contains("unresolved include directive"));
@@ -739,8 +741,8 @@ mod tests {
 
     #[test]
     fn staged_edit_proofs_preserve_the_family_and_do_not_publish() {
-        use super::super::project::{DocumentEditOperation, DocumentLayerEdit};
-        use super::super::variable::GlyphLayerAddress;
+        use super::super::super::project::{DocumentEditOperation, DocumentLayerEdit};
+        use super::super::super::variable::GlyphLayerAddress;
 
         let project = project();
         let source = project.document_sources().next().unwrap();
@@ -836,8 +838,8 @@ mod tests {
 
     #[test]
     fn staged_edit_proof_rejects_a_changed_baseline() {
-        use super::super::project::{DocumentEditOperation, DocumentLayerEdit};
-        use super::super::variable::GlyphLayerAddress;
+        use super::super::super::project::{DocumentEditOperation, DocumentLayerEdit};
+        use super::super::super::variable::GlyphLayerAddress;
 
         let mut project = project();
         let source = project.document_sources().next().unwrap();
@@ -918,7 +920,7 @@ mod tests {
 
     #[test]
     fn failed_compile_returns_no_snapshot_or_image() {
-        let project = Project::from_source(super::super::project::SourceInput::from_font(
+        let project = Project::from_source(super::super::super::project::SourceInput::from_font(
             norad::Font::new(),
             "Empty.ufo".into(),
         ));

@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 /// Glyph-free UFO structure and opaque resources retained for exact persistence.
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct SourceFormatData {
+pub(in crate::font) struct SourceFormatData {
     meta: norad::MetaInfo,
     font_info: norad::FontInfo,
     layers: norad::LayerContents,
@@ -28,13 +28,13 @@ impl Default for SourceFormatData {
 
 impl SourceFormatData {
     /// Capture only the source-format fields not owned by the canonical document.
-    pub(super) fn from_ufo(font: &norad::Font) -> Self {
+    pub(in crate::font) fn from_ufo(font: &norad::Font) -> Self {
         let mut layers = font.layers.clone();
         for layer in layers.iter_mut() {
             layer.clear();
         }
         let mut font_info = font.font_info.clone();
-        super::model::font_info::clear_canonical_font_info_fields(&mut font_info);
+        super::super::model::font_info::clear_canonical_font_info_fields(&mut font_info);
         Self {
             meta: font.meta.clone(),
             font_info,
@@ -46,7 +46,7 @@ impl SourceFormatData {
     }
 
     /// Materialize a glyph-free UFO codec value for staged export.
-    pub(super) fn to_ufo_template(&self) -> norad::Font {
+    pub(in crate::font) fn to_ufo_template(&self) -> norad::Font {
         let mut font = norad::Font::new();
         font.meta.clone_from(&self.meta);
         font.font_info.clone_from(&self.font_info);
@@ -57,30 +57,30 @@ impl SourceFormatData {
         font
     }
 
-    pub(super) fn default_layer_name(&self) -> &str {
+    pub(in crate::font) fn default_layer_name(&self) -> &str {
         self.layers.default_layer().name().as_str()
     }
 
-    pub(super) fn contains_layer(&self, name: &str) -> bool {
+    pub(in crate::font) fn contains_layer(&self, name: &str) -> bool {
         self.layers.get(name).is_some()
     }
 
-    pub(super) fn layer_names(&self) -> impl Iterator<Item = &str> {
+    pub(in crate::font) fn layer_names(&self) -> impl Iterator<Item = &str> {
         self.layers.names().map(norad::Name::as_str)
     }
 
-    pub(super) fn ensure_layer(&mut self, name: &str) -> Result<(), String> {
+    pub(in crate::font) fn ensure_layer(&mut self, name: &str) -> Result<(), String> {
         self.layers
             .get_or_create_layer(name)
             .map(|_| ())
             .map_err(|error| error.to_string())
     }
 
-    pub(super) fn retain_default_layer(&mut self) {
+    pub(in crate::font) fn retain_default_layer(&mut self) {
         self.layers.retain(|_| false);
     }
 
-    pub(super) fn remove_empty_layer(&mut self, name: &str) -> bool {
+    pub(in crate::font) fn remove_empty_layer(&mut self, name: &str) -> bool {
         if self.default_layer_name() == name
             || self.layers.get(name).is_none_or(|layer| !layer.is_empty())
         {
@@ -89,14 +89,21 @@ impl SourceFormatData {
         self.layers.remove(name).is_some()
     }
 
-    pub(super) fn image_bytes(&self, path: &Path) -> Result<Option<std::sync::Arc<[u8]>>, String> {
+    pub(in crate::font) fn image_bytes(
+        &self,
+        path: &Path,
+    ) -> Result<Option<std::sync::Arc<[u8]>>, String> {
         self.images
             .get(path)
             .transpose()
             .map_err(|error| error.to_string())
     }
 
-    pub(super) fn install_image(&mut self, path: PathBuf, bytes: Vec<u8>) -> Result<(), String> {
+    pub(in crate::font) fn install_image(
+        &mut self,
+        path: PathBuf,
+        bytes: Vec<u8>,
+    ) -> Result<(), String> {
         self.images
             .insert(path, bytes)
             .map_err(|error| error.to_string())
@@ -132,7 +139,7 @@ mod tests {
         font.data
             .insert(PathBuf::from("com.example/payload.bin"), vec![1, 2, 3])
             .unwrap();
-        let image = include_bytes!("../../tests/fixtures/variable/reference.png").to_vec();
+        let image = include_bytes!("../../../tests/fixtures/variable/reference.png").to_vec();
         font.images
             .insert(PathBuf::from("reference.png"), image.clone())
             .unwrap();

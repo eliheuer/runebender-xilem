@@ -25,7 +25,7 @@ impl Project {
         path: PathBuf,
         font: &norad::Font,
     ) -> Result<Self, String> {
-        let variable = super::super::ufo_codec::decode_source(font)?;
+        let variable = super::super::persistence::ufo_codec::decode_source(font)?;
         Self::from_canonical_single_source(variable, path, false)
     }
 
@@ -34,7 +34,7 @@ impl Project {
         path: PathBuf,
         font: &norad::Font,
     ) -> Result<Self, String> {
-        let variable = super::super::ufo_codec::decode_source(font)?;
+        let variable = super::super::persistence::ufo_codec::decode_source(font)?;
         Self::from_canonical_single_source(variable, path, true)
     }
 
@@ -70,7 +70,7 @@ impl Project {
         if filenames.len() != source_map.len() {
             return Err("imported sources do not match Designspace sources".into());
         }
-        let variable = super::super::ufo_codec::decode_sources(
+        let variable = super::super::persistence::ufo_codec::decode_sources(
             filenames
                 .iter()
                 .map(|filename| &source_map.get(filename).expect("checked source").0),
@@ -272,7 +272,7 @@ mod tests {
 
     #[test]
     fn imported_designspace_validates_canonical_sources_before_projection() {
-        let document = crate::font::font_memory::designspace_from_str(
+        let document = crate::font::persistence::memory::designspace_from_str(
             r#"<designspace format="5.0">
   <axes><axis tag="wght" name="Weight" minimum="0" default="0" maximum="1"/></axes>
   <sources>

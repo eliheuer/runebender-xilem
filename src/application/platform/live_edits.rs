@@ -883,7 +883,7 @@ mod tests {
     #[test]
     fn inactive_reordered_source_is_explicit_and_refreshes_when_selected() {
         let font = project().encode_ufo_source(SourceId(0)).unwrap();
-        let document=runebender::font::font_memory::designspace_from_str(r#"<designspace format="5.0"><axes><axis name="Weight" tag="wght" minimum="0" default="0" maximum="1"/></axes><sources><source filename="first.ufo"><location><dimension name="Weight" xvalue="0"/></location></source><source filename="second.ufo"><location><dimension name="Weight" xvalue="1"/></location></source></sources></designspace>"#).unwrap();
+        let document=runebender::font::persistence::memory::designspace_from_str(r#"<designspace format="5.0"><axes><axis name="Weight" tag="wght" minimum="0" default="0" maximum="1"/></axes><sources><source filename="first.ufo"><location><dimension name="Weight" xvalue="0"/></location></source><source filename="second.ufo"><location><dimension name="Weight" xvalue="1"/></location></source></sources></designspace>"#).unwrap();
         let mut project = Project::from_designspace(document, |path| {
             Ok(SourceInput::from_font(font.clone(), path.into()))
         })

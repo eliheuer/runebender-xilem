@@ -59,4 +59,4 @@ pub mod workflows;
 // Common data types are available at the crate root; other APIs stay under their domain module.
 pub use analysis::category::GlyphCategory;
 pub use font::model::GlyphMetadata;
-pub use formats::mark_color::MarkColor;
+pub use formats::metadata::mark_color::MarkColor;

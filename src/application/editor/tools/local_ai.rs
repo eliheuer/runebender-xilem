@@ -845,7 +845,7 @@ mod tests {
         proposed.contours[0].points[1].x += 20.0;
         let revision = runebender::formats::ufo::glyph_revision(&original)
             .expect("the foreground revision is available");
-        runebender::formats::lib_keys::write_proposal_base(
+        runebender::formats::metadata::lib_keys::write_proposal_base(
             &mut proposed,
             &revision,
             "test canonical proposal install",
@@ -902,7 +902,7 @@ mod tests {
         let mut installed = proposed.clone();
         installed
             .lib
-            .remove(runebender::formats::lib_keys::PROPOSAL_BASE_KEY);
+            .remove(runebender::formats::metadata::lib_keys::PROPOSAL_BASE_KEY);
         assert_eq!(
             workspace.font.font_snapshot().get_glyph("A"),
             Some(&installed)

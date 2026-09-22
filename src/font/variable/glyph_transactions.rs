@@ -290,7 +290,7 @@ mod tests {
     fn imported_identity_is_stable_across_snapshots() {
         let mut font = Font::new();
         font.default_layer_mut().insert_glyph(Glyph::new("A"));
-        let data = crate::font::ufo_codec::decode_source(&font).unwrap();
+        let data = crate::font::persistence::ufo_codec::decode_source(&font).unwrap();
         let id = data.glyph_view("A").unwrap().id();
 
         assert_eq!(data.snapshot().glyphs["A"].id, id);
@@ -302,7 +302,7 @@ mod tests {
         let mut font = Font::new();
         font.default_layer_mut().insert_glyph(Glyph::new("A"));
         font.default_layer_mut().insert_glyph(Glyph::new("B"));
-        let data = crate::font::ufo_codec::decode_source(&font).unwrap();
+        let data = crate::font::persistence::ufo_codec::decode_source(&font).unwrap();
 
         assert_ne!(
             data.glyph_view("A").unwrap().id(),

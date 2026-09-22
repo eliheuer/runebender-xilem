@@ -3,7 +3,7 @@
 
 //! Real OpenType shaping for the editor's text buffer.
 //!
-//! The editor supplies a complete live font from `font::compile`, including
+//! The editor supplies a complete live font from `font::compiler`, including
 //! variable outlines, advances and layout tables. The shaper receives the same
 //! normalized coordinates used by the outline renderer.
 //! `ShapingSource` also supports a lightweight single-master font for standalone

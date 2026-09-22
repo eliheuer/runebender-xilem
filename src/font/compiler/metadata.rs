@@ -3,8 +3,8 @@
 
 //! UFO metadata and Designspace rules supplied to the live compiler.
 
-use super::model::font_info::{CanonicalFontInfo, OpenTypeWidthClass};
-use super::model::glyph_metadata::OpenTypeGlyphCategory;
+use super::super::model::font_info::{CanonicalFontInfo, OpenTypeWidthClass};
+use super::super::model::glyph_metadata::OpenTypeGlyphCategory;
 
 /// Quantize an exact editable units-per-em value for OpenType compilation.
 pub(super) fn units_per_em(value: f64) -> Result<u16, String> {
@@ -257,7 +257,7 @@ pub(super) fn metrics(
     reason = "normalized coordinates are bounded to F2Dot14"
 )]
 pub(super) fn rules(
-    structure: Option<&super::model::designspace::CanonicalCompilerStructure>,
+    structure: Option<&super::super::model::designspace::CanonicalCompilerStructure>,
     font: &mut babelfont::Font,
 ) -> Result<(), String> {
     use std::fmt::Write as _;
@@ -351,8 +351,8 @@ pub(super) fn rules(
         writeln!(fea, "}} RunebenderRule{index};").expect("write to string");
     }
     let feature = match structure.rule_processing {
-        super::model::designspace::RuleProcessing::First => "rvrn",
-        super::model::designspace::RuleProcessing::Last => "rclt",
+        super::super::model::designspace::RuleProcessing::First => "rvrn",
+        super::super::model::designspace::RuleProcessing::Last => "rclt",
     };
     for (cell_index, cell) in cells.iter().enumerate() {
         let active: Vec<_> = regions
@@ -426,7 +426,7 @@ mod tests {
 
     #[test]
     fn compiler_category_accepts_canonical_values_and_rejects_unknown_explicit_data() {
-        use super::super::model::glyph_metadata::OpenTypeGlyphCategory;
+        use super::super::super::model::glyph_metadata::OpenTypeGlyphCategory;
 
         assert_eq!(
             glyph_category_from_values("acutecomb", None, ['\u{301}'], std::iter::empty()).unwrap(),

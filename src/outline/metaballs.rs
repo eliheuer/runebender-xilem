@@ -9,9 +9,9 @@ use std::collections::HashSet;
 
 use kurbo::{BezPath, Point, Vec2};
 
-use crate::formats::metaballs::{MetaballGroup, Metaballs};
+use crate::formats::metadata::metaballs::{MetaballGroup, Metaballs};
 #[cfg(test)]
-use crate::formats::metaballs::{read_metaballs, write_metaballs};
+use crate::formats::metadata::metaballs::{read_metaballs, write_metaballs};
 
 /// Sampling and curve fitting settings, both in font units.
 #[derive(Clone, Copy, Debug)]
@@ -349,7 +349,7 @@ pub fn glyph_preview(glyph: &norad::Glyph) -> Result<BezPath, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::formats::metaballs::{METABALLS_KEY, Metaball};
+    use crate::formats::metadata::metaballs::{METABALLS_KEY, Metaball};
     use kurbo::{ParamCurve, Shape};
 
     fn ball(id: u32, x: f64) -> Metaball {

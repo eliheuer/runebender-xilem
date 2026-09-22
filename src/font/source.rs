@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 pub struct SourceInput {
     pub(super) font: norad::Font,
     pub(super) source_path: PathBuf,
-    pub(super) preserved_files: super::filesystem::PreservedFiles,
+    pub(super) preserved_files: super::persistence::PreservedFiles,
     pub(super) dirty: bool,
 }
 
@@ -27,14 +27,15 @@ impl SourceInput {
         Self {
             font,
             source_path,
-            preserved_files: super::filesystem::PreservedFiles::default(),
+            preserved_files: super::persistence::PreservedFiles::default(),
             dirty: false,
         }
     }
 
     /// Load a UFO as a transient project-construction input.
     pub fn load(path: &Path) -> Result<Self, String> {
-        super::filesystem::load_ufo(path).map(|source| source.into_source_input(path.to_path_buf()))
+        super::persistence::load_ufo(path)
+            .map(|source| source.into_source_input(path.to_path_buf()))
     }
 }
 
@@ -42,7 +43,7 @@ impl SourceInput {
 #[derive(Debug, Clone)]
 pub(super) struct SourceState {
     /// Filesystem details outside canonical ownership that must survive saves.
-    pub(super) preserved_files: super::filesystem::PreservedFiles,
+    pub(super) preserved_files: super::persistence::PreservedFiles,
     /// Path of the UFO on disk, or a virtual path for in-memory hosts.
     pub(super) source_path: PathBuf,
     /// Whether canonical or persistence state changed since the last save.
@@ -60,7 +61,7 @@ impl SourceState {
 
     pub(super) fn new(source_path: PathBuf, dirty: bool) -> Self {
         Self {
-            preserved_files: super::filesystem::PreservedFiles::default(),
+            preserved_files: super::persistence::PreservedFiles::default(),
             source_path,
             dirty,
         }

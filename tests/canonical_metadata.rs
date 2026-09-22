@@ -7,7 +7,6 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use runebender::font::font_memory::designspace_from_str;
 use runebender::font::font_ops::{
     CanonicalFontMetadata, CanonicalMetadataError, KerningParticipant, KerningSide,
 };
@@ -17,6 +16,7 @@ use runebender::font::history::{
 use runebender::font::model::glyph_metadata::{
     CanonicalGlyphMetadata, GlyphMetadataError, OpenTypeGlyphCategory, parse_codepoints,
 };
+use runebender::font::persistence::memory::designspace_from_str;
 use runebender::font::project::{DocumentEditOutcome, Project, SourceInput};
 use runebender::font::variable::SourceId;
 

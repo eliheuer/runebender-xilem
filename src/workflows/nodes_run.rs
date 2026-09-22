@@ -1612,7 +1612,7 @@ mod tests {
     }
 
     fn source_selection_project() -> Project {
-        let document = crate::font::font_memory::designspace_from_str(
+        let document = crate::font::persistence::memory::designspace_from_str(
             r#"<?xml version="1.0" encoding="UTF-8"?>
 <designspace format="5.0">
   <axes>

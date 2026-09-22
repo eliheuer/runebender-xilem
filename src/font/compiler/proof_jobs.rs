@@ -4,7 +4,7 @@
 //! Bounded native workers for immutable compiled proofs.
 //!
 //! The application captures [`CompileProofInput`] while it owns the canonical
-//! [`Project`](super::project::Project), then submits that owned value with an explicit document epoch.
+//! [`Project`](super::super::project::Project), then submits that owned value with an explicit document epoch.
 //! This module never borrows application state or constructs a second project.
 //! Its one worker compiles and renders only the immutable capture.
 //!
@@ -21,9 +21,7 @@ use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
-use super::compiled_proof::{
-    CompileProofInput, CompiledProof, CompiledProofRecipe, compile, prove,
-};
+use super::proof::{CompileProofInput, CompiledProof, CompiledProofRecipe, compile, prove};
 
 /// Maximum accepted UTF-8 bytes in an opaque application document epoch.
 pub const MAX_DOCUMENT_EPOCH_BYTES: usize = 256;
@@ -593,7 +591,7 @@ mod tests {
             norad::Font::new(),
             "Test.ufo".into(),
         ));
-        super::super::compiled_proof::capture(&project).expect("empty canonical input captures")
+        super::super::proof::capture(&project).expect("empty canonical input captures")
     }
 
     fn request(epoch: u64) -> ProofJobRequest {
@@ -843,7 +841,7 @@ mod tests {
     #[test]
     fn worker_compiles_and_renders_an_immutable_real_proof() {
         let project = Project::load(&crate::testing::fonts::designspace()).unwrap();
-        let input = super::super::compiled_proof::capture(&project).unwrap();
+        let input = super::super::proof::capture(&project).unwrap();
         let queue = ProofJobQueue::new(1, 1).unwrap();
         let handle = queue
             .submit(ProofJobRequest {

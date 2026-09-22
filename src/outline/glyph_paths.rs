@@ -892,7 +892,7 @@ mod canonical_render_tests {
     use crate::font::project::Project;
     use crate::font::source::SourceInput;
     use crate::font::variable::{GlyphLayerAddress, LayerId, SourceId};
-    use crate::formats::metaballs::write_metaballs;
+    use crate::formats::metadata::metaballs::write_metaballs;
     use kurbo::Shape;
     use norad::{AffineTransform, Component, Name};
 

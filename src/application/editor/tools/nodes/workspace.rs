@@ -15,7 +15,7 @@ use runebender::workflows::nodes_session::{GraphDocumentState, GraphRunHandle, G
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
-use super::nodes_execution::{LiveGraphExecution, LiveGraphPhase, LiveGraphProofOutputs};
+use super::execution::{LiveGraphExecution, LiveGraphPhase, LiveGraphProofOutputs};
 use crate::application::platform::nodes_file::{self, LiveGraphFileMetadata};
 use crate::application::platform::nodes_proofs::{NodeProofInspection, NodeProofJobs};
 use crate::application::workspace::Workspace;
@@ -344,11 +344,11 @@ impl Workspace {
         &mut self,
         call: &runebender::automation::agent::ToolCall,
     ) -> Result<Value, String> {
-        use super::nodes_execution::LiveGraphSubmitRequest;
+        use super::execution::LiveGraphSubmitRequest;
         use base64::Engine as _;
         use runebender::automation::agent_nodes::*;
         use runebender::automation::script_recipe;
-        use runebender::font::compiled_proof;
+        use runebender::font::compiler::proof as compiled_proof;
         use runebender::font::variable::SourceId;
         use serde_json::json;
 

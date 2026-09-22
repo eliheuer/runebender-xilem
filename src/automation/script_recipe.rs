@@ -3,7 +3,7 @@
 
 //! Immutable inputs and guarded outputs for external editing recipes.
 //!
-//! A recipe receives only this bounded capture, never a live [`Project`](super::project::Project).
+//! A recipe receives only this bounded capture, never a live [`Project`](crate::font::project::Project).
 //! Its result is data for an application preview.
 //! Applying a validated proposal remains the responsibility of the existing authorized edit path.
 

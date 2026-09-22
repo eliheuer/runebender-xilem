@@ -3,7 +3,9 @@
 
 //! Writes a small, editable metaball UFO for testing an editor without touching a real font.
 
-use runebender::formats::metaballs::{Metaball, MetaballGroup, Metaballs, write_metaballs};
+use runebender::formats::metadata::metaballs::{
+    Metaball, MetaballGroup, Metaballs, write_metaballs,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out = std::env::args()

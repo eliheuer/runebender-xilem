@@ -69,7 +69,7 @@ impl VariableData {
         }
 
         // Source-format preservation is created only after canonical state.
-        let format = crate::font::source_format::SourceFormatData::default();
+        let format = crate::font::persistence::source_format::SourceFormatData::default();
         debug_assert_eq!(
             format.default_layer_name(),
             DEFAULT_LAYER_NAME,

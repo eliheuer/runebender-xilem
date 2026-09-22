@@ -476,7 +476,6 @@ impl EditorWidget {
         if self.preview_mode {
             return None;
         }
-        self.session.side_bearings()?;
         let (left, top) = self.metrics_panel_origin()?;
         let y = top + PANEL_HEADER + PANEL_PAD + DesignStroke::Hairline.px();
         let box_at = |column: f64| {
@@ -543,13 +542,18 @@ impl EditorWidget {
 
     /// Put the caret in a box and seed it with the value it shows.
     fn focus_metric(&mut self, field: MetricField) {
-        let Some(sb) = self.session.side_bearings() else {
-            return;
-        };
-        self.field_buf = match field {
-            MetricField::Lsb => sb.lsb.to_string(),
-            MetricField::Width => format!("{:.0}", sb.advance),
-            MetricField::Rsb => sb.rsb.to_string(),
+        self.field_buf = match (field, self.session.side_bearings()) {
+            (MetricField::Lsb, Some(sb)) => sb.lsb.to_string(),
+            (MetricField::Width, Some(sb)) => format!("{:.0}", sb.advance),
+            (MetricField::Rsb, Some(sb)) => sb.rsb.to_string(),
+            // A blank glyph has no ink bounds, so its sidebearings are
+            // undefined. Keep the controls usable: width remains its stored
+            // advance, while a right sidebearing is the full advance from the
+            // origin to the right margin.
+            (MetricField::Lsb, None) => "0".into(),
+            (MetricField::Width | MetricField::Rsb, None) => {
+                format!("{:.0}", self.session.advance())
+            }
         };
         self.field = Some(field);
     }
@@ -564,13 +568,22 @@ impl EditorWidget {
         let Ok(value) = self.field_buf.trim().parse::<f64>() else {
             return false;
         };
-        let Some(sb) = self.session.side_bearings() else {
-            return false;
-        };
         match field {
-            MetricField::Lsb => self.session.shift_glyph(value - sb.min_x),
+            MetricField::Lsb => {
+                if let Some(sb) = self.session.side_bearings() {
+                    self.session.shift_glyph(value - sb.min_x);
+                } else {
+                    return false;
+                }
+            }
             MetricField::Width => self.session.set_advance(value),
-            MetricField::Rsb => self.session.set_advance(sb.max_x + value),
+            MetricField::Rsb => {
+                let width = self
+                    .session
+                    .side_bearings()
+                    .map_or(value, |sb| sb.max_x + value);
+                self.session.set_advance(width);
+            }
         }
         true
     }
@@ -666,87 +679,93 @@ impl EditorWidget {
                 Anchor::End,
             );
         }
-        if let Some(sb) = &bearings {
-            // Three boxes you can type in. Each
-            // one is drawn here and hit tested from the same rectangles,
-            // because a painted control that computes its geometry twice
-            // will drift the moment either copy is edited.
-            if let Some(boxes) = self.metric_boxes() {
-                let group_box = |column: f64| {
-                    let x = left + PANEL_PAD + column * (METRICS_FIELD_WIDTH + METRICS_FIELD_GAP);
-                    Rect::new(x, boxes[0].1.y0, x + METRICS_FIELD_WIDTH, boxes[0].1.y1)
-                };
-                for (rect, group) in [
-                    (group_box(0.0), &self.groups.0),
-                    (group_box(4.0), &self.groups.1),
-                ] {
-                    painter.fill(rect, pal.field()).draw();
-                    let line = DesignStroke::Hairline.px();
-                    let half = line / 2.0;
-                    painter
-                        .stroke(
-                            Rect::new(
-                                rect.x0 + half,
-                                rect.y0 + half,
-                                rect.x1 - half,
-                                rect.y1 - half,
-                            ),
-                            &Stroke::new(line),
-                            pal.field_outline,
-                        )
-                        .draw();
-                    text_label::draw(
-                        painter,
-                        rect.center(),
-                        &group_label(group),
-                        TextSize::Body.px(),
-                        pal.text,
-                        Anchor::Middle,
-                    );
-                }
-                for (field, rect) in boxes {
-                    let focused = self.field == Some(field);
-                    let value = if focused {
-                        self.field_buf.clone()
-                    } else {
-                        match field {
-                            MetricField::Lsb => sb.lsb.to_string(),
-                            MetricField::Width => format!("{:.0}", sb.advance),
-                            MetricField::Rsb => sb.rsb.to_string(),
-                        }
-                    };
-                    let border = if focused { pal.text } else { pal.field_outline };
-                    painter.fill(rect, pal.field()).draw();
-                    // Like the native inputs, the field's keyline stays inside
-                    // its bounds. A centered exterior stroke blurs the edge.
-                    let width = DesignStroke::Hairline.px();
-                    let half = width / 2.0;
-                    let keyline = Rect::new(
-                        rect.x0 + half,
-                        rect.y0 + half,
-                        rect.x1 - half,
-                        rect.y1 - half,
-                    );
-                    painter.stroke(keyline, &Stroke::new(width), border).draw();
-                    let baseline = rect.center().y;
-                    text_label::draw(
-                        painter,
-                        Point::new(
-                            rect.x0 + crate::application::view::design::INPUT_HORIZONTAL_INSET,
-                            baseline,
+        // Three boxes you can type in. Each one is drawn here and hit tested
+        // from the same rectangles, because a painted control that computes
+        // its geometry twice will drift the moment either copy is edited.
+        //
+        // The card is glyph chrome, not an outline measurement. Keep its
+        // inputs present when the final point is deleted. An empty glyph has
+        // no measured ink bounds, so the left value is the origin and the
+        // right value is its full advance.
+        if let Some(boxes) = self.metric_boxes() {
+            let group_box = |column: f64| {
+                let x = left + PANEL_PAD + column * (METRICS_FIELD_WIDTH + METRICS_FIELD_GAP);
+                Rect::new(x, boxes[0].1.y0, x + METRICS_FIELD_WIDTH, boxes[0].1.y1)
+            };
+            for (rect, group) in [
+                (group_box(0.0), &self.groups.0),
+                (group_box(4.0), &self.groups.1),
+            ] {
+                painter.fill(rect, pal.field()).draw();
+                let line = DesignStroke::Hairline.px();
+                let half = line / 2.0;
+                painter
+                    .stroke(
+                        Rect::new(
+                            rect.x0 + half,
+                            rect.y0 + half,
+                            rect.x1 - half,
+                            rect.y1 - half,
                         ),
-                        &value,
-                        TextSize::Body.px(),
-                        pal.text,
-                        Anchor::Start,
-                    );
-                    if focused {
-                        // A caret, drawn by hand, because this is a text
-                        // field drawn by hand.
-                        let caret =
-                            Rect::new(rect.x1 - 4.0, rect.y0 + 3.0, rect.x1 - 3.0, rect.y1 - 3.0);
-                        painter.fill(caret, pal.outline).draw();
+                        &Stroke::new(line),
+                        pal.field_outline,
+                    )
+                    .draw();
+                text_label::draw(
+                    painter,
+                    rect.center(),
+                    &group_label(group),
+                    TextSize::Body.px(),
+                    pal.text,
+                    Anchor::Middle,
+                );
+            }
+            for (field, rect) in boxes {
+                let focused = self.field == Some(field);
+                let value = if focused {
+                    self.field_buf.clone()
+                } else {
+                    match (field, bearings) {
+                        (MetricField::Lsb, Some(sb)) => sb.lsb.to_string(),
+                        (MetricField::Width, Some(sb)) => format!("{:.0}", sb.advance),
+                        (MetricField::Rsb, Some(sb)) => sb.rsb.to_string(),
+                        (MetricField::Lsb, None) => "0".into(),
+                        (MetricField::Width | MetricField::Rsb, None) => {
+                            format!("{:.0}", self.session.advance())
+                        }
                     }
+                };
+                let border = if focused { pal.text } else { pal.field_outline };
+                painter.fill(rect, pal.field()).draw();
+                // Like the native inputs, the field's keyline stays inside
+                // its bounds. A centered exterior stroke blurs the edge.
+                let width = DesignStroke::Hairline.px();
+                let half = width / 2.0;
+                let keyline = Rect::new(
+                    rect.x0 + half,
+                    rect.y0 + half,
+                    rect.x1 - half,
+                    rect.y1 - half,
+                );
+                painter.stroke(keyline, &Stroke::new(width), border).draw();
+                let baseline = rect.center().y;
+                text_label::draw(
+                    painter,
+                    Point::new(
+                        rect.x0 + crate::application::view::design::INPUT_HORIZONTAL_INSET,
+                        baseline,
+                    ),
+                    &value,
+                    TextSize::Body.px(),
+                    pal.text,
+                    Anchor::Start,
+                );
+                if focused {
+                    // A caret, drawn by hand, because this is a text
+                    // field drawn by hand.
+                    let caret =
+                        Rect::new(rect.x1 - 4.0, rect.y0 + 3.0, rect.x1 - 3.0, rect.y1 - 3.0);
+                    painter.fill(caret, pal.outline).draw();
                 }
             }
         }
@@ -2875,6 +2894,14 @@ mod tests {
         Session::new(&font, "A").expect("the glyph is there")
     }
 
+    fn empty_session() -> Session {
+        let mut font = norad::Font::new();
+        let mut glyph = norad::Glyph::new("A");
+        glyph.width = 500.0;
+        font.default_layer_mut().insert_glyph(glyph);
+        Session::new(&font, "A").expect("the glyph is there")
+    }
+
     fn widget() -> EditorWidget {
         EditorWidget {
             session: session(),
@@ -3414,6 +3441,25 @@ mod tests {
         assert_eq!(widget.session.advance(), before, "not until Enter");
         assert!(widget.commit_metric());
         assert_eq!(widget.session.advance(), 900.0);
+    }
+
+    #[test]
+    fn empty_glyph_keeps_metrics_inputs_and_can_change_its_advance() {
+        let mut widget = widget();
+        widget.session = empty_session();
+        widget.size = Size::new(600.0, 400.0);
+
+        assert!(widget.session.side_bearings().is_none());
+        assert_eq!(widget.metric_boxes().expect("the panel fits").len(), 3);
+
+        widget.focus_metric(MetricField::Width);
+        assert_eq!(widget.field_buf, "500");
+        widget.field_buf = "720".into();
+        assert!(widget.commit_metric());
+        assert_eq!(widget.session.advance(), 720.0);
+
+        widget.focus_metric(MetricField::Rsb);
+        assert_eq!(widget.field_buf, "720");
     }
 
     /// The boxes are where the centered panel paints them.

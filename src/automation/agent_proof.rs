@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use super::agent::Tool;
-use crate::font::compiled_proof::CompiledProofRecipe;
+use crate::font::compiler::proof::CompiledProofRecipe;
 
 /// Capture and enqueue one proof from an exact live document revision.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]

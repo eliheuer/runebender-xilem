@@ -380,7 +380,7 @@ pub fn import_versions(graph: &mut NodeGraph, project: &Project) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::font::font_memory::designspace_from_str;
+    use crate::font::persistence::memory::designspace_from_str;
     use crate::font::project::SourceInput;
 
     fn save_new(font: &norad::Font, path: &std::path::Path) -> Result<(), String> {

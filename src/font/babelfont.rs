@@ -2261,7 +2261,7 @@ impl LayerEditDraft {
         let Some(values) = self
             .preserved
             .lib
-            .get(crate::formats::lib_keys::MASKS_KEY)
+            .get(crate::formats::metadata::lib_keys::MASKS_KEY)
             .and_then(plist::Value::as_array)
         else {
             return Ok(false);
@@ -2303,7 +2303,7 @@ impl LayerEditDraft {
         if changed {
             self.preserved
                 .lib
-                .remove(crate::formats::lib_keys::MASKS_KEY);
+                .remove(crate::formats::metadata::lib_keys::MASKS_KEY);
         }
         Ok(changed)
     }

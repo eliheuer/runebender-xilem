@@ -7,8 +7,14 @@
 //! The font engine owns the file, registry, layout, and runner
 //! (`runebender::workflows::nodes`, `nodes_run` and `ui::nodes`).
 //! This module finds the files, opens one, validates it, runs it on a thread, and
-//! hand the widget what it draws. The widget owns the pan, the
+//! hands the widget what it draws. The widget owns the pan, the
 //! selection and the drag, and sends the graph back when it changes.
+
+pub(crate) mod controls;
+#[cfg(unix)]
+pub(crate) mod execution;
+#[cfg(unix)]
+pub(crate) mod workspace;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

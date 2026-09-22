@@ -282,7 +282,7 @@ mod canonical_tests {
     use crate::font::project::Project;
     use crate::font::source::SourceInput;
     use crate::font::variable::{GlyphLayerAddress, SourceId};
-    use crate::formats::metaballs::write_metaballs;
+    use crate::formats::metadata::metaballs::write_metaballs;
     use norad::{AffineTransform, Component, Name};
 
     #[test]

@@ -11,7 +11,7 @@ use super::{
 };
 use crate::font::model::glyph_metadata::parse_metrics_key;
 use crate::font::variable::{GlyphLayerAddress, LayerId};
-use crate::formats::lib_keys::PROPOSAL_BASE_KEY;
+use crate::formats::metadata::lib_keys::PROPOSAL_BASE_KEY;
 
 /// Explicit semantic differences between layer cloning workflows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

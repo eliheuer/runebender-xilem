@@ -6,9 +6,9 @@
 use std::path::PathBuf;
 
 use norad::{Contour, ContourPoint, Font, Glyph, PointType};
-use runebender::font::font_memory::designspace_from_str;
 use runebender::font::history::HistoryDirection;
 use runebender::font::model::designspace::SourceOrderEntry;
+use runebender::font::persistence::memory::designspace_from_str;
 use runebender::font::project::{
     DocumentEditOutcome, DocumentHistoryReplayOutcome, Project, SourceInput,
 };

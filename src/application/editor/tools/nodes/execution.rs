@@ -14,7 +14,7 @@ use std::fmt;
 
 use runebender::automation::agent_edit::AgentEditRequest;
 use runebender::automation::script_recipe::{ScriptRecipeInput, ScriptRecipeResult};
-use runebender::font::compiled_proof::{CompileProofInput, CompiledProofRecipe};
+use runebender::font::compiler::proof::{CompileProofInput, CompiledProofRecipe};
 use runebender::font::project::Project;
 use runebender::workflows::nodes_session::{
     GraphCancelOutcome, GraphCancelRequest, GraphCancelResponse, GraphDocumentState,
@@ -1081,7 +1081,7 @@ mod tests {
     };
     use runebender::automation::agent_edit::AgentLayerGuard;
     use runebender::automation::script_recipe::{SCRIPT_RECIPE_SCHEMA_VERSION, ScriptRecipeLayer};
-    use runebender::font::compiled_proof;
+    use runebender::font::compiler::proof as compiled_proof;
     use runebender::font::edit_batch::canonical_glyph_revision;
     use runebender::workflows::nodes::Registry;
     use runebender::workflows::nodes_live;

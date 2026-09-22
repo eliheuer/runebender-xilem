@@ -160,18 +160,18 @@ pub(crate) fn drawing_contours(
 /// This is a read-only format boundary for fixtures and external codecs.
 /// The returned value is not editable document state and cannot be reconciled into a Project.
 pub fn glyph_from_layer(layer: LayerView<'_>) -> norad::Glyph {
-    crate::font::ufo_codec::encode_layer_view(layer)
+    crate::font::persistence::ufo_codec::encode_layer_view(layer)
 }
 
 impl Project {
     /// Materialize one canonical layer as a detached UFO codec value.
     pub fn encode_ufo_layer(&self, name: &str, layer: &LayerId) -> Option<norad::Glyph> {
-        crate::font::ufo_codec::encode_layer(self.codec_data(), name, layer)
+        crate::font::persistence::ufo_codec::encode_layer(self.codec_data(), name, layer)
     }
 
     /// Materialize one canonical source as a detached UFO codec value.
     pub fn encode_ufo_source(&self, source: SourceId) -> Option<norad::Font> {
-        crate::font::ufo_codec::encode_source(self.codec_data(), source)
+        crate::font::persistence::ufo_codec::encode_source(self.codec_data(), source)
     }
 
     /// Materialize canonical interpolation at an arbitrary normalized location.
@@ -181,7 +181,7 @@ impl Project {
         location: &crate::font::var_model::Location,
     ) -> Result<norad::Glyph, String> {
         let (interpolated, base) = self.interpolation_codec_parts(glyph_name, location)?;
-        crate::font::ufo_codec::encode_interpolated(&interpolated, base)
+        crate::font::persistence::ufo_codec::encode_interpolated(&interpolated, base)
     }
 
     /// Materialize canonical interpolation, suppressing an explicit interpolation error.
@@ -216,7 +216,7 @@ impl crate::font::experiments::Experiment {
                 .map_err(|error| error.to_string())?;
             layer.insert_glyph(glyph_from_layer(draft.view()));
         }
-        crate::font::ufo_codec::encode_font_metadata(&mut font, self.font_metadata())
+        crate::font::persistence::ufo_codec::encode_font_metadata(&mut font, self.font_metadata())
             .map_err(|error| error.to_string())?;
         Ok(font)
     }

@@ -6,7 +6,7 @@
 use crate::application::editor::session::Session;
 use crate::application::view::canvas::grid::cells_of;
 use crate::application::workspace::{Mode, OverviewEditBatch, Workspace};
-use runebender::formats::metaballs::{Metaball, MetaballGroup};
+use runebender::formats::metadata::metaballs::{Metaball, MetaballGroup};
 use runebender::outline::metaballs::OutlineOptions;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -560,9 +560,11 @@ mod tests {
         app.font.font_snapshot().save(&path).unwrap();
         let reopened = norad::Font::load(&path).unwrap();
         assert_eq!(
-            runebender::formats::metaballs::read_metaballs(reopened.get_glyph("i").unwrap())
-                .unwrap()
-                .groups[0]
+            runebender::formats::metadata::metaballs::read_metaballs(
+                reopened.get_glyph("i").unwrap()
+            )
+            .unwrap()
+            .groups[0]
                 .balls
                 .len(),
             2

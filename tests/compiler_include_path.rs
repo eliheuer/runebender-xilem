@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use norad::{Font, Glyph};
-use runebender::font::font_memory::designspace_from_str;
+use runebender::font::persistence::memory::designspace_from_str;
 use runebender::font::project::{Project, SourceInput};
 
 static NEXT_FIXTURE: AtomicUsize = AtomicUsize::new(0);

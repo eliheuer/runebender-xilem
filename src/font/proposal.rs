@@ -752,7 +752,7 @@ pub fn install(
         else {
             continue;
         };
-        if let Some(base) = crate::formats::lib_keys::read_proposal_base(&proposed) {
+        if let Some(base) = crate::formats::metadata::lib_keys::read_proposal_base(&proposed) {
             let current = font
                 .get_glyph(name.as_str())
                 .and_then(|glyph| crate::formats::ufo::glyph_revision(glyph).ok());

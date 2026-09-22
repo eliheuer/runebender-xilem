@@ -3,23 +3,19 @@
 
 //! Lib keys and file formats.
 //!
-//! Runebender's own `com.runebender.*` keys, the Glyphs and ufo2ft keys
-//! shared with other tools, and the formats read or written besides
-//! UFO: SVG, compiled fonts, `.glyphs`, and traced images.
+//! `metadata` owns codecs for persisted keys and values.
+//! The remaining modules read or write complete formats such as UFO, SVG, compiled fonts,
+//! `.glyphs`, and traced images.
 
 pub mod babelfont_import;
 pub mod binary_import;
 pub mod color_font;
 pub mod glyphs_import;
 pub mod image_trace;
-pub mod lib_keys;
-pub mod mark_color;
-pub mod metrics_keys;
+pub mod metadata;
 pub mod proposal_ufo;
 pub mod svg;
 pub mod ufo;
 
 pub mod designbot;
 pub mod designspace;
-
-pub mod metaballs;

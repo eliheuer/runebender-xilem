@@ -15,8 +15,8 @@ use runebender::automation::agent::ToolCall;
 use runebender::automation::agent_proof::{
     ProofHandleRequest, ProofStartRequest, ProofStatusRequest,
 };
-use runebender::font::compiled_proof;
-use runebender::font::proof_jobs::{
+use runebender::font::compiler::proof as compiled_proof;
+use runebender::font::compiler::proof_jobs::{
     ProofJobCancelOutcome, ProofJobHandle, ProofJobLineage, ProofJobOutcome, ProofJobQueue,
     ProofJobRequest, ProofJobStatus,
 };

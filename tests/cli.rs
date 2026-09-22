@@ -141,8 +141,16 @@ fn proposals_list_install_and_discard_through_the_binary() {
     let mut o = font.get_glyph("O").expect("O").clone();
     let o_revision = runebender::formats::ufo::glyph_revision(&o).expect("O revision");
     o.contours.pop();
-    runebender::formats::lib_keys::write_proposal_base(&mut h, &h_revision, "binary test");
-    runebender::formats::lib_keys::write_proposal_base(&mut o, &o_revision, "binary test");
+    runebender::formats::metadata::lib_keys::write_proposal_base(
+        &mut h,
+        &h_revision,
+        "binary test",
+    );
+    runebender::formats::metadata::lib_keys::write_proposal_base(
+        &mut o,
+        &o_revision,
+        "binary test",
+    );
     runebender::formats::proposal_ufo::write_proposal_layer(&mut font, "bolden", [h, o])
         .expect("written");
     font.save(&ufo).expect("saved");

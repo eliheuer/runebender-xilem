@@ -7,7 +7,7 @@ use std::fmt::Write as _;
 use std::io::Write as _;
 
 use kurbo::{Affine, BezPath, ParamCurve, Point, Shape, Vec2};
-use runebender::formats::metaballs::{Metaball, MetaballGroup};
+use runebender::formats::metadata::metaballs::{Metaball, MetaballGroup};
 use runebender::outline::metaballs::{OutlineOptions, cubic_outline, field, preview};
 
 fn ball(id: u32, x: f64, y: f64, radius: f64, stiffness: f64) -> Metaball {

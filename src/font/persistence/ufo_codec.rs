@@ -7,11 +7,14 @@
 //! Values cross it once during import or are freshly materialized for serialization; none are
 //! retained as editable state and there is no projection-to-document reconciliation path.
 
-use super::variable::{LayerId, SourceId, SourceMetadata, VariableData};
+use super::super::{
+    LayerView, babelfont as font_babelfont, font_ops, interpolation, model,
+    variable::{LayerId, SourceId, SourceMetadata, VariableData},
+};
 
 pub(crate) fn decode_font_metadata(
     font: &norad::Font,
-) -> Result<super::font_ops::CanonicalFontMetadata, super::font_ops::CanonicalMetadataError> {
+) -> Result<font_ops::CanonicalFontMetadata, font_ops::CanonicalMetadataError> {
     let groups = font
         .groups
         .iter()
@@ -34,23 +37,22 @@ pub(crate) fn decode_font_metadata(
             )
         })
         .collect();
-    super::font_ops::CanonicalFontMetadata::from_raw(groups, kerning)
+    font_ops::CanonicalFontMetadata::from_raw(groups, kerning)
 }
 
 pub(crate) fn encode_font_metadata(
     font: &mut norad::Font,
-    metadata: &super::font_ops::CanonicalFontMetadata,
-) -> Result<bool, super::font_ops::CanonicalMetadataError> {
+    metadata: &font_ops::CanonicalFontMetadata,
+) -> Result<bool, font_ops::CanonicalMetadataError> {
     let mut groups = norad::Groups::default();
     for (name, members) in metadata.groups() {
         let name = norad::Name::new(name)
-            .map_err(|_| super::font_ops::CanonicalMetadataError::InvalidName(name.clone()))?;
+            .map_err(|_| font_ops::CanonicalMetadataError::InvalidName(name.clone()))?;
         let members = members
             .iter()
             .map(|member| {
-                norad::Name::new(member).map_err(|_| {
-                    super::font_ops::CanonicalMetadataError::InvalidName(member.clone())
-                })
+                norad::Name::new(member)
+                    .map_err(|_| font_ops::CanonicalMetadataError::InvalidName(member.clone()))
             })
             .collect::<Result<_, _>>()?;
         groups.insert(name, members);
@@ -58,11 +60,11 @@ pub(crate) fn encode_font_metadata(
     let mut kerning = norad::Kerning::default();
     for (left, row) in metadata.raw_kerning() {
         let left_name = norad::Name::new(&left)
-            .map_err(|_| super::font_ops::CanonicalMetadataError::InvalidName(left.clone()))?;
+            .map_err(|_| font_ops::CanonicalMetadataError::InvalidName(left.clone()))?;
         let mut output_row = std::collections::BTreeMap::new();
         for (right, value) in row {
             let right_name = norad::Name::new(&right)
-                .map_err(|_| super::font_ops::CanonicalMetadataError::InvalidName(right.clone()))?;
+                .map_err(|_| font_ops::CanonicalMetadataError::InvalidName(right.clone()))?;
             output_row.insert(right_name, value);
         }
         kerning.insert(left_name, output_row);
@@ -75,11 +77,11 @@ pub(crate) fn encode_font_metadata(
     Ok(true)
 }
 
-pub(super) fn decode_source(font: &norad::Font) -> Result<VariableData, String> {
+pub(in crate::font) fn decode_source(font: &norad::Font) -> Result<VariableData, String> {
     decode_sources([font])
 }
 
-pub(super) fn decode_sources<'a>(
+pub(in crate::font) fn decode_sources<'a>(
     fonts: impl IntoIterator<Item = &'a norad::Font>,
 ) -> Result<VariableData, String> {
     let mut data = VariableData::default();
@@ -92,7 +94,7 @@ pub(super) fn decode_sources<'a>(
             SourceMetadata {
                 feature_text: font.features.clone(),
                 font_metadata: decode_font_metadata(font).map_err(|error| error.to_string())?,
-                font_info: super::model::font_info::CanonicalFontInfo::from_ufo(&font.font_info)
+                font_info: model::font_info::CanonicalFontInfo::from_ufo(&font.font_info)
                     .map_err(|error| error.to_string())?,
             },
         );
@@ -110,13 +112,13 @@ pub(super) fn decode_sources<'a>(
             for payload in layer.iter() {
                 let name = payload.name().as_str();
                 let default = layer.name().as_str() == default_layer_name;
-                let (geometry, preserved) = super::babelfont::layer_from_ufo(payload, &id, default);
+                let (geometry, preserved) = font_babelfont::layer_from_ufo(payload, &id, default);
                 let glyph = data.glyphs.entry(name.to_owned()).or_default();
                 glyph.layers.insert(id.clone(), preserved);
                 if default {
                     glyph.source_metadata.insert(
                         source,
-                        super::model::glyph_metadata::canonical_glyph_metadata_from_ufo(font, name)
+                        model::glyph_metadata::canonical_glyph_metadata_from_ufo(font, name)
                             .map_err(|error| error.to_string())?
                             .source()
                             .clone(),
@@ -141,14 +143,14 @@ pub(super) fn decode_sources<'a>(
 
 fn validate_source(font: &norad::Font) -> Result<(), String> {
     decode_font_metadata(font).map_err(|error| error.to_string())?;
-    super::model::font_info::CanonicalFontInfo::from_ufo(&font.font_info)
+    model::font_info::CanonicalFontInfo::from_ufo(&font.font_info)
         .map_err(|error| error.to_string())?;
     for name in font
         .default_layer()
         .iter()
         .map(|glyph| glyph.name().as_str())
     {
-        super::model::glyph_metadata::canonical_glyph_metadata_from_ufo(font, name)
+        model::glyph_metadata::canonical_glyph_metadata_from_ufo(font, name)
             .map_err(|error| error.to_string())?;
     }
     Ok(())
@@ -171,11 +173,11 @@ pub(crate) fn encode_source(data: &VariableData, source: SourceId) -> Option<nor
                 font.layers
                     .get_mut(&id.name)
                     .expect("every stored layer has persistence metadata")
-                    .insert_glyph(super::babelfont::project_layer(
+                    .insert_glyph(font_babelfont::project_layer(
                         data.font
                             .glyphs
                             .get(name)?
-                            .get_layer(&super::babelfont::layer_key(id))?,
+                            .get_layer(&font_babelfont::layer_key(id))?,
                         preserved,
                     ));
             }
@@ -188,16 +190,14 @@ pub(crate) fn encode_source(data: &VariableData, source: SourceId) -> Option<nor
         let Some(payload) = font.get_glyph(name) else {
             continue;
         };
-        let boundary = super::model::glyph_metadata::CanonicalGlyphMetadata::new(
+        let boundary = model::glyph_metadata::CanonicalGlyphMetadata::new(
             payload.codepoints.iter(),
             payload.note.clone(),
             metadata.exported(),
             metadata.category().cloned(),
         );
-        super::model::glyph_metadata::write_canonical_glyph_metadata_to_ufo(
-            &mut font, name, &boundary,
-        )
-        .expect("canonical glyph metadata must remain writable as UFO");
+        model::glyph_metadata::write_canonical_glyph_metadata_to_ufo(&mut font, name, &boundary)
+            .expect("canonical glyph metadata must remain writable as UFO");
     }
     Some(font)
 }
@@ -208,18 +208,18 @@ pub(crate) fn encode_layer(data: &VariableData, name: &str, id: &LayerId) -> Opt
         .font
         .glyphs
         .get(name)?
-        .get_layer(&super::babelfont::layer_key(id))?;
-    Some(super::babelfont::project_layer(layer, preserved))
+        .get_layer(&font_babelfont::layer_key(id))?;
+    Some(font_babelfont::project_layer(layer, preserved))
 }
 
-pub(crate) fn encode_layer_view(layer: super::LayerView<'_>) -> norad::Glyph {
+pub(crate) fn encode_layer_view(layer: LayerView<'_>) -> norad::Glyph {
     let (geometry, preserved) = layer.codec_parts();
-    super::babelfont::project_layer(geometry, preserved)
+    font_babelfont::project_layer(geometry, preserved)
 }
 
 pub(crate) fn encode_interpolated(
-    output: &super::interpolation::InterpolatedLayer,
-    base: super::LayerView<'_>,
+    output: &interpolation::InterpolatedLayer,
+    base: LayerView<'_>,
 ) -> Result<norad::Glyph, String> {
     let mut glyph = encode_layer_view(base);
     if output.glyph_name != glyph.name().as_str()
