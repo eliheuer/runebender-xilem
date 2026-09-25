@@ -57,9 +57,9 @@ cargo build --workspace --release --locked
 cargo deny --locked check advisories
 ```
 
-On machines with about 16 GiB of RAM, never overlap Cargo build, check, Clippy, doc, or test commands, including background jobs and subagents.
-Wait for one Cargo command to finish before starting the next; do not overlap browser smoke checks with a Cargo build on these machines.
-Set `CARGO_BUILD_JOBS=2` on memory-constrained machines; do not impose this limit on higher-memory development machines.
+On hosts with less than 24 GiB of physical RAM, never overlap Cargo build, check, Clippy, doc, or test commands, including background jobs and subagents.
+Wait for one Cargo command to finish before starting the next; do not overlap browser smoke checks with a Cargo build on these hosts.
+On these hosts, set `CARGO_BUILD_JOBS=2` for Cargo commands; leave higher-memory hosts at their normal Cargo defaults unless memory pressure occurs.
 
 Set `RUNEBENDER_TEST_FONTS` to a directory containing test UFOs and a designspace when the adjacent Virtua Grotesk checkout is unavailable.
 Do not count ignored model tests as passing runtime coverage.
