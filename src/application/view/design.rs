@@ -78,6 +78,9 @@ pub(crate) const DOCK_MIN_WIDTH: f64 = 220.0;
 pub(crate) const CENTER_MIN_WIDTH: f64 = 280.0;
 pub(crate) const EDITOR_MIN_HEIGHT: f64 = 160.0;
 pub(crate) const PROOF_MIN_HEIGHT: f64 = 64.0;
+/// Reserve a legible glyph preview below the scrollable edit inspector.
+pub(crate) const EDITOR_INSPECTOR_PREVIEW_HEIGHT: f64 = 200.0;
+pub(crate) const INSPECTOR_PREVIEW_MIN_HEIGHT: f64 = 120.0;
 /// GPUI leaves six percent of the preview free on each side of the fitted ink.
 pub(crate) const OVERVIEW_GLYPH_PREVIEW_FILL: f64 = 0.88;
 /// Wide pointer target around the one-pixel divider.

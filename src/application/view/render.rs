@@ -211,7 +211,7 @@ where
 /// Unlike a stateful splitter, this recomputes the allocation when a section
 /// opens or closes. Expanded sections therefore push the preview down and
 /// compress it instead of continuing underneath it.
-fn overview_inspector_stack<State, A, B>(
+fn inspector_stack<State, A, B>(
     sections: A,
     preview: B,
 ) -> impl WidgetView<State, Widget: Sized> + use<State, A, B>
@@ -223,6 +223,30 @@ where
     flex_col((sections, preview.flex(1.0)))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
         .gap(Space::None)
+}
+
+/// Keep the active outline legible even when the editor has many inspector sections.
+fn editor_inspector_stack<State, A, B>(
+    sections: A,
+    preview: B,
+    outline: Color,
+) -> impl WidgetView<State, Widget: Sized> + use<State, A, B>
+where
+    State: 'static,
+    A: WidgetView<State>,
+    B: WidgetView<State>,
+{
+    let split = xilem::view::split(sections, top_keyline(preview, outline))
+        .split_axis(kurbo::Axis::Vertical)
+        .split_point_from_end(Length::px(design::EDITOR_INSPECTOR_PREVIEW_HEIGHT))
+        .min_lengths(
+            Length::px(design::EDITOR_MIN_HEIGHT),
+            Length::px(design::INSPECTOR_PREVIEW_MIN_HEIGHT),
+        )
+        .bar_thickness(Length::ZERO)
+        .min_bar_area(Length::px(design::SPLITTER_HIT_WIDTH))
+        .solid_bar(false);
+    clip_split(split)
 }
 
 pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use<> {
@@ -268,16 +292,16 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
             .constrain_horizontal(true)
             .background_color(pal.panel)
     };
-    // Font and Nodes both use the document inspector: compact sections above
-    // the selected glyph's outline preview. Nodes is a workflow over the same
-    // font, so changing modes must not replace that useful document context.
-    let inspector = if matches!(app.mode, Mode::Overview | Mode::Nodes) {
-        Either::A(overview_inspector_stack(
+    // The editor reserves a legible preview while its longer section list scrolls.
+    // Overview and Nodes keep the content-sized sections and remaining-space preview.
+    let inspector = if matches!(app.mode, Mode::Editor(_)) {
+        Either::A(editor_inspector_stack(
             inspector_sections(),
             glyph_preview(app),
+            pal.outline,
         ))
     } else {
-        Either::B(inspector_sections())
+        Either::B(inspector_stack(inspector_sections(), glyph_preview(app)))
     }
     // Erase the inspector split before adding the two horizontal dock splits;
     // the section tree is already near rustc's recursive trait limit.
@@ -890,7 +914,7 @@ mod tab_tests {
 
 #[cfg(test)]
 mod panel_resize_tests {
-    use super::{overview_inspector_stack, proof_split, workspace_columns};
+    use super::{inspector_stack, proof_split, workspace_columns};
     use masonry::core::keyboard::{Key, NamedKey};
     use masonry::core::{TextEvent, WindowEvent};
     use masonry::dpi::PhysicalSize;
@@ -1095,7 +1119,7 @@ mod panel_resize_tests {
         use xilem::style::Style;
         use xilem::view::{label, sized_box};
         let logic = |sections_height| {
-            overview_inspector_stack(
+            inspector_stack(
                 sized_box(label("Sections")).dims(Dimensions::new(
                     Dim::Stretch,
                     Dim::Fixed(Length::px(sections_height)),

@@ -499,7 +499,7 @@ impl Session {
         self.stage_canonical_edit("set image", move |draft| Ok(draft.set_image(image)))
     }
 
-    fn current_layer(&self) -> Option<LayerView<'_>> {
+    pub(crate) fn current_layer(&self) -> Option<LayerView<'_>> {
         self.current_transaction()
             .map(|transaction| transaction.draft().view())
     }

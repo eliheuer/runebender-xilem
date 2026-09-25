@@ -145,36 +145,51 @@ fn proof_transform(bounds: kurbo::Rect, advance: f64, size: kurbo::Size) -> kurb
     )
 }
 
-/// A large preview of the selected glyph, at the foot of the inspector in
-/// overview mode. The grid cell is small; this
-/// is where you look at the shape.
+type PreviewContour = Vec<(f64, f64, runebender::font::LayerPointType, bool)>;
+
+fn preview_contours(layer: runebender::font::LayerView<'_>) -> Vec<PreviewContour> {
+    layer
+        .contours()
+        .map(|contour| {
+            contour
+                .points()
+                .map(|point| {
+                    (
+                        point.position().x,
+                        point.position().y,
+                        point.point_type(),
+                        point.is_smooth(),
+                    )
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// A large preview of the selected glyph at the foot of the inspector.
+/// In the editor, use the live session so the preview follows in-progress edits.
 pub(crate) fn glyph_preview(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     use masonry::imaging::Painter;
     use masonry::kurbo::{Affine, Circle, Line, Point, Rect, Shape, Size, Stroke};
-    let data = app.selected.and_then(|i| {
-        let entry = app.font.glyphs.get(i)?;
-        let address = app.font.active_layer_address(&entry.name)?;
-        let contours = app
-            .font
-            .project
-            .document_layer(&entry.name, &address.layer)?
-            .contours()
-            .map(|contour| {
-                contour
-                    .points()
-                    .map(|point| {
-                        (
-                            point.position().x,
-                            point.position().y,
-                            point.point_type(),
-                            point.is_smooth(),
-                        )
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>();
-        Some((entry.outline.clone(), contours))
-    });
+    let data = if matches!(app.mode, crate::application::workspace::Mode::Editor(_)) {
+        app.session.current_layer().map(|layer| {
+            let mut outline = app.session.outline();
+            outline.extend(app.session.components.clone());
+            let contours = preview_contours(layer);
+            (std::sync::Arc::new(outline), contours)
+        })
+    } else {
+        app.selected.and_then(|i| {
+            let entry = app.font.glyphs.get(i)?;
+            let address = app.font.active_layer_address(&entry.name)?;
+            let contours = preview_contours(
+                app.font
+                    .project
+                    .document_layer(&entry.name, &address.layer)?,
+            );
+            Some((entry.outline.clone(), contours))
+        })
+    };
     let pal = app.palette.clone();
     let background = pal.canvas;
     sized_box(canvas(

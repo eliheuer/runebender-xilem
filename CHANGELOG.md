@@ -10,6 +10,8 @@ No release has been published yet.
 
 ### Changed
 
+- The edit inspector now shows the active glyph's live outline and points beneath its controls, matching the overview preview.
+
 - Sort metric intersections now use dark crosshairs at every metric height, including the active glyph and shared sort boundaries.
 
 - Metaball Radius controls an isolated ball's visible size while Threshold remains available for shaping.
