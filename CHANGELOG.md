@@ -10,6 +10,8 @@ No release has been published yet.
 
 ### Changed
 
+- Sort metric intersections now use dark crosshairs at every metric height, including the active glyph and shared sort boundaries.
+
 - Metaball Radius controls an isolated ball's visible size while Threshold remains available for shaping.
   New groups start with Radius 128 and Threshold 100%; existing editable metaballs retain their field profile.
 
@@ -30,6 +32,9 @@ No release has been published yet.
 
 - Added live `editor_open_glyph` navigation for agent clients.
   It switches the current editor tab to a named glyph while preserving text, preview, source and tool context, without editing or saving the font.
+
+- Added live `editor_set_text` to switch the active glyph tab to the Text tool and replace its editor line through MCP.
+  Context revision guards prevent overwriting a changed tab, and `editor_open_glyph` can then choose the active glyph without losing the line.
 
 - Added the native Python recipe runtime and script-file library foundation, plus anchor report and move examples.
   Recipes receive immutable captures and return validated reports or proposals; applying an edit remains a separate guarded action.

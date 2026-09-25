@@ -108,6 +108,9 @@ impl Workspace {
         if call.name == "editor_open_glyph" {
             return self.live_open_glyph(&call.arguments);
         }
+        if call.name == "editor_set_text" {
+            return self.live_set_text(&call.arguments);
+        }
         if matches!(
             call.name.as_str(),
             "proposal_install" | "experiment_apply" | "experiment_undo_apply"
@@ -264,6 +267,43 @@ impl Workspace {
         let mut context = self.live_context();
         context["changed"] = json!(previous != glyph);
         context["previous_glyph"] = json!(previous);
+        context
+    }
+    fn live_set_text(&mut self, arguments: &serde_json::Value) -> serde_json::Value {
+        use crate::application::workspace::{Mode, Tool};
+        use serde_json::json;
+
+        let Some(object) = arguments.as_object() else {
+            return json!({"ok":false,"error":"arguments must be an object", "error_code":"invalid_arguments"});
+        };
+        let Some(text) = object.get("text").and_then(serde_json::Value::as_str) else {
+            return json!({"ok":false,"error":"text must be a string", "error_code":"invalid_arguments"});
+        };
+        let Some(expected) = object
+            .get("expected_context_revision")
+            .and_then(serde_json::Value::as_str)
+        else {
+            return json!({"ok":false,"error":"expected_context_revision is required", "error_code":"invalid_arguments"});
+        };
+        if object.len() != 2 || text.chars().count() > 4096 {
+            return json!({"ok":false,"error":"editor_set_text accepts only text (at most 4096 characters) and expected_context_revision", "error_code":"invalid_arguments"});
+        }
+        if self.live_context()["context_revision"] != expected {
+            return json!({"ok":false,"error":"editor context changed; read editor_context before replacing text", "error_code":"stale_context"});
+        }
+        if !matches!(self.mode, Mode::Editor(_)) {
+            return json!({"ok":false,"error":"open a glyph before editing text", "error_code":"not_editing"});
+        }
+        if self.session.gesture_in_progress() {
+            return json!({"ok":false,"error":"finish the canvas gesture before editing text", "error_code":"busy_gesture"});
+        }
+        let changed = self.tool != Tool::Text || self.initial_text != text;
+        self.select_tool(Tool::Text);
+        if self.initial_text != text {
+            self.set_editor_text(text.to_owned());
+        }
+        let mut context = self.live_context();
+        context["changed"] = json!(changed);
         context
     }
 }
@@ -465,6 +505,66 @@ mod tests {
         assert_eq!(missing["error_code"], "glyph_not_found");
         assert_eq!(app.session.glyph_name, "B");
         assert_eq!(app.font.project.document_revision(), document_revision);
+    }
+
+    #[test]
+    fn live_set_text_then_open_glyph_preserves_the_line_without_editing_font() {
+        use crate::application::{font_model::FontModel, workspace::Tool};
+        use serde_json::json;
+
+        let path =
+            std::env::temp_dir().join(format!("live-text-never-saved-{}.ufo", std::process::id()));
+        let mut project = Project::new_font(path.clone());
+        for (name, codepoint) in [("A", 'A'), ("e", 'e')] {
+            project
+                .add_document_glyph(name, 400.0, Some(u32::from(codepoint)))
+                .unwrap();
+        }
+        let mut app = Workspace::from_model(FontModel::from_project(project)).unwrap();
+        app.open_glyph(app.font.index_of("A").unwrap());
+        let before = socket_call(&mut app, "editor_context", json!({}));
+        let revision = app.font.project.document_revision();
+        let tab = app.active_tab;
+        let text_id = app.text_context_id();
+        let stale = socket_call(
+            &mut app,
+            "editor_set_text",
+            json!({"text":"wrong","expected_context_revision":"obsolete",
+                "expected_document_epoch":before["document_epoch"]}),
+        );
+        assert_eq!(stale["error_code"], "stale_context");
+        assert_eq!(app.tool, Tool::Select);
+        let set = socket_call(
+            &mut app,
+            "editor_set_text",
+            json!({"text":"hello from OMP","expected_context_revision":before["context_revision"],
+                "expected_document_epoch":before["document_epoch"]}),
+        );
+        assert_eq!(set["ok"], true, "{set}");
+        assert_eq!(set["changed"], true);
+        assert_eq!(set["context"]["tool"], "text");
+        assert_eq!(set["context"]["text"]["editor"], "hello from OMP");
+        assert_eq!(set["context"]["text"]["session_active"], true);
+        assert_eq!(app.tabs[tab].text_context.editor_text, "hello from OMP");
+        let repeated = socket_call(
+            &mut app,
+            "editor_set_text",
+            json!({"text":"overwritten","expected_context_revision":before["context_revision"]}),
+        );
+        assert_eq!(repeated["error_code"], "stale_context");
+        assert_eq!(app.initial_text, "hello from OMP");
+        let opened = socket_call(
+            &mut app,
+            "editor_open_glyph",
+            json!({"glyph":"e","expected_document_epoch":before["document_epoch"]}),
+        );
+        assert_eq!(opened["context"]["glyph"], "e");
+        assert_eq!(opened["context"]["tool"], "text");
+        assert_eq!(opened["context"]["text"]["editor"], "hello from OMP");
+        assert_eq!(app.active_tab, tab);
+        assert_eq!(app.text_context_id(), text_id);
+        assert_eq!(app.font.project.document_revision(), revision);
+        assert!(!path.exists());
     }
 
     #[test]

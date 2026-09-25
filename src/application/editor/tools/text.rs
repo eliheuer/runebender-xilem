@@ -171,6 +171,14 @@ impl TextInputs {
     pub(crate) fn same_context(&self, other: &Self) -> bool {
         self.context_id == other.context_id
     }
+    /// The app changed the line independently of the widget's own typing.
+    pub(crate) fn replaced_text(&self, previous: &Self) -> bool {
+        self.initial != previous.initial
+    }
+
+    pub(crate) fn initial_text(&self) -> &str {
+        &self.initial
+    }
 
     /// Set the writing direction, or clear it back to automatic.
     pub(crate) fn with_direction(mut self, direction: Option<TextDirection>) -> Self {
@@ -283,14 +291,11 @@ impl TextState {
                 Some(index) => {
                     buffer.activate_sort(index);
                 }
-                None => {
-                    // A glyph need not have Unicode. Seed it explicitly, as
-                    // GPUI does, so taking the Text tool never blanks the glyph
-                    // that was already open. If a different line had been
-                    // parked here, it cannot provide an active edit target.
-                    buffer.clear();
+                None if buffer.is_empty() => {
+                    // An empty line still needs the open glyph as an edit target.
                     buffer.insert_glyph(name.clone(), *codepoint, *advance);
                 }
+                None => {} // Preserve a supplied line without the open glyph.
             }
         }
         buffer.shape_arabic_if_rtl();
@@ -591,12 +596,8 @@ mod tests {
 
         inputs.initial = "A".into();
         let state = TextState::new(&inputs);
-        assert_eq!(
-            state.buffer.sort(0).unwrap().glyph_name(),
-            Some("five"),
-            "a parked line without the open glyph resets to its edit target"
-        );
-        assert_eq!(state.buffer.active_sort(), Some(0));
+        assert_eq!(state.buffer.text(), "A", "a supplied line is not discarded");
+        assert_eq!(state.buffer.sort(0).unwrap().glyph_name(), Some("A"));
     }
 
     #[test]

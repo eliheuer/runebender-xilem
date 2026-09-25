@@ -229,18 +229,29 @@ fn text_sort_metric_ys(metrics: &crate::application::editor::session::Metrics) -
     ys
 }
 
-/// The reduced set used for the inward corner marks in Text mode.
-fn text_sort_corner_ys(metrics: &crate::application::editor::session::Metrics) -> Vec<f64> {
-    let mut ys = vec![
-        metrics.descender,
-        0.0,
-        metrics.ascender,
-        metrics.upm.max(metrics.ascender),
-    ];
-    ys.retain(|y| y.is_finite());
-    ys.sort_by(f64::total_cmp);
-    ys.dedup_by(|a, b| (*a - *b).abs() < 0.001);
-    ys
+/// Draw one dark cross at each intersection of a sort edge and metric line.
+/// Paint these after the quiet metric rules so neighbouring sorts cannot cover them.
+fn paint_metric_crosses(
+    painter: &mut Painter<'_>,
+    xs: [f64; 2],
+    ys: impl Clone + Iterator<Item = f64>,
+    mark: f64,
+    color: xilem::Color,
+) {
+    if mark < 3.0 {
+        return;
+    }
+    let rule = Stroke::new(DesignStroke::Hairline.px());
+    for x in xs {
+        for y in ys.clone() {
+            painter
+                .stroke(Line::new((x - mark, y), (x + mark, y)), &rule, color)
+                .draw();
+            painter
+                .stroke(Line::new((x, y - mark), (x, y + mark)), &rule, color)
+                .draw();
+        }
+    }
 }
 
 /// Context-menu items: (label, op). Op returns whether the glyph changed.
@@ -1008,9 +1019,10 @@ impl Widget for EditorWidget {
             let sort_bottom = m.descender;
             let sort_height_px = ((sort_top - sort_bottom) * self.session.viewport.zoom).abs();
             let mark = (sort_height_px * 0.05).clamp(1.5, 24.0);
-            let marks_visible = mark >= 3.0;
+            let metric_ys = text_sort_metric_ys(m);
+            let mut placed = text.placed();
             let rule = Stroke::new(DesignStroke::Hairline.px());
-            for sort in text.placed() {
+            for sort in &mut placed {
                 let box_ = Rect::from_points(
                     view_affine * Point::new(sort.origin.x, sort_bottom + sort.origin.y),
                     view_affine
@@ -1021,64 +1033,42 @@ impl Widget for EditorWidget {
                         .fill(box_, pal.role("selection").with_alpha(0.32))
                         .draw();
                 }
-                if marks_visible {
-                    // As in GPUI and Web, inactive sorts get complete quiet
-                    // metric boxes. The active sort keeps only the corner
-                    // ticks, so its neighbours cannot paint grey over it.
-                    if !sort.active {
-                        let quiet = pal.role("metricQuiet");
-                        for x in [box_.x0, box_.x1] {
-                            painter
-                                .stroke(Line::new((x, box_.y0), (x, box_.y1)), &rule, quiet)
-                                .draw();
-                        }
-                        for y in text_sort_metric_ys(m) {
-                            let sy = (view_affine * Point::new(sort.origin.x, sort.origin.y + y)).y;
-                            painter
-                                .stroke(Line::new((box_.x0, sy), (box_.x1, sy)), &rule, quiet)
-                                .draw();
-                        }
+                if mark >= 3.0 && !sort.active {
+                    let quiet = pal.role("metricQuiet");
+                    for x in [box_.x0, box_.x1] {
+                        painter
+                            .stroke(Line::new((x, box_.y0), (x, box_.y1)), &rule, quiet)
+                            .draw();
                     }
-
-                    // The complete boxes stay quiet mid-gray; the corner marks
-                    // use the same dark hairline as panel edges. A single
-                    // stroke keeps shared sort intersections from building up
-                    // the awkward overlaps produced by a cased color line.
-                    if !sort.active || self.tool == Tool::Text {
-                        let guide = pal.outline;
-                        for x in [box_.x0, box_.x1] {
-                            for y in text_sort_corner_ys(m) {
-                                let center =
-                                    view_affine * Point::new(sort.origin.x, sort.origin.y + y);
-                                let center = Point::new(x, center.y);
-                                let x0 = (center.x - mark).max(box_.x0);
-                                let x1 = (center.x + mark).min(box_.x1);
-                                if x1 > x0 {
-                                    painter
-                                        .stroke(
-                                            Line::new((x0, center.y), (x1, center.y)),
-                                            &rule,
-                                            guide,
-                                        )
-                                        .draw();
-                                }
-                                let y0 = (center.y - mark).max(box_.y0);
-                                let y1 = (center.y + mark).min(box_.y1);
-                                if y1 > y0 {
-                                    painter
-                                        .stroke(
-                                            Line::new((center.x, y0), (center.x, y1)),
-                                            &rule,
-                                            guide,
-                                        )
-                                        .draw();
-                                }
-                            }
-                        }
+                    for &y in &metric_ys {
+                        let sy = (view_affine * Point::new(sort.origin.x, sort.origin.y + y)).y;
+                        painter
+                            .stroke(Line::new((box_.x0, sy), (box_.x1, sy)), &rule, quiet)
+                            .draw();
                     }
                 }
                 if !sort.active || self.tool == Tool::Text {
-                    painter.fill(&(view_affine * sort.path), ink).draw();
+                    painter
+                        .fill(&(view_affine * std::mem::take(&mut sort.path)), ink)
+                        .draw();
+                }
+            }
+            // Draw crosses over every sort's quiet rules, including shared
+            // boundaries. The active sort's marks go last when Text owns it;
+            // outline tools draw them with the active glyph frame below.
+            if mark >= 3.0 {
+                for sort in placed.iter().filter(|sort| !sort.active).chain(
+                    placed
+                        .iter()
+                        .filter(|sort| sort.active && self.tool == Tool::Text),
+                ) {
+                    let x0 = (view_affine * sort.origin).x;
+                    let x1 =
+                        (view_affine * Point::new(sort.origin.x + sort.advance, sort.origin.y)).x;
+                    let ys = metric_ys
+                        .iter()
+                        .map(|&y| (view_affine * Point::new(sort.origin.x, sort.origin.y + y)).y);
+                    paint_metric_crosses(painter, [x0, x1], ys, mark, pal.outline);
                 }
             }
             if self.tool == Tool::Text && self.cursor_visible {
@@ -1254,18 +1244,8 @@ impl Widget for EditorWidget {
         let box_top = m.upm.max(m.ascender);
         let x0 = (affine * Point::new(0.0, 0.0)).x;
         let x1 = (affine * Point::new(self.session.advance(), 0.0)).x;
-        let mut levels = vec![
-            0.0,
-            m.upm,
-            m.ascender,
-            m.descender,
-            m.x_height,
-            m.cap_height,
-        ];
-        levels.retain(|y| y.is_finite());
-        levels.sort_by(f64::total_cmp);
-        levels.dedup_by(|a, b| (*a - *b).abs() < 0.001);
-        for y in levels {
+        let levels = text_sort_metric_ys(m);
+        for &y in &levels {
             let sy = (affine * Point::new(0.0, y)).y;
             painter.fill_rect(horizontal_rule_rect(x0, x1, sy, rule), frame);
         }
@@ -1274,6 +1254,15 @@ impl Widget for EditorWidget {
         for x in [x0, x1] {
             painter.fill_rect(vertical_rule_rect(x, top, bottom, rule), frame);
         }
+        let mark =
+            (((box_top - m.descender) * self.session.viewport.zoom).abs() * 0.05).clamp(1.5, 24.0);
+        paint_metric_crosses(
+            painter,
+            [x0, x1],
+            levels.iter().map(|&y| (affine * Point::new(0.0, y)).y),
+            mark,
+            pal.outline,
+        );
 
         // Editing affordances only render on a master. Off a master the view
         // shows the read-only interpolated instance instead (web/Glyphs
@@ -2866,6 +2855,18 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
                     element.widget.fit_text();
                     element.ctx.request_layout();
                 }
+                // A live client can replace the line without a widget input event.
+                // Ordinary typing already changed the widget buffer, so do not
+                // reconstruct it (and lose its caret) when the app catches up.
+                (Some(inputs), Some(state))
+                    if element.widget.text_inputs.as_ref().is_some_and(|old| {
+                        inputs.replaced_text(old) && state.buffer.text() != inputs.initial_text()
+                    }) =>
+                {
+                    *state = crate::application::editor::tools::text::TextState::new(inputs);
+                    element.widget.fit_text();
+                    element.ctx.request_layout();
+                }
                 // Same tool, new master or edited glyph: keep what has
                 // been typed and re-read the metrics.
                 (Some(inputs), Some(state)) => state.refresh(inputs),
@@ -3451,21 +3452,17 @@ mod tests {
     }
 
     #[test]
-    fn text_sort_metric_heights_match_the_web_renderer() {
+    fn coincident_metric_heights_have_one_intersection() {
         let metrics = crate::application::editor::session::Metrics {
-            upm: 1000.0,
+            upm: 750.0,
             ascender: 750.0,
             descender: -250.0,
             x_height: 500.0,
-            cap_height: 700.0,
+            cap_height: 500.0,
         };
         assert_eq!(
             text_sort_metric_ys(&metrics),
-            vec![-250.0, 0.0, 500.0, 700.0, 750.0, 1000.0]
-        );
-        assert_eq!(
-            text_sort_corner_ys(&metrics),
-            vec![-250.0, 0.0, 750.0, 1000.0]
+            vec![-250.0, 0.0, 500.0, 750.0]
         );
     }
 

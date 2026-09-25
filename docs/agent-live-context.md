@@ -28,7 +28,7 @@ Call `editor_context` with an empty object or the optional epoch guard.
 The result includes:
 
 - `document_revision`: the canonical Project revision at capture.
-- `context_revision`: SHA-256 of the serialized context, for equality comparisons, not a monotonic counter or an accepted write precondition.
+- `context_revision`: SHA-256 of the serialized context, for equality comparisons and the `editor_set_text` write precondition, not a monotonic counter.
   The context includes the exact socket document epoch, so identical font and UI values in a replacement lifetime produce a different context revision.
 - `context.source_id`, `glyph_id`, `glyph`, `layer`, `mode`, `tab_id`, and `tool`.
 - `context.selection`: point, component, anchor, and overview glyph identities.
@@ -52,6 +52,12 @@ It follows text-sort activation: the tab identity, editor and preview text, acti
 It rejects an unknown glyph or an active canvas gesture and never edits or saves font data.
 The response includes the resulting coherent application context, `previous_glyph`, and whether the active glyph changed.
 An engine-only host returns `unsupported_context` because it has no application session to navigate.
+
+Call `editor_set_text` with `text` and the `expected_context_revision` from a fresh `editor_context` result.
+It switches the active glyph tab to the Text tool and replaces that tab's editor line without editing or saving font data; use `editor_open_glyph` afterward to choose the active sort.
+It rejects a changed context, an active canvas gesture, or a tab that is not editing a glyph; the line is limited to 4096 characters.
+The response includes the resulting context and whether the tool or line changed.
+An engine-only host returns `unsupported_context`.
 
 ## Canonical glyph reads
 

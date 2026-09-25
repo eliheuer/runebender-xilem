@@ -85,6 +85,14 @@ pub fn tools() -> Vec<agent::Tool> {
         }, "required":["glyph"], "additionalProperties":false}),
     });
     result.push(agent::Tool {
+        name: "editor_set_text".into(),
+        description: "Switch the active glyph tab to the Text tool and replace its editor line with the supplied text. Requires the context revision read immediately beforehand, rejects an active canvas gesture, and never edits or saves font data. Use editor_open_glyph separately to choose the active glyph.".into(),
+        parameters: json!({"type":"object", "properties":{
+            "text":{"type":"string","maxLength":4096},
+            "expected_context_revision":{"type":"string"}
+        }, "required":["text","expected_context_revision"], "additionalProperties":false}),
+    });
+    result.push(agent::Tool {
         name: "glyph_inventory".into(),
         description: "Find live glyphs by mark label or Unicode scalar before selecting references and targets. Returns names, encoding, empty status and revisions. Green is a reference only when the project says so. Uses the dark theme to interpret legacy mark colors.".into(),
         parameters: json!({"type":"object", "properties": {
@@ -174,6 +182,7 @@ pub fn tools() -> Vec<agent::Tool> {
             tool.name.as_str(),
             "editor_context"
                 | "editor_open_glyph"
+                | "editor_set_text"
                 | "design_context"
                 | "project_info"
                 | "experiment_list"
@@ -226,7 +235,10 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
     if object.contains_key("expected_document_epoch") {
         return Err("document epoch guards require the live socket session boundary".into());
     }
-    if matches!(name, "editor_context" | "editor_open_glyph") {
+    if matches!(
+        name,
+        "editor_context" | "editor_open_glyph" | "editor_set_text"
+    ) {
         return Ok(
             json!({"ok":false,"error":"application context is unavailable in this host", "error_code":"unsupported_context"}),
         );
