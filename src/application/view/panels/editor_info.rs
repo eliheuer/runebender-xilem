@@ -147,7 +147,9 @@ pub(crate) fn dimensions_section(app: &Workspace) -> impl WidgetView<Workspace> 
                 return None;
             }
             Some(
-                xrow(
+                // Fix the state before collecting rows. Inferring it through the
+                // nested section makes rustc explore an enormous trait graph.
+                xrow::<Workspace, (), _>(
                     Region::Inline,
                     (
                         sized_box(label(*name).text_size(TextSize::Body.px()).color(pal.text))

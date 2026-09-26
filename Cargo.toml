@@ -117,8 +117,8 @@ fontdrasil = "=1.0.0"
 fontc = { version = "=1.0.0", default-features = false }
 kurbo = "0.13"
 linesweeper = "0.4"
-# Reads compiled TTF/OTF outlines.
-skrifa = "0.44"
+# Share the outline reader already used by Babelfont's compiler adapters.
+skrifa = "0.46.2"
 # Imports Glyphs sources and traces images into editable outlines.
 glyphslib = "0.2.7"
 img2bez = { git = "https://github.com/eliheuer/img2bez", rev = "80bdb2e6d0226449a5e9bf05a49b3339276020c8", default-features = false }
@@ -135,9 +135,10 @@ serde_json = "1"
 unicode-general-category = "0.6"
 unicode-normalization = "0.1"
 unicode-bidi = { version = "0.3.18", default-features = false, features = ["hardcoded-data"] }
-fea-rs = "0.22"
+# Keep shaping's feature compiler and table writer aligned with fontc 1.0.
+fea-rs = "=1.0.0"
 harfrust = "0.5"
-write-fonts = "0.44"
+write-fonts = "0.52"
 # The hyperbezier solver still uses spline's Kurbo 0.9 API.
 kurbo_09 = { package = "kurbo", version = "0.9.5" }
 spline = { git = "https://github.com/linebender/spline", rev = "83f46cbfebb1f5d6042059c867719c0010073d42" }

@@ -88,6 +88,11 @@ targets hard to aim at.
 **One unusually clever control.** Local novelty costs more than it saves in a
 dense editor.
 
+**Ambiguous layout state.**
+Data-only rows need an explicit state type before they pass through iterator collection or boxed lists.
+Use `xrow::<Workspace, (), _>` at that boundary rather than making the compiler infer the state through the whole enclosing view.
+The Dimensions section previously spent tens of seconds and several gigabytes on that inference alone; this annotation preserves the concrete widget tree.
+
 ## Visual verification
 
 Render the actual application widget tree headlessly in Gray and Light:

@@ -546,7 +546,7 @@ dependencies = [
  "fea-rs-ast",
  "fontbe",
  "fontc",
- "fontdrasil 1.0.0",
+ "fontdrasil",
  "fontir",
  "glyphslib",
  "indexmap 2.14.0",
@@ -566,7 +566,7 @@ dependencies = [
  "typeshare",
  "unicode-normalization",
  "uuid",
- "write-fonts 0.52.0",
+ "write-fonts",
 ]
 
 [[package]]
@@ -1412,29 +1412,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "env_filter"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "900d271a03799a1ee8d1ca9b19893b48ca674a9284fefcfb85f05e74ed314217"
-dependencies = [
- "log",
- "regex",
-]
-
-[[package]]
-name = "env_logger"
-version = "0.11.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de671bd27a75a797dc9ae289ba1e77276e75e2026408aab65185384e2d5cd3f6"
-dependencies = [
- "anstream",
- "anstyle",
- "env_filter",
- "jiff",
- "log",
-]
-
-[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1502,36 +1479,19 @@ dependencies = [
 
 [[package]]
 name = "fea-rs"
-version = "0.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6acd5f994d5b0a5945942bd7db366873ab4304143b37c7e4008283475c87a1a"
-dependencies = [
- "ansi_term",
- "env_logger",
- "fontdrasil 0.4.0",
- "indexmap 2.14.0",
- "log",
- "ordered-float",
- "smol_str 0.3.6",
- "thiserror 2.0.20",
- "write-fonts 0.44.1",
-]
-
-[[package]]
-name = "fea-rs"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5709503cad4c8bd7092135f9c2e2ac077c3649f0fd128c924bf3bd666ff24f32"
 dependencies = [
  "ansi_term",
- "fontdrasil 1.0.0",
+ "fontdrasil",
  "indexmap 2.14.0",
  "log",
  "ordered-float",
  "smol_str 0.3.6",
  "thiserror 2.0.20",
  "tracing-subscriber",
- "write-fonts 0.52.0",
+ "write-fonts",
 ]
 
 [[package]]
@@ -1540,7 +1500,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9381e48cfcc6efc4e3a23bf2899b748a85d66c83919af98a3e92df1abde6822"
 dependencies = [
- "fea-rs 1.0.0",
+ "fea-rs",
  "indexmap 2.14.0",
  "itertools 0.14.0",
  "log",
@@ -1612,7 +1572,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39a654f404bbcbd48ea58c617c2993ee91d1cb63727a37bf2323a4edeed1b8c5"
 dependencies = [
  "bytemuck",
- "serde",
 ]
 
 [[package]]
@@ -1641,8 +1600,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "03171a4406bc135c3bb621baf18377dbc6bc9cef227cf52579969848841ec50d"
 dependencies = [
  "chrono",
- "fea-rs 1.0.0",
- "fontdrasil 1.0.0",
+ "fea-rs",
+ "fontdrasil",
  "fontir",
  "icu_properties",
  "indexmap 2.14.0",
@@ -1654,7 +1613,7 @@ dependencies = [
  "thiserror 2.0.20",
  "tinystr",
  "tracing",
- "write-fonts 0.52.0",
+ "write-fonts",
 ]
 
 [[package]]
@@ -1667,7 +1626,7 @@ dependencies = [
  "chrono",
  "crossbeam-channel",
  "fontbe",
- "fontdrasil 1.0.0",
+ "fontdrasil",
  "fontir",
  "fontra2fontir",
  "glyphs2fontir",
@@ -1682,7 +1641,7 @@ dependencies = [
  "tracing-subscriber",
  "ufo2fontir",
  "vergen-gitcl",
- "write-fonts 0.52.0",
+ "write-fonts",
 ]
 
 [[package]]
@@ -1710,22 +1669,6 @@ dependencies = [
 
 [[package]]
 name = "fontdrasil"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa3a7a2fbc9d1817cd07298326376c8bd39868efe7c6149090c4fafea95eaf34"
-dependencies = [
- "env_logger",
- "kurbo 0.12.0",
- "log",
- "ordered-float",
- "serde",
- "smol_str 0.3.6",
- "thiserror 2.0.20",
- "write-fonts 0.44.1",
-]
-
-[[package]]
-name = "fontdrasil"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f91acc7fba7639e042ba0b65ade604406921bff9b3304a722145ee707f4741e5"
@@ -1736,7 +1679,7 @@ dependencies = [
  "serde",
  "smol_str 0.3.6",
  "thiserror 2.0.20",
- "write-fonts 0.52.0",
+ "write-fonts",
 ]
 
 [[package]]
@@ -1769,7 +1712,7 @@ checksum = "0c5acafe4b0e9d4387e32d897e71b381f467a79d6dd2d11e6cc08b9eb58b7146"
 dependencies = [
  "bitflags 2.13.1",
  "chrono",
- "fontdrasil 1.0.0",
+ "fontdrasil",
  "indexmap 2.14.0",
  "kurbo 0.13.1",
  "log",
@@ -1780,7 +1723,7 @@ dependencies = [
  "smol_str 0.3.6",
  "thiserror 2.0.20",
  "tracing",
- "write-fonts 0.52.0",
+ "write-fonts",
 ]
 
 [[package]]
@@ -1789,7 +1732,7 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8700197ae0afc758f772596688476f073b8665d741bf8055a52d4692a7ce6bcd"
 dependencies = [
- "fontdrasil 1.0.0",
+ "fontdrasil",
  "fontir",
  "indexmap 2.14.0",
  "kurbo 0.13.1",
@@ -1800,7 +1743,7 @@ dependencies = [
  "smol_str 0.3.6",
  "thiserror 2.0.20",
  "tracing",
- "write-fonts 0.52.0",
+ "write-fonts",
 ]
 
 [[package]]
@@ -2174,7 +2117,7 @@ checksum = "fc761eae19b2c55df85b6632af7464076431f180b80758fc53359169180adc58"
 dependencies = [
  "ascii_plist_derive",
  "chrono",
- "fontdrasil 1.0.0",
+ "fontdrasil",
  "icu_properties",
  "indexmap 2.14.0",
  "kurbo 0.13.1",
@@ -2185,7 +2128,7 @@ dependencies = [
  "serde",
  "smol_str 0.3.6",
  "thiserror 2.0.20",
- "write-fonts 0.52.0",
+ "write-fonts",
 ]
 
 [[package]]
@@ -2195,7 +2138,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c56b44891d7b9d29d876687b0ebd0f897b4b1b20087971bc66eae611fe4b9c49"
 dependencies = [
  "chrono",
- "fontdrasil 1.0.0",
+ "fontdrasil",
  "fontir",
  "glyphs-reader",
  "indexmap 2.14.0",
@@ -2205,7 +2148,7 @@ dependencies = [
  "smol_str 0.3.6",
  "thiserror 2.0.20",
  "tracing",
- "write-fonts 0.52.0",
+ "write-fonts",
 ]
 
 [[package]]
@@ -2952,18 +2895,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd85a5776cd9500c2e2059c8c76c3b01528566b7fcbaf8098b55a33fc298849b"
 dependencies = [
  "arrayvec",
-]
-
-[[package]]
-name = "kurbo"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce9729cc38c18d86123ab736fd2e7151763ba226ac2490ec092d1dd148825e32"
-dependencies = [
- "arrayvec",
- "euclid",
- "serde",
- "smallvec",
 ]
 
 [[package]]
@@ -4431,7 +4362,6 @@ checksum = "5eaa2941a4c05443ee3a7b26ab076a553c343ad5995230cc2b1d3e993bdc6345"
 dependencies = [
  "bytemuck",
  "font-types 0.10.1",
- "serde",
 ]
 
 [[package]]
@@ -4443,17 +4373,6 @@ dependencies = [
  "bytemuck",
  "core_maths",
  "font-types 0.11.3",
-]
-
-[[package]]
-name = "read-fonts"
-version = "0.41.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "046a7d674daf459825b32f5062056d6882db0d2f5a479fbd76ccfc870ac18709"
-dependencies = [
- "bytemuck",
- "font-types 0.12.4",
- "once_cell",
 ]
 
 [[package]]
@@ -4623,9 +4542,9 @@ dependencies = [
  "base64",
  "clap",
  "copypasta",
- "fea-rs 0.22.0",
+ "fea-rs",
  "fontc",
- "fontdrasil 1.0.0",
+ "fontdrasil",
  "glyphslib",
  "harfrust",
  "image",
@@ -4647,7 +4566,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "skrifa 0.44.0",
+ "skrifa 0.46.2",
  "spline",
  "syn 2.0.119",
  "tokio",
@@ -4655,7 +4574,7 @@ dependencies = [
  "unicode-general-category",
  "unicode-normalization",
  "winit",
- "write-fonts 0.44.1",
+ "write-fonts",
  "xilem",
 ]
 
@@ -5065,16 +4984,6 @@ dependencies = [
 
 [[package]]
 name = "skrifa"
-version = "0.44.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "819ab7d62b1d3e72d9d9dea5650bac30424f9111364bb94928dbf5ecad1baa68"
-dependencies = [
- "bytemuck",
- "read-fonts 0.41.0",
-]
-
-[[package]]
-name = "skrifa"
 version = "0.46.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4febebda507fb889c545a37a135517769d1391941013561292897961d1887d6"
@@ -5222,7 +5131,7 @@ version = "0.1.0"
 source = "git+https://github.com/simoncozens/babelfont-rs?rev=29bdedbbfa7d3150b651dbd7c94fce6b79677ca4#29bdedbbfa7d3150b651dbd7c94fce6b79677ca4"
 dependencies = [
  "fea-rs-ast",
- "fontdrasil 1.0.0",
+ "fontdrasil",
  "indexmap 2.14.0",
  "skrifa 0.46.2",
  "smol_str 0.3.6",
@@ -5801,8 +5710,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b3d21e91fd555e837143615deeb782c64a52b678f236a1a1ced65bd10c250949"
 dependencies = [
  "chrono",
- "fea-rs 1.0.0",
- "fontdrasil 1.0.0",
+ "fea-rs",
+ "fontdrasil",
  "fontir",
  "glyphs-reader",
  "indexmap 2.14.0",
@@ -5816,7 +5725,7 @@ dependencies = [
  "smol_str 0.3.6",
  "thiserror 2.0.20",
  "tracing",
- "write-fonts 0.52.0",
+ "write-fonts",
 ]
 
 [[package]]
@@ -6900,20 +6809,6 @@ name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
-
-[[package]]
-name = "write-fonts"
-version = "0.44.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "187aca250ee00f9d9ad3a1ebc9ed65c9c921fdd4690b095ca6e5a8df7246d871"
-dependencies = [
- "font-types 0.10.1",
- "indexmap 2.14.0",
- "kurbo 0.12.0",
- "log",
- "read-fonts 0.36.0",
- "serde",
-]
 
 [[package]]
 name = "write-fonts"

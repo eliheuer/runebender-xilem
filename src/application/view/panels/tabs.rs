@@ -760,7 +760,8 @@ fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         .collect();
 
     let total = |name: &'static str, value: usize| {
-        sized_box(xrow(
+        // Resolve the row's state here rather than through the boxed filter list.
+        sized_box(xrow::<Workspace, (), _>(
             Region::Inline,
             (
                 label(name).text_size(TextSize::Body.px()).color(pal.text),

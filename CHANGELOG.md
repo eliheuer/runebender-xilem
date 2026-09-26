@@ -10,6 +10,11 @@ No release has been published yet.
 
 ### Changed
 
+- Application-only edits no longer invalidate the font library through the Windows stack-size build script.
+
+- Explicit state types in Dimensions and sidebar rows reduce compiler inference work without changing their widgets.
+  Shaping and binary import reuse the font compiler's existing feature compiler, table writer, and outline reader versions.
+
 - The edit inspector now shows the active glyph's live outline and points beneath its controls, matching the overview preview.
 
 - Sort metric intersections now use dark crosshairs at every metric height, including the active glyph and shared sort boundaries.

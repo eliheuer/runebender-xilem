@@ -12,25 +12,25 @@ use std::path::{Path, PathBuf};
 use syn::visit::Visit as _;
 
 const ALLOWED_BOUNDARIES: &[&str] = &[
-    "font/filesystem.rs",
-    "font/font_memory.rs",
     "font/model/designspace.rs",
     "font/model/font_info.rs",
     "font/model/glyph_metadata.rs",
+    "font/persistence/memory.rs",
+    "font/persistence/mod.rs",
+    "font/persistence/source_format.rs",
+    "font/persistence/ufo_codec.rs",
     "font/project/constructors.rs",
     "font/project/save_as.rs",
     "font/source.rs",
-    "font/source_format.rs",
-    "font/ufo_codec.rs",
     "formats/babelfont_import.rs",
     "formats/binary_import.rs",
     "formats/color_font.rs",
     "formats/designspace.rs",
     "formats/glyphs_import.rs",
     "formats/image_trace.rs",
-    "formats/lib_keys.rs",
-    "formats/metaballs.rs",
-    "formats/metrics_keys.rs",
+    "formats/metadata/lib_keys.rs",
+    "formats/metadata/metaballs.rs",
+    "formats/metadata/metrics_keys.rs",
     "formats/proposal_ufo.rs",
     "formats/svg.rs",
     "formats/ufo.rs",
@@ -335,6 +335,12 @@ fn production_forbidden_compatibility_items(source: &str) -> Vec<String> {
 #[test]
 fn production_norad_is_confined_to_reviewed_boundaries() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    for boundary in ALLOWED_BOUNDARIES {
+        assert!(
+            root.join(boundary).is_file(),
+            "reviewed codec boundary no longer exists: {boundary}"
+        );
+    }
     let mut files = Vec::new();
     rust_files(&root, &mut files);
     files.sort();

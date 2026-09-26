@@ -116,7 +116,7 @@ impl ShapingFont {
         let names = (0..count)
             .map(|id| {
                 glyph_names
-                    .get(skrifa::GlyphId::new(u32::from(id)))
+                    .get(GlyphId::new(u32::from(id)))
                     .map(|name| name.to_string())
                     .ok_or_else(|| format!("compiled font has no name for glyph {id}"))
             })
@@ -161,7 +161,8 @@ impl ShapingFont {
         };
 
         let names: Vec<String> = source.glyphs.iter().map(|g| g.name.clone()).collect();
-        let glyph_map: GlyphMap = names.iter().map(|name| name.as_str()).collect();
+        let glyph_map = GlyphMap::new(names.iter().map(String::as_str))
+            .map_err(|error| format!("glyph order: {error}"))?;
 
         let compilation =
             Compiler::<NopFeatureProvider, NopVariationInfo>::new(FEA_ROOT, &glyph_map)
