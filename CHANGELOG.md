@@ -10,6 +10,8 @@ No release has been published yet.
 
 ### Changed
 
+- Unfiltered glyph views reuse their existing cell list, and sidebar searches and coverage counts avoid repeated temporary allocations.
+
 - Application-only edits no longer invalidate the font library through the Windows stack-size build script.
 
 - Explicit state types in Dimensions and sidebar rows reduce compiler inference work without changing their widgets.

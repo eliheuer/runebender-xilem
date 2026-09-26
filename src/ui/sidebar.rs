@@ -631,11 +631,14 @@ pub fn glyph_matches_character_filter(
     if codepoints.is_empty() {
         return false;
     }
-    if !filter.targets.is_empty() {
-        let targets: HashSet<u32> = filter.targets.iter().map(|t| t.unicode).collect();
-        if codepoints.iter().any(|cp| targets.contains(cp)) {
-            return true;
-        }
+    // A glyph usually has one codepoint. Scan the targets without rebuilding
+    // an entire membership set for every glyph in a coverage count.
+    if filter
+        .targets
+        .iter()
+        .any(|target| codepoints.contains(&target.unicode))
+    {
+        return true;
     }
     if !filter.ranges.is_empty() {
         return codepoints.iter().any(|cp| {
@@ -803,6 +806,30 @@ mod tests {
             .iter()
             .filter(|(name, cps)| glyph_matches_character_filter(name, cps, filter))
             .count()
+    }
+
+    #[test]
+    fn character_filter_matches_any_codepoint_and_keeps_name_and_range_fallbacks() {
+        let filter = CharacterFilter {
+            id: "test".into(),
+            label: "Test".into(),
+            glyph_names: vec!["named".into()],
+            targets: vec![GlyphTarget {
+                name: "A".into(),
+                unicode: 0x41,
+            }],
+            ranges: vec![(0x30, 0x39)],
+            expected_count: None,
+        };
+        assert!(glyph_matches_character_filter(
+            "renamed",
+            &[0x42, 0x41],
+            &filter
+        ));
+        assert!(glyph_matches_character_filter("named", &[], &filter));
+        assert!(glyph_matches_character_filter("digit", &[0x35], &filter));
+        assert!(!glyph_matches_character_filter("missing", &[0x42], &filter));
+        assert!(!glyph_matches_character_filter("A", &[], &filter));
     }
 
     #[test]

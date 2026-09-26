@@ -16,11 +16,23 @@ impl Workspace {
     /// toggles beside the search box set the scope (name, unicode, both)
     /// and whether the match is case-sensitive.
     pub(crate) fn filtered_cells(&self) -> Arc<Vec<Cell>> {
+        // The common unfiltered view can share the existing immutable cells.
+        // This also lets the grid skip comparing an unchanged cell list.
+        if self.filter.is_empty()
+            && self.sel == Sel::Category(GlyphCategory::All)
+            && self.sort == Sort::Name
+        {
+            return self.cells.clone();
+        }
         let q = if self.search_case {
             self.filter.clone()
         } else {
             self.filter.to_lowercase()
         };
+        let unicode_query = q.to_lowercase();
+        let unicode_query = unicode_query
+            .trim_start_matches("u+")
+            .trim_start_matches("0x");
         let by_name = self.search_mode != 2;
         let by_unicode = self.search_mode != 1;
         let re = self
@@ -31,25 +43,25 @@ impl Workspace {
             .cells
             .iter()
             .filter(|c| {
-                let cat_ok = self.cell_matches_sel(c.index);
+                if !self.cell_matches_sel(c.index) {
+                    return false;
+                }
+                if q.is_empty() {
+                    return true;
+                }
                 let name_hit = by_name
                     && match re {
                         Some(re) => re.is_match(&c.name),
                         None if self.search_case => c.name.contains(&q),
                         None => c.name.to_lowercase().contains(&q),
                     };
-                let uni_hit = by_unicode
+                if name_hit {
+                    return true;
+                }
+                by_unicode
                     && c.codepoint
-                        .map(|cp| {
-                            format!("{:04x}", cp as u32).contains(
-                                q.to_lowercase()
-                                    .trim_start_matches("u+")
-                                    .trim_start_matches("0x"),
-                            )
-                        })
-                        .unwrap_or(false);
-                let q_ok = q.is_empty() || name_hit || uni_hit;
-                cat_ok && q_ok
+                        .map(|cp| format!("{:04x}", cp as u32).contains(unicode_query))
+                        .unwrap_or(false)
             })
             .cloned()
             .collect();
@@ -64,8 +76,8 @@ impl Workspace {
     }
 
     /// Codepoints of a glyph entry (the cache keeps only the first).
-    pub(crate) fn entry_codepoints(entry: &model::GlyphEntry) -> Vec<u32> {
-        entry.codepoint.map(|c| vec![c as u32]).unwrap_or_default()
+    pub(crate) fn entry_codepoints(entry: &model::GlyphEntry) -> Option<u32> {
+        entry.codepoint.map(u32::from)
     }
 
     /// Does the glyph at `index` pass the active sidebar selection?
@@ -77,7 +89,11 @@ impl Workspace {
             Sel::Category(cat) => entry.category == cat,
             Sel::Subfilter(cat, sub) => {
                 entry.category == cat
-                    && sb::glyph_matches_subfilter(&entry.name, &Self::entry_codepoints(entry), sub)
+                    && sb::glyph_matches_subfilter(
+                        &entry.name,
+                        Self::entry_codepoints(entry).as_slice(),
+                        sub,
+                    )
             }
             Sel::LanguageFilter(gi, fi) => sb::language_groups()
                 .get(gi)
@@ -85,7 +101,7 @@ impl Workspace {
                 .map(|f| {
                     sb::glyph_matches_character_filter(
                         &entry.name,
-                        &Self::entry_codepoints(entry),
+                        Self::entry_codepoints(entry).as_slice(),
                         f,
                     )
                 })
@@ -93,7 +109,11 @@ impl Workspace {
             Sel::Language(i) => sb::language_groups()
                 .get(i)
                 .map(|g| {
-                    sb::glyph_matches_language_group(&entry.name, &Self::entry_codepoints(entry), g)
+                    sb::glyph_matches_language_group(
+                        &entry.name,
+                        Self::entry_codepoints(entry).as_slice(),
+                        g,
+                    )
                 })
                 .unwrap_or(false),
             Sel::Filter(i) => sb::builtin_filters()
@@ -102,7 +122,7 @@ impl Workspace {
                 .map(|f| {
                     sb::glyph_matches_character_filter(
                         &entry.name,
-                        &Self::entry_codepoints(entry),
+                        Self::entry_codepoints(entry).as_slice(),
                         f,
                     )
                 })
@@ -119,7 +139,9 @@ impl Workspace {
         self.font
             .glyphs
             .iter()
-            .filter(|e| sb::glyph_matches_language_group(&e.name, &Self::entry_codepoints(e), g))
+            .filter(|e| {
+                sb::glyph_matches_language_group(&e.name, Self::entry_codepoints(e).as_slice(), g)
+            })
             .count()
     }
 
@@ -135,7 +157,9 @@ impl Workspace {
         self.font
             .glyphs
             .iter()
-            .filter(|e| sb::glyph_matches_character_filter(&e.name, &Self::entry_codepoints(e), f))
+            .filter(|e| {
+                sb::glyph_matches_character_filter(&e.name, Self::entry_codepoints(e).as_slice(), f)
+            })
             .count()
     }
 
@@ -147,7 +171,11 @@ impl Workspace {
             .iter()
             .filter(|e| {
                 e.category == cat
-                    && sb::glyph_matches_subfilter(&e.name, &Self::entry_codepoints(e), sub)
+                    && sb::glyph_matches_subfilter(
+                        &e.name,
+                        Self::entry_codepoints(e).as_slice(),
+                        sub,
+                    )
             })
             .count()
     }
@@ -166,7 +194,9 @@ impl Workspace {
             .font
             .glyphs
             .iter()
-            .filter(|e| sb::glyph_matches_character_filter(&e.name, &Self::entry_codepoints(e), f))
+            .filter(|e| {
+                sb::glyph_matches_character_filter(&e.name, Self::entry_codepoints(e).as_slice(), f)
+            })
             .count();
         (present, f.expected_count)
     }
@@ -279,5 +309,49 @@ impl Workspace {
                 .unwrap_or_default();
             self.advance_buf = format!("{}", round_units(entry.advance));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn glyph_search_preserves_scope_case_unicode_and_category() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/incompatible/Regular.ufo");
+        let mut app = Workspace::open(&path).expect("the fixture opens");
+        app.sel = Sel::Category(GlyphCategory::All);
+        app.sort = Sort::Name;
+        app.filter.clear();
+        assert!(Arc::ptr_eq(&app.filtered_cells(), &app.cells));
+        assert_eq!(app.filtered_cells().len(), 1);
+
+        app.filter = "a".into();
+        app.search_mode = 1;
+        app.search_case = false;
+        assert_eq!(app.filtered_cells().len(), 1);
+        app.search_case = true;
+        assert!(app.filtered_cells().is_empty());
+
+        app.search_mode = 2;
+        for query in ["U+0041", "0x0041"] {
+            app.filter = query.into();
+            assert_eq!(app.filtered_cells().len(), 1);
+        }
+        app.filter = "A".into();
+        assert!(app.filtered_cells().is_empty());
+        app.search_mode = 0;
+        assert_eq!(app.filtered_cells().len(), 1);
+
+        app.search_mode = 1;
+        app.search_regex = true;
+        app.filter = "^A$".into();
+        app.rebuild_search_regex();
+        assert_eq!(app.filtered_cells().len(), 1);
+        app.sel = Sel::Category(GlyphCategory::Other);
+        assert!(app.filtered_cells().is_empty());
+        app.filter.clear();
+        assert!(app.filtered_cells().is_empty());
     }
 }

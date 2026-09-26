@@ -362,7 +362,7 @@ impl GridWidget {
 
     /// Replace the display cells, resetting the viewport only when their order changes.
     ///
-    /// `filtered_cells` returns a new `Arc` on every Xilem rebuild. Pointer identity
+    /// `filtered_cells` can return a new `Arc` on a Xilem rebuild. Pointer identity
     /// therefore cannot distinguish a routine rebuild from a changed filter, and using
     /// it as that distinction made every selection update snap the grid back to the top.
     fn update_cells(&mut self, cells: Arc<Vec<Cell>>) {
