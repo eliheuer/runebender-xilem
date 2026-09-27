@@ -5,7 +5,7 @@
   "$comment": [
     "Base UI numbers progress from darkest to lightest.",
     "Glyph Grid names carry mark meaning across themes.",
-    "See themes/README.md for the complete format."
+    "See https://runebender.org/docs/themes.html for the complete format."
   ],
   "baseUi": {
     "01": "oklch(0.15 0 255)",

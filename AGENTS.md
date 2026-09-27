@@ -4,40 +4,35 @@ Runebender's native editor, headless tools, and reusable font engine live in the
 The browser host is a separate Cargo workspace under `web/` that reuses the root sources through a small compatibility package.
 Sibling repositories are not workspace members; do not modify them unless a task explicitly spans repositories.
 
+## Agent access
+
+This file is the entry point for any coding agent working in the repository.
+The root `.mcp.json` declares `runebender mcp --live`, the editor's local MCP command.
+Clients that read `.mcp.json` can use it directly; other clients can register the same command in their own settings.
+The tiny `.codex/config.toml` repeats that command so Codex can discover it automatically in a trusted checkout.
+See [MCP and the live editor](https://runebender.org/docs/mcp.html) for setup and document-selection guidance.
+No agent-specific directory is required to understand or work on this repository.
+
 Before changing Rust or documentation, read and follow the
 [Linebender formatting scheme](https://linebender.org/wiki/formatting-scheme/).
 The repository records its stable rustfmt settings in `.rustfmt.toml`, and CI verifies them.
 
 ## Architecture
 
-Read `ARCHITECTURE.md` before moving code or adding a subsystem.
-It is the canonical source map and includes a change-routing guide for humans and agents.
+Read [the architecture guide](https://runebender.org/docs/architecture.html) before moving code or adding a subsystem.
+It is the canonical source map and change-routing guide for humans and agents.
 
 The root package produces the `runebender` executable and its library target.
 A font path starts the Xilem editor; a subcommand runs headlessly before window setup.
-Modules under `src/analysis`, `src/document`, `src/formats`, `src/outline`, `src/text`, and `src/ui` contain reusable font and toolkit-independent editor behavior.
+Modules under `src/analysis`, `src/font`, `src/automation`, `src/formats`, `src/outline`, `src/text`, `src/ui`, and `src/workflows` contain reusable font and toolkit-independent editor behavior.
 
-The in-memory document is `document::project::Project`, which owns variable glyphs and source metadata.
+The in-memory document is `font::project::Project`, which owns variable glyphs and source metadata.
 Exact UFO-only values remain in private glyph-layer preservation records.
 Norad values exist only inside explicit import, export, proposal and serialization adapters.
 Use Project layer and source operations for mutations, and Project save for open documents.
-Babelfont and fontdrasil types stay behind the document adapters.
+Babelfont and fontdrasil types stay behind the font-engine adapters.
 Keep application state and platform work out of the font-engine modules.
 Keep font mutations, analysis, formats, shaping, interpolation, selection, and undo in those modules when they can be shared.
-
-| Path | Responsibility |
-|---|---|
-| `src/lib.rs` | font-engine module root |
-| `src/main.rs` | executable composition root |
-| `src/application/` | all Xilem application and runtime code |
-| `src/application/cli.rs` | arguments and headless adapters |
-| `src/application/editor/` | editing commands, sessions, and inspectors |
-| `src/application/editor/tools/` | named editor tools and tool-like workflows |
-| `src/application/platform/` | files, watching, live endpoints, and screenshots |
-| `src/application/view/` | application views and canvas widgets |
-| `src/application/widgets/` | reusable widgets missing from the framework |
-| `src/{analysis,document,formats,outline,text,ui}/` | font engine by concern |
-| `web/` | separate browser workspace for the shared widget tree |
 
 Read the module header for the area you change.
 Keep one concern per file where that remains clearer than another layer of indirection.
@@ -47,9 +42,13 @@ Keep one concern per file where that remains clearer than another layer of indir
 The root toolchain is pinned in `rust-toolchain.toml`, and primary Linux/macOS CI must use the same version with warnings denied.
 The Windows workflow is a second-class diagnostic on current stable: keep its failures visible and document support limits, but do not add platform-specific complexity unless the task is about Windows.
 
+Use focused checks while iterating on a change.
+Run the broader checks relevant to the affected code before completing the work.
+The following commands describe the full native CI suite, not a requirement for every small edit:
+
 ```sh
 cargo fmt --all --check
-bash .github/copyright.sh
+bash .github/scripts/copyright.sh
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo doc --workspace --no-deps --locked
 cargo test --workspace --locked -- --test-threads=1
@@ -69,9 +68,9 @@ Do not add local path patches to a committed Cargo configuration.
 
 ## Interface work
 
-Read `DESIGN.md` before changing a view.
+Read [the design principles](https://runebender.org/docs/design-principles.html) before changing a view.
 Use `view::theme` for colors, `view::design` for measurements, and `view::recipes` for repeated controls.
-Read `themes/README.md` before changing colors; it names the Base UI and Glyph Grid palettes and traces their tokens through the editor.
+Read [the theme guide](https://runebender.org/docs/themes.html) before changing colors; it names the Base UI and Glyph Grid palettes and traces their tokens through the editor.
 Views read workspace state; commands own intent; the font engine owns font behavior.
 
 Use the headless screenshot path for visual checks.
@@ -80,7 +79,7 @@ A headless image does not prove native pointer, IME, accessibility, or GPU behav
 Prefer headless validation; launch a foreground GUI only when the task requires interactive evidence and the user has agreed to the interruption.
 
 The browser reuses the desktop widget tree but has an in-memory font and a separate Cargo workspace.
-When shared sources change, run its build and smoke checks as described in `web/README.md`.
+When shared sources change in a way that affects the browser, run its build and smoke checks as described in `web/README.md`.
 
 ## Platform boundaries
 
@@ -91,7 +90,7 @@ When shared sources change, run its build and smoke checks as described in `web/
   Font-engine modules must not depend on them.
 
 Do not turn a failing platform check green by removing it.
-Record an honest support limit in `docs/known-limitations.md` when a failure cannot be reproduced or fixed in scope.
+Record an honest support limit in the [known limitations guide](https://runebender.org/docs/known-limitations.html) when a failure cannot be reproduced or fixed in scope.
 
 ## Rust conventions
 
@@ -106,7 +105,7 @@ Record an honest support limit in `docs/known-limitations.md` when a failure can
 ## Documentation conventions
 
 - Put each prose sentence on its own source line, as required by the Linebender formatting scheme.
-- Update `ARCHITECTURE.md`, `DESIGN.md`, or `docs/known-limitations.md` when a change invalidates their guidance.
+- Update the website's architecture, design, or known-limitations page when a change invalidates its guidance.
 
 ## Dependency policy
 
@@ -121,4 +120,5 @@ Record user-visible changes under `Unreleased` in `CHANGELOG.md`.
 Preserve unrelated working-tree changes.
 Stage explicit paths, never `git add -A`.
 Commit coherent phases with messages that explain why, and do not add agent co-author trailers.
-Do not force-push or remove other worktrees.
+Do not force-push.
+Inspect a worktree and preserve its changes before removing it, and only remove it when the user has authorized that cleanup.

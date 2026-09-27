@@ -30,7 +30,7 @@ jobs:
       - name: cargo fmt
         run: cargo fmt --all --check
       - name: Copyright headers
-        run: bash .github/copyright.sh
+        run: bash .github/scripts/copyright.sh
 
   build:
     name: ${{ matrix.os }}

@@ -7,7 +7,7 @@
 //! resolved to sRGB with the original web generator's conversion:
 //! Björn Ottosson's Oklab matrices plus chroma-reducing gamut
 //! mapping, where a color outside sRGB keeps lightness and hue and
-//! loses chroma. See `themes/README.md` for the portable theme format.
+//! loses chroma. See `https://runebender.org/docs/themes.html` for the portable theme format.
 
 use std::collections::HashMap;
 

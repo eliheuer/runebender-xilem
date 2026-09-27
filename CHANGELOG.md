@@ -10,6 +10,8 @@ No release has been published yet.
 
 ### Changed
 
+- Moved maintained documentation to runebender.org, removed superseded work logs and dated visual evidence from this repository, and made the website the agent entry point.
+
 - Toolbar, footer, menu, disclosure, and other control icons now come from an editable UFO in `assets/icons/`; native and browser builds embed its glyph outlines.
   The icon UFO uses Virtua Grotesk's 1024 UPM and vertical metrics, keeping icon outlines aligned to its baseline and cap height.
   Every icon has a documented Private Use Area code point, and the Select and Shapes toolbar groups have editable icons with built-in dropdown triangles.
@@ -108,9 +110,9 @@ No release has been published yet.
 
 - Added native live `editor_context`, session-scoped object IDs in glyph reads, and document epoch guards for external agents.
   Live tools now advertise stable source IDs, and MCP input and protocol negotiation are bounded.
-  See the [live context contract](docs/agent-live-context.md) and [compiled proof contract](docs/agent-compiled-proofs.md).
+  See the [live MCP guide](https://runebender.org/docs/mcp.html) for the current workflow.
 
-- Documented the proposed [live agent-editing architecture](docs/agent-interface-research.md), client connection matrix, source audit, and gated acceptance plan.
+- Documented the proposed live agent-editing architecture, client connection matrix, source audit, and gated acceptance plan.
   This is research only; it adds no runtime capability.
 - Added live Rust compilation for shaped variable-font previews and TTF export, including unsaved edits, variable kerning and mark positioning.
   Desktop preview compiles in the background and discards stale revisions.
@@ -258,4 +260,4 @@ No release has been published yet.
   and shortcuts, and editor-tool focus transitions.
 
 Known platform and workflow limits are tracked in
-[`docs/known-limitations.md`](docs/known-limitations.md).
+[the known limitations guide](https://runebender.org/docs/known-limitations.html).

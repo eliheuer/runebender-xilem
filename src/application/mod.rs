@@ -6,7 +6,8 @@
 //! The package's reusable font behavior lives in the library modules rooted at
 //! `src/lib.rs`. This module owns runtime concerns: application state, editing
 //! interactions, platform services, views, and the small widgets those views
-//! need. See `ARCHITECTURE.md` for the dependency map and change routing guide.
+//! need. See `https://runebender.org/docs/architecture.html` for the dependency
+//! map and change routing guide.
 
 pub(crate) mod actions;
 #[cfg(target_arch = "wasm32")]
