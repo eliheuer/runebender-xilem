@@ -68,6 +68,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Inspect, create, or validate portable editor themes.
+    Theme {
+        #[command(subcommand)]
+        action: ThemeAction,
+    },
     /// Compile a UFO or Designspace with the same Rust pipeline as live preview.
     Compile {
         /// Editable source to read without modifying it.
@@ -223,6 +228,32 @@ enum Command {
         /// masters instead of listing what is undrawn.
         #[arg(long)]
         check: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum ThemeAction {
+    /// List built-in and locally installed themes.
+    List,
+    /// Check a theme file and report its resolved identity.
+    Validate {
+        /// A .theme.json file.
+        file: PathBuf,
+    },
+    /// Copy a built-in theme into a new, editable file.
+    Init {
+        /// Built-in starting theme: gray, light, or dark.
+        #[arg(long, default_value = "gray")]
+        from: String,
+        /// Stable identifier for the new theme.
+        #[arg(long)]
+        id: String,
+        /// Human-readable display name.
+        #[arg(long)]
+        name: String,
+        /// Destination .theme.json file; must not already exist.
+        #[arg(long)]
+        out: PathBuf,
     },
 }
 
@@ -411,6 +442,7 @@ pub(crate) fn run() -> Startup {
         return Startup::Editor(cli.font);
     };
     let code = match &command {
+        Command::Theme { action } => theme_command(action, json),
         Command::Compile { source, out } => {
             let result = (|| -> Result<usize, String> {
                 use std::io::Write as _;
@@ -642,6 +674,116 @@ pub(crate) fn run() -> Startup {
     Startup::Exit(std::process::ExitCode::from(
         u8::try_from(code).unwrap_or(1),
     ))
+}
+
+fn theme_command(action: &ThemeAction, json_output: bool) -> i32 {
+    use runebender::ui::theme::{builtin_theme_source, parse_theme, validate_theme_id};
+
+    match action {
+        ThemeAction::List => {
+            let catalog = crate::application::platform::themes::catalog();
+            let themes: Vec<_> = catalog
+                .ids()
+                .iter()
+                .filter_map(|id| catalog.get(id).map(|theme| (&theme.id, &theme.name)))
+                .collect();
+            if json_output {
+                println!(
+                    "{}",
+                    json!({"ok": true, "themes": themes.iter().map(|(id, name)| json!({"id": id, "name": name})).collect::<Vec<_>>()})
+                );
+            } else {
+                for (id, name) in themes {
+                    println!("{id}\t{name}");
+                }
+            }
+            exit::OK
+        }
+        ThemeAction::Validate { file } => {
+            let result = (|| {
+                let source = std::fs::read_to_string(file).map_err(|error| error.to_string())?;
+                parse_theme(&source)
+            })();
+            match result {
+                Ok(theme) => {
+                    if json_output {
+                        println!(
+                            "{}",
+                            json!({"ok": true, "id": theme.id, "name": theme.name})
+                        );
+                    } else {
+                        println!("Valid theme: {} ({})", theme.name, theme.id);
+                    }
+                    exit::OK
+                }
+                Err(error) => fail(
+                    json_output,
+                    exit::USAGE,
+                    &format!("{}: {error}", file.display()),
+                ),
+            }
+        }
+        ThemeAction::Init {
+            from,
+            id,
+            name,
+            out,
+        } => {
+            let result = (|| -> Result<(), String> {
+                use std::io::Write as _;
+
+                validate_theme_id(id)?;
+                if name.trim().is_empty() {
+                    return Err("theme name must not be empty".into());
+                }
+                let source = builtin_theme_source(from)?;
+                let base_name = match from.as_str() {
+                    "dark" => "Dark",
+                    "gray" => "Gray",
+                    "light" => "Light",
+                    _ => return Err(format!("unknown built-in theme '{from}'")),
+                };
+                let id_value = serde_json::to_string(id).map_err(|error| error.to_string())?;
+                let name_value = serde_json::to_string(name).map_err(|error| error.to_string())?;
+                let text = source
+                    .replacen(
+                        &format!("\"id\": \"{from}\""),
+                        &format!("\"id\": {id_value}"),
+                        1,
+                    )
+                    .replacen(
+                        &format!("\"name\": \"{base_name}\""),
+                        &format!("\"name\": {name_value}"),
+                        1,
+                    );
+                let theme = parse_theme(&text)?;
+                if theme.id != *id || theme.name != *name {
+                    return Err("could not set the new theme id and name".into());
+                }
+                let mut file = std::fs::OpenOptions::new()
+                    .create_new(true)
+                    .write(true)
+                    .open(out)
+                    .map_err(|error| error.to_string())?;
+                file.write_all(text.as_bytes())
+                    .map_err(|error| error.to_string())
+            })();
+            match result {
+                Ok(()) => {
+                    if json_output {
+                        println!(
+                            "{}",
+                            json!({"ok": true, "id": id, "name": name, "output": out})
+                        );
+                    } else {
+                        println!("Created {}", out.display());
+                    }
+                    exit::OK
+                }
+                Err(error) => fail(json_output, exit::USAGE, &error),
+            }
+        }
+    }
 }
 
 /// Load one canonical source for a headless command.

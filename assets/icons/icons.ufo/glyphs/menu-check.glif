@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="menu-check" format="2">
+	<unicode hex="E017"/>
+	<advance height="768" width="768"/>
+	<outline>
+		<contour>
+			<point x="96" y="384" type="move"/>
+			<point x="288" y="192" type="line"/>
+			<point x="624" y="576" type="line"/>
+		</contour>
+	</outline>
+</glyph>

@@ -5,7 +5,7 @@
 
 use crate::application::editor::tools::text as text_tool;
 use crate::application::view::design;
-use crate::application::view::design::{ControlSize, Space};
+use crate::application::view::design::Space;
 use crate::application::widgets::preview_blur;
 use crate::application::workspace::Workspace;
 use masonry::layout::Dim;
@@ -199,6 +199,12 @@ pub(crate) fn glyph_preview(app: &Workspace) -> impl WidgetView<Workspace> + use
             // wrapper background left the splitter's top edge on the panel
             // surface, which read as a second-colour strip above the glyph.
             p.fill_rect(size.to_rect(), background);
+            // Canvas measures at least 100px tall even when the inspector has
+            // less space left. In that case a fitted outline would be clipped
+            // by the window, so keep the small remainder empty.
+            if size.height < design::INSPECTOR_PREVIEW_MIN_READABLE_HEIGHT {
+                return;
+            }
             let Some((outline, contours)) = &data else {
                 return;
             };
@@ -226,7 +232,7 @@ pub(crate) fn glyph_preview(app: &Workspace) -> impl WidgetView<Workspace> + use
                             p.stroke(
                                 Line::new(off, t * Point::new(on_x, on_y)),
                                 &stroke,
-                                pal.role("pointOffcurve").with_alpha(0.7),
+                                pal.handle_line,
                             )
                             .draw();
                         }
@@ -245,9 +251,13 @@ pub(crate) fn glyph_preview(app: &Workspace) -> impl WidgetView<Workspace> + use
                     let (fill, border) = if pal.points_filled {
                         (hue, pal.point_outline.unwrap_or(pal.text))
                     } else {
-                        (pal.canvas, hue)
+                        (pal.app, hue)
                     };
-                    let radius = ControlSize::Dot.px() * 0.4;
+                    let radius = if off || *smooth {
+                        design::POINT_CURVE_RADIUS
+                    } else {
+                        design::POINT_CORNER_RADIUS
+                    } * design::INSPECTOR_PREVIEW_POINT_SCALE;
                     if off || *smooth {
                         let shape = Circle::new(at, radius);
                         p.fill(shape, fill).draw();
@@ -263,8 +273,8 @@ pub(crate) fn glyph_preview(app: &Workspace) -> impl WidgetView<Workspace> + use
         },
     ))
     .background_color(background)
-    // Its enclosing inspector split supplies the height. The canvas itself
-    // must fill that allocation so no panel-colored tail can appear below.
+    // The inspector stack supplies the remaining height. Fill that allocation
+    // so no panel-colored tail can appear below the glyph.
     .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
 }
 

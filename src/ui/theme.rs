@@ -3,12 +3,11 @@
 
 //! The theme system, shared by every Runebender editor.
 //!
-//! Colors are authored once in `themes/runebender.theme.json` and
-//! resolved to sRGB with the exact conversion the web generator uses:
+//! Built-in colors are authored in `themes/builtin/*.theme.json` and
+//! resolved to sRGB with the original web generator's conversion:
 //! Björn Ottosson's Oklab matrices plus chroma-reducing gamut
 //! mapping, where a color outside sRGB keeps lightness and hue and
-//! loses chroma. The file came from runebender-web, which keeps its
-//! own copy; that editor is retired, so this one is the live copy.
+//! loses chroma. See `themes/README.md` for the portable theme format.
 
 use std::collections::HashMap;
 
@@ -83,6 +82,7 @@ pub fn oklch_to_rgb(l: f64, c: f64, h: f64) -> ColorRgba {
 // ---- token file structures ----
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct HueDef {
     hue: f64,
     lightness: f64,
@@ -90,19 +90,33 @@ struct HueDef {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct StepDef {
     lightness: f64,
     chroma: f64,
 }
 
 #[derive(Deserialize)]
-struct NeutralDef {
-    hue: f64,
-    chroma: f64,
+#[serde(deny_unknown_fields)]
+struct GlyphGridDef {
+    hues: HashMap<String, HueDef>,
+    steps: HashMap<String, StepDef>,
+    marks: Vec<String>,
 }
 
 #[derive(Deserialize)]
-struct ThemeDef {
+#[serde(deny_unknown_fields)]
+struct ThemeFile {
+    #[serde(rename = "$comment", default)]
+    _comment: Option<serde_json::Value>,
+    #[serde(rename = "formatVersion")]
+    format_version: u32,
+    id: String,
+    name: String,
+    #[serde(rename = "baseUi")]
+    base_ui: HashMap<String, String>,
+    #[serde(rename = "glyphGrid")]
+    glyph_grid: GlyphGridDef,
     surfaces: HashMap<String, String>,
     text: HashMap<String, String>,
     roles: HashMap<String, String>,
@@ -124,15 +138,10 @@ struct ThemeDef {
     geometry: Option<GeometryDef>,
 }
 
-#[derive(Deserialize)]
-struct MarkColorDef {
-    name: String,
-}
-
 /// Shape tokens. Every field is optional in the file: a theme names
-/// only what it changes, and the rest comes from `geometry.default`.
+/// only what it changes, and the rest comes from `Geometry::default`.
 #[derive(Clone, Copy, Debug, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 struct GeometryDef {
     radius: Option<f32>,
     #[serde(rename = "radiusControl")]
@@ -140,22 +149,6 @@ struct GeometryDef {
     stroke: Option<f32>,
     #[serde(rename = "strokeEmphasis")]
     stroke_emphasis: Option<f32>,
-}
-
-#[derive(Deserialize)]
-struct TokenFile {
-    hues: HashMap<String, HueDef>,
-    steps: HashMap<String, StepDef>,
-    neutral: NeutralDef,
-    themes: HashMap<String, ThemeDef>,
-    #[serde(default)]
-    geometry: HashMap<String, GeometryDef>,
-    #[serde(rename = "markColors", default)]
-    mark_colors: Vec<MarkColorDef>,
-    /// Frozen `public.markColor` strings, keyed by label. File
-    /// contents, so they do not follow display tuning.
-    #[serde(rename = "ufoMarkColors", default)]
-    ufo_mark_colors: HashMap<String, String>,
 }
 
 /// How a theme draws a point.
@@ -210,6 +203,10 @@ impl Default for Geometry {
 #[derive(Debug)]
 /// One resolved theme: every surface, text, and role token as sRGB.
 pub struct Theme {
+    /// Stable theme identifier used to select this theme.
+    pub id: String,
+    /// Name shown to people.
+    pub name: String,
     /// Surface colors by token name, such as backgrounds and panels.
     pub surfaces: HashMap<String, ColorRgba>,
     /// Text colors by token name.
@@ -238,17 +235,26 @@ pub struct Theme {
 }
 
 impl Theme {
-    /// Looks up a surface color by name. Returns the fallback color when the name is unknown.
+    /// Looks up a surface color by name, failing on an unknown role.
     pub fn surface(&self, name: &str) -> ColorRgba {
-        self.surfaces.get(name).copied().unwrap_or(FALLBACK)
+        *self
+            .surfaces
+            .get(name)
+            .unwrap_or_else(|| panic!("theme '{}' has no surface '{name}'", self.id))
     }
-    /// Looks up a text color by name. Returns the fallback color when the name is unknown.
+    /// Looks up a text color by name, failing on an unknown role.
     pub fn text(&self, name: &str) -> ColorRgba {
-        self.text.get(name).copied().unwrap_or(FALLBACK)
+        *self
+            .text
+            .get(name)
+            .unwrap_or_else(|| panic!("theme '{}' has no text color '{name}'", self.id))
     }
-    /// Looks up a role color by name. Returns the fallback color when the name is unknown.
+    /// Looks up a role color by name, failing on an unknown role.
     pub fn role(&self, name: &str) -> ColorRgba {
-        self.roles.get(name).copied().unwrap_or(FALLBACK)
+        *self
+            .roles
+            .get(name)
+            .unwrap_or_else(|| panic!("theme '{}' has no role '{name}'", self.id))
     }
     /// The display colour for a mark label, if the palette names it.
     pub fn mark(&self, label: &str) -> Option<ColorRgba> {
@@ -259,128 +265,380 @@ impl Theme {
     }
 }
 
-/// The `public.markColor` value written for a label, as "r,g,b,a" 0–1
-/// floats.
+/// The simple canonical `public.markColor` value written for a label.
 ///
-/// The value is frozen in the token file rather than derived, so
-/// neither a theme switch nor a change to the palette rewrites every
-/// mark in a font. Matches the web's `ufoRgba` byte for byte.
+/// These colors are saved for compatibility with other UFO editors.
+/// The active theme supplies the colors Runebender displays.
 pub fn ufo_rgba_for_label(label: &str) -> Option<String> {
-    let file: TokenFile =
-        serde_json::from_str(include_str!("../../themes/runebender.theme.json")).ok()?;
-    if !file.mark_colors.iter().any(|m| m.name == label) {
+    MARK_UFO_COLORS
+        .iter()
+        .find_map(|(name, color)| (*name == label).then(|| (*color).to_owned()))
+}
+
+// UFO mark values use normalized RGBA channels. Keep them simple and fixed;
+// display colors belong to each theme's Glyph Grid palette.
+const MARK_UFO_COLORS: &[(&str, &str)] = &[
+    ("red", "1,0,0,1"),
+    ("orange", "1,0.5,0,1"),
+    ("yellow", "1,1,0,1"),
+    ("green", "0,1,0,1"),
+    ("blue", "0,0,1,1"),
+    ("purple", "0.5,0,1,1"),
+    ("pink", "1,0,0.5,1"),
+];
+
+// These are the names consumed by the application, not values in the base
+// palette. Keep them here so a hand-edited theme fails at its source instead
+// of painting an unexpected fallback color in one view.
+const REQUIRED_SURFACES: &[&str] = &[
+    "app",
+    "panel",
+    "titlebar",
+    "control",
+    "button",
+    "buttonHover",
+    "field",
+    "outline",
+    "fieldOutline",
+    "divider",
+    "canvas",
+    "tabRail",
+    "inactiveTab",
+    "header",
+    "gridBackground",
+    "cellShadow",
+    "floatingPaneHeader",
+    "sliderTrack",
+];
+const REQUIRED_TEXT: &[&str] = &[
+    "primary",
+    "secondary",
+    "muted",
+    "subdued",
+    "overlay",
+    "glyph",
+    "headerInk",
+];
+const REQUIRED_ROLES: &[&str] = &[
+    "gridSelected",
+    "cellSelectedFill",
+    "cellSelectedInk",
+    "controlSelected",
+    "controlSelectedInk",
+    "designGridFine",
+    "designGridCoarse",
+    "accent",
+    "warning",
+    "danger",
+    "selection",
+    "component",
+    "componentSelected",
+    "pointSmooth",
+    "pointCorner",
+    "pointOffcurve",
+    "pointHyper",
+    "pointSelected",
+    "pointInner",
+    "startNode",
+    "textCursor",
+    "kernActive",
+    "kernPrevious",
+    "pathStroke",
+    "previewFill",
+    "background",
+    "reference",
+    "halo",
+    "metricQuiet",
+    "outlineFill",
+    "metricsLine",
+    "readonlyPoint",
+    "continuityG2",
+    "continuityG1",
+    "continuityLine",
+    "continuityKink",
+    "popcount1",
+    "popcount2",
+    "popcount3",
+    "popcount4",
+];
+const MARK_LABELS: [&str; 7] = ["red", "orange", "yellow", "green", "blue", "purple", "pink"];
+
+fn parse_color(value: &str) -> Option<ColorRgba> {
+    if let Some(hex) = value.strip_prefix('#') {
+        let byte = |start| u8::from_str_radix(&hex[start..start + 2], 16).ok();
+        return match hex.len() {
+            6 => Some(ColorRgba::rgb(byte(0)?, byte(2)?, byte(4)?)),
+            8 => Some(ColorRgba::rgba(byte(0)?, byte(2)?, byte(4)?, byte(6)?)),
+            _ => None,
+        };
+    }
+    let contents = value.strip_prefix("oklch(")?.strip_suffix(')')?;
+    let components: Vec<f64> = contents
+        .split_whitespace()
+        .map(str::parse)
+        .collect::<Result<_, _>>()
+        .ok()?;
+    let &[lightness, chroma, hue] = components.as_slice() else {
+        return None;
+    };
+    if !(0.0..=1.0).contains(&lightness) || !chroma.is_finite() || chroma < 0.0 || !hue.is_finite()
+    {
         return None;
     }
-    if let Some(frozen) = file.ufo_mark_colors.get(label) {
-        return Some(frozen.clone());
-    }
-    let color = resolve_token(&file, &format!("{label}.base"))?;
-    let fmt = |byte: u8| {
-        let v = (byte as f64 / 255.0 * 100.0).round() / 100.0;
-        let s = format!("{v}");
-        if s == "0" { "0".to_string() } else { s }
-    };
-    Some(format!(
-        "{},{},{},1",
-        fmt(color.r),
-        fmt(color.g),
-        fmt(color.b)
-    ))
+    Some(oklch_to_rgb(lightness, chroma, hue))
 }
 
-const FALLBACK: ColorRgba = ColorRgba::rgb(0xff, 0x00, 0xff);
+fn resolve_token(file: &ThemeFile, token: &str) -> Option<ColorRgba> {
+    if let Some(color) = parse_color(token) {
+        return Some(color);
+    }
+    let mut parts = token.split('.');
+    match (parts.next()?, parts.next(), parts.next(), parts.next()) {
+        ("baseUi", Some(step), None, None) => parse_color(file.base_ui.get(step)?),
+        ("glyphGrid", Some(name), Some(step), None) => {
+            let hue = file.glyph_grid.hues.get(name)?;
+            let offsets = file.glyph_grid.steps.get(step)?;
+            // Preserve the original palette's chroma-reducing gamut recipe.
+            Some(oklch_to_rgb(
+                (hue.lightness + offsets.lightness).clamp(0.08, 0.93),
+                (hue.chroma + offsets.chroma).max(0.0),
+                hue.hue,
+            ))
+        }
+        _ => None,
+    }
+}
 
-fn resolve_token(file: &TokenFile, token: &str) -> Option<ColorRgba> {
-    let (family, step) = token.split_once('.')?;
-    if family == "neutral" {
-        let percent: f64 = step.parse().ok()?;
-        return Some(oklch_to_rgb(
-            percent / 100.0,
-            file.neutral.chroma,
-            file.neutral.hue,
+fn resolve_map(
+    file: &ThemeFile,
+    theme_id: &str,
+    group: &str,
+    map: &HashMap<String, String>,
+    required: &[&str],
+) -> Result<HashMap<String, ColorRgba>, String> {
+    for name in required {
+        if !map.contains_key(*name) {
+            return Err(format!("theme '{theme_id}' is missing {group}.{name}"));
+        }
+    }
+    for name in map.keys() {
+        if !required.contains(&name.as_str()) {
+            return Err(format!("theme '{theme_id}' has unknown {group}.{name}"));
+        }
+    }
+    map.iter()
+        .map(|(name, token)| {
+            resolve_token(file, token)
+                .map(|color| (name.clone(), color))
+                .ok_or_else(|| {
+                    format!("theme '{theme_id}' {group}.{name} has unknown color '{token}'")
+                })
+        })
+        .collect()
+}
+
+fn resolve_optional(
+    file: &ThemeFile,
+    theme_id: &str,
+    name: &str,
+    token: Option<&str>,
+) -> Result<Option<ColorRgba>, String> {
+    token
+        .map(|value| {
+            resolve_token(file, value)
+                .ok_or_else(|| format!("theme '{theme_id}' {name} has unknown color '{value}'"))
+        })
+        .transpose()
+}
+
+/// Parse and resolve one portable theme file, reporting invalid references by name.
+pub fn parse_theme(source: &str) -> Result<Theme, String> {
+    let file: ThemeFile =
+        serde_json::from_str(source).map_err(|error| format!("invalid theme JSON: {error}"))?;
+    let theme_id = file.id.as_str();
+    validate_theme_id(theme_id)?;
+    if file.format_version != 1 {
+        return Err(format!(
+            "theme '{}' uses unsupported formatVersion {}",
+            file.id, file.format_version
         ));
     }
-    let hue = file.hues.get(family)?;
-    let offsets = file.steps.get(step)?;
-    // Lightness stops at 0.93: past that sRGB has almost no chroma
-    // left at any hue (matches the web generator's stepColor).
-    Some(oklch_to_rgb(
-        (hue.lightness + offsets.lightness).clamp(0.08, 0.93),
-        (hue.chroma + offsets.chroma).max(0.0),
-        hue.hue,
-    ))
-}
-
-/// Load and resolve one theme from the shared token file.
-pub fn load_theme(theme_id: &str) -> Option<Theme> {
-    let file: TokenFile =
-        serde_json::from_str(include_str!("../../themes/runebender.theme.json")).ok()?;
-    let def = file.themes.get(theme_id)?;
-    let resolve_map = |map: &HashMap<String, String>| {
-        map.iter()
-            .filter_map(|(k, v)| resolve_token(&file, v).map(|c| (k.clone(), c)))
-            .collect()
-    };
-    let mark_step = def.mark_step.as_deref().unwrap_or("base");
+    if file.id != theme_id {
+        return Err(format!("expected theme '{theme_id}', found '{}'", file.id));
+    }
+    if file.name.trim().is_empty()
+        || file.name.len() > 80
+        || file.name.chars().any(char::is_control)
+    {
+        return Err(format!(
+            "theme '{theme_id}' name must be 1–80 visible characters"
+        ));
+    }
+    for (step, value) in &file.base_ui {
+        if parse_color(value).is_none() {
+            return Err(format!(
+                "theme '{theme_id}' baseUi.{step} has invalid color '{value}'"
+            ));
+        }
+    }
+    for (name, hue) in &file.glyph_grid.hues {
+        if !(0.0..=1.0).contains(&hue.lightness)
+            || !hue.chroma.is_finite()
+            || hue.chroma < 0.0
+            || !hue.hue.is_finite()
+        {
+            return Err(format!(
+                "theme '{theme_id}' glyphGrid.hues.{name} has invalid OKLCH"
+            ));
+        }
+    }
+    for (name, step) in &file.glyph_grid.steps {
+        if !step.lightness.is_finite() || !step.chroma.is_finite() {
+            return Err(format!(
+                "theme '{theme_id}' glyphGrid.steps.{name} has invalid offsets"
+            ));
+        }
+    }
+    let surfaces = resolve_map(
+        &file,
+        theme_id,
+        "surfaces",
+        &file.surfaces,
+        REQUIRED_SURFACES,
+    )?;
+    let text = resolve_map(&file, theme_id, "text", &file.text, REQUIRED_TEXT)?;
+    let roles = resolve_map(&file, theme_id, "roles", &file.roles, REQUIRED_ROLES)?;
+    let mark_step = file.mark_step.as_deref().unwrap_or("base");
     let marks = file
-        .mark_colors
+        .glyph_grid
+        .marks
         .iter()
-        .filter_map(|m| {
-            resolve_token(&file, &format!("{}.{mark_step}", m.name)).map(|c| (m.name.clone(), c))
+        .map(|mark| {
+            let token = format!("glyphGrid.{mark}.{mark_step}");
+            resolve_token(&file, &token)
+                .map(|color| (mark.clone(), color))
+                .ok_or_else(|| {
+                    format!("theme '{theme_id}' glyphGrid.marks.{mark} has unknown color '{token}'")
+                })
         })
-        .collect();
-    let base = file.geometry.get("default").copied().unwrap_or_default();
-    let own = def.geometry.unwrap_or_default();
+        .collect::<Result<Vec<_>, _>>()?;
+    for label in MARK_LABELS {
+        if marks.iter().filter(|(name, _)| name == label).count() != 1 {
+            return Err(format!(
+                "theme '{theme_id}' must name glyphGrid mark '{label}' once"
+            ));
+        }
+    }
+    if marks.len() != MARK_LABELS.len() {
+        return Err(format!(
+            "theme '{theme_id}' has an unknown or duplicate glyphGrid mark"
+        ));
+    }
+    let own = file.geometry.unwrap_or_default();
     let fallback = Geometry::default();
-    let pick =
-        |own: Option<f32>, base: Option<f32>, fallback: f32| own.or(base).unwrap_or(fallback);
     let geometry = Geometry {
-        radius: pick(own.radius, base.radius, fallback.radius),
-        radius_control: pick(
-            own.radius_control,
-            base.radius_control,
-            fallback.radius_control,
-        ),
-        stroke: pick(own.stroke, base.stroke, fallback.stroke),
-        stroke_emphasis: pick(
-            own.stroke_emphasis,
-            base.stroke_emphasis,
-            fallback.stroke_emphasis,
-        ),
+        radius: own.radius.unwrap_or(fallback.radius),
+        radius_control: own.radius_control.unwrap_or(fallback.radius_control),
+        stroke: own.stroke.unwrap_or(fallback.stroke),
+        stroke_emphasis: own.stroke_emphasis.unwrap_or(fallback.stroke_emphasis),
     };
-    let mark_style = match def.mark_style.as_deref() {
+    for (name, value) in [
+        ("radius", geometry.radius),
+        ("radiusControl", geometry.radius_control),
+        ("stroke", geometry.stroke),
+        ("strokeEmphasis", geometry.stroke_emphasis),
+    ] {
+        if !value.is_finite() || value < 0.0 {
+            return Err(format!(
+                "theme '{theme_id}' geometry.{name} must be finite and nonnegative"
+            ));
+        }
+    }
+    let mark_style = match file.mark_style.as_deref() {
         Some("fill") => MarkStyle::Fill,
-        _ => MarkStyle::Border,
+        Some("border") | None => MarkStyle::Border,
+        Some(value) => {
+            return Err(format!(
+                "theme '{theme_id}' has unknown markStyle '{value}'"
+            ));
+        }
     };
-    let mark_outline = def
-        .mark_outline
-        .as_deref()
-        .and_then(|t| resolve_token(&file, t));
-    let mark_ink = def
-        .mark_ink
-        .as_deref()
-        .and_then(|t| resolve_token(&file, t));
-    let point_style = match def.point_style.as_deref() {
+    let mark_outline =
+        resolve_optional(&file, theme_id, "markOutline", file.mark_outline.as_deref())?;
+    let mark_ink = resolve_optional(&file, theme_id, "markInk", file.mark_ink.as_deref())?;
+    let point_style = match file.point_style.as_deref() {
         Some("fill") => PointStyle::Fill,
-        _ => PointStyle::Ring,
+        Some("ring") | None => PointStyle::Ring,
+        Some(value) => {
+            return Err(format!(
+                "theme '{theme_id}' has unknown pointStyle '{value}'"
+            ));
+        }
     };
-    let point_outline = def
-        .point_outline
-        .as_deref()
-        .and_then(|t| resolve_token(&file, t));
-    Some(Theme {
+    let point_outline = resolve_optional(
+        &file,
+        theme_id,
+        "pointOutline",
+        file.point_outline.as_deref(),
+    )?;
+    Ok(Theme {
+        id: file.id,
+        name: file.name,
         geometry,
         mark_style,
         mark_outline,
         mark_ink,
         point_style,
         point_outline,
-        point_halo: def.point_halo.unwrap_or(true),
-        surfaces: resolve_map(&def.surfaces),
-        text: resolve_map(&def.text),
-        roles: resolve_map(&def.roles),
+        point_halo: file.point_halo.unwrap_or(true),
+        surfaces,
+        text,
+        roles,
         marks,
     })
+}
+
+/// Check a theme ID for use in filenames, environment variables, and menus.
+pub fn validate_theme_id(id: &str) -> Result<(), String> {
+    if id.is_empty()
+        || id.len() > 64
+        || !id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+    {
+        return Err(format!(
+            "theme id '{id}' must use 1–64 ASCII letters, digits, - or _"
+        ));
+    }
+    Ok(())
+}
+
+/// Load and validate one of the built-in themes.
+pub fn load_theme_checked(theme_id: &str) -> Result<Theme, String> {
+    let source = builtin_theme_source(theme_id)?;
+    let theme = parse_theme(source)?;
+    if theme.id != theme_id {
+        return Err(format!("built-in theme '{theme_id}' has id '{}'", theme.id));
+    }
+    Ok(theme)
+}
+
+/// The source text of a built-in theme, useful as a custom-theme starting point.
+pub fn builtin_theme_source(theme_id: &str) -> Result<&'static str, String> {
+    let source = match theme_id {
+        "dark" => include_str!("../../themes/builtin/dark.theme.json"),
+        "gray" => include_str!("../../themes/builtin/gray.theme.json"),
+        "light" => include_str!("../../themes/builtin/light.theme.json"),
+        _ => return Err(format!("unknown built-in theme '{theme_id}'")),
+    };
+    Ok(source)
+}
+
+/// Load one built-in theme, returning `None` if it is absent or invalid.
+///
+/// Prefer [`load_theme_checked`] when the caller can report a useful error.
+pub fn load_theme(theme_id: &str) -> Option<Theme> {
+    load_theme_checked(theme_id).ok()
 }
 
 // ---- glyph mark labels ----
@@ -427,7 +685,7 @@ fn hue_of(r: f64, g: f64, b: f64) -> Option<f64> {
 
 /// The mark label a glyph carries: `com.runebender.markLabel` when
 /// present, otherwise its `public.markColor` snapped to the nearest
-/// palette hue. The snapped label is display only and never written
+/// saved mark hue. The snapped label is display only and never written
 /// back.
 #[cfg(test)]
 pub fn mark_label_for_glyph(glyph: &norad::Glyph, theme: &Theme) -> Option<String> {
@@ -453,7 +711,7 @@ pub fn mark_label_for_layer(layer: crate::font::LayerView<'_>, theme: &Theme) ->
     label_for_channels(color.red, color.green, color.blue, theme)
 }
 
-/// Snap a UFO "r,g,b,a" colour (0–1 floats) to the nearest palette
+/// Snap a UFO "r,g,b,a" colour (0–1 floats) to the nearest saved mark
 /// label by hue. `None` for greys and colours far from every hue.
 pub fn label_for_rgba(rgba: &str, theme: &Theme) -> Option<String> {
     let parts: Vec<f64> = rgba
@@ -470,14 +728,21 @@ fn label_for_channels(red: f64, green: f64, blue: f64, theme: &Theme) -> Option<
     let hue = hue_of(red, green, blue)?;
     let mut best: Option<&str> = None;
     let mut best_distance = f64::INFINITY;
-    for (name, color) in &theme.marks {
-        let palette_hue = hue_of(
-            color.r as f64 / 255.0,
-            color.g as f64 / 255.0,
-            color.b as f64 / 255.0,
-        )
-        .unwrap_or(0.0);
-        let raw = (hue - palette_hue).abs();
+    for name in MARK_LABELS {
+        if theme.mark(name).is_none() {
+            continue;
+        }
+        let saved = MARK_UFO_COLORS
+            .iter()
+            .find_map(|(saved_name, color)| (*saved_name == name).then_some(*color))?;
+        let channels: Vec<f64> = saved
+            .split(',')
+            .take(3)
+            .map(str::parse)
+            .collect::<Result<_, _>>()
+            .ok()?;
+        let saved_hue = hue_of(channels[0], channels[1], channels[2])?;
+        let raw = (hue - saved_hue).abs();
         let distance = raw.min(360.0 - raw);
         if distance < best_distance {
             best_distance = distance;
@@ -493,15 +758,108 @@ fn label_for_channels(red: f64, green: f64, blue: f64, theme: &Theme) -> Option<
 mod tests {
     use super::*;
 
+    #[test]
+    fn built_in_themes_have_complete_color_references() {
+        for id in ["dark", "gray", "light"] {
+            load_theme_checked(id).unwrap_or_else(|error| panic!("{error}"));
+        }
+    }
+
+    #[test]
+    fn custom_palette_changes_display_without_changing_saved_marks() {
+        let source = builtin_theme_source("gray").expect("gray source");
+        let mut file: serde_json::Value = serde_json::from_str(source).expect("built-in JSON");
+        file["id"] = "custom".into();
+        file["name"] = "Custom".into();
+        file["baseUi"]["20"] = "#AABBCC".into();
+        file["glyphGrid"]["hues"]["red"]["hue"] = 200.into();
+        let theme =
+            parse_theme(&serde_json::to_string(&file).expect("custom JSON")).expect("custom theme");
+
+        assert_eq!(hex(theme.surface("panel")), "#aabbcc");
+        assert_ne!(
+            theme.mark("red"),
+            load_theme("gray").and_then(|base| base.mark("red"))
+        );
+        assert_eq!(ufo_rgba_for_label("red").as_deref(), Some("1,0,0,1"));
+        assert_eq!(label_for_rgba("1,0,0,1", &theme).as_deref(), Some("red"));
+        assert_eq!(
+            label_for_rgba("0.88,0.3,0.27,1", &theme).as_deref(),
+            Some("red")
+        );
+    }
+
+    #[test]
+    fn edited_theme_reports_missing_and_unknown_tokens() {
+        let source = include_str!("../../themes/builtin/gray.theme.json");
+        let mut file: serde_json::Value = serde_json::from_str(source).expect("built-in JSON");
+        file["roles"]
+            .as_object_mut()
+            .expect("roles")
+            .remove("pointSmooth");
+        let edited = serde_json::to_string(&file).expect("edited JSON");
+        assert_eq!(
+            parse_theme(&edited).unwrap_err(),
+            "theme 'gray' is missing roles.pointSmooth"
+        );
+
+        file["roles"]["pointSmooth"] = "glyphGrid.blue.missing".into();
+        let edited = serde_json::to_string(&file).expect("edited JSON");
+        assert_eq!(
+            parse_theme(&edited).unwrap_err(),
+            "theme 'gray' roles.pointSmooth has unknown color 'glyphGrid.blue.missing'"
+        );
+    }
+
+    #[test]
+    fn edited_theme_reports_invalid_optional_color_and_style() {
+        let source = include_str!("../../themes/builtin/gray.theme.json");
+        let mut file: serde_json::Value = serde_json::from_str(source).expect("built-in JSON");
+        file["pointOutline"] = "baseUi.nope".into();
+        let edited = serde_json::to_string(&file).expect("edited JSON");
+        assert_eq!(
+            parse_theme(&edited).unwrap_err(),
+            "theme 'gray' pointOutline has unknown color 'baseUi.nope'"
+        );
+
+        file["pointOutline"] = "baseUi.05".into();
+        file["pointStyle"] = "circle".into();
+        let edited = serde_json::to_string(&file).expect("edited JSON");
+        assert_eq!(
+            parse_theme(&edited).unwrap_err(),
+            "theme 'gray' has unknown pointStyle 'circle'"
+        );
+    }
+
+    #[test]
+    fn edited_theme_rejects_unknown_role_and_format_version() {
+        let source = builtin_theme_source("gray").expect("gray source");
+        let mut file: serde_json::Value = serde_json::from_str(source).expect("built-in JSON");
+        file["roles"]["pointSmoth"] = "glyphGrid.blue.base".into();
+        let edited = serde_json::to_string(&file).expect("edited JSON");
+        assert_eq!(
+            parse_theme(&edited).unwrap_err(),
+            "theme 'gray' has unknown roles.pointSmoth"
+        );
+
+        file["roles"]
+            .as_object_mut()
+            .expect("roles")
+            .remove("pointSmoth");
+        file["formatVersion"] = 2.into();
+        let edited = serde_json::to_string(&file).expect("edited JSON");
+        assert_eq!(
+            parse_theme(&edited).unwrap_err(),
+            "theme 'gray' uses unsupported formatVersion 2"
+        );
+    }
+
     fn hex(c: ColorRgba) -> String {
         format!("#{:02x}{:02x}{:02x}", c.r, c.g, c.b)
     }
 
-    /// The resolved dark palette. These are display values: the UFO
-    /// mark strings are frozen separately (see `ufo_rgba_matches_web`),
-    /// so tuning the palette here never touches a font's contents.
-    /// runebender-web generates its own tokens from its copy of the
-    /// token file; copy this one over when the two should match.
+    /// The resolved dark palette uses its own display colors; changing
+    /// them does not change the simple colors saved in a UFO.
     #[test]
     fn resolves_the_dark_palette() {
         let dark = load_theme("dark").expect("dark theme");
@@ -539,7 +897,10 @@ mod tests {
     #[test]
     fn snaps_rgba_to_palette_label() {
         let dark = load_theme("dark").expect("dark theme");
-        // The exact UFO colours the web writes round-trip to their labels.
+        for (label, rgba) in MARK_UFO_COLORS {
+            assert_eq!(label_for_rgba(rgba, &dark).as_deref(), Some(*label));
+        }
+        // Read legacy mark values already stored in UFOs.
         assert_eq!(
             label_for_rgba("0.88,0.3,0.27,1", &dark).as_deref(),
             Some("red")
@@ -556,26 +917,16 @@ mod tests {
         assert_eq!(label_for_rgba("garbage", &dark), None);
     }
 
-    /// UFO colours written for labels match the web's fixed ufoRgba
-    /// strings exactly (files must not churn between editors).
+    /// UFO colors written for labels use simple normalized channels.
     #[test]
-    fn ufo_rgba_matches_web() {
-        assert_eq!(
-            ufo_rgba_for_label("red").as_deref(),
-            Some("0.88,0.3,0.27,1")
-        );
-        assert_eq!(
-            ufo_rgba_for_label("orange").as_deref(),
-            Some("0.93,0.45,0.2,1")
-        );
-        assert_eq!(
-            ufo_rgba_for_label("yellow").as_deref(),
-            Some("0.91,0.79,0.27,1")
-        );
-        assert_eq!(
-            ufo_rgba_for_label("green").as_deref(),
-            Some("0.31,0.72,0.45,1")
-        );
+    fn ufo_rgba_uses_simple_colors() {
+        assert_eq!(ufo_rgba_for_label("red").as_deref(), Some("1,0,0,1"));
+        assert_eq!(ufo_rgba_for_label("orange").as_deref(), Some("1,0.5,0,1"));
+        assert_eq!(ufo_rgba_for_label("yellow").as_deref(), Some("1,1,0,1"));
+        assert_eq!(ufo_rgba_for_label("green").as_deref(), Some("0,1,0,1"));
+        assert_eq!(ufo_rgba_for_label("blue").as_deref(), Some("0,0,1,1"));
+        assert_eq!(ufo_rgba_for_label("purple").as_deref(), Some("0.5,0,1,1"));
+        assert_eq!(ufo_rgba_for_label("pink").as_deref(), Some("1,0,0.5,1"));
         assert_eq!(ufo_rgba_for_label("mauve"), None);
     }
 
@@ -586,7 +937,7 @@ mod tests {
         set_glyph_mark(&mut glyph, Some("green"));
         assert_eq!(
             glyph.lib.get("public.markColor"),
-            Some(&plist::Value::String("0.31,0.72,0.45,1".into()))
+            Some(&plist::Value::String("0,1,0,1".into()))
         );
         assert_eq!(
             mark_label_for_glyph(&glyph, &dark).as_deref(),
@@ -607,7 +958,7 @@ mod tests {
         assert_eq!(mark_label_for_glyph(&glyph, &dark), None);
         glyph.lib.insert(
             "public.markColor".into(),
-            plist::Value::String("0.93,0.45,0.2,1".into()),
+            plist::Value::String("1,0.5,0,1".into()),
         );
         assert_eq!(
             mark_label_for_glyph(&glyph, &dark).as_deref(),
@@ -617,87 +968,6 @@ mod tests {
             .lib
             .insert(MARK_LABEL_KEY.into(), plist::Value::String("blue".into()));
         assert_eq!(mark_label_for_glyph(&glyph, &dark).as_deref(), Some("blue"));
-    }
-}
-
-// ---- toolbar icons ----
-
-#[derive(Debug)]
-/// One toolbar icon: outline geometry from the shared icon UFO,
-/// `assets/runebender-icons.ufo`, via the web generator's JSON.
-pub struct ToolbarIcon {
-    /// Tight bounds of the outline in Y-down SVG space.
-    pub view_box: kurbo::Rect,
-    /// The icon outline in the same Y-down space as `view_box`.
-    pub path: kurbo::BezPath,
-    /// Stroke instead of fill, for open-path icons.
-    pub stroke: bool,
-}
-
-/// The shared toolbar icon set, keyed by UFO glyph name ("select",
-/// "pen", "knife", "flip-h", …). Parsed once.
-pub fn toolbar_icons() -> &'static HashMap<String, ToolbarIcon> {
-    use std::sync::OnceLock;
-    static ICONS: OnceLock<HashMap<String, ToolbarIcon>> = OnceLock::new();
-    ICONS.get_or_init(|| {
-        #[derive(Deserialize)]
-        struct Raw {
-            #[serde(rename = "viewBox")]
-            view_box: String,
-            d: String,
-            mode: Option<String>,
-        }
-        let raw: HashMap<String, Raw> =
-            serde_json::from_str(include_str!("../../themes/toolbar-icons.json"))
-                .unwrap_or_default();
-        raw.into_iter()
-            .filter_map(|(name, icon)| {
-                let numbers: Vec<f64> = icon
-                    .view_box
-                    .split_whitespace()
-                    .filter_map(|v| v.parse().ok())
-                    .collect();
-                let [x, y, w, h] = numbers.as_slice() else {
-                    return None;
-                };
-                let path = kurbo::BezPath::from_svg(&icon.d).ok()?;
-                Some((
-                    name,
-                    ToolbarIcon {
-                        view_box: kurbo::Rect::new(*x, *y, x + w, y + h),
-                        path,
-                        stroke: icon.mode.as_deref() == Some("stroke"),
-                    },
-                ))
-            })
-            .collect()
-    })
-}
-
-#[cfg(test)]
-mod icon_tests {
-    use super::*;
-
-    #[test]
-    fn parses_all_toolbar_icons() {
-        let icons = toolbar_icons();
-        assert_eq!(icons.len(), 27);
-        for name in [
-            "select",
-            "pen",
-            "knife",
-            "measure",
-            "shapes",
-            "shape-metaball",
-            "flip-h",
-            "rot-cw",
-            "union",
-            "save",
-        ] {
-            let icon = icons.get(name).unwrap_or_else(|| panic!("missing {name}"));
-            assert!(!icon.path.elements().is_empty());
-            assert!(icon.view_box.width() > 0.0 && icon.view_box.height() > 0.0);
-        }
     }
 }
 

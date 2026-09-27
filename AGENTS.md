@@ -71,6 +71,7 @@ Do not add local path patches to a committed Cargo configuration.
 
 Read `DESIGN.md` before changing a view.
 Use `view::theme` for colors, `view::design` for measurements, and `view::recipes` for repeated controls.
+Read `themes/README.md` before changing colors; it names the Base UI and Glyph Grid palettes and traces their tokens through the editor.
 Views read workspace state; commands own intent; the font engine owns font behavior.
 
 Use the headless screenshot path for visual checks.

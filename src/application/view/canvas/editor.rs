@@ -16,7 +16,7 @@ use masonry::core::{
 };
 use masonry::imaging::Painter;
 use masonry::kurbo;
-use masonry::kurbo::{Affine, Axis, Circle, Line, Point, Rect, Size, Stroke};
+use masonry::kurbo::{Affine, Axis, Circle, Line, Point, Rect, Shape as _, Size, Stroke};
 use masonry::layout::{LenReq, Length};
 use runebender::font::{AnchorId, ContourId, PointId};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
@@ -229,11 +229,12 @@ fn text_sort_metric_ys(metrics: &crate::application::editor::session::Metrics) -
     ys
 }
 
-/// Draw one dark cross at each intersection of a sort edge and metric line.
+/// Draw dark marks inward from each intersection of a sort edge and metric line.
 /// Paint these after the quiet metric rules so neighbouring sorts cannot cover them.
 fn paint_metric_crosses(
     painter: &mut Painter<'_>,
     xs: [f64; 2],
+    y_bounds: [f64; 2],
     ys: impl Clone + Iterator<Item = f64>,
     mark: f64,
     color: xilem::Color,
@@ -241,14 +242,24 @@ fn paint_metric_crosses(
     if mark < 3.0 {
         return;
     }
+    let mark = mark * 0.5;
+    let left = xs[0].min(xs[1]);
+    let right = xs[0].max(xs[1]);
+    let top = y_bounds[0].min(y_bounds[1]);
+    let bottom = y_bounds[0].max(y_bounds[1]);
+    let inward = mark.min((right - left) / 2.0);
     let rule = Stroke::new(DesignStroke::Hairline.px());
-    for x in xs {
+    for (x, inner_x) in [(left, left + inward), (right, right - inward)] {
         for y in ys.clone() {
             painter
-                .stroke(Line::new((x - mark, y), (x + mark, y)), &rule, color)
+                .stroke(Line::new((x, y), (inner_x, y)), &rule, color)
                 .draw();
             painter
-                .stroke(Line::new((x, y - mark), (x, y + mark)), &rule, color)
+                .stroke(
+                    Line::new((x, (y - mark).max(top)), (x, (y + mark).min(bottom))),
+                    &rule,
+                    color,
+                )
                 .draw();
         }
     }
@@ -325,6 +336,11 @@ impl EditorWidget {
                 true
             }
             MenuAction::Op(op) => op(&mut this.widget.session),
+            MenuAction::ToggleComponentAlignment => {
+                this.ctx
+                    .submit_action::<EditorEvent>(EditorEvent::ToggleComponentAlignment);
+                false
+            }
             // Not this canvas's menu.
             MenuAction::AddNode(_) => false,
         };
@@ -348,6 +364,8 @@ pub(crate) enum EditorEvent {
     Edited,
     /// Selection changed; carries how many points are selected.
     Selection(usize),
+    /// Change manual placement for the component selected by the context click.
+    ToggleComponentAlignment,
     /// A composed sort was activated: open that glyph without losing the line,
     /// and keep the tool that established the interaction.
     EditGlyph { name: String, tool: Tool },
@@ -397,6 +415,11 @@ enum Drag {
     Marquee {
         start: Point,
         current: Point,
+        additive: bool,
+    },
+    /// Freehand selection boundary in screen space.
+    Lasso {
+        points: Vec<Point>,
         additive: bool,
     },
     /// Drawing a shape; endpoints in design space.
@@ -1068,7 +1091,9 @@ impl Widget for EditorWidget {
                     let ys = metric_ys
                         .iter()
                         .map(|&y| (view_affine * Point::new(sort.origin.x, sort.origin.y + y)).y);
-                    paint_metric_crosses(painter, [x0, x1], ys, mark, pal.outline);
+                    let top = (view_affine * Point::new(0.0, sort.origin.y + sort_top)).y;
+                    let bottom = (view_affine * Point::new(0.0, sort.origin.y + sort_bottom)).y;
+                    paint_metric_crosses(painter, [x0, x1], [top, bottom], ys, mark, pal.outline);
                 }
             }
             if self.tool == Tool::Text && self.cursor_visible {
@@ -1259,6 +1284,7 @@ impl Widget for EditorWidget {
         paint_metric_crosses(
             painter,
             [x0, x1],
+            [top, bottom],
             levels.iter().map(|&y| (affine * Point::new(0.0, y)).y),
             mark,
             pal.outline,
@@ -1709,6 +1735,29 @@ impl Widget for EditorWidget {
                 .draw();
         }
 
+        if let Drag::Lasso { points, .. } = &self.drag
+            && let Some(first) = points.first()
+        {
+            let mut path = kurbo::BezPath::new();
+            path.move_to(*first);
+            for point in &points[1..] {
+                path.line_to(*point);
+            }
+            if points.len() >= 3 {
+                path.close_path();
+                painter
+                    .fill(&path, pal.role("selection").with_alpha(0.15))
+                    .draw();
+            }
+            painter
+                .stroke(
+                    &path,
+                    &Stroke::new(1.0),
+                    pal.role("selection").with_alpha(0.8),
+                )
+                .draw();
+        }
+
         // Shape preview.
         if let Drag::Shape { start, current } = &self.drag {
             let p0 = affine * *start;
@@ -1837,10 +1886,27 @@ impl Widget for EditorWidget {
                     // the editor's edge like a menu should.
                     if self.menu.is_none() {
                         let design = self.screen_to_glyph_design(at);
+                        let mut rows = MENU_ITEMS.to_vec();
+                        if let Some(component) = self.session.component_at(design) {
+                            self.session.select_component_id(component);
+                            self.emit(ctx, false);
+                            let aligned = self.session.selected_component_aligned() == Some(true);
+                            rows.insert(
+                                0,
+                                MenuRow {
+                                    label: std::borrow::Cow::Borrowed(if aligned {
+                                        "Disable Automatic Alignment"
+                                    } else {
+                                        "Enable Automatic Alignment"
+                                    }),
+                                    action: MenuAction::ToggleComponentAlignment,
+                                },
+                            );
+                        }
                         let menu = ContextMenu::new(
                             ctx.widget_id(),
                             MenuTarget::Editor,
-                            MENU_ITEMS.to_vec(),
+                            rows,
                             self.palette.clone(),
                             design,
                         );
@@ -1869,6 +1935,15 @@ impl Widget for EditorWidget {
                     }
                     Some(PointerButton::Primary) if self.tool == Tool::Hand => {
                         self.drag = Drag::Pan { last: at };
+                        ctx.set_handled();
+                        return;
+                    }
+                    Some(PointerButton::Primary) if self.tool == Tool::Lasso => {
+                        ctx.request_focus();
+                        self.drag = Drag::Lasso {
+                            points: vec![at],
+                            additive: state.modifiers.shift(),
+                        };
                         ctx.set_handled();
                         return;
                     }
@@ -2108,6 +2183,12 @@ impl Widget for EditorWidget {
                         *current = at;
                         ctx.request_render();
                     }
+                    Drag::Lasso { points, .. } => {
+                        if points.last().is_none_or(|last| last.distance(at) >= 2.0) {
+                            points.push(at);
+                            ctx.request_render();
+                        }
+                    }
                     Drag::Shape { current, .. } => {
                         *current = glyph_design;
                         ctx.request_render();
@@ -2169,6 +2250,39 @@ impl Widget for EditorWidget {
                         }
                         self.drag = Drag::None;
                         self.emit(ctx, false);
+                    }
+                    Drag::Lasso { points, additive } => {
+                        if !cancelled {
+                            let additive = *additive;
+                            let mut path = kurbo::BezPath::new();
+                            if let Some(first) = points.first() {
+                                path.move_to(*first);
+                                for point in &points[1..] {
+                                    path.line_to(*point);
+                                }
+                                path.close_path();
+                            }
+                            let chosen: Vec<_> = if points.len() >= 3 {
+                                self.screen_points()
+                                    .into_iter()
+                                    .filter(|(_, point, _, _, _)| path.winding(*point) != 0)
+                                    .map(|(id, _, _, _, _)| id)
+                                    .collect()
+                            } else {
+                                points
+                                    .last()
+                                    .and_then(|point| self.hit_point(*point))
+                                    .into_iter()
+                                    .collect()
+                            };
+                            if !additive {
+                                self.session.selection.clear();
+                            }
+                            self.session.selection.extend(chosen);
+                            self.emit(ctx, false);
+                        }
+                        self.drag = Drag::None;
+                        ctx.request_render();
                     }
                     Drag::Anchor { .. } => {
                         if cancelled {
@@ -2916,7 +3030,6 @@ mod tests {
     use std::collections::HashSet;
 
     use masonry::dpi::PhysicalPosition;
-    use masonry::kurbo::Shape as _;
     use masonry::theme::default_property_set;
     use masonry::ui_events::pointer::PointerState;
     use masonry_testing::{PRIMARY_MOUSE, TestHarness};
@@ -3587,6 +3700,45 @@ mod tests {
         assert_eq!(first, second, "a second right click did not stack a layer");
     }
 
+    #[test]
+    fn right_click_selects_the_component_under_the_menu() {
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(projected_glyph(&session()));
+        let mut composite = norad::Glyph::new("composite");
+        composite.width = 500.0;
+        composite.components.push(norad::Component::new(
+            norad::Name::new("A").expect("valid glyph name"),
+            norad::AffineTransform::default(),
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(composite);
+        let mut editor = widget();
+        editor.session = Session::new(&font, "composite").expect("composite resolves");
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+        let at =
+            harness.edit_root_widget(|root| root.widget.glyph_affine() * Point::new(200.0, 350.0));
+        harness.mouse_move(at);
+        harness.mouse_button_press(Some(PointerButton::Secondary));
+        let menu = harness.edit_root_widget(|root| {
+            assert!(root.widget.session.selected_component.is_some());
+            root.widget.menu.expect("component menu opens")
+        });
+        let menu_origin = harness
+            .get_widget_with_id(menu)
+            .ctx()
+            .to_window(Point::ORIGIN);
+        harness.mouse_move(menu_origin + (20.0, 16.0));
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        let mut toggled = false;
+        while let Some((event, _)) = harness.pop_action::<EditorEvent>() {
+            toggled |= matches!(event, EditorEvent::ToggleComponentAlignment);
+        }
+        assert!(toggled, "the component menu submits the alignment command");
+    }
+
     /// A left click still edits rather than being eaten by menu handling.
     #[test]
     fn left_click_is_not_swallowed() {
@@ -3596,6 +3748,33 @@ mod tests {
         harness.mouse_button_press(Some(PointerButton::Primary));
         let menu = harness.edit_root_widget(|root| root.widget.menu);
         assert!(menu.is_none(), "a left click does not open the menu");
+    }
+
+    #[test]
+    fn lasso_selects_enclosed_point_without_editing_outline() {
+        let mut editor = widget();
+        editor.tool = Tool::Lasso;
+        let original = projected_glyph(&editor.session);
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+        let (id, point) = harness.edit_root_widget(|root| {
+            let (id, point, _, _, _) = root.widget.screen_points()[0];
+            (id, point)
+        });
+        for (index, (x, y)) in [(-14.0, -14.0), (14.0, -14.0), (14.0, 14.0), (-14.0, 14.0)]
+            .into_iter()
+            .enumerate()
+        {
+            harness.mouse_move(point + kurbo::Vec2::new(x, y));
+            if index == 0 {
+                harness.mouse_button_press(Some(PointerButton::Primary));
+            }
+        }
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        harness.edit_root_widget(|root| {
+            assert_eq!(root.widget.session.selection, HashSet::from([id]));
+            assert_eq!(projected_glyph(&root.widget.session), original);
+        });
     }
 
     #[test]

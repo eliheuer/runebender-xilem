@@ -10,6 +10,25 @@ No release has been published yet.
 
 ### Changed
 
+- Toolbar, footer, menu, disclosure, and other control icons now come from an editable UFO in `assets/icons/`; native and browser builds embed its glyph outlines.
+  The icon UFO uses Virtua Grotesk's 1024 UPM and vertical metrics, keeping icon outlines aligned to its baseline and cap height.
+  Every icon has a documented Private Use Area code point, and the Select and Shapes toolbar groups have editable icons with built-in dropdown triangles.
+  Generated arrows, triangles, boxes, bars, and grid details now use rounded corners; open menu strokes use rounded caps and joins.
+
+- The editor header groups its selection and shape tools into compact menus.
+  Lasso selects points within a drawn freehand boundary.
+  Right-clicking a component can now disable or enable its automatic alignment before moving it, and context menus use the active theme without crashing.
+  The Select menu's triangle sits closer to the cursor in the editable icon UFO.
+  Tool menus now sit below the header with a hard shadow, theme-defined corners, dark header colors, and centered icon-and-label rows; the open toolbar icon uses brighter ink instead of a filled background.
+
+- Themes are now standalone, shareable `.theme.json` files with named Base UI and Glyph Grid palettes.
+  The editor discovers local themes from the config directory or `RUNEBENDER_THEME_PATH`, lists them in the Theme menu, and provides `theme init`, `theme validate`, and `theme list` commands.
+  Invalid color references report the theme and role, and UFO marks now save simple canonical colors while themes control their display colors.
+
+- The editor inspector preview now fills the space below its sections, like GlyphGrid, without a fixed divider; opening sections pushes it down and leaves a small remainder blank when the outline would be too small to read.
+
+- Inspector preview points are smaller and its handle lines match the editor; sort metric marks are shorter and stay inside each sort's metric frame.
+
 - Unfiltered glyph views reuse their existing cell list, and sidebar searches and coverage counts avoid repeated temporary allocations.
 
 - Application-only edits no longer invalidate the font library through the Windows stack-size build script.

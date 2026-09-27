@@ -8,8 +8,8 @@ use crate::application::view::design::{
     ButtonShape, ControlSize, Region, Space, Stroke, TextSize, row as xrow,
 };
 use crate::application::view::design::{
-    MARK_CLEAR_CROSS_HALF, MARK_SELECTED_RING_INSET, MARK_SWATCH_DIAMETER, MARK_SWATCH_GAP,
-    STATUS_ICON_SIZE, TITLEBAR_HEIGHT,
+    MARK_SELECTED_RING_INSET, MARK_SWATCH_DIAMETER, MARK_SWATCH_GAP, STATUS_ICON_SIZE,
+    TITLEBAR_HEIGHT,
 };
 use crate::application::view::panels::tabs::{tab_chip, tab_strip};
 use crate::application::view::recipes::button;
@@ -18,7 +18,9 @@ use crate::application::view::theme::Palette;
 use crate::application::view::{label, recipes};
 use crate::application::widgets::drag_region::drag_region;
 use crate::application::widgets::icon_button::icon_button;
-use crate::application::widgets::icon_button::{IconMark, mark_button};
+use crate::application::widgets::icon_button::named_icon_button;
+use crate::application::widgets::icon_paint;
+use crate::application::widgets::tool_group::{ToolGroup, tool_group};
 use crate::application::workspace::{Mode, Tool, Workspace};
 use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
@@ -169,17 +171,15 @@ pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<
         }
     };
     xrow(
-        Region::List,
+        Region::Inline,
         (
-            tile("select", Tool::Select),
+            tool_group(ToolGroup::Select, app.tool, app.palette.clone()),
             // The shared icon set calls this asset `preview`; its drawing is
             // the hand used by the viewport-pan tool.
             tile("preview", Tool::Hand),
             tile("pen", Tool::Pen),
             tile("hyperpen", Tool::HyperPen),
-            tile("shape-rectangle", Tool::Rect),
-            tile("shape-ellipse", Tool::Ellipse),
-            tile("shape-metaball", Tool::Metaball),
+            tool_group(ToolGroup::Shapes, app.tool, app.palette.clone()),
             tile("knife", Tool::Knife),
             tile("measure", Tool::Measure),
             tile("text", Tool::Text),
@@ -210,7 +210,7 @@ pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             let clear = mark.is_none();
             let face = sized_box(canvas(move |_: &mut Workspace, _, scene, _| {
                 use masonry::imaging::Painter;
-                use masonry::kurbo::{Circle, Line, Stroke as Pen};
+                use masonry::kurbo::{Circle, Rect, Stroke as Pen};
                 let mut painter = Painter::new(scene);
                 let half = ControlSize::Swatch.px() / 2.0;
                 let center = (half, half);
@@ -237,15 +237,12 @@ pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         .draw();
                 }
                 if clear {
-                    let d = MARK_CLEAR_CROSS_HALF;
-                    for (a, b) in [
-                        ((half - d, half - d), (half + d, half + d)),
-                        ((half + d, half - d), (half - d, half + d)),
-                    ] {
-                        painter
-                            .stroke(Line::new(a, b), &Pen::new(Stroke::Hairline.px()), outline)
-                            .draw();
-                    }
+                    icon_paint::paint(
+                        &mut painter.as_dyn(),
+                        "close",
+                        Rect::new(half - 5.0, half - 5.0, half + 5.0, half + 5.0),
+                        outline,
+                    );
                 }
             }))
             .dims(Dimensions::fixed(
@@ -344,14 +341,14 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                                 overview_status_button(
                                     pal,
                                     "Add glyph",
-                                    IconMark::Plus,
+                                    "plus",
                                     false,
                                     |app: &mut Workspace| app.new_glyph(),
                                 ),
                                 overview_status_button(
                                     pal,
                                     "Remove glyph",
-                                    IconMark::Minus,
+                                    "minus",
                                     false,
                                     |app: &mut Workspace| {
                                         app.note =
@@ -385,14 +382,14 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                                 overview_status_button(
                                     pal,
                                     "Grid view",
-                                    IconMark::Grid,
+                                    "grid",
                                     !app.list,
                                     |app: &mut Workspace| app.list = false,
                                 ),
                                 overview_status_button(
                                     pal,
                                     "List view",
-                                    IconMark::List,
+                                    "list",
                                     app.list,
                                     |app: &mut Workspace| app.list = true,
                                 ),
@@ -427,16 +424,16 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
 fn overview_status_button<F>(
     pal: &Palette,
     label: &'static str,
-    mark: IconMark,
+    icon: &'static str,
     active: bool,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F>
 where
     F: Fn(&mut Workspace) + Send + Sync + 'static,
 {
-    mark_button(
+    named_icon_button(
         label,
-        mark,
+        icon,
         active,
         pal.editor_control_ink(),
         pal.selected_ink(),
@@ -461,12 +458,12 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
                     Region::Inline,
                     (
                         sidebar_toggle(app),
-                        mark_button(
+                        named_icon_button(
                             "Show proof",
                             if app.preview_visible {
-                                IconMark::EyeOpen
+                                "eye-open"
                             } else {
-                                IconMark::EyeClosed
+                                "eye-closed"
                             },
                             app.preview_visible,
                             pal.editor_ink(),
@@ -477,9 +474,9 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
                         )
                         .icon_size(16.0)
                         .tile_size(16.0),
-                        mark_button(
+                        named_icon_button(
                             "Invert proof",
-                            IconMark::Invert,
+                            "invert",
                             app.preview_invert,
                             pal.editor_ink(),
                             pal.editor_control_ink(),
@@ -523,12 +520,12 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
 /// One stable footer control for hiding and restoring the left dock in every mode.
 fn sidebar_toggle(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
-    mark_button(
+    named_icon_button(
         "Toggle sidebar",
         if app.left_collapsed {
-            IconMark::SidebarClosed
+            "sidebar-closed"
         } else {
-            IconMark::SidebarOpen
+            "sidebar-open"
         },
         false,
         pal.editor_control_ink(),

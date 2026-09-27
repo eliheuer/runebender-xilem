@@ -27,6 +27,7 @@ const ALLOWED_BOUNDARIES: &[&str] = &[
     "formats/color_font.rs",
     "formats/designspace.rs",
     "formats/glyphs_import.rs",
+    "formats/icon_ufo.rs",
     "formats/image_trace.rs",
     "formats/metadata/lib_keys.rs",
     "formats/metadata/metaballs.rs",

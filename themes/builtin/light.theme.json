@@ -1,0 +1,195 @@
+{
+  "formatVersion": 1,
+  "id": "light",
+  "name": "Light",
+  "$comment": [
+    "Base UI numbers progress from darkest to lightest.",
+    "Glyph Grid names carry mark meaning across themes.",
+    "See themes/README.md for the complete format."
+  ],
+  "baseUi": {
+    "01": "oklch(0.15 0 255)",
+    "02": "oklch(0.17 0 255)",
+    "03": "oklch(0.18 0 255)",
+    "04": "oklch(0.21 0 255)",
+    "05": "oklch(0.23 0 255)",
+    "06": "oklch(0.26 0 255)",
+    "07": "oklch(0.28 0 255)",
+    "08": "oklch(0.31 0 255)",
+    "09": "oklch(0.34 0 255)",
+    "10": "oklch(0.37 0 255)",
+    "11": "oklch(0.43 0 255)",
+    "12": "oklch(0.46 0 255)",
+    "13": "oklch(0.49 0 255)",
+    "14": "oklch(0.52 0 255)",
+    "15": "oklch(0.55 0 255)",
+    "16": "oklch(0.6 0 255)",
+    "17": "oklch(0.65 0 255)",
+    "18": "oklch(0.71 0 255)",
+    "19": "oklch(0.74 0 255)",
+    "20": "oklch(0.76 0 255)",
+    "21": "oklch(0.8 0 255)",
+    "22": "oklch(0.81 0 255)",
+    "23": "oklch(0.85 0 255)",
+    "24": "oklch(0.86 0 255)",
+    "25": "oklch(0.89 0 255)",
+    "26": "oklch(0.91 0 255)",
+    "27": "oklch(0.94 0 255)",
+    "28": "oklch(0.96 0 255)",
+    "29": "oklch(0.99 0 255)"
+  },
+  "glyphGrid": {
+    "hues": {
+      "red": {
+        "hue": 27,
+        "lightness": 0.61,
+        "chroma": 0.167
+      },
+      "orange": {
+        "hue": 46,
+        "lightness": 0.68,
+        "chroma": 0.15
+      },
+      "yellow": {
+        "hue": 96,
+        "lightness": 0.82,
+        "chroma": 0.135
+      },
+      "green": {
+        "hue": 152,
+        "lightness": 0.69,
+        "chroma": 0.126
+      },
+      "teal": {
+        "hue": 186,
+        "lightness": 0.7,
+        "chroma": 0.095
+      },
+      "blue": {
+        "hue": 248,
+        "lightness": 0.64,
+        "chroma": 0.119
+      },
+      "purple": {
+        "hue": 292,
+        "lightness": 0.61,
+        "chroma": 0.15
+      },
+      "pink": {
+        "hue": 350,
+        "lightness": 0.68,
+        "chroma": 0.15
+      }
+    },
+    "steps": {
+      "dim": {
+        "lightness": -0.17,
+        "chroma": -0.02
+      },
+      "base": {
+        "lightness": 0.0,
+        "chroma": 0.0
+      },
+      "bright": {
+        "lightness": 0.13,
+        "chroma": -0.03
+      },
+      "deep": {
+        "lightness": -0.26,
+        "chroma": 0.0
+      }
+    },
+    "marks": [
+      "red",
+      "orange",
+      "yellow",
+      "green",
+      "blue",
+      "purple",
+      "pink"
+    ]
+  },
+  "surfaces": {
+    "app": "baseUi.26",
+    "panel": "baseUi.28",
+    "titlebar": "baseUi.23",
+    "control": "baseUi.26",
+    "button": "baseUi.28",
+    "buttonHover": "baseUi.26",
+    "field": "baseUi.27",
+    "outline": "baseUi.18",
+    "fieldOutline": "baseUi.25",
+    "divider": "baseUi.22",
+    "canvas": "baseUi.28",
+    "tabRail": "baseUi.23",
+    "inactiveTab": "#E0E0E0",
+    "header": "#181818",
+    "gridBackground": "#C5C5C5",
+    "cellShadow": "#7A7A7A",
+    "floatingPaneHeader": "#E9E9E9",
+    "sliderTrack": "#989898"
+  },
+  "text": {
+    "primary": "baseUi.08",
+    "secondary": "baseUi.11",
+    "muted": "baseUi.11",
+    "subdued": "baseUi.15",
+    "overlay": "baseUi.03",
+    "glyph": "baseUi.08",
+    "headerInk": "baseUi.29"
+  },
+  "roles": {
+    "gridSelected": "baseUi.08",
+    "cellSelectedFill": "baseUi.08",
+    "cellSelectedInk": "baseUi.29",
+    "controlSelected": "baseUi.08",
+    "controlSelectedInk": "baseUi.29",
+    "designGridFine": "baseUi.24",
+    "designGridCoarse": "baseUi.21",
+    "accent": "glyphGrid.green.dim",
+    "warning": "glyphGrid.orange.dim",
+    "danger": "glyphGrid.red.dim",
+    "selection": "glyphGrid.orange.dim",
+    "component": "glyphGrid.purple.dim",
+    "componentSelected": "glyphGrid.pink.dim",
+    "pointSmooth": "glyphGrid.blue.dim",
+    "pointCorner": "glyphGrid.green.dim",
+    "pointOffcurve": "glyphGrid.purple.dim",
+    "pointHyper": "glyphGrid.teal.dim",
+    "pointSelected": "glyphGrid.orange.dim",
+    "pointInner": "baseUi.29",
+    "startNode": "glyphGrid.orange.dim",
+    "textCursor": "glyphGrid.orange.dim",
+    "kernActive": "glyphGrid.teal.dim",
+    "kernPrevious": "glyphGrid.orange.dim",
+    "pathStroke": "baseUi.06",
+    "previewFill": "baseUi.13",
+    "background": "baseUi.15",
+    "reference": "baseUi.22",
+    "halo": "baseUi.28",
+    "metricQuiet": "baseUi.22",
+    "outlineFill": "baseUi.20",
+    "metricsLine": "baseUi.20",
+    "readonlyPoint": "baseUi.15",
+    "continuityG2": "glyphGrid.teal.dim",
+    "continuityG1": "glyphGrid.yellow.dim",
+    "continuityLine": "baseUi.15",
+    "continuityKink": "glyphGrid.red.dim",
+    "popcount1": "#17B870",
+    "popcount2": "#FFDB33",
+    "popcount3": "#FF990F",
+    "popcount4": "#FF4A3D"
+  },
+  "markStep": "base",
+  "markStyle": "fill",
+  "pointStyle": "ring",
+  "pointHalo": true,
+  "geometry": {
+    "radius": 3.0,
+    "radiusControl": 6.0,
+    "stroke": 1.0,
+    "strokeEmphasis": 2.0
+  },
+  "markOutline": "baseUi.08",
+  "markInk": "baseUi.01"
+}

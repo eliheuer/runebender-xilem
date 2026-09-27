@@ -14,6 +14,7 @@ use crate::application::view::design::{
 use crate::application::view::recipes::button;
 use crate::application::view::theme::Palette;
 use crate::application::view::{design, label, recipes, text_input};
+use crate::application::widgets::icon_paint;
 use crate::application::widgets::scroll_viewport::portal;
 use crate::application::workspace::Workspace;
 use masonry::layout::{Dim, Length};
@@ -248,9 +249,7 @@ pub(crate) fn kerning_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                     .padding(Space::None)
                     .flex(1.0),
                     button(
-                        label("\u{00d7}")
-                            .text_size(TextSize::Body.px())
-                            .color(pal.text_muted),
+                        icon_paint::view("close", "Delete kerning pair", pal.text_muted, 12.0),
                         move |app: &mut Workspace| app.delete_kern_pair(&f2, &s2),
                     )
                     .background_color(pal.panel)

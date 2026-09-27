@@ -3,12 +3,43 @@
 
 //! Reserves enough main-thread stack for native Windows debug builds.
 
+use std::fs;
+use std::path::{Path, PathBuf};
+
+fn embed_icons() {
+    let glyph_dir = Path::new("assets/icons/icons.ufo/glyphs");
+    println!("cargo::rerun-if-changed={}", glyph_dir.display());
+    let mut glifs: Vec<PathBuf> = fs::read_dir(glyph_dir)
+        .expect("icon UFO glyph directory")
+        .map(|entry| entry.expect("icon directory entry").path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "glif")
+        })
+        .collect();
+    glifs.sort();
+    assert!(!glifs.is_empty(), "icon UFO has no glyphs");
+
+    let mut source = String::from("pub(super) const GLIFS: &[&[u8]] = &[\n");
+    for path in glifs {
+        let relative = format!("/{}", path.display());
+        source.push_str(&format!(
+            "    include_bytes!(concat!(env!(\"CARGO_MANIFEST_DIR\"), {relative:?})),\n"
+        ));
+    }
+    source.push_str("];\n");
+    let output =
+        PathBuf::from(std::env::var_os("OUT_DIR").expect("Cargo OUT_DIR")).join("icon_glifs.rs");
+    fs::write(output, source).expect("write embedded icon list");
+}
+
 // Xilem view construction exceeds Windows' default 1 MiB main-thread stack
 // in debug builds. Reserve 16 MiB for the application; pages commit on demand.
 fn main() {
     // Only this script determines the platform linker flags. Watching the whole
     // package would invalidate the font library after application-only edits.
     println!("cargo::rerun-if-changed=build.rs");
+    embed_icons();
 
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         match std::env::var("CARGO_CFG_TARGET_ENV").as_deref() {

@@ -40,7 +40,7 @@ use runebender::outline::glyph_paths::round_units;
 /// resizes to its longest label is harder to aim at than one that does
 /// not.
 const ROW: f64 = 24.0;
-const WIDTH: f64 = 184.0;
+const WIDTH: f64 = 228.0;
 const PAD: f64 = 4.0;
 
 /// What a row does when it is chosen.
@@ -53,6 +53,8 @@ pub(crate) enum MenuAction {
     Op(fn(&mut crate::application::editor::session::Session) -> bool),
     /// Add an anchor where the menu was opened.
     AddAnchor,
+    /// Switch the selected component between manual and automatic placement.
+    ToggleComponentAlignment,
     /// Add a node of this type where the menu was opened, on the
     /// nodes canvas.
     AddNode(String),
@@ -150,11 +152,7 @@ impl Widget for ContextMenu {
         let frame = self.size.to_rect();
         painter.fill(frame.to_rounded_rect(6.0), pal.panel).draw();
         painter
-            .stroke(
-                frame.to_rounded_rect(6.0),
-                &Stroke::new(1.0),
-                pal.role("gridBorder"),
-            )
+            .stroke(frame.to_rounded_rect(6.0), &Stroke::new(1.0), pal.outline)
             .draw();
         for (index, row) in self.rows.iter().enumerate() {
             let top = PAD + index as f64 * ROW;
@@ -163,7 +161,7 @@ impl Widget for ContextMenu {
                 painter
                     .fill(
                         rect.to_rounded_rect(4.0),
-                        pal.role("gridSelected").with_alpha(0.25),
+                        pal.selected_bg().with_alpha(0.25),
                     )
                     .draw();
             }

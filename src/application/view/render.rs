@@ -210,7 +210,7 @@ where
 ///
 /// Unlike a stateful splitter, this recomputes the allocation when a section
 /// opens or closes. Expanded sections therefore push the preview down and
-/// compress it instead of continuing underneath it.
+/// eventually out of view.
 fn inspector_stack<State, A, B>(
     sections: A,
     preview: B,
@@ -223,30 +223,6 @@ where
     flex_col((sections, preview.flex(1.0)))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
         .gap(Space::None)
-}
-
-/// Keep the active outline legible even when the editor has many inspector sections.
-fn editor_inspector_stack<State, A, B>(
-    sections: A,
-    preview: B,
-    outline: Color,
-) -> impl WidgetView<State, Widget: Sized> + use<State, A, B>
-where
-    State: 'static,
-    A: WidgetView<State>,
-    B: WidgetView<State>,
-{
-    let split = xilem::view::split(sections, top_keyline(preview, outline))
-        .split_axis(kurbo::Axis::Vertical)
-        .split_point_from_end(Length::px(design::EDITOR_INSPECTOR_PREVIEW_HEIGHT))
-        .min_lengths(
-            Length::px(design::EDITOR_MIN_HEIGHT),
-            Length::px(design::INSPECTOR_PREVIEW_MIN_HEIGHT),
-        )
-        .bar_thickness(Length::ZERO)
-        .min_bar_area(Length::px(design::SPLITTER_HIT_WIDTH))
-        .solid_bar(false);
-    clip_split(split)
 }
 
 pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use<> {
@@ -292,20 +268,12 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
             .constrain_horizontal(true)
             .background_color(pal.panel)
     };
-    // The editor reserves a legible preview while its longer section list scrolls.
-    // Overview and Nodes keep the content-sized sections and remaining-space preview.
-    let inspector = if matches!(app.mode, Mode::Editor(_)) {
-        Either::A(editor_inspector_stack(
-            inspector_sections(),
-            glyph_preview(app),
-            pal.outline,
-        ))
-    } else {
-        Either::B(inspector_stack(inspector_sections(), glyph_preview(app)))
-    }
-    // Erase the inspector split before adding the two horizontal dock splits;
-    // the section tree is already near rustc's recursive trait limit.
-    .boxed();
+    // Every mode lets its sections take their natural height. The preview
+    // fills only the space left below them and moves out of view as they grow.
+    let inspector = inspector_stack(inspector_sections(), glyph_preview(app))
+        // Erase the inspector tree before adding the two horizontal dock splits;
+        // the section tree is already near rustc's recursive trait limit.
+        .boxed();
     let columns = workspace_columns(
         left.background_color(pal.panel),
         middle,
@@ -1112,7 +1080,8 @@ mod panel_resize_tests {
     }
 
     #[test]
-    fn overview_sections_take_their_height_and_preview_takes_the_remainder() {
+    fn inspector_sections_take_their_height_and_preview_takes_the_remainder() {
+        use crate::application::widgets::scroll_viewport::portal;
         use masonry::layout::{Dim, Length};
         use masonry::properties::Dimensions;
         use xilem::core::View;
@@ -1120,10 +1089,11 @@ mod panel_resize_tests {
         use xilem::view::{label, sized_box};
         let logic = |sections_height| {
             inspector_stack(
-                sized_box(label("Sections")).dims(Dimensions::new(
+                portal(sized_box(label("Sections")).dims(Dimensions::new(
                     Dim::Stretch,
                     Dim::Fixed(Length::px(sections_height)),
-                )),
+                )))
+                .constrain_horizontal(true),
                 label("Preview"),
             )
         };
@@ -1148,6 +1118,10 @@ mod panel_resize_tests {
         let again = logic(440.0);
         h.edit_root_widget(|root| again.rebuild(&view, &mut state, &mut ctx, root, &mut ()));
         assert_eq!(heights(&h), (440.0, 242.0));
+
+        let expanded = logic(760.0);
+        h.edit_root_widget(|root| expanded.rebuild(&again, &mut state, &mut ctx, root, &mut ()));
+        assert_eq!(heights(&h), (760.0, 0.0));
     }
 
     #[test]

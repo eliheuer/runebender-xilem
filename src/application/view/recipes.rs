@@ -11,12 +11,11 @@
 //! are candidates for the framework's parts list. Each graduates when a
 //! second application needs the same one.
 
+use crate::application::widgets::icon_paint;
 use crate::application::widgets::input_typography;
 
 use crate::application::view::design::{
-    ButtonShape, ControlSize, ROW_MARKER_BULLET_RADIUS, ROW_MARKER_CHEVRON_LONG,
-    ROW_MARKER_CHEVRON_SHORT, ROW_MARKER_CHEVRON_TIP, ROW_MARKER_SIZE, Radius, Region, Space,
-    Stroke, TextSize,
+    ButtonShape, ControlSize, ROW_MARKER_SIZE, Radius, Region, Space, Stroke, TextSize,
 };
 use crate::application::view::design::{column, row};
 use crate::application::view::{label, text_input};
@@ -265,56 +264,22 @@ pub(crate) enum Marker {
     Open,
 }
 
-impl Marker {
-    fn is_open(self) -> bool {
-        matches!(self, Self::Open)
-    }
-}
-
-/// A painted row marker. The bundled UI font deliberately does not carry
-/// disclosure characters, so geometry is both deterministic and identical
-/// to the GPUI reference at every theme and scale.
+/// A row marker painted from the editable icon UFO.
 pub(crate) fn marker(marker: Marker, color: xilem::Color) -> impl WidgetView<Workspace> + use<> {
     sized_box(canvas(move |_: &mut Workspace, _, scene, size| {
         use masonry::imaging::Painter;
-        use masonry::kurbo::{BezPath, Circle};
-
-        if marker == Marker::None {
-            return;
-        }
-        let mut painter = Painter::new(scene);
-        let center = (size.width / 2.0, size.height / 2.0);
-        if marker == Marker::Bullet {
-            painter
-                .fill(Circle::new(center, ROW_MARKER_BULLET_RADIUS), color)
-                .draw();
-            return;
-        }
-
-        let mut path = BezPath::new();
-        if marker.is_open() {
-            path.move_to((
-                center.0 - ROW_MARKER_CHEVRON_LONG,
-                center.1 - ROW_MARKER_CHEVRON_SHORT,
-            ));
-            path.line_to((
-                center.0 + ROW_MARKER_CHEVRON_LONG,
-                center.1 - ROW_MARKER_CHEVRON_SHORT,
-            ));
-            path.line_to((center.0, center.1 + ROW_MARKER_CHEVRON_TIP));
-        } else {
-            path.move_to((
-                center.0 - ROW_MARKER_CHEVRON_SHORT,
-                center.1 - ROW_MARKER_CHEVRON_LONG,
-            ));
-            path.line_to((center.0 + ROW_MARKER_CHEVRON_TIP, center.1));
-            path.line_to((
-                center.0 - ROW_MARKER_CHEVRON_SHORT,
-                center.1 + ROW_MARKER_CHEVRON_LONG,
-            ));
-        }
-        path.close_path();
-        painter.fill(&path, color).draw();
+        let name = match marker {
+            Marker::None => return,
+            Marker::Bullet => "disclosure-bullet",
+            Marker::Closed => "disclosure-closed",
+            Marker::Open => "disclosure-open",
+        };
+        icon_paint::paint(
+            &mut Painter::new(scene).as_dyn(),
+            name,
+            size.to_rect(),
+            color,
+        );
     }))
     .dims(Dimensions::fixed(
         Length::px(ROW_MARKER_SIZE),

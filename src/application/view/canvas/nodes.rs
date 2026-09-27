@@ -39,6 +39,7 @@ use xilem::{Pod, ViewCtx};
 use crate::application::editor::tools::nodes::RowState;
 use crate::application::view::theme::Palette;
 use crate::application::widgets::context_menu::{ContextMenu, MenuAction, MenuRow, MenuTarget};
+use crate::application::widgets::icon_paint;
 use crate::application::widgets::source_text_area::SourceTextArea;
 use crate::application::widgets::text_label::{self, Anchor};
 use crate::application::workspace::Workspace;
@@ -697,11 +698,14 @@ impl Widget for NodesWidget {
                     Anchor::Start,
                 );
                 if let Some(handle) = nb.resize_rect() {
-                    let a = tf * Point::new(handle.x0 + nl::PAD / 2.0, handle.y1 - nl::PAD / 2.0);
-                    let b = tf * Point::new(handle.x1, handle.y0);
-                    painter
-                        .stroke(Line::new(a, b), &Stroke::new(1.0), pal.text_muted)
-                        .draw();
+                    let a = tf * Point::new(handle.x0, handle.y0);
+                    let b = tf * Point::new(handle.x1, handle.y1);
+                    icon_paint::paint(
+                        painter,
+                        "node-resize",
+                        Rect::new(a.x, a.y, b.x, b.y),
+                        pal.text_muted,
+                    );
                 }
             }
         }

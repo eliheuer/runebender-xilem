@@ -38,6 +38,7 @@ pub(crate) enum Sel {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Tool {
     Select,
+    Lasso,
     /// Moves the editor viewport without changing the glyph or selection.
     Hand,
     Pen,
@@ -228,7 +229,7 @@ pub(crate) struct Workspace {
     pub(crate) component_base_buf: String,
     /// Current axis location in user units, one per designspace axis.
     pub(crate) axis_values: Vec<f64>,
-    /// Active OKLCH theme id (dark | gray | light).
+    /// Active built-in or installed theme ID.
     pub(crate) theme_id: &'static str,
     /// Reference corner for the Coordinates fields (the 9-point picker).
     pub(crate) coord_quadrant: runebender::outline::path::Quadrant,
@@ -330,11 +331,7 @@ pub(crate) enum DirtyDecision {
 impl AppState {
     /// Opens `path`, or makes the no-document state when no path was supplied.
     pub(crate) fn open(path: Option<&std::path::Path>) -> Self {
-        let theme_id = match std::env::var("RUNEBENDER_THEME").ok().as_deref() {
-            Some("dark") => "dark",
-            Some("light") => "light",
-            _ => "gray",
-        };
+        let theme_id = crate::application::platform::themes::catalog().initial_id();
         let palette = Arc::new(Palette::load(theme_id));
         let Some(path) = path else {
             return Self {
@@ -375,7 +372,10 @@ impl AppState {
             return false;
         }
         match Workspace::open(path) {
-            Ok(workspace) => {
+            Ok(mut workspace) => {
+                if workspace.theme_id != self.theme_id {
+                    workspace.set_theme(self.theme_id);
+                }
                 self.theme_id = workspace.theme_id;
                 self.palette = workspace.palette.clone();
                 self.workspace = Some(workspace);
@@ -448,6 +448,9 @@ impl AppState {
                 .and_then(|()| Workspace::from_model(FontModel::from_project(project)))
             {
                 Ok(mut workspace) => {
+                    if workspace.theme_id != self.theme_id {
+                        workspace.set_theme(self.theme_id);
+                    }
                     workspace.note = "new font · Save As picks where it lives".into();
                     self.theme_id = workspace.theme_id;
                     self.palette = workspace.palette.clone();
@@ -574,8 +577,10 @@ mod tests {
     #[test]
     fn welcome_new_font_opens_the_canonical_project() {
         let mut app = AppState::open(None);
+        app.dispatch(shortcuts::AppAction::Theme("dark"));
         app.dispatch(shortcuts::AppAction::NewFont);
         let workspace = app.workspace.as_ref().expect("the new project opens");
+        assert_eq!(workspace.theme_id, "dark");
         let source = workspace.font.project.source_id(0).unwrap();
         let layer = workspace
             .font
@@ -597,6 +602,29 @@ mod tests {
         let path = workspace.font.source().to_path_buf();
         assert!(path.is_dir());
         std::fs::remove_dir_all(path).expect("the new-font fixture is removed");
+    }
+
+    #[test]
+    fn chosen_theme_survives_opening_a_font() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-themed-open-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        norad::Font::new()
+            .save(&path)
+            .expect("the empty UFO fixture saves");
+        let mut app = AppState::open(None);
+        app.dispatch(shortcuts::AppAction::Theme("dark"));
+
+        assert!(app.open_path(&path));
+        assert_eq!(app.theme_id, "dark");
+        assert_eq!(app.workspace.as_ref().expect("font opens").theme_id, "dark");
+
+        std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
     }
 
     #[test]

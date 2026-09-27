@@ -21,6 +21,7 @@ use crate::application::view::render::top_keyline;
 use crate::application::view::theme::Palette;
 use crate::application::view::{design, label, recipes, text_input};
 use crate::application::widgets::icon_button::icon_button;
+use crate::application::widgets::icon_paint;
 use crate::application::widgets::input_typography;
 use crate::application::widgets::scroll_viewport::portal;
 use crate::application::workspace::{Mode, Sel, Workspace};
@@ -492,6 +493,38 @@ where
     .dims(Dimensions::new(width, Dim::from(ControlSize::Row)))
 }
 
+/// A compact title-bar button whose visible symbol comes from `icons.ufo`.
+fn header_icon_chip<F>(
+    pal: &Palette,
+    icon: &'static str,
+    label: &'static str,
+    circular: bool,
+    on_click: F,
+) -> impl WidgetView<Workspace> + use<F>
+where
+    F: Fn(&mut Workspace) + Send + Sync + 'static,
+{
+    sized_box(
+        button(
+            icon_paint::view(icon, label, pal.header_ink.with_alpha(0.7), 12.0),
+            on_click,
+        )
+        .background_color(pal.header)
+        .border_color(pal.header_ink.with_alpha(0.5))
+        .border_width(Stroke::Hairline.length())
+        .corner_radius(if circular {
+            ButtonShape::Circular.radius()
+        } else {
+            ButtonShape::Square.radius()
+        })
+        .padding(Space::Md),
+    )
+    .dims(Dimensions::new(
+        Dim::from(ControlSize::Row),
+        Dim::from(ControlSize::Row),
+    ))
+}
+
 pub(crate) fn tab_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     let editing = matches!(app.mode, Mode::Editor(_));
@@ -521,11 +554,10 @@ pub(crate) fn tab_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         move |app: &mut Workspace| app.activate_tab(index),
                     ),
                     closable.then(|| {
-                        header_tab_chip(
+                        header_icon_chip(
                             pal,
-                            "\u{00d7}".into(),
-                            false,
-                            true,
+                            "close",
+                            "Close tab",
                             false,
                             move |app: &mut Workspace| app.close_tab(index),
                         )
@@ -559,7 +591,7 @@ pub(crate) fn tab_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 |app: &mut Workspace| app.enter_nodes_mode(),
             ),
             xrow(Region::Inline, tabs),
-            header_tab_chip(pal, "+".into(), false, true, true, |app: &mut Workspace| {
+            header_icon_chip(pal, "plus", "New tab", true, |app: &mut Workspace| {
                 app.new_tab();
             }),
         ),

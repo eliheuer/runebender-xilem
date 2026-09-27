@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="shapes-menu" format="2">
+	<unicode hex="E02A"/>
+	<advance height="768" width="768"/>
+	<outline>
+		<component base="shapes" xScale="0.72" yScale="0.72" xOffset="75" yOffset="107.52"/>
+		<component base="menu-down" xScale="0.18" yScale="0.18" xOffset="620" yOffset="70"/>
+	</outline>
+</glyph>

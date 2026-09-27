@@ -5,10 +5,11 @@
 //!
 //! The colour type, the theme resolver, the glyph grid's filter
 //! data, the toolkit-free editing state (selection, undo, the
-//! viewport), and the nodes canvas as geometry.
+//! viewport), application icon geometry, and the nodes canvas as geometry.
 
 pub mod color;
 pub mod editing;
+pub mod icons;
 pub mod nodes;
 pub mod sidebar;
 pub mod theme;

@@ -28,9 +28,10 @@ use xilem::style::Style as _;
 use xilem::view::{FlexExt as _, flex_col, sized_box};
 use xilem::{Pod, ViewCtx, WidgetView};
 
-use crate::application::actions::{ACTIONS, MENUS};
+use crate::application::actions::{MENUS, actions};
 use crate::application::view::design::Space;
 use crate::application::view::theme::Palette;
+use crate::application::widgets::icon_paint;
 use crate::application::widgets::shortcuts::AppAction;
 use crate::application::widgets::text_label::{self, Anchor};
 use crate::application::workspace::AppState;
@@ -85,7 +86,7 @@ fn menu_at(point: Point) -> Option<usize> {
 fn indexed_entries(
     menu: usize,
 ) -> impl Iterator<Item = (usize, &'static crate::application::actions::Entry)> {
-    ACTIONS
+    actions()
         .iter()
         .enumerate()
         .filter(move |(_, entry)| entry.menu == MENUS[menu])
@@ -99,7 +100,7 @@ enum MenuRow {
 
 fn row_label(row: MenuRow) -> &'static str {
     match row {
-        MenuRow::Action(index) => ACTIONS[index].title,
+        MenuRow::Action(index) => actions()[index].title,
         MenuRow::Submenu(name) => name,
     }
 }
@@ -116,7 +117,7 @@ fn row_state(row: MenuRow, states: &[EntryState]) -> EntryState {
 
 fn row_separator(row: MenuRow, menu: usize) -> bool {
     match row {
-        MenuRow::Action(index) => ACTIONS[index].separator_before(),
+        MenuRow::Action(index) => actions()[index].separator_before(),
         MenuRow::Submenu(name) => indexed_entries(menu)
             .find(|(_, entry)| entry.submenu() == Some(name))
             .is_some_and(|(_, entry)| entry.separator_before()),
@@ -264,7 +265,7 @@ impl MenuShell {
         };
         match row {
             MenuRow::Action(index) if self.states[index].enabled => {
-                let action = ACTIONS[index].action;
+                let action = actions()[index].action;
                 self.close(ctx, None);
                 ctx.submit_action::<AppAction>(action);
             }
@@ -506,7 +507,7 @@ impl Widget for MenuShell {
         if let Some(action) =
             crate::application::actions::action_for_key_in_window(&key.key, key.modifiers)
         {
-            if ACTIONS
+            if actions()
                 .iter()
                 .position(|entry| entry.action == action)
                 .is_some_and(|index| self.states[index].enabled)
@@ -718,7 +719,7 @@ impl Widget for AccessibleMenuItem {
                 });
             }
             MenuRow::Action(index) => {
-                let action = ACTIONS[index].action;
+                let action = actions()[index].action;
                 if let Some(id) = focus {
                     ctx.set_focus(id);
                 }
@@ -824,7 +825,7 @@ impl MenuPopup {
         if !self.states[index].enabled {
             return;
         }
-        let entry = &ACTIONS[index];
+        let entry = &actions()[index];
         let action = entry.action;
         let creator = self.creator;
         let popup = ctx.widget_id();
@@ -971,33 +972,28 @@ impl Widget for MenuPopup {
             );
             if state.checked == Some(true) {
                 let ink = row_ink(pal, state.enabled, self.selected == index);
-                painter
-                    .stroke(
-                        Line::new(Point::new(10.0, top + 12.0), Point::new(14.0, top + 16.0)),
-                        &Stroke::new(1.5),
-                        ink,
-                    )
-                    .draw();
-                painter
-                    .stroke(
-                        Line::new(Point::new(14.0, top + 16.0), Point::new(21.0, top + 8.0)),
-                        &Stroke::new(1.5),
-                        ink,
-                    )
-                    .draw();
+                icon_paint::paint(
+                    painter,
+                    "menu-check",
+                    Rect::new(8.0, top + 4.0, 24.0, top + 20.0),
+                    ink,
+                );
             }
             if let MenuRow::Submenu(_) = row {
-                text_label::draw(
+                icon_paint::paint(
                     painter,
-                    Point::new(POPUP_WIDTH - 10.0, top + ROW_HEIGHT / 2.0),
-                    "›",
-                    15.0,
+                    "menu-chevron",
+                    Rect::new(
+                        POPUP_WIDTH - 20.0,
+                        top + ROW_HEIGHT / 2.0 - 8.0,
+                        POPUP_WIDTH - 4.0,
+                        top + ROW_HEIGHT / 2.0 + 8.0,
+                    ),
                     row_ink(pal, state.enabled, self.selected == index),
-                    Anchor::End,
                 );
             }
             if let MenuRow::Action(state_index) = row
-                && let Some(accelerator) = ACTIONS[state_index].accelerator
+                && let Some(accelerator) = actions()[state_index].accelerator
             {
                 let accelerator = shortcut_label(accelerator);
                 text_label::draw(
@@ -1131,7 +1127,7 @@ pub(crate) struct MenuShellView<V> {
 
 fn entry_states(app: &AppState) -> Arc<Vec<EntryState>> {
     Arc::new(
-        ACTIONS
+        actions()
             .iter()
             .map(|entry| EntryState {
                 enabled: entry.enabled(app),
@@ -1262,7 +1258,7 @@ mod tests {
         let button = NewWidget::new(Button::new(Label::new("editor").prepare()));
         let button_id = button.id();
         let states = Arc::new(
-            ACTIONS
+            actions()
                 .iter()
                 .map(|_| EntryState {
                     enabled: true,

@@ -1943,9 +1943,6 @@ fn combined_component_path(
 }
 
 impl Workspace {
-    /// The OKLCH themes in menu order.
-    pub(crate) const THEMES: [&'static str; 3] = ["dark", "gray", "light"];
-
     fn text_context(&self) -> TextContext {
         TextContext {
             editor_text: self.initial_text.clone(),

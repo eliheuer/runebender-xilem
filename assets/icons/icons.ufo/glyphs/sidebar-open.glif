@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="sidebar-open" format="2">
+	<unicode hex="E02C"/>
+	<advance height="768" width="768"/>
+	<outline>
+		<contour>
+			<point x="264" y="651.36" type="line"/>
+			<point x="264" y="662.76"/>
+			<point x="273.24" y="672"/>
+			<point x="284.64" y="672" type="curve"/>
+			<point x="291.36" y="672" type="line"/>
+			<point x="302.76" y="672"/>
+			<point x="312" y="662.76"/>
+			<point x="312" y="651.36" type="curve"/>
+			<point x="312" y="116.64" type="line"/>
+			<point x="312" y="105.24"/>
+			<point x="302.76" y="96"/>
+			<point x="291.36" y="96" type="curve"/>
+			<point x="284.64" y="96" type="line"/>
+			<point x="273.24" y="96"/>
+			<point x="264" y="105.24"/>
+			<point x="264" y="116.64" type="curve"/>
+		</contour>
+	</outline>
+</glyph>

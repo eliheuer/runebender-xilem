@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="flip-h" format="2">
+	<unicode hex="E00C"/>
+	<advance height="768" width="768"/>
+	<outline>
+		<contour>
+			<point x="418.91" y="453.82" type="curve"/>
+			<point x="418.91" y="475.64"/>
+			<point x="403.64" y="488.73"/>
+			<point x="384" y="488.73" type="curve"/>
+			<point x="364.36" y="488.73"/>
+			<point x="349.09" y="473.45"/>
+			<point x="349.09" y="453.82" type="curve"/>
+			<point x="349.09" y="434.18"/>
+			<point x="364.36" y="418.91"/>
+			<point x="384" y="418.91" type="curve"/>
+			<point x="403.64" y="418.91"/>
+			<point x="418.91" y="434.18"/>
+		</contour>
+		<contour>
+			<point x="418.91" y="593.45" type="curve"/>
+			<point x="418.91" y="615.27"/>
+			<point x="403.64" y="628.36"/>
+			<point x="384" y="628.36" type="curve"/>
+			<point x="364.36" y="628.36"/>
+			<point x="349.09" y="613.09"/>
+			<point x="349.09" y="593.45" type="curve"/>
+			<point x="349.09" y="573.82"/>
+			<point x="364.36" y="558.55"/>
+			<point x="384" y="558.55" type="curve"/>
+			<point x="403.64" y="558.55"/>
+			<point x="418.91" y="573.82"/>
+		</contour>
+		<contour>
+			<point x="418.91" y="733.09" type="curve"/>
+			<point x="418.91" y="754.91"/>
+			<point x="403.64" y="768"/>
+			<point x="384" y="768" type="curve"/>
+			<point x="364.36" y="768"/>
+			<point x="349.09" y="752.73"/>
+			<point x="349.09" y="733.09" type="curve"/>
+			<point x="349.09" y="713.45"/>
+			<point x="364.36" y="698.18"/>
+			<point x="384" y="698.18" type="curve"/>
+			<point x="403.64" y="698.18"/>
+			<point x="418.91" y="713.45"/>
+		</contour>
+		<contour>
+			<point x="418.91" y="34.91" type="curve"/>
+			<point x="418.91" y="56.73"/>
+			<point x="403.64" y="69.82"/>
+			<point x="384" y="69.82" type="curve"/>
+			<point x="364.36" y="69.82"/>
+			<point x="349.09" y="54.55"/>
+			<point x="349.09" y="34.91" type="curve"/>
+			<point x="349.09" y="15.27"/>
+			<point x="364.36" y="0"/>
+			<point x="384" y="0" type="curve"/>
+			<point x="403.64" y="0"/>
+			<point x="418.91" y="15.27"/>
+		</contour>
+		<contour>
+			<point x="418.91" y="174.55" type="curve"/>
+			<point x="418.91" y="196.36"/>
+			<point x="403.64" y="209.45"/>
+			<point x="384" y="209.45" type="curve"/>
+			<point x="364.36" y="209.45"/>
+			<point x="349.09" y="194.18"/>
+			<point x="349.09" y="174.55" type="curve"/>
+			<point x="349.09" y="154.91"/>
+			<point x="364.36" y="139.64"/>
+			<point x="384" y="139.64" type="curve"/>
+			<point x="403.64" y="139.64"/>
+			<point x="418.91" y="154.91"/>
+		</contour>
+		<contour>
+			<point x="418.91" y="314.18" type="curve"/>
+			<point x="418.91" y="336"/>
+			<point x="403.64" y="349.09"/>
+			<point x="384" y="349.09" type="curve"/>
+			<point x="364.36" y="349.09"/>
+			<point x="349.09" y="333.82"/>
+			<point x="349.09" y="314.18" type="curve"/>
+			<point x="349.09" y="294.55"/>
+			<point x="364.36" y="279.27"/>
+			<point x="384" y="279.27" type="curve"/>
+			<point x="403.64" y="279.27"/>
+			<point x="418.91" y="294.55"/>
+		</contour>
+		<contour>
+			<point x="460.72" y="428.42" type="line"/>
+			<point x="437.63" y="403.89"/>
+			<point x="437.63" y="364.11"/>
+			<point x="460.72" y="339.58" type="curve"/>
+			<point x="726.19" y="57.51" type="line"/>
+			<point x="749.28" y="32.98"/>
+			<point x="768" y="40.4"/>
+			<point x="768" y="74.09" type="curve"/>
+			<point x="768" y="693.91" type="line"/>
+			<point x="768" y="727.6"/>
+			<point x="749.28" y="735.02"/>
+			<point x="726.19" y="710.49" type="curve"/>
+		</contour>
+		<contour>
+			<point x="307.28" y="339.58" type="line"/>
+			<point x="330.37" y="364.11"/>
+			<point x="330.37" y="403.89"/>
+			<point x="307.28" y="428.42" type="curve"/>
+			<point x="41.81" y="710.49" type="line"/>
+			<point x="18.72" y="735.02"/>
+			<point x="0" y="727.6"/>
+			<point x="0" y="693.91" type="curve"/>
+			<point x="0" y="74.09" type="line"/>
+			<point x="0" y="40.4"/>
+			<point x="18.72" y="32.98"/>
+			<point x="41.81" y="57.51" type="curve"/>
+		</contour>
+	</outline>
+</glyph>

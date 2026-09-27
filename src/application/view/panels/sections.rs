@@ -14,6 +14,7 @@ use crate::application::view::recipes::button;
 use crate::application::view::theme::Palette;
 use crate::application::view::{design, label, recipes, text_input};
 use crate::application::widgets::icon_button;
+use crate::application::widgets::icon_paint;
 use crate::application::workspace::{Mode, Workspace};
 use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
@@ -653,20 +654,33 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
     let pal = &app.palette;
     let dot = |q: Quadrant| {
         let active = app.coord_quadrant == q;
-        let (bg, border) = if active {
-            (pal.editor_control_ink(), pal.editor_control_ink())
+        let (icon, color) = if active {
+            ("coordinate-dot-selected", pal.editor_control_ink())
         } else {
-            (pal.panel, pal.outline)
+            ("coordinate-dot", pal.outline)
+        };
+        let label = match q {
+            Quadrant::TopLeft => "Top left reference",
+            Quadrant::Top => "Top reference",
+            Quadrant::TopRight => "Top right reference",
+            Quadrant::Left => "Left reference",
+            Quadrant::Center => "Center reference",
+            Quadrant::Right => "Right reference",
+            Quadrant::BottomLeft => "Bottom left reference",
+            Quadrant::Bottom => "Bottom reference",
+            Quadrant::BottomRight => "Bottom right reference",
         };
         sized_box(
-            button(label(""), move |app: &mut Workspace| {
-                app.coord_quadrant = q;
-                app.refresh_coord_bufs();
-            })
+            button(
+                icon_paint::view(icon, label, color, ControlSize::Dot.px()),
+                move |app: &mut Workspace| {
+                    app.coord_quadrant = q;
+                    app.refresh_coord_bufs();
+                },
+            )
             .padding(Space::None)
-            .background_color(bg)
-            .border_color(border)
-            .border_width(Stroke::Hairline.length())
+            .background_color(xilem::Color::TRANSPARENT)
+            .border_width(Stroke::None.length())
             .corner_radius(ButtonShape::Circular.radius()),
         )
         .dims(Dimensions::fixed(

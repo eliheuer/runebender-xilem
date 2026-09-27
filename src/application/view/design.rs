@@ -21,7 +21,6 @@ use xilem::view::{Flex, FlexSequence, Prop, flex_col, flex_row};
 /// GPUI mark controls: 24px slots, 18px circles, and a uniform 6px gutter.
 pub(crate) const MARK_SWATCH_DIAMETER: f64 = 18.0;
 pub(crate) const MARK_SWATCH_GAP: f64 = 6.0;
-pub(crate) const MARK_CLEAR_CROSS_HALF: f64 = 16.0 * 0.28;
 /// Keep the selected ring clear of its 24px swatch slot on every edge.
 pub(crate) const MARK_SELECTED_RING_INSET: f64 = 1.0;
 
@@ -37,6 +36,8 @@ pub(crate) const POINT_CURVE_RADIUS: f64 = 4.5;
 pub(crate) const POINT_SELECTED_GROW: f64 = 1.0;
 pub(crate) const POINT_RING_WIDTH: f64 = 1.5;
 pub(crate) const POINT_HALO_EXTRA: f64 = 2.0;
+/// Inspector points stay subordinate to the smaller outline preview.
+pub(crate) const INSPECTOR_PREVIEW_POINT_SCALE: f64 = 0.6;
 /// Grid-line chords redrawn inside point markers, coarse then fine.
 pub(crate) const POINT_GRID_COARSE_LINE_WIDTH: f64 = 1.0;
 pub(crate) const POINT_GRID_FINE_LINE_WIDTH: f64 = 0.7;
@@ -78,11 +79,10 @@ pub(crate) const DOCK_MIN_WIDTH: f64 = 220.0;
 pub(crate) const CENTER_MIN_WIDTH: f64 = 280.0;
 pub(crate) const EDITOR_MIN_HEIGHT: f64 = 160.0;
 pub(crate) const PROOF_MIN_HEIGHT: f64 = 64.0;
-/// Reserve a legible glyph preview below the scrollable edit inspector.
-pub(crate) const EDITOR_INSPECTOR_PREVIEW_HEIGHT: f64 = 200.0;
-pub(crate) const INSPECTOR_PREVIEW_MIN_HEIGHT: f64 = 120.0;
 /// GPUI leaves six percent of the preview free on each side of the fitted ink.
 pub(crate) const OVERVIEW_GLYPH_PREVIEW_FILL: f64 = 0.88;
+/// Hide the inspector outline when its remaining pane would make it hard to read.
+pub(crate) const INSPECTOR_PREVIEW_MIN_READABLE_HEIGHT: f64 = 120.0;
 /// Wide pointer target around the one-pixel divider.
 pub(crate) const SPLITTER_HIT_WIDTH: f64 = 8.0;
 /// Vertical inset shared by the overview category, script and filter sections.
@@ -91,10 +91,6 @@ pub(crate) const SIDEBAR_SECTION_VERTICAL_INSET: f64 = 6.0;
 pub(crate) const SIDEBAR_ROW_INSET: f64 = 14.0;
 /// Painted sidebar marker geometry, shared with the GPUI reference.
 pub(crate) const ROW_MARKER_SIZE: f64 = 10.0;
-pub(crate) const ROW_MARKER_BULLET_RADIUS: f64 = 1.8;
-pub(crate) const ROW_MARKER_CHEVRON_SHORT: f64 = 1.5;
-pub(crate) const ROW_MARKER_CHEVRON_LONG: f64 = 3.5;
-pub(crate) const ROW_MARKER_CHEVRON_TIP: f64 = 2.5;
 /// GPUI navigation strip geometry, in logical pixels.
 pub(crate) const RAIL_TAB_ACTIVE_HEIGHT: f64 = 32.0;
 pub(crate) const RAIL_TAB_INACTIVE_HEIGHT: f64 = 28.0;

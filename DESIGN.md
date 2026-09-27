@@ -12,8 +12,8 @@ Its interface should keep the glyph primary, make state legible without decorati
 
 Use a semantic token, never a one-off visual value.
 
-- Colors come from the font engine's `themes/runebender.theme.json` through
-  `src/application/view/theme.rs`.
+- Colors come from `themes/builtin/*.theme.json` or an installed `.theme.json` file through `src/application/view/theme.rs`.
+- `themes/README.md` names the Base UI and Glyph Grid palettes and explains how to trace a color.
 - Space, sizes, radii, strokes, and type come from `src/application/view/design.rs`.
 - Repeated control structures belong in `src/application/view/recipes.rs`.
 

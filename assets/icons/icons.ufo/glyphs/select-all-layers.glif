@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="select-all-layers" format="2">
+	<unicode hex="E024"/>
+	<advance height="768" width="768"/>
+	<outline>
+		<component base="select" xScale="0.7" yScale="0.7" xOffset="24" yOffset="226"/>
+		<component base="select" xScale="0.7" yScale="0.7" xOffset="280" yOffset="12"/>
+	</outline>
+</glyph>

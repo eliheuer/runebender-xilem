@@ -39,6 +39,7 @@ use masonry::core::keyboard::{Key, Modifiers, NamedKey};
         reason = "the menu table is read by the native menu bar, which is macOS only"
     )
 )]
+#[derive(Clone, Copy)]
 pub(crate) struct Entry {
     /// Which menu it belongs under.
     pub menu: &'static str,
@@ -859,6 +860,25 @@ pub(crate) const ACTIONS: &[Entry] = &[
         reason = "the menu table is read by the native menu bar, which is macOS only"
     )
 )]
+/// The menu table with discovered local themes appended after the built-ins.
+pub(crate) fn actions() -> &'static [Entry] {
+    static ALL: std::sync::OnceLock<Vec<Entry>> = std::sync::OnceLock::new();
+    ALL.get_or_init(|| {
+        let mut entries = ACTIONS.to_vec();
+        let catalog = crate::application::platform::themes::catalog();
+        for id in catalog.ids().iter().skip(3) {
+            let theme = catalog.get(id).expect("catalog id has a theme");
+            entries.push(Entry {
+                menu: "View",
+                title: &theme.name,
+                accelerator: None,
+                action: AppAction::Theme(id),
+            });
+        }
+        entries
+    })
+}
+
 pub(crate) const MENUS: &[&str] = &[
     "Runebender",
     "File",
@@ -886,7 +906,7 @@ fn action_for_key_impl(
     modifiers: Modifiers,
     _include_platform_commands: bool,
 ) -> Option<AppAction> {
-    ACTIONS.iter().find_map(|entry| {
+    actions().iter().find_map(|entry| {
         #[cfg(target_os = "macos")]
         if entry.action == AppAction::Quit && !_include_platform_commands {
             // The native application menu owns Cmd-Q on macOS.
@@ -924,7 +944,7 @@ pub(crate) fn action_enabled(action: AppAction, app: &AppState) -> bool {
     if action == AppAction::EndSpacePan {
         return app.workspace.is_some();
     }
-    ACTIONS
+    actions()
         .iter()
         .find(|entry| entry.action == action)
         .is_some_and(|entry| entry.enabled(app))
@@ -1155,7 +1175,7 @@ mod platform {
     use muda::accelerator::Accelerator;
     use muda::{CheckMenuItem, Menu, MenuId, MenuItem, MenuItemKind, Submenu};
 
-    use super::{ACTIONS, MENUS};
+    use super::{MENUS, actions};
     use crate::application::widgets::shortcuts::AppAction;
 
     thread_local! {
@@ -1165,7 +1185,7 @@ mod platform {
         /// thread, and it is also why this cannot be a `static`.
         static MENU: RefCell<Option<(Menu, Vec<MenuItemKind>)>> = const { RefCell::new(None) };
     }
-    /// Menu item ids, in the same order as [`ACTIONS`]. These are plain
+    /// Menu item ids, in the same order as [`actions()`]. These are plain
     /// strings, so the event pump on another thread can read them.
     static IDS: OnceLock<Vec<MenuId>> = OnceLock::new();
     /// Custom Quit item id; predefined `AppKit` Quit would bypass dirty-state checks.
@@ -1199,7 +1219,7 @@ mod platform {
         if IDS.get().is_some() {
             MENU.with(|slot| {
                 if let Some((_, items)) = slot.borrow().as_ref() {
-                    for (entry, item) in ACTIONS
+                    for (entry, item) in actions()
                         .iter()
                         .filter(|entry| entry.menu != "Runebender" && MENUS.contains(&entry.menu))
                         .zip(items)
@@ -1218,8 +1238,8 @@ mod platform {
             return;
         }
         let bar = Menu::new();
-        let mut ids = Vec::with_capacity(ACTIONS.len());
-        let mut items = Vec::with_capacity(ACTIONS.len());
+        let mut ids = Vec::with_capacity(actions().len());
+        let mut items = Vec::with_capacity(actions().len());
         // The first submenu on macOS is the application menu, and it is
         // where the platform expects Quit to live.
         let app_menu = Submenu::new("Runebender", true);
@@ -1227,7 +1247,7 @@ mod platform {
         let _ = app_menu.append(&muda::PredefinedMenuItem::separator());
         let _ = app_menu.append(&muda::PredefinedMenuItem::hide(None));
         let _ = app_menu.append(&muda::PredefinedMenuItem::separator());
-        let quit_entry = ACTIONS
+        let quit_entry = actions()
             .iter()
             .find(|entry| entry.action == AppAction::Quit)
             .expect("the action table has Quit");
@@ -1238,7 +1258,10 @@ mod platform {
 
         for name in MENUS.iter().filter(|name| **name != "Runebender") {
             let submenu = Submenu::new(*name, true);
-            let menu_entries: Vec<_> = ACTIONS.iter().filter(|entry| entry.menu == *name).collect();
+            let menu_entries: Vec<_> = actions()
+                .iter()
+                .filter(|entry| entry.menu == *name)
+                .collect();
             let mut index = 0;
             while index < menu_entries.len() {
                 let entry = menu_entries[index];
@@ -1316,10 +1339,10 @@ mod platform {
             return Some(AppAction::Quit);
         }
         let ids = IDS.get()?;
-        // ACTIONS and IDS are built together, in menu order.
+        // actions() and IDS are built together, in menu order.
         let mut index = 0;
         for name in MENUS.iter().filter(|name| **name != "Runebender") {
-            for entry in ACTIONS.iter().filter(|e| e.menu == *name) {
+            for entry in actions().iter().filter(|e| e.menu == *name) {
                 if ids.get(index) == Some(id) {
                     return Some(entry.action);
                 }
@@ -1336,7 +1359,7 @@ mod platform {
         #[test]
         fn focused_editing_shortcuts_stay_out_of_the_native_accelerator_scope() {
             let entry = |action| {
-                ACTIONS
+                actions()
                     .iter()
                     .find(|entry| entry.action == action)
                     .expect("the action has a menu row")

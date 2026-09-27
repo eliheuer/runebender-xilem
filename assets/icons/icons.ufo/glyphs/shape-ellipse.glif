@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="shape-ellipse" format="2">
+	<unicode hex="E026"/>
+	<advance height="625.78" width="768"/>
+	<outline>
+		<contour>
+			<point x="768" y="312.89" type="curve"/>
+			<point x="768" y="485.69"/>
+			<point x="596.08" y="625.78"/>
+			<point x="384" y="625.78" type="curve"/>
+			<point x="171.92" y="625.78"/>
+			<point x="0" y="485.69"/>
+			<point x="0" y="312.89" type="curve"/>
+			<point x="0" y="140.08"/>
+			<point x="171.92" y="0"/>
+			<point x="384" y="0" type="curve"/>
+			<point x="596.08" y="0"/>
+			<point x="768" y="140.08"/>
+		</contour>
+	</outline>
+</glyph>

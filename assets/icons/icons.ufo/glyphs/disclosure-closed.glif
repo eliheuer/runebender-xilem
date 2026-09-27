@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="disclosure-closed" format="2">
+	<unicode hex="E005"/>
+	<advance height="768" width="768"/>
+	<outline>
+		<contour>
+			<point x="268.8" y="588.8" type="line"/>
+			<point x="268.8" y="624.15"/>
+			<point x="290.36" y="633.93"/>
+			<point x="316.96" y="610.66" type="curve"/>
+			<point x="527.84" y="426.14" type="line"/>
+			<point x="554.44" y="402.87"/>
+			<point x="554.44" y="365.13"/>
+			<point x="527.84" y="341.86" type="curve"/>
+			<point x="316.96" y="157.34" type="line"/>
+			<point x="290.36" y="134.07"/>
+			<point x="268.8" y="143.85"/>
+			<point x="268.8" y="179.2" type="curve"/>
+		</contour>
+	</outline>
+</glyph>

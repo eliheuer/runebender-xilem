@@ -7,7 +7,7 @@
 //! so this module maps the shared semantic tokens once for every view.
 
 use runebender::ui::color::ColorRgba;
-use runebender::ui::theme::{Theme as CoreTheme, load_theme};
+use runebender::ui::theme::Theme as CoreTheme;
 use std::collections::HashMap;
 use xilem::Color;
 
@@ -27,10 +27,16 @@ pub(crate) struct Palette {
     pub header: Color,
     /// The high-contrast ink used exclusively on the header band.
     pub header_ink: Color,
+    /// Corner radius for small popups, supplied by the active theme.
+    pub popup_radius: f64,
     pub control: Color,
     pub button: Color,
     pub canvas: Color,
     pub field: Color,
+    grid_background: Color,
+    cell_shadow_color: Color,
+    floating_pane_header: Color,
+    slider_track_color: Color,
     pub text: Color,
     pub text_muted: Color,
     /// Neutral control-handle lines from the shared secondary text token.
@@ -56,52 +62,31 @@ pub(crate) struct Palette {
 
 impl Palette {
     pub(crate) fn load(theme_id: &str) -> Self {
-        let t = load_theme(theme_id).expect("theme file present");
-        Self::from_theme(&t, theme_id)
+        let t = crate::application::platform::themes::catalog()
+            .get(theme_id)
+            .unwrap_or_else(|| panic!("unknown Runebender theme '{theme_id}'"));
+        Self::from_theme(t)
     }
 
-    fn from_theme(t: &CoreTheme, theme_id: &str) -> Self {
-        let titlebar = color(t.surface("titlebar"));
+    fn from_theme(t: &CoreTheme) -> Self {
         let panel = color(t.surface("panel"));
-        let selected = color(t.role("controlSelected"));
         let text = color(t.text("primary"));
         Self {
             app: color(t.surface("app")),
             panel,
-            // The GPUI rail steps from titlebar to inactive tab to panel.
-            // Derive its middle step from the shared surfaces so every
-            // shipped theme keeps the same relationship without an
-            // application-owned colour literal.
-            tab_rail: titlebar,
-            inactive_tab: Color::new([
-                (titlebar.components[0] + panel.components[0]) * 0.5,
-                (titlebar.components[1] + panel.components[1]) * 0.5,
-                (titlebar.components[2] + panel.components[2]) * 0.5,
-                1.0,
-            ]),
-            // Dark's selected surface is light; halving it produced a mid-gray
-            // header with insufficient text contrast. Use its named titlebar.
-            header: if theme_id == "dark" {
-                titlebar
-            } else {
-                Color::new([
-                    selected.components[0] * 0.5,
-                    selected.components[1] * 0.5,
-                    selected.components[2] * 0.5,
-                    1.0,
-                ])
-            },
-            // Gray and Light invert the header controls; Dark's selected
-            // ink is intentionally dark, so it keeps ordinary text ink.
-            header_ink: if theme_id == "dark" {
-                text
-            } else {
-                color(t.role("controlSelectedInk"))
-            },
+            tab_rail: color(t.surface("tabRail")),
+            inactive_tab: color(t.surface("inactiveTab")),
+            header: color(t.surface("header")),
+            header_ink: color(t.text("headerInk")),
+            popup_radius: f64::from(t.geometry.radius),
             control: color(t.surface("control")),
             button: color(t.surface("button")),
             canvas: color(t.surface("canvas")),
             field: color(t.surface("field")),
+            grid_background: color(t.surface("gridBackground")),
+            cell_shadow_color: color(t.surface("cellShadow")),
+            floating_pane_header: color(t.surface("floatingPaneHeader")),
+            slider_track_color: color(t.surface("sliderTrack")),
             text,
             text_muted: color(t.text("muted")),
             handle_line: color(t.text("secondary")),
@@ -148,39 +133,17 @@ impl Palette {
 
     /// The ground behind both glyph grids, recessed from the application surface.
     pub(crate) fn grid_bg(&self) -> Color {
-        let selected = self.selected_bg();
-        const DARKEN: f32 = 0.16;
-        Color::new([
-            self.app.components[0] + (selected.components[0] - self.app.components[0]) * DARKEN,
-            self.app.components[1] + (selected.components[1] - self.app.components[1]) * DARKEN,
-            self.app.components[2] + (selected.components[2] - self.app.components[2]) * DARKEN,
-            1.0,
-        ])
+        self.grid_background
     }
 
     /// Recessed tile shadow, halfway between the grid ground and selected surface.
     pub(crate) fn cell_shadow(&self) -> Color {
-        let ground = self.grid_bg();
-        let selected = self.selected_bg();
-        Color::new([
-            (ground.components[0] + selected.components[0]) * 0.5,
-            (ground.components[1] + selected.components[1]) * 0.5,
-            (ground.components[2] + selected.components[2]) * 0.5,
-            1.0,
-        ])
+        self.cell_shadow_color
     }
 
     /// The quieter header surface used by an unmarked floating metrics card.
     pub(crate) fn floating_pane_header_bg(&self) -> Color {
-        Color::new([
-            self.panel.components[0]
-                + (self.tab_rail.components[0] - self.panel.components[0]) * 0.25,
-            self.panel.components[1]
-                + (self.tab_rail.components[1] - self.panel.components[1]) * 0.25,
-            self.panel.components[2]
-                + (self.tab_rail.components[2] - self.panel.components[2]) * 0.25,
-            1.0,
-        ])
+        self.floating_pane_header
     }
 
     /// Whatever a tool draws while the pointer is down: the ink.
@@ -208,12 +171,7 @@ impl Palette {
 
     /// A quiet slider rail halfway between its original ink and the control surface.
     pub(crate) fn slider_track(&self) -> Color {
-        Color::new([
-            (self.text_muted.components[0] + self.control.components[0]) * 0.5,
-            (self.text_muted.components[1] + self.control.components[1]) * 0.5,
-            (self.text_muted.components[2] + self.control.components[2]) * 0.5,
-            (self.text_muted.components[3] + self.control.components[3]) * 0.5,
-        ])
+        self.slider_track_color
     }
 
     /// The metrics lines: their own token, never the accent.
@@ -237,7 +195,10 @@ impl Palette {
     }
 
     pub(crate) fn role(&self, name: &str) -> Color {
-        self.roles.get(name).copied().unwrap_or(Color::WHITE)
+        *self
+            .roles
+            .get(name)
+            .unwrap_or_else(|| panic!("view requested unknown theme role '{name}'"))
     }
 
     /// Theme mark labels with their colors, in theme order.
@@ -254,10 +215,10 @@ impl Palette {
     /// correction (red).
     pub(crate) fn popcount(&self, count: u32) -> Color {
         match count {
-            0 | 1 => Color::from_rgb8(0x17, 0xb8, 0x70),
-            2 => Color::from_rgb8(0xff, 0xdb, 0x33),
-            3 => Color::from_rgb8(0xff, 0x99, 0x0f),
-            _ => Color::from_rgb8(0xff, 0x4a, 0x3d),
+            0 | 1 => self.role("popcount1"),
+            2 => self.role("popcount2"),
+            3 => self.role("popcount3"),
+            _ => self.role("popcount4"),
         }
     }
 
@@ -316,17 +277,16 @@ mod tests {
     }
 
     #[test]
-    fn gray_slider_track_sits_halfway_between_ink_and_control_surface() {
+    fn gray_slider_track_stays_between_ink_and_control_surface() {
         let palette = Palette::load("gray");
         let track = palette.slider_track().components;
-        for (component, (ink, surface)) in track.iter().zip(
-            palette
-                .text_muted
-                .components
+        for (component, (ink, surface)) in track[..3].iter().zip(
+            palette.text_muted.components[..3]
                 .iter()
-                .zip(palette.control.components.iter()),
+                .zip(palette.control.components[..3].iter()),
         ) {
-            assert!((*component - (*ink + *surface) * 0.5).abs() < f32::EPSILON);
+            assert!(*component > (*ink).min(*surface));
+            assert!(*component < (*ink).max(*surface));
         }
     }
 }

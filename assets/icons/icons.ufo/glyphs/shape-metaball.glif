@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="shape-metaball" format="2">
+	<unicode hex="E027"/>
+	<advance height="768" width="768"/>
+	<outline>
+		<contour>
+			<point x="224" y="736" type="curve"/>
+			<point x="118.4" y="736"/>
+			<point x="32" y="649.6"/>
+			<point x="32" y="544" type="curve"/>
+			<point x="32" y="438.4"/>
+			<point x="118.4" y="352"/>
+			<point x="224" y="352" type="curve"/>
+			<point x="294.4" y="352"/>
+			<point x="352" y="294.4"/>
+			<point x="352" y="224" type="curve"/>
+			<point x="352" y="118.4"/>
+			<point x="438.4" y="32"/>
+			<point x="544" y="32" type="curve"/>
+			<point x="649.6" y="32"/>
+			<point x="736" y="118.4"/>
+			<point x="736" y="224" type="curve"/>
+			<point x="736" y="329.6"/>
+			<point x="649.6" y="416"/>
+			<point x="544" y="416" type="curve"/>
+			<point x="473.6" y="416"/>
+			<point x="416" y="473.6"/>
+			<point x="416" y="544" type="curve"/>
+			<point x="416" y="649.6"/>
+			<point x="329.6" y="736"/>
+		</contour>
+		<contour>
+			<point x="224" y="640" type="curve"/>
+			<point x="278.4" y="640"/>
+			<point x="320" y="598.4"/>
+			<point x="320" y="544" type="curve"/>
+			<point x="320" y="489.6"/>
+			<point x="278.4" y="448"/>
+			<point x="224" y="448" type="curve"/>
+			<point x="169.6" y="448"/>
+			<point x="128" y="489.6"/>
+			<point x="128" y="544" type="curve"/>
+			<point x="128" y="598.4"/>
+			<point x="169.6" y="640"/>
+		</contour>
+		<contour>
+			<point x="544" y="320" type="curve"/>
+			<point x="598.4" y="320"/>
+			<point x="640" y="278.4"/>
+			<point x="640" y="224" type="curve"/>
+			<point x="640" y="169.6"/>
+			<point x="598.4" y="128"/>
+			<point x="544" y="128" type="curve"/>
+			<point x="489.6" y="128"/>
+			<point x="448" y="169.6"/>
+			<point x="448" y="224" type="curve"/>
+			<point x="448" y="278.4"/>
+			<point x="489.6" y="320"/>
+		</contour>
+	</outline>
+</glyph>

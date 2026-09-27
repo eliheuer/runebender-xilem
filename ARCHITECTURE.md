@@ -84,6 +84,8 @@ second set of module names to keep in sync.
 | Change the edit canvas | `application/view/canvas/editor.rs` | `application/editor/session.rs` |
 | Change a panel | `application/view/panels/` | matching editor or font module |
 | Change reusable control styling | `application/view/recipes.rs` | `application/view/design.rs`, `theme.rs` |
+| Change a theme color | `themes/README.md`, `themes/builtin/` | `ui/theme.rs`, `application/platform/themes.rs`, `application/view/theme.rs` |
+| Change an application icon | `assets/icons/icons.ufo` | `ui/icons.rs`, `application/widgets/icon_button.rs` |
 | Add a file format | `formats/` | dispatch in `font/project.rs` |
 | Change variable-font ownership or source edits | `font/project.rs`, `font/variable.rs` | `font/persistence/` |
 | Change axis conversion or interpolation | `font/axis.rs`, `font/var_model.rs`, `font/interpolation.rs` | `formats/designspace.rs` |

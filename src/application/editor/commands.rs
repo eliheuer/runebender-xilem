@@ -926,12 +926,15 @@ impl Workspace {
     /// Advance to the next theme, reloading the palette and the baked cell
     /// colors. Exercises the design-token kernel: one id swaps every role.
     pub(crate) fn cycle_theme(&mut self) {
-        let i = Self::THEMES
-            .iter()
-            .position(|t| *t == self.theme_id)
-            .unwrap_or(0);
-        self.theme_id = Self::THEMES[(i + 1) % Self::THEMES.len()];
-        self.palette = Arc::new(Palette::load(self.theme_id));
+        let ids = crate::application::platform::themes::catalog().ids();
+        let i = ids.iter().position(|id| id == self.theme_id).unwrap_or(0);
+        self.set_theme(&ids[(i + 1) % ids.len()]);
+    }
+
+    /// Apply an installed theme and rebuild glyph cells with its mark palette.
+    pub(crate) fn set_theme(&mut self, id: &'static str) {
+        self.theme_id = id;
+        self.palette = Arc::new(Palette::load(id));
         self.cells = Arc::new(cells_of(&self.font, &self.palette));
     }
 
@@ -1084,11 +1087,7 @@ impl Workspace {
             A::FilterSlant => self.command_filter_slant(),
             A::NewFont => self.new_font(),
             A::CycleTheme => self.cycle_theme(),
-            A::Theme(id) => {
-                self.theme_id = id;
-                self.palette = Arc::new(Palette::load(id));
-                self.cells = Arc::new(cells_of(&self.font, &self.palette));
-            }
+            A::Theme(id) => self.set_theme(id),
             A::ZoomToFit => {
                 let mut session = (*self.session).clone();
                 session.fitted = false;
@@ -1539,6 +1538,38 @@ mod tests {
         }
         glyph.contours.push(contour);
         glyph
+    }
+
+    #[test]
+    fn disabling_component_alignment_allows_moving_one_component() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-component-alignment-{}.ufo",
+            std::process::id()
+        ));
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(rectangle("base", 0.0, 100.0));
+        let mut composite = norad::Glyph::new("composite");
+        composite.width = 500.0;
+        composite.components.push(norad::Component::new(
+            norad::Name::new("base").expect("valid base glyph name"),
+            norad::AffineTransform::default(),
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(composite);
+        font.save(&path).expect("fixture saves");
+
+        let mut app = Workspace::open(&path).expect("fixture opens");
+        let index = app.font.index_of("composite").expect("composite exists");
+        app.open_glyph(index);
+        assert!(Arc::make_mut(&mut app.session).select_component(0));
+        assert_eq!(app.session.selected_component_aligned(), Some(true));
+        assert!(!Arc::make_mut(&mut app.session).drag_component_by(-20.0, 0.0));
+
+        app.command_toggle_component_alignment();
+        assert_eq!(app.session.selected_component_aligned(), Some(false));
+        assert!(Arc::make_mut(&mut app.session).drag_component_by(-20.0, 0.0));
+        std::fs::remove_dir_all(path).expect("fixture removed");
     }
 
     #[test]

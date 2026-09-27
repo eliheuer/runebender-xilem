@@ -11,6 +11,7 @@ pub mod babelfont_import;
 pub mod binary_import;
 pub mod color_font;
 pub mod glyphs_import;
+pub mod icon_ufo;
 pub mod image_trace;
 pub mod metadata;
 pub mod proposal_ufo;

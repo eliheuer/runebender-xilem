@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="select-menu" format="2">
+	<unicode hex="E025"/>
+	<advance height="768" width="768"/>
+	<outline>
+		<component base="select" xScale="0.72" yScale="0.72" xOffset="200" yOffset="107.52"/>
+		<component base="menu-down" xScale="0.18" yScale="0.18" xOffset="501.6875100638721" yOffset="68.88358112822715" identifier="d8761f48-5235-463f-ab90-c8ad3278862b"/>
+	</outline>
+	<lib>
+		<dict>
+			<key>public.objectLibs</key>
+			<dict>
+				<key>d8761f48-5235-463f-ab90-c8ad3278862b</key>
+				<dict>
+					<key>com.glyphsapp.component.alignment</key>
+					<integer>-1</integer>
+				</dict>
+			</dict>
+		</dict>
+	</lib>
+</glyph>

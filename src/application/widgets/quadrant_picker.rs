@@ -1,7 +1,7 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! The connected rule layer behind the coordinate-reference picker buttons.
+//! The icon layer behind the coordinate-reference picker buttons.
 
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
@@ -9,17 +9,13 @@ use masonry::core::{
     PropertiesRef, RegisterCtx, Widget,
 };
 use masonry::imaging::Painter;
-use masonry::kurbo::{Axis, Line, Size, Stroke};
+use masonry::kurbo::{Axis, Size};
 use masonry::layout::{LenReq, Length};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
-use crate::application::view::design::{
-    COORD_PICKER_EDGE, COORD_PICKER_GAP, COORD_PICKER_INSET, ControlSize,
-};
-
-const GRID_START: f64 = COORD_PICKER_INSET + ControlSize::Dot.px() / 2.0;
-const GRID_STEP: f64 = ControlSize::Dot.px() + COORD_PICKER_GAP;
+use crate::application::view::design::COORD_PICKER_EDGE;
+use crate::application::widgets::icon_paint;
 
 pub(crate) struct QuadrantGridWidget {
     color: Color,
@@ -52,23 +48,7 @@ impl Widget for QuadrantGridWidget {
         _props: &PropertiesRef<'_>,
         painter: &mut Painter<'_>,
     ) {
-        for index in 0..3 {
-            let at = GRID_START + index as f64 * GRID_STEP;
-            painter
-                .stroke(
-                    Line::new((GRID_START, at), (GRID_START + GRID_STEP * 2.0, at)),
-                    &Stroke::new(1.0),
-                    self.color,
-                )
-                .draw();
-            painter
-                .stroke(
-                    Line::new((at, GRID_START), (at, GRID_START + GRID_STEP * 2.0)),
-                    &Stroke::new(1.0),
-                    self.color,
-                )
-                .draw();
-        }
+        icon_paint::paint(painter, "coordinate-grid", self.size.to_rect(), self.color);
     }
 
     fn on_pointer_event(

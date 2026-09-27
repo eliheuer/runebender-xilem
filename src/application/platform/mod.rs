@@ -20,6 +20,7 @@ pub(crate) mod screenshot;
 pub(crate) mod script_jobs;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod script_library;
+pub(crate) mod themes;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod watch;
 #[cfg(target_arch = "wasm32")]

@@ -78,11 +78,7 @@ impl Workspace {
         let source_fingerprint = source_fingerprint(&source_roots);
         let features_buf = font.feature_text().to_owned();
         let source_name_buf = font.master_names()[font.active()].to_string();
-        let theme_id: &'static str = match std::env::var("RUNEBENDER_THEME").ok().as_deref() {
-            Some("dark") => "dark",
-            Some("light") => "light",
-            _ => "gray",
-        };
+        let theme_id = crate::application::platform::themes::catalog().initial_id();
         let palette = Arc::new(Palette::load(theme_id));
         let cells = Arc::new(cells_of(&font, &palette));
         let first =
@@ -509,8 +505,7 @@ impl Workspace {
             Ok(mut fresh) => {
                 fresh.font.set_active(active_master);
                 fresh.axis_values = fresh.font.master_axis_values(fresh.font.active());
-                fresh.theme_id = self.theme_id;
-                fresh.palette = self.palette.clone();
+                fresh.set_theme(self.theme_id);
                 fresh.sel = self.sel;
                 fresh.sort = self.sort;
                 fresh.filter = self.filter.clone();
@@ -609,8 +604,7 @@ impl Workspace {
         }
         match Self::from_model(FontModel::from_project(project)) {
             Ok(mut fresh) => {
-                fresh.theme_id = self.theme_id;
-                fresh.palette = self.palette.clone();
+                fresh.set_theme(self.theme_id);
                 fresh.note = format!("new font at {}", path.display());
                 *self = fresh;
             }

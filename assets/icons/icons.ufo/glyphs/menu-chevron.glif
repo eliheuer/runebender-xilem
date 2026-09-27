@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="menu-chevron" format="2">
+	<unicode hex="E018"/>
+	<advance height="768" width="768"/>
+	<outline>
+		<contour>
+			<point x="288" y="624" type="move"/>
+			<point x="528" y="384" type="line"/>
+			<point x="288" y="144" type="line"/>
+		</contour>
+	</outline>
+</glyph>
