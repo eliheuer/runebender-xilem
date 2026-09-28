@@ -6,6 +6,9 @@
 //! The application owns authorization, epoch binding, receipts and UI history.
 //! This adapter only validates typed wire input and stages one canonical transaction.
 
+/// Typed transport receipts and complete normal response schemas for guarded edits.
+pub mod results;
+
 use kurbo::Point;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

@@ -184,7 +184,15 @@ pub(super) fn nodes_run(
     if json {
         println!(
             "{}",
-            json!({ "ok": report.ok, "file": file, "font": font, "nodes": report.nodes })
+            serde_json::to_value(
+                runebender::automation::agent_nodes::results::DiskNodesRunResult {
+                    ok: report.ok,
+                    file: file.to_owned(),
+                    font: font.to_owned(),
+                    nodes: report.nodes,
+                }
+            )
+            .expect("typed disk graph result serializes")
         );
     } else {
         for n in &report.nodes {

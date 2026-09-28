@@ -40,7 +40,7 @@ const MAX_CODE_BYTES: usize = 256 * 1024;
 const MAX_PARAMETERS_BYTES: usize = 64 * 1024;
 
 /// Discoverable bounds shared by native UI and agent adapters.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphSessionLimits {
     /// Maximum nodes in one graph.
     pub nodes: usize,
@@ -103,7 +103,7 @@ impl GraphSessionLimits {
 }
 
 /// Node definitions and bounds accepted by one graph session.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphDiscovery {
     /// [`GRAPH_SESSION_SCHEMA_VERSION`].
     pub schema_version: u32,
@@ -116,7 +116,7 @@ pub struct GraphDiscovery {
 }
 
 /// Discoverable JSON Schemas for graph commands.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphRequestSchemas {
     /// [`GraphInteractiveMutationRequest`] schema.
     pub interactive: Value,
@@ -161,7 +161,7 @@ pub struct GraphSemanticGuard {
 }
 
 /// One complete read of the editable graph.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphSnapshot {
     /// Exact graph and document lifetime.
     pub identity: GraphIdentity,
@@ -182,7 +182,7 @@ pub struct GraphSnapshot {
 }
 
 /// Stable diagnostic category for a graph problem.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum GraphDiagnosticCode {
     /// Unsupported future file version.
@@ -212,7 +212,7 @@ pub enum GraphDiagnosticCode {
 }
 
 /// A graph error addressable by node, port or field.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphDiagnostic {
     /// Stable category.
     pub code: GraphDiagnosticCode,
@@ -426,7 +426,7 @@ pub struct GraphInteractiveMutationResult {
 }
 
 /// Immutable result retained for exact mutation retries.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphMutationReceipt {
     /// Actor supplied by the request.
     pub actor: String,
@@ -443,7 +443,7 @@ pub struct GraphMutationReceipt {
 }
 
 /// Whether this response executed or replayed an existing receipt.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum GraphReceiptDisposition {
     /// The request executed now.
@@ -453,7 +453,7 @@ pub enum GraphReceiptDisposition {
 }
 
 /// Response to one mutation attempt.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphMutationResponse {
     /// New execution or exact retry.
     pub disposition: GraphReceiptDisposition,
@@ -681,7 +681,7 @@ pub struct GraphRunWork {
 }
 
 /// Current retained state of a graph run.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum GraphRunStatus {
     /// Waiting for the application adapter.
@@ -703,7 +703,7 @@ pub enum GraphRunStatus {
 }
 
 /// Honest proof lineage while compiled-family overlay integration remains separate.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum GraphProofScope {
     /// Proof contains only the explicitly captured source experiment.
@@ -713,7 +713,7 @@ pub enum GraphProofScope {
 }
 
 /// One retained node output.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphNodeOutput {
     /// Producing node.
     pub node: u32,
@@ -722,7 +722,7 @@ pub struct GraphNodeOutput {
 }
 
 /// Data references published by existing queue owners.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum GraphNodeOutputValue {
     /// Isolated version produced from the captured input.
@@ -759,7 +759,7 @@ pub enum GraphNodeOutputValue {
 }
 
 /// Structured terminal execution error.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphRunError {
     /// Stable application or worker error code.
     pub code: String,
@@ -805,7 +805,7 @@ pub struct GraphDocumentState {
 }
 
 /// Read-only retained run state.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphRunInspection {
     /// Run handle.
     pub handle: GraphRunHandle,
@@ -820,7 +820,7 @@ pub struct GraphRunInspection {
 }
 
 /// Immutable retained result of a run submission.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphRunReceipt {
     /// Actor supplied by the request.
     pub actor: String,
@@ -835,7 +835,7 @@ pub struct GraphRunReceipt {
 }
 
 /// Response to a run submission.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphRunResponse {
     /// New submission or exact retry.
     pub disposition: GraphReceiptDisposition,
@@ -858,7 +858,7 @@ pub struct GraphCancelRequest {
 }
 
 /// Original cancellation effect.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum GraphCancelOutcome {
     /// Queued work was cancelled before an adapter claimed it.
@@ -870,7 +870,7 @@ pub enum GraphCancelOutcome {
 }
 
 /// Immutable cancellation receipt.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphCancelReceipt {
     /// Original effect.
     pub outcome: GraphCancelOutcome,
@@ -879,7 +879,7 @@ pub struct GraphCancelReceipt {
 }
 
 /// Response to a cancellation request.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphCancelResponse {
     /// New cancellation or exact retry.
     pub disposition: GraphReceiptDisposition,

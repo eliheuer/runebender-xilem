@@ -420,6 +420,11 @@ fn nodes_run_runs_core_nodes_and_skips_them_the_second_time() {
     let nodes = out["nodes"].as_array().expect("nodes");
     assert_eq!(nodes.len(), 3);
     assert!(nodes.iter().all(|n| n["status"] == "ran"), "{out}");
+    let typed: runebender::automation::agent_nodes::results::DiskNodesRunResult =
+        serde_json::from_value(out.clone()).unwrap();
+    assert_eq!(typed.file, file);
+    assert_eq!(typed.font, ufo);
+    assert_eq!(typed.nodes.len(), 3);
     assert!(svg.is_file());
     let text = std::fs::read_to_string(&svg).expect("svg");
     assert!(
@@ -435,6 +440,13 @@ fn nodes_run_runs_core_nodes_and_skips_them_the_second_time() {
     let nodes = out["nodes"].as_array().expect("nodes");
     let proof = nodes.iter().find(|n| n["id"] == 2).expect("proof node");
     assert_eq!(proof["status"], "skipped", "{out}");
+
+    let agent_run = call_agent(&ufo, "nodes_run", serde_json::json!({"file":file}));
+    assert_eq!(agent_run["ok"], true, "{agent_run}");
+    let agent_run: runebender::automation::agent_nodes::results::DiskNodesRunResult =
+        serde_json::from_value(agent_run["result"].clone()).unwrap();
+    assert_eq!(agent_run.file, file);
+    assert_eq!(agent_run.font, ufo);
 
     // Font metrics affect the SVG even when no glif changes.
     let fontinfo = ufo.join("fontinfo.plist");
@@ -697,9 +709,13 @@ fn mcp_protocol_versions_keep_disk_results_in_step_with_the_cli() {
             } else if let Some(schema) = descriptor.get("outputSchema") {
                 assert_eq!(schema["type"], "object");
                 assert!(
-                    schema["oneOf"]
-                        .as_array()
-                        .is_some_and(|cases| cases.len() == 2)
+                    schema[if descriptor["name"] == "nodes_run" {
+                        "anyOf"
+                    } else {
+                        "oneOf"
+                    }]
+                    .as_array()
+                    .is_some_and(|cases| cases.len() == 2)
                 );
             }
         }

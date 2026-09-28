@@ -22,7 +22,7 @@ use super::{
         AgentCancellationAdmission, AgentCancellationError, AgentCancellationIdentity,
         AgentCancellationOutcome, AgentCancellationRegistry,
     },
-    agent_edit::AgentEditRequest,
+    agent_edit::{AgentEditRequest, results::AgentCancelResponse},
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -479,15 +479,8 @@ struct CancellationRequest {
 }
 
 fn cancellation_result(outcome: AgentCancellationOutcome) -> Value {
-    let (ok, status) = match outcome {
-        AgentCancellationOutcome::Prevented => (true, "prevented"),
-        AgentCancellationOutcome::AlreadyPrevented => (true, "already_prevented"),
-        AgentCancellationOutcome::TooLate => (false, "too_late"),
-        AgentCancellationOutcome::Committed => (false, "committed"),
-        AgentCancellationOutcome::Completed => (false, "completed"),
-        AgentCancellationOutcome::Unknown => (false, "unknown"),
-    };
-    serde_json::json!({"ok":ok,"cancellation_status":status,"saved":false})
+    serde_json::to_value(AgentCancelResponse::from(outcome))
+        .expect("typed cancellation response serializes")
 }
 
 fn write_envelope(stream: &mut UnixStream, mut result: Value, epoch: &str) -> io::Result<()> {

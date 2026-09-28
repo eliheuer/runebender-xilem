@@ -149,10 +149,20 @@ pub fn describe(tool: agent::Tool, surface: ToolSurface) -> ToolDescriptor {
     let output_schema = match (tool.name.as_str(), surface) {
         ("project_info" | "editor_connect", ToolSurface::Live) => Some(live_project_info_schema()),
         ("project_info", ToolSurface::Disk) => Some(disk_project_info_schema()),
+        (name, ToolSurface::Disk) => {
+            super::agent_nodes::results::disk_response_schema(name).map(operation_result_schema)
+        }
         ("editor_sessions", ToolSurface::Live) => Some(editor_sessions_schema()),
         ("export_proof", ToolSurface::Live) => Some(export_proof_schema()),
-        (name, ToolSurface::Live) => super::agent_proof::success_schema(name).map(result_schema),
-        _ => None,
+        ("nodes_apply", ToolSurface::Live) => {
+            super::agent_edit::results::response_schema("agent_apply").map(operation_result_schema)
+        }
+        (name, ToolSurface::Live) => super::agent_proof::success_schema(name)
+            .map(result_schema)
+            .or_else(|| {
+                super::agent_edit::results::response_schema(name).map(operation_result_schema)
+            })
+            .or_else(|| super::agent_nodes::results::response_schema(name).map(result_schema)),
     };
     ToolDescriptor {
         tool,
@@ -221,15 +231,26 @@ fn error_schema() -> Value {
 }
 
 fn result_schema(mut success: Value) -> Value {
+    success["properties"]["ok"] = json!({"const":true});
+    compose_result_schema(success, "oneOf")
+}
+
+fn operation_result_schema(response: Value) -> Value {
+    // A completed operation can report ok=false and still carry a valid receipt or cancellation
+    // outcome. Keep that typed body distinct from admission/transport failures.
+    compose_result_schema(response, "anyOf")
+}
+
+fn compose_result_schema(mut response: Value, alternatives: &str) -> Value {
     // Generated references are document-relative (#/$defs/...), so definitions must live at
-    // the result schema root rather than inside the success branch.
-    let object = success
+    // the result schema root rather than inside the response branch.
+    let object = response
         .as_object_mut()
         .expect("tool result schemas are objects");
     let definitions = object.remove("$defs");
     let dialect = object.remove("$schema");
-    success["properties"]["ok"] = json!({"const":true});
-    let mut result = json!({"type":"object","oneOf":[success,error_schema()]});
+    let mut result = json!({"type":"object"});
+    result[alternatives] = json!([response, error_schema()]);
     if let Some(definitions) = definitions {
         result["$defs"] = definitions;
     }
@@ -456,7 +477,7 @@ mod tests {
     }
 
     #[test]
-    fn proof_result_definitions_resolve_after_transport_error_composition() {
+    fn generated_result_definitions_resolve_after_transport_error_composition() {
         fn inspect_references(node: &Value, root: &Value, count: &mut usize) {
             match node {
                 Value::Object(object) => {
@@ -482,17 +503,73 @@ mod tests {
         }
 
         let mut references = 0;
-        for tool in super::super::agent_proof::tools() {
-            let schema = describe(tool, ToolSurface::Live).output_schema.unwrap();
+        for tool in live::tools() {
+            if !(tool.name.starts_with("proof_")
+                || tool.name.starts_with("agent_")
+                || tool.name.starts_with("nodes_"))
+            {
+                continue;
+            }
+            let descriptor = describe(tool, ToolSurface::Live);
+            let schema = descriptor
+                .output_schema
+                .unwrap_or_else(|| panic!("missing output schema for {}", descriptor.tool.name));
             assert_eq!(schema["type"], "object");
-            assert_eq!(schema["oneOf"][0]["properties"]["ok"]["const"], true);
-            assert_eq!(schema["oneOf"][1]["properties"]["ok"]["const"], false);
             inspect_references(&schema, &schema, &mut references);
         }
         assert!(
             references > 0,
-            "proof recipes and metrics have concrete nested definitions"
+            "operation payloads have concrete nested definitions"
         );
+    }
+
+    #[test]
+    fn operational_failures_keep_their_receipts_and_cancellation_shapes() {
+        let contract = |name: &str, surface| {
+            describe(
+                agent::Tool {
+                    name: name.into(),
+                    description: String::new(),
+                    parameters: json!({}),
+                },
+                surface,
+            )
+            .output_schema
+            .unwrap()
+        };
+        for name in [
+            "agent_apply",
+            "agent_receipt",
+            "agent_history",
+            "agent_cancel",
+            "nodes_apply",
+        ] {
+            let schema = contract(name, ToolSurface::Live);
+            let body = &schema["anyOf"][0];
+            assert_eq!(body["properties"]["ok"]["type"], "boolean");
+            assert!(body["properties"]["ok"].get("const").is_none());
+            let field = if name == "agent_cancel" {
+                "cancellation_status"
+            } else {
+                "receipt"
+            };
+            assert!(body["required"].as_array().unwrap().contains(&json!(field)));
+        }
+        assert_eq!(
+            contract("nodes_apply", ToolSurface::Live),
+            contract("agent_apply", ToolSurface::Live)
+        );
+        let disk = contract("nodes_run", ToolSurface::Disk);
+        assert_eq!(disk["anyOf"][0]["properties"]["ok"]["type"], "boolean");
+        for field in ["file", "font", "nodes"] {
+            assert!(
+                disk["anyOf"][0]["required"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!(field))
+            );
+        }
+        assert_ne!(disk, contract("nodes_run", ToolSurface::Live));
     }
 
     // Check the currently emitted fields rather than accepting a generic object contract.

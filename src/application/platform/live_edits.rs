@@ -7,13 +7,15 @@ use runebender::automation::agent::ToolCall;
 use runebender::automation::agent_cancellation::{
     AgentCancellationError, AgentCancellationIdentity, AgentCancellationTerminal, AgentCommitClaim,
 };
-use runebender::automation::agent_edit::AgentEditRequest;
+use runebender::automation::agent_edit::{
+    AgentEditRequest,
+    results::{AgentApplyResponse, AgentHistoryResponse, AgentReceiptResponse},
+};
 use runebender::automation::agent_session::{
     AgentOperationKey, AgentOperationOutcome, AgentOperationReceipt, AgentOperationRejection,
     AgentReceiptDisposition, AgentSession, AgentSessionError, AgentSessionMetadata,
 };
 use runebender::font::history::HistoryDirection;
-use runebender::font::project::{DocumentEditObjectKind, EditHistoryGroupState, Project};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -63,11 +65,11 @@ impl Workspace {
                         &request.actor,
                         &request.operation_key,
                     ) {
-                        Ok(receipt) => {
-                            let mut result = receipt_result(&receipt, &self.font.project);
-                            result["ok"] = json!(true);
-                            result
-                        }
+                        Ok(receipt) => serde_json::to_value(AgentReceiptResponse::from_engine(
+                            &receipt,
+                            &self.font.project,
+                        ))
+                        .expect("typed receipt response serializes"),
                         Err(error) => error,
                     },
                     Err(error) => failure("invalid_arguments", error.to_string()),
@@ -231,10 +233,13 @@ impl Workspace {
         {
             self.record_agent_group(*history_group, change);
         }
-        let mut result = receipt_result(applied.receipt(), &self.font.project);
-        result["replayed"] = json!(applied.disposition() == AgentReceiptDisposition::Replayed);
-        result["root_changed"] = json!(applied.is_new_commit());
-        result
+        serde_json::to_value(AgentApplyResponse::from_engine(
+            applied.receipt(),
+            &self.font.project,
+            applied.disposition() == AgentReceiptDisposition::Replayed,
+            applied.is_new_commit(),
+        ))
+        .expect("typed apply response serializes")
     }
 
     fn lookup_agent_receipt(
@@ -286,74 +291,16 @@ impl Workspace {
             ReplayDirection::Redo => HistoryDirection::Redo,
         };
         match self.replay_agent_group(group, direction) {
-            Ok(replay) => {
-                let mut result = receipt_result(&receipt, &self.font.project);
-                result["history_replayed"] = json!(true);
-                result["replay_before_revision"] = json!(replay.before_revision);
-                result["replay_after_revision"] = json!(replay.after_revision);
-                result
-            }
+            Ok(replay) => serde_json::to_value(AgentHistoryResponse::from_engine(
+                &receipt,
+                &self.font.project,
+                replay.before_revision,
+                replay.after_revision,
+            ))
+            .expect("typed history response serializes"),
             Err(error) => failure("history_conflict", error),
         }
     }
-}
-
-fn receipt_result(receipt: &AgentOperationReceipt, project: &Project) -> Value {
-    let outcome = match receipt.outcome() {
-        AgentOperationOutcome::Committed {
-            before_revision,
-            after_revision,
-            change,
-            changed_objects,
-            history_group,
-        } => json!({
-            "status":"committed", "before_revision":before_revision,"after_revision":after_revision,
-            "history_group":history_group.to_wire(),
-            "changed_layers":change.affected_layers().iter().map(|address| json!({"glyph":address.glyph,"source":address.layer.source.0,"layer":address.layer.name})).collect::<Vec<_>>(),
-            "changed_objects":changed_objects.iter().map(|changed| {
-                let mut result = json!({"glyph":changed.glyph,"glyph_id":changed.glyph_id.to_wire(),"source":changed.layer.source.0,"layer":changed.layer.name});
-                match changed.object {
-                    DocumentEditObjectKind::Width => result["kind"] = json!("width"),
-                    DocumentEditObjectKind::Point(point_id) => {
-                        result["kind"] = json!("point");
-                        result["point_id"] = json!(point_id.to_wire());
-                    }
-                    DocumentEditObjectKind::Anchor(anchor_id) => {
-                        result["kind"] = json!("anchor");
-                        result["anchor_id"] = json!(anchor_id.to_wire());
-                    }
-                }
-                result
-            }).collect::<Vec<_>>()
-        }),
-        AgentOperationOutcome::Unchanged { revision } => {
-            json!({"status":"unchanged","revision":revision,"changed_objects":[]})
-        }
-        AgentOperationOutcome::Cancelled { revision } => {
-            json!({"status":"cancelled","cancellation":"prevented","revision":revision,
-                "error":"operation cancelled before commit","error_code":"cancelled",
-                "changed_objects":[]})
-        }
-        AgentOperationOutcome::Rejected {
-            revision,
-            rejection,
-        } => {
-            let message = match rejection {
-                AgentOperationRejection::InvalidRequest(message) => message.clone(),
-                AgentOperationRejection::Transaction(error) => error.to_string(),
-            };
-            json!({"status":"rejected","revision":revision,"error":message,"changed_objects":[]})
-        }
-    };
-    let history_state = receipt.history_group().map(|group| {
-        match project.document_edit_history_group_state(group) {
-            Some(EditHistoryGroupState::Applied) => "applied",
-            Some(EditHistoryGroupState::Undone) => "undone",
-            None => "unavailable",
-        }
-    });
-    json!({"ok":!matches!(outcome["status"].as_str(), Some("rejected" | "cancelled")), "saved":false, "history_state":history_state,
-        "receipt":{"document_epoch":receipt.document_epoch(),"actor":receipt.actor(),"operation_key":receipt.operation_key().as_str(),"payload_sha256":receipt.payload_digest().to_hex(),"outcome":outcome}})
 }
 
 fn failure(code: &str, error: impl Into<String>) -> Value {
@@ -368,9 +315,10 @@ mod tests {
 
     use super::*;
     use crate::application::font_model::FontModel;
+    use runebender::automation::agent_edit::results::{AgentCancelResponse, AgentReceiptOutcome};
     use runebender::automation::live_socket;
     use runebender::font::edit_batch;
-    use runebender::font::project::SourceInput;
+    use runebender::font::project::{Project, SourceInput};
     use runebender::font::variable::SourceId;
 
     fn project() -> Project {
@@ -580,6 +528,8 @@ mod tests {
             },
         )
         .unwrap();
+        let typed: AgentCancelResponse = serde_json::from_value(cancelled.clone()).unwrap();
+        assert!(!typed.ok);
         assert_eq!(cancelled["cancellation_status"], "committed");
         assert_eq!(width(&app, 0, "A"), 430.0);
         app.undo_active_edit(false);
@@ -649,6 +599,11 @@ mod tests {
         let revision = app.font.project.document_revision();
         pending.respond(|call| app.call_live(call));
         let result = apply.join().unwrap();
+        let typed: AgentApplyResponse = serde_json::from_value(result.clone()).unwrap();
+        assert!(matches!(
+            typed.receipt.outcome,
+            AgentReceiptOutcome::Cancelled { .. }
+        ));
         assert_eq!(result["receipt"]["outcome"]["status"], "cancelled");
         assert_eq!(result["receipt"]["outcome"]["changed_objects"], json!([]));
         assert_eq!(result["root_changed"], false);
@@ -661,6 +616,12 @@ mod tests {
         assert_eq!(retry["receipt"], result["receipt"]);
         assert_eq!(width(&app, 0, "A"), 400.0);
         let receipt = call(&mut app, "agent_receipt", identity.clone());
+        let typed: AgentReceiptResponse = serde_json::from_value(receipt.clone()).unwrap();
+        assert!(typed.ok);
+        assert!(matches!(
+            typed.receipt.outcome,
+            AgentReceiptOutcome::Cancelled { .. }
+        ));
         assert_eq!(receipt["receipt"]["outcome"]["status"], "cancelled");
 
         let mut other_actor = identity;
@@ -771,6 +732,11 @@ mod tests {
             .unwrap();
         let revision = app.font.project.document_revision();
         let stale = call(&mut app, "agent_apply", stale);
+        let typed: AgentApplyResponse = serde_json::from_value(stale.clone()).unwrap();
+        assert!(matches!(
+            typed.receipt.outcome,
+            AgentReceiptOutcome::Rejected { .. }
+        ));
         assert_eq!(stale["ok"], false);
         assert_eq!(stale["receipt"]["outcome"]["status"], "rejected");
         assert_eq!(stale["receipt"]["outcome"]["changed_objects"], json!([]));
@@ -805,6 +771,11 @@ mod tests {
                 json!({"op":"set_anchor","anchor_id":anchor.to_wire(),"x":170.0,"y":725.0}),
             ]);
         let applied = call(&mut app, "agent_apply", payload.clone());
+        let typed: AgentApplyResponse = serde_json::from_value(applied.clone()).unwrap();
+        assert!(matches!(
+            typed.receipt.outcome,
+            AgentReceiptOutcome::Committed(_)
+        ));
         assert_eq!(applied["ok"], true);
         assert_eq!(
             applied["receipt"]["outcome"]["changed_objects"],
@@ -860,7 +831,10 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        assert_eq!(replay(&mut app, &payload, "undo")["ok"], true);
+        let history = replay(&mut app, &payload, "undo");
+        let typed: AgentHistoryResponse = serde_json::from_value(history.clone()).unwrap();
+        assert!(typed.history_replayed);
+        assert_eq!(history["ok"], true);
         assert_eq!(width(&app, 0, "C"), 900.0);
         assert_eq!(replay(&mut app, &payload, "redo")["ok"], true);
         app.font

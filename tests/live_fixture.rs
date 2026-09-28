@@ -78,16 +78,52 @@ impl Fixture {
         response["result"].clone()
     }
 
-    fn tool(&mut self, name: &str, arguments: Value) -> Value {
+    fn result(&mut self, name: &str, arguments: Value) -> (bool, Value) {
         let result = self.rpc("tools/call", json!({"name":name,"arguments":arguments}));
-        assert_eq!(result["isError"], false, "{result}");
         let metadata: Value =
             serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap();
         assert_eq!(
             result["structuredContent"], metadata,
             "structured tool metadata must match the compatibility text"
         );
+        (result["isError"].as_bool().unwrap(), metadata)
+    }
+
+    fn tool(&mut self, name: &str, arguments: Value) -> Value {
+        let (is_error, metadata) = self.result(name, arguments);
+        assert!(!is_error, "{metadata}");
         metadata
+    }
+
+    fn rejected_tool(&mut self, name: &str, arguments: Value) -> Value {
+        let (is_error, metadata) = self.result(name, arguments);
+        assert!(is_error, "{metadata}");
+        metadata
+    }
+
+    fn assert_contracts(&mut self, names: &[&str]) {
+        use runebender::automation::{live, tool_contracts};
+        let listed = self.rpc("tools/list", json!({}));
+        let tools = live::tools();
+        for name in names {
+            let tool = tools
+                .iter()
+                .find(|tool| tool.name == *name)
+                .expect("published live tool");
+            let descriptor =
+                tool_contracts::describe(tool.clone(), tool_contracts::ToolSurface::Live);
+            let published = listed["tools"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|tool| tool["name"] == descriptor.tool.name)
+                .unwrap();
+            assert_eq!(
+                published["outputSchema"],
+                descriptor.output_schema.unwrap(),
+                "MCP must publish the shared result contract for {name}"
+            );
+        }
     }
 }
 
@@ -157,6 +193,10 @@ fn application_fixture_refreshes_and_undoes_an_agent_edit() {
 
 #[test]
 fn mcp_receipt_tools_reconcile_retry_and_real_application_undo() {
+    use runebender::automation::agent_edit::results::{
+        AgentApplyResponse, AgentCancelResponse, AgentHistoryResponse, AgentReceiptResponse,
+    };
+
     let mut fixture = Fixture::start();
     let ready = fixture.read();
     let endpoint = ready["session"].as_str().unwrap();
@@ -167,6 +207,12 @@ fn mcp_receipt_tools_reconcile_retry_and_real_application_undo() {
     ]));
     let initialized = mcp.rpc("initialize", json!({"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"receipt-conformance","version":"1"}}));
     assert_eq!(initialized["protocolVersion"], "2025-11-25");
+    mcp.assert_contracts(&[
+        "agent_apply",
+        "agent_receipt",
+        "agent_history",
+        "agent_cancel",
+    ]);
     let tools = mcp.rpc("tools/list", json!({}));
     let listed = tools["tools"].as_array().unwrap();
     let apply = listed
@@ -205,7 +251,43 @@ fn mcp_receipt_tools_reconcile_retry_and_real_application_undo() {
     );
     let payload = json!({"expected_document_epoch":epoch,"actor":"mcp-test","operation_key":"one-width-edit","authorization":"user-approved","source":0,"history_name":"MCP width edit","edits":[{"target":{"glyph":"A","glyph_id":read["glyph_id"],"layer":read["layer"],"expected_revision":read["revision"]},"operations":[{"op":"set_width","width":430.0}]}]});
     let applied = mcp.tool("agent_apply", payload.clone());
+    serde_json::from_value::<AgentApplyResponse>(applied.clone()).unwrap();
     assert_eq!(applied["root_changed"], true);
+    let mut stale = payload.clone();
+    stale["operation_key"] = json!("rejected-stale-edit");
+    let rejected = mcp.rejected_tool("agent_apply", stale);
+    serde_json::from_value::<AgentApplyResponse>(rejected.clone()).unwrap();
+    assert_eq!(rejected["receipt"]["outcome"]["status"], "rejected");
+    assert!(
+        rejected.get("error").is_none(),
+        "rejection details belong to the receipt"
+    );
+    let rejected_receipt = mcp.tool(
+        "agent_receipt",
+        json!({
+            "expected_document_epoch":epoch,"actor":"mcp-test","operation_key":"rejected-stale-edit"
+        }),
+    );
+    serde_json::from_value::<AgentReceiptResponse>(rejected_receipt.clone()).unwrap();
+    assert_eq!(rejected_receipt["receipt"], rejected["receipt"]);
+    assert_eq!(rejected_receipt["ok"], true);
+    for (key, expected) in [
+        ("one-width-edit", "committed"),
+        ("not-submitted", "unknown"),
+    ] {
+        let cancellation = mcp.rejected_tool(
+            "agent_cancel",
+            json!({
+                "expected_document_epoch":epoch,"actor":"mcp-test","operation_key":key
+            }),
+        );
+        serde_json::from_value::<AgentCancelResponse>(cancellation.clone()).unwrap();
+        assert_eq!(cancellation["cancellation_status"], expected);
+        assert!(
+            cancellation.get("error").is_none(),
+            "cancellation has its own outcome"
+        );
+    }
     let state = fixture.control("state");
     for field in ["canonical_advance", "cache_advance", "session_advance"] {
         assert_eq!(state[field], 430.0);
@@ -217,15 +299,15 @@ fn mcp_receipt_tools_reconcile_retry_and_real_application_undo() {
     assert_eq!(fixture.control("undo")["canonical_advance"], 412.0);
     let lookup = json!({"expected_document_epoch":epoch,"actor":"mcp-test","operation_key":"one-width-edit"});
     let receipt = mcp.tool("agent_receipt", lookup.clone());
+    serde_json::from_value::<AgentReceiptResponse>(receipt.clone()).unwrap();
     assert_eq!(receipt["receipt"], applied["receipt"]);
     assert_eq!(receipt["history_state"], "undone");
     let mut replay = lookup;
     replay["direction"] = json!("redo");
     replay["authorization"] = json!("user-approved");
-    assert_eq!(
-        mcp.tool("agent_history", replay)["history_state"],
-        "applied"
-    );
+    let history = mcp.tool("agent_history", replay);
+    serde_json::from_value::<AgentHistoryResponse>(history.clone()).unwrap();
+    assert_eq!(history["history_state"], "applied");
     let state = fixture.control("state");
     assert_eq!(state["session_advance"], 430.0);
     assert_eq!(state["source_exists"], false);
@@ -520,4 +602,171 @@ fn compiled_proof_mcp_delivers_original_png_after_live_edit() {
     assert_eq!(state["canonical_advance"], 430.0);
     assert_eq!(state["source_exists"], false);
     assert_eq!(fixture.control("undo")["canonical_advance"], 412.0);
+}
+
+#[test]
+fn mcp_graph_results_preserve_captures_images_and_explicit_apply_receipts() {
+    use runebender::automation::agent_edit::results::AgentApplyResponse;
+    use std::time::{Duration, Instant};
+
+    let mut fixture = Fixture::spawn(Command::new(env!("CARGO_BIN_EXE_runebender")).args([
+        "agent",
+        "fixture",
+        "--duration-seconds",
+        "45",
+    ]));
+    let ready = fixture.read();
+    let endpoint = ready["session"].as_str().unwrap();
+    let mut mcp = Fixture::spawn(Command::new(env!("CARGO_BIN_EXE_runebender")).args([
+        "mcp",
+        "--session",
+        endpoint,
+    ]));
+    mcp.rpc("initialize", json!({"protocolVersion":"2025-11-25"}));
+    mcp.assert_contracts(&[
+        "nodes_discover",
+        "nodes_snapshot",
+        "nodes_mutate",
+        "nodes_run",
+        "nodes_status",
+        "nodes_cancel",
+        "nodes_release",
+        "nodes_apply",
+        "nodes_image",
+    ]);
+    let epoch = &ready["document_epoch"];
+    let discovered = mcp.tool("nodes_discover", json!({"expected_document_epoch":epoch}));
+    let identity = &discovered["identity"];
+    let snapshot = mcp.tool(
+        "nodes_snapshot",
+        json!({
+            "expected_document_epoch":epoch,"identity":identity
+        }),
+    )["snapshot"]
+        .clone();
+    let code = r#"import json, sys
+p=json.load(sys.stdin)
+edits=[{"target":layer["guard"],"operations":[{"op":"set_width","width":layer["width"]+100}]} for layer in p["layers"]]
+json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],"report":"Widen selected glyphs","reads":[],"edits":edits},sys.stdout)
+"#;
+    let edits = snapshot["graph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|node| match node["type"].as_str() {
+            Some("live.python") => Some(json!({
+                "edit":"set_value","node":node["id"],"field":"code","value":code
+            })),
+            Some("live.proof") => {
+                let mut recipe = node["values"]["recipe"].clone();
+                recipe["text"] = json!("AA");
+                Some(json!({"edit":"set_value","node":node["id"],"field":"recipe","value":recipe}))
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let mutation = json!({"expected_document_epoch":epoch,"request":{
+        "guard":{"identity":identity,"revision":snapshot["revision"]},
+        "actor":"graph-fixture","operation_key":"configure",
+        "mutation":{"mutation":"patch","edits":edits}
+    }});
+    let mutated = mcp.tool("nodes_mutate", mutation.clone());
+    let mutation_retry = mcp.tool("nodes_mutate", mutation);
+    assert_eq!(mutation_retry["mutation"]["disposition"], "replayed");
+    assert_eq!(
+        mutation_retry["mutation"]["receipt"],
+        mutated["mutation"]["receipt"]
+    );
+    let snapshot = &mutated["snapshot"];
+    let run_request = json!({"expected_document_epoch":epoch,
+        "guard":{"identity":identity,"semantic_revision":snapshot["semantic_revision"],
+            "semantic_hash":snapshot["semantic_hash"]},
+        "actor":"graph-fixture","operation_key":"compare","source":0,"glyphs":["A"]});
+    let started = mcp.tool("nodes_run", run_request.clone());
+    let status_args = json!({"expected_document_epoch":epoch,"identity":identity,
+        "handle":started["run"]["receipt"]["handle"]});
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let completed = loop {
+        let status = mcp.tool("nodes_status", status_args.clone());
+        match status["run"]["status"].as_str() {
+            Some("completed") => break status,
+            Some("queued" | "running") => {
+                assert!(Instant::now() < deadline, "graph did not finish: {status}");
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            _ => panic!("graph failed: {status}"),
+        }
+    };
+    assert_eq!(completed["can_apply"], true);
+    assert_eq!(completed["report"], "Widen selected glyphs");
+    assert_eq!(completed["current"], true);
+    assert_eq!(fixture.control("state")["canonical_advance"], 412.0);
+    let retry = mcp.tool("nodes_run", run_request);
+    assert_eq!(retry["replayed"], true);
+    assert_eq!(retry["run"], started["run"]);
+
+    let mut images = Vec::new();
+    for (branch, advance) in [("original", 412.0), ("changed", 512.0)] {
+        let mut args = status_args.clone();
+        args["branch"] = json!(branch);
+        let result = mcp.rpc("tools/call", json!({"name":"nodes_image","arguments":args}));
+        assert_eq!(result["isError"], false, "{result}");
+        let metadata: Value =
+            serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(result["structuredContent"], metadata);
+        assert!(
+            metadata.get("png_base64").is_none(),
+            "MCP transports the image separately"
+        );
+        assert_eq!(metadata["captured_document_epoch"], *epoch);
+        assert_eq!(metadata["glyphs"][0]["x_advance"], advance);
+        assert_eq!(result["content"][1]["mimeType"], "image/png");
+        let socket = live_socket::call(
+            std::path::Path::new(endpoint),
+            &ToolCall {
+                name: "nodes_image".into(),
+                arguments: args,
+            },
+        )
+        .unwrap();
+        assert_eq!(socket["png_base64"], result["content"][1]["data"]);
+        assert_eq!(socket["font_sha256"], metadata["font_sha256"]);
+        images.push(metadata);
+    }
+    assert_ne!(images[0]["font_sha256"], images[1]["font_sha256"]);
+    let cancelled = mcp.tool(
+        "nodes_cancel",
+        json!({"expected_document_epoch":epoch,"request":{
+            "identity":identity,"handle":started["run"]["receipt"]["handle"],
+            "actor":"graph-fixture","operation_key":"cancel-completed"
+        }}),
+    );
+    assert_eq!(cancelled["cancellation"]["receipt"]["outcome"], "too_late");
+    let apply = json!({"expected_document_epoch":epoch,"identity":identity,
+        "handle":started["run"]["receipt"]["handle"],"actor":"graph-fixture",
+        "operation_key":"apply","authorization":"user-approved"});
+    let applied = mcp.tool("nodes_apply", apply.clone());
+    serde_json::from_value::<AgentApplyResponse>(applied.clone()).unwrap();
+    assert_eq!(applied["root_changed"], true);
+    assert_eq!(fixture.control("state")["canonical_advance"], 512.0);
+    assert_eq!(fixture.control("undo")["canonical_advance"], 412.0);
+    let replay = mcp.tool("nodes_apply", apply);
+    serde_json::from_value::<AgentApplyResponse>(replay.clone()).unwrap();
+    assert_eq!(replay["receipt"], applied["receipt"]);
+    assert_eq!(replay["history_state"], "undone");
+    assert_eq!(replay["root_changed"], false);
+    let stale = mcp.tool("nodes_status", status_args.clone());
+    assert_eq!(stale["stale"], true);
+    assert_eq!(stale["can_apply"], false);
+    assert_eq!(
+        mcp.tool("nodes_release", status_args.clone())["released"],
+        true
+    );
+    assert_eq!(
+        mcp.tool("nodes_status", status_args)["run"]["status"],
+        "released"
+    );
+    let state = fixture.control("state");
+    assert_eq!(state["canonical_advance"], 412.0);
+    assert_eq!(state["source_exists"], false);
 }

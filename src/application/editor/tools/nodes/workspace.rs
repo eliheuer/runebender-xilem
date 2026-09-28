@@ -8,6 +8,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use runebender::automation::agent_nodes::results::{
+    NodesCancelResult, NodesDiscoverResult, NodesImageResult, NodesMutateResult,
+    NodesReleaseResult, NodesRunResult, NodesSnapshotResult, NodesStatusResult,
+};
 use runebender::font::variable::SourceId;
 use runebender::workflows::nodes::Registry;
 use runebender::workflows::nodes_live;
@@ -28,10 +32,17 @@ pub(crate) struct LiveNodesState {
     pub(crate) execution: LiveGraphExecution,
     pub(crate) proofs: NodeProofJobs,
     pub(crate) handles: BTreeSet<GraphRunHandle>,
-    pub(crate) requests: BTreeMap<(String, String), (Value, Value)>,
+    pub(crate) requests: BTreeMap<(String, String), (Value, RetainedNodesResponse)>,
     pub(crate) next_job: u64,
     pub(crate) file: Option<LiveGraphFileMetadata>,
     pub(crate) saved_revision: Option<u64>,
+}
+
+/// Retained transport retry body for graph runs or delegated font Apply.
+#[derive(Clone)]
+pub(crate) enum RetainedNodesResponse {
+    Run(Box<NodesRunResult>),
+    Apply(Value),
 }
 
 impl Workspace {
@@ -330,6 +341,10 @@ fn parse<T: serde::de::DeserializeOwned>(arguments: &Value) -> Result<T, String>
     serde_json::from_value(arguments.clone()).map_err(|error| error.to_string())
 }
 
+fn success(result: impl serde::Serialize) -> Value {
+    serde_json::to_value(result).expect("typed graph result serializes")
+}
+
 impl Workspace {
     pub(crate) fn call_agent_nodes(
         &mut self,
@@ -400,15 +415,23 @@ impl Workspace {
             "nodes_discover" => {
                 let request: NodesDiscoverRequest = parse(&call.arguments)?;
                 request.validate()?;
-                Ok(
-                    json!({"ok":true,"identity":state.session.snapshot().identity,"discovery":state.session.discovery(),"recipe_authoring":script_recipe::AUTHORING_INSTRUCTIONS,"root_changed":false}),
-                )
+                Ok(success(NodesDiscoverResult {
+                    ok: true,
+                    identity: state.session.snapshot().identity,
+                    discovery: state.session.discovery(),
+                    recipe_authoring: script_recipe::AUTHORING_INSTRUCTIONS.into(),
+                    root_changed: false,
+                }))
             }
             "nodes_snapshot" => {
                 let request: NodesSnapshotRequest = parse(&call.arguments)?;
                 request.validate()?;
                 check_identity(&state.session, &request.identity)?;
-                Ok(json!({"ok":true,"snapshot":state.session.snapshot(),"root_changed":false}))
+                Ok(success(NodesSnapshotResult {
+                    ok: true,
+                    snapshot: state.session.snapshot(),
+                    root_changed: false,
+                }))
             }
             "nodes_mutate" => {
                 let request: NodesMutateRequest = parse(&call.arguments)?;
@@ -417,9 +440,12 @@ impl Workspace {
                     .session
                     .mutate(request.request)
                     .map_err(|error| error.to_string())?;
-                Ok(
-                    json!({"ok":true,"mutation":response,"snapshot":state.session.snapshot(),"root_changed":false}),
-                )
+                Ok(success(NodesMutateResult {
+                    ok: true,
+                    mutation: response,
+                    snapshot: state.session.snapshot(),
+                    root_changed: false,
+                }))
             }
             "nodes_run" => {
                 let request: NodesRunRequest = parse(&call.arguments)?;
@@ -433,9 +459,12 @@ impl Workspace {
                     if payload != &call.arguments {
                         return Err("run key already has a different request".into());
                     }
-                    let mut replay = response.clone();
-                    replay["replayed"] = json!(true);
-                    return Ok(replay);
+                    let RetainedNodesResponse::Run(response) = response else {
+                        return Err("run key collides with a retained Apply response".into());
+                    };
+                    let mut replay = (**response).clone();
+                    replay.replayed = true;
+                    return Ok(success(replay));
                 }
                 if state.requests.len() >= 64 {
                     return Err("graph retry retention is full; open a new graph session".into());
@@ -484,12 +513,20 @@ impl Workspace {
                     .map_err(|error| error.to_string())?;
                 state.next_job = state.next_job.saturating_add(1);
                 state.handles.insert(submitted.graph.receipt.handle);
-                let response =
-                    json!({"ok":true,"run":submitted.graph,"replayed":false,"root_changed":false});
-                state
-                    .requests
-                    .insert(key, (call.arguments.clone(), response.clone()));
-                Ok(response)
+                let response = NodesRunResult {
+                    ok: true,
+                    run: submitted.graph,
+                    replayed: false,
+                    root_changed: false,
+                };
+                state.requests.insert(
+                    key,
+                    (
+                        call.arguments.clone(),
+                        RetainedNodesResponse::Run(Box::new(response.clone())),
+                    ),
+                );
+                Ok(success(response))
             }
             "nodes_status" => {
                 let request: NodesStatusRequest = parse(&call.arguments)?;
@@ -501,12 +538,16 @@ impl Workspace {
                     .ok_or("unknown graph run")?;
                 let fresh = run_is_current(&state.session, &inspection, &current);
                 let summary = state.execution.result_summary(request.handle);
-                Ok(
-                    json!({"ok":true,"run":inspection,"current":fresh,"stale":!fresh,
-                    "report":summary.as_ref().map(|summary|&summary.report),
-                    "stderr":summary.as_ref().map(|summary|&summary.stderr),
-                    "can_apply":fresh && summary.is_some_and(|summary|summary.can_apply),"root_changed":false}),
-                )
+                Ok(success(NodesStatusResult {
+                    ok: true,
+                    run: inspection,
+                    current: fresh,
+                    stale: !fresh,
+                    report: summary.as_ref().map(|summary| summary.report.clone()),
+                    stderr: summary.as_ref().map(|summary| summary.stderr.clone()),
+                    can_apply: fresh && summary.is_some_and(|summary| summary.can_apply),
+                    root_changed: false,
+                }))
             }
             "nodes_cancel" => {
                 let request: NodesCancelRequest = parse(&call.arguments)?;
@@ -527,7 +568,11 @@ impl Workspace {
                         .finish_proof_cancellation(&mut state.session, handle, &current)
                         .map_err(|error| error.to_string())?;
                 }
-                Ok(json!({"ok":true,"cancellation":response.graph,"root_changed":false}))
+                Ok(success(NodesCancelResult {
+                    ok: true,
+                    cancellation: response.graph,
+                    root_changed: false,
+                }))
             }
             "nodes_release" => {
                 let request: NodesReleaseRequest = parse(&call.arguments)?;
@@ -545,7 +590,11 @@ impl Workspace {
                     state.proofs.release(request.handle.get());
                     state.handles.remove(&request.handle);
                 }
-                Ok(json!({"ok":true,"released":released,"root_changed":false}))
+                Ok(success(NodesReleaseResult {
+                    ok: true,
+                    released,
+                    root_changed: false,
+                }))
             }
             "nodes_apply" => {
                 let request: NodesApplyRequest = parse(&call.arguments)?;
@@ -559,6 +608,9 @@ impl Workspace {
                     if payload != &call.arguments {
                         return Err("Apply key already has a different request".into());
                     }
+                    let RetainedNodesResponse::Apply(response) = response else {
+                        return Err("Apply key collides with a retained run response".into());
+                    };
                     let mut replay = response.clone();
                     if response.get("receipt").is_some() {
                         replay = self.call_agent_edit(&runebender::automation::agent::ToolCall {
@@ -602,7 +654,13 @@ impl Workspace {
                     .as_mut()
                     .expect("Apply does not replace the graph")
                     .requests
-                    .insert(key, (call.arguments.clone(), response.clone()));
+                    .insert(
+                        key,
+                        (
+                            call.arguments.clone(),
+                            RetainedNodesResponse::Apply(response.clone()),
+                        ),
+                    );
                 Ok(response)
             }
             "nodes_image" => {
@@ -629,13 +687,20 @@ impl Workspace {
                 if proof.png.len() > 5 * 1024 * 1024 {
                     return Err("specimen exceeds the transport image limit".into());
                 }
-                Ok(
-                    json!({"ok":true,"artifact_id":artifact_ids[index],"current":fresh,"stale":!fresh,
-                    "captured_document_epoch":inspection.identity.graph.document_epoch,
-                    "captured_document_revision":proof.document_revision,"font_sha256":proof.font_sha256,
-                    "canonical_input_sha256":proof.canonical_input_sha256,"recipe":proof.recipe,"glyphs":proof.glyphs,
-                    "png_base64":base64::engine::general_purpose::STANDARD.encode(&proof.png),"root_changed":false}),
-                )
+                Ok(success(NodesImageResult {
+                    ok: true,
+                    artifact_id: artifact_ids[index].clone(),
+                    current: fresh,
+                    stale: !fresh,
+                    captured_document_epoch: inspection.identity.graph.document_epoch,
+                    captured_document_revision: proof.document_revision,
+                    font_sha256: proof.font_sha256.clone(),
+                    canonical_input_sha256: proof.canonical_input_sha256.clone(),
+                    recipe: proof.recipe.clone(),
+                    glyphs: proof.glyphs.clone(),
+                    png_base64: Some(base64::engine::general_purpose::STANDARD.encode(&proof.png)),
+                    root_changed: false,
+                }))
             }
             _ => Err("unknown Nodes command".into()),
         }
@@ -923,7 +988,18 @@ mod tests {
             json!({"expected_document_epoch":epoch}),
         );
         assert_eq!(discovery["ok"], true, "{discovery}");
+        assert_eq!(discovery["discovery"]["schema_version"], 1);
+        assert!(discovery["discovery"]["node_types"].is_array());
+        assert!(discovery["recipe_authoring"].is_string());
         let identity = discovery["identity"].clone();
+        let graph_snapshot = call(
+            &mut app,
+            "nodes_snapshot",
+            json!({"expected_document_epoch":epoch,"identity":identity}),
+        );
+        assert_eq!(graph_snapshot["ok"], true, "{graph_snapshot}");
+        assert_eq!(graph_snapshot["snapshot"]["identity"], identity);
+        assert!(graph_snapshot["snapshot"]["graph"]["nodes"].is_array());
         let script = r#"import json, sys
 p=json.load(sys.stdin)
 edits=[{"target":layer["guard"],"operations":[{"op":"set_width","width":layer["width"]+100}]} for layer in p["layers"]]
@@ -968,6 +1044,8 @@ json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],
         let request = json!({"expected_document_epoch":epoch,"guard":{"identity":identity,"semantic_revision":snapshot.semantic_revision,"semantic_hash":snapshot.semantic_hash},"actor":"nodes-test","operation_key":"run-one","source":0,"glyphs":["A"]});
         let started = call(&mut app, "nodes_run", request.clone());
         assert_eq!(started["ok"], true, "{started}");
+        assert_eq!(started["replayed"], false);
+        assert_eq!(started["run"]["disposition"], "applied");
         let handle = started["run"]["receipt"]["handle"].clone();
         let status_request =
             json!({"expected_document_epoch":epoch,"identity":identity,"handle":handle});
@@ -975,6 +1053,9 @@ json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],
         loop {
             let status = call(&mut app, "nodes_status", status_request.clone());
             assert_eq!(status["ok"], true, "{status}");
+            assert!(status.get("report").is_some());
+            assert!(status.get("stderr").is_some());
+            assert_eq!(status["report"].is_null(), status["stderr"].is_null());
             match status["run"]["status"].as_str() {
                 Some("completed") => {
                     assert_eq!(status["can_apply"], true);
@@ -1002,6 +1083,9 @@ json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],
         let changed = call(&mut app, "nodes_image", image_request);
         assert_eq!(original["ok"], true, "{original}");
         assert_eq!(changed["ok"], true, "{changed}");
+        assert_eq!(original["recipe"]["text"], "AA");
+        assert!(original["glyphs"].is_array());
+        assert!(original["png_base64"].is_string());
         assert_ne!(original["font_sha256"], changed["font_sha256"]);
         assert_ne!(original["png_base64"], changed["png_base64"]);
         app = capture_completed_comparison(app);

@@ -164,10 +164,13 @@ pub struct ProofStatusResult {
 ///
 /// The host composes these generated contracts with its generic error envelope.
 pub fn success_schema(name: &str) -> Option<Value> {
+    let generator = schemars::generate::SchemaSettings::default()
+        .for_serialize()
+        .into_generator();
     let schema = match name {
-        "proof_start" => schemars::schema_for!(ProofStartResult),
-        "proof_status" | "proof_cancel" => schemars::schema_for!(ProofStatusResult),
-        "proof_release" => schemars::schema_for!(ProofReleaseResult),
+        "proof_start" => generator.into_root_schema_for::<ProofStartResult>(),
+        "proof_status" | "proof_cancel" => generator.into_root_schema_for::<ProofStatusResult>(),
+        "proof_release" => generator.into_root_schema_for::<ProofReleaseResult>(),
         _ => return None,
     };
     Some(serde_json::to_value(schema).expect("proof result schema serializes"))

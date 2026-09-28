@@ -19,6 +19,9 @@ use crate::workflows::nodes_session::{
     GraphCancelRequest, GraphIdentity, GraphMutationRequest, GraphRunHandle, GraphSemanticGuard,
 };
 
+/// Typed success bodies for native live graph tools.
+pub mod results;
+
 /// Bootstrap discovery for the current document's graph session.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
