@@ -128,7 +128,11 @@ Trusted local Python is not an OS sandbox; do not imply otherwise.
   Verified unchanged root before Apply, sibling isolation, layout independence, explicit selection, exact retry, changed-key-payload rejection, stale suppression, cancellation and release.
   At most eight heavy application run results are retained alongside bounded receipt tombstones; script/proof queues and cumulative canonical transaction limits remain enforced.
 - [ ] D3. Bridge external workers through detached captures and validated candidate imports; remove implicit root-save requirements from live execution.
-- [ ] D4. Make cache policy and side effects explicit per node implementation; carry structured Rows inputs faithfully.
+- [x] D4. Make cache policy and side effects explicit per node implementation; carry structured Rows inputs faithfully.
+  Integrated as 870cf65 with consumed versioned policies, conservative external defaults, content-verified cache reuse and bounded JSON Rows arguments.
+  Real CLI fixtures verify nested/Unicode/empty Rows, cache hits and invalidation; runner regressions verify model/adapter artifacts and pre-spawn failures.
+  Complete native suite: 1081 passed, 0 failed, 4 ignored; strict lint/docs/headless checks and browser build/smoke passed.
+  External workers remain trusted processes; full-directory model hashing has a documented disk I/O cost.
 - [x] D5. Version graph/node contracts and preserve existing saved graphs through an explicit compatibility path.
   acf8a36 separates execution versions 1 and 2 from unchanged authoring/file schema version 1 for the current live.font/live.python/live.proof family.
   Omitted execution_version preserves the four-node comparison, its capture encoding, version IDs, successful report text, proof hash form and branch image selectors.
@@ -226,14 +230,14 @@ Verification logs:
 - /tmp/runebender-ai-foundation-headless.log: no-default-features library check passed.
 
 
-Next dependency-ready work: D3/D4, detached external model-worker execution and explicit cache/effect/Rows contracts.
-A-C and D1/D2/D5 are complete for their recorded acceptance scope; provider-neutral cloud/vector contracts, extension registries and restart recovery remain separate work.
+Next dependency-ready work: D3, detached external model-worker execution and validated candidate import.
+A-C and D1/D2/D4/D5 are complete for their recorded acceptance scope; provider-neutral cloud/vector contracts, extension registries and restart recovery remain separate work.
 The current live executor supports only live.font, live.python and live.proof, with one active operation per run and independent candidate branches.
 Do not route live model nodes through disk execution that saves the open source font.
 First trace one existing external task's offline input/output contract and connect it to a captured, detached font input with validated candidate import.
 A temporary export owned by the run may be appropriate, but Project and its original source files must remain unchanged until explicit Apply.
 Reuse the shared process lifecycle and canonical proposal/transaction owners; do not add an unused provider registry or placeholder model node.
-Make node effects and cache policy consumed metadata, and serialize Rows values faithfully instead of silently dropping them.
+Preserve the consumed D4 node execution metadata and lossless bounded Rows argument contract when adding external live nodes.
 Preserve the existing explicit execution-version compatibility path when extending accepted live node types.
 For chained candidates, use script_recipe::capture_staged and AgentEditRequest::stage_after, or the corresponding typed import/proposal boundary, without introducing another mutable Project.
 Derive proofs from the captured root CompileProofInput and the selected node's complete candidate.
@@ -589,3 +593,64 @@ H4 must update maintained workflow/MCP/architecture guidance from the old four-n
 No dependency was added, no user font was saved, and no push, merge, publication, provider/account connection, paid API call or model download occurred.
 All 21 original dirty baseline paths were rehashed unchanged.
 The 30-minute coordinator remains ACTIVE for the remaining checklist work.
+
+
+D3 preparation from the D4 integration review:
+
+- Add a read-only detached capture export beside `Project::save_as`, reusing `SaveAsPlan` and the canonical persistence adapters.
+  Calling `save_as` itself would retarget source paths, clear dirty flags and bump the document revision.
+  Preserve all sources, designspace, feature includes and preservation payload; let the run own temporary-directory lifetime.
+- Separate the worker's capture path from the original master identity in `AiJob`.
+  Existing completion checks compare the open source with the worker path, which would reject detached results.
+- Both native `local_ai::run_task` and disk-oriented `nodes::run_nodes` currently save first.
+  Replace this route when bridging model nodes; do not reuse it as a live graph backend.
+- Do not call `adopt_proposal_from_disk` on successful completion.
+  It discards an existing proposal and mutates Project; `adopt_external_project` is a per-glyph mutation loop without captured revision validation.
+  Validate the exact expected proposal, nonempty scoped glyphs, source identity and captured/current revisions, then retain a session candidate for explicit Apply through the existing atomic transaction/history owner.
+  Reject stale/cancelled results and avoid treating proposal layers already present in the capture as newly generated output.
+- Use one real offline subprocess fixture matching the existing `font-ml bolden` CLI contract before claiming model-node support.
+  No real model or sibling font-ml changes are authorized by this milestone.
+
+
+2026-09-28: D4 execution policy and structured Rows milestone.
+Two GPT-6 Sol workers owned catalog metadata and runner behavior; the coordinator owned real CLI fixtures, documentation, integration review and serialized validation.
+Independent review found and corrected two cache holes before acceptance: external mutator declarations losing their no-cache restriction, and changed model files failing to invalidate downstream workers when manifest digests stayed unchanged.
+
+Implemented behavior:
+
+- Every builtin and live node declares versioned cache/effect/Rows metadata; native and MCP discovery serialize the same catalog.
+  Legacy external tasks default to never-cache and unsupported Rows inputs.
+  Explicit task metadata requires schema version 1 and known fields; malformed/future policies are not registered.
+  External tasks are always classified as trusted processes, and declared font/session effects force never-cache.
+- The disk runner consumes policy for cache reads and writes, fingerprints the node definition and retained output bytes, and invalidates old cache files.
+  Model and adapter inputs and outputs hash complete directory contents, including weights, tokenizers and additional shards; a manifest digest alone is insufficient.
+  This deliberately adds disk I/O for large models.
+  Source-writing builtins and live document nodes remain uncached.
+- Opted-in Rows inputs travel as one compact JSON array per normalized CLI port flag without shell evaluation.
+  Empty/nested/Unicode data survives real linked subprocess execution.
+  The runner rejects unsupported inputs, more than 4096 rows per input, or more than 65536 aggregate encoded bytes before spawning the worker.
+  Declared Rows outputs must actually be arrays; missing/malformed output is an error.
+- README documents the implemented worker ABI and compatibility/trust limits.
+  No models, cloud providers or accounts were used.
+  The existing live model-worker save-first behavior remains D3 work and is not counted as resolved by this metadata milestone.
+
+Native verification on the final D4 code:
+
+- /tmp/runebender-ai-d4-final-tests.log: complete native suite, 1081 passed, 0 failed, 4 ignored across 23 suites.
+  Includes the real linked Rows CLI fixture, metadata-only policy changes, executable/artifact invalidation, changed model/adapter files, bounds, malformed outputs and existing live MCP/Apply/Undo regressions.
+- /tmp/runebender-ai-d4-clippy.log: strict all-target Clippy passed with warnings denied.
+- /tmp/runebender-ai-d4-doc.log: workspace documentation passed.
+- /tmp/runebender-ai-d4-headless.log: no-default-features library check passed.
+- Formatting, copyright and git diff checks passed.
+  The existing block 0.1.6 dependency future-compatibility warning remains.
+  Ignored real-model tests are not runtime coverage; release/advisory/final clean-checkout acceptance remains in H.
+
+D4 integrated commit: 870cf65709ee7733574cd32e128eb5b542216e0a.
+
+- /tmp/runebender-ai-d4-web.log: browser release build passed in 4m 23s.
+- /tmp/runebender-ai-d4-browser-smoke.log: repository headless browser smoke passed at 1x density.
+  The temporary loopback server was stopped.
+  No views changed; this does not claim foreground native pointer/IME/GPU validation or real model runtime coverage.
+- All 21 original dirty baseline paths remain byte-for-byte unchanged.
+  No pushes, merges, account connections, model downloads or worktree deletions occurred.
+  D3 and E-H remain open, and the coordinator remains active every 30 minutes.
