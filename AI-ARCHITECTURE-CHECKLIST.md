@@ -106,10 +106,15 @@ Trusted local Python is not an OS sandbox; do not imply otherwise.
   Model calls default to 30 minutes, 1 MiB input, 4 MiB stdout and 256 KiB stderr; recipes retain their shorter existing limits and task discovery uses two seconds.
   Chat caps accepted events per turn; native disk graphs coalesce progress per node and cancel on owner drop.
   RunContext exposes disk cancellation to hosts; this phase does not add a disk-workflow Cancel button or interrupt running core font operations.
-- [ ] C3. Support a persistent local-model worker adapter without making model memory or runtime state part of Project.
+- [x] C3. Support a persistent local-model worker adapter without making model memory or runtime state part of Project.
+  Integrated as aa5c81e with a bounded loopback client consumed by native Chat through RUNEBENDER_CHAT_ENDPOINT and optional RUNEBENDER_CHAT_MODEL.
+  An externally managed font-ml serve process owns resident model state; Runebender does not start it, download weights, or claim to stop server inference when cancelling an HTTP request.
+  The application owns a bounded read/proposal tool loop, pins each call and transcript publication to the captured document lifetime, and never exposes install/save/arbitrary workflow tools through this route.
+  Offline HTTP and real live-editor fixtures verify repeated turns through one server, unsaved reads, detached proposals, cancellation, stale-document rejection and failures.
+  Real model residency, model performance, cloud compatibility and server restart management were not exercised.
 - [x] C4. Keep browser availability explicit and preserve native/browser build boundaries.
-  Verified 718290d with the separate browser release build and headless smoke test; the shared runner returns BrowserUnavailable on wasm and native UI execution guards remain explicit.
-  Re-run the browser gate when C3 or later shared-source changes extend this boundary.
+  Verified 718290d and aa5c81e with separate browser release builds and headless smoke tests; the process and local HTTP clients return BrowserUnavailable on wasm and native UI execution guards remain explicit.
+  Re-run the browser gate when later shared-source changes extend this boundary.
 
 ### D. Generalize live graphs
 
@@ -211,16 +216,16 @@ Verification logs:
 - /tmp/runebender-ai-foundation-headless.log: no-default-features library check passed.
 
 
-Next dependency-ready work: C3, a consumed persistent local-model adapter with offline protocol fixtures.
-C1/C2/C4 are complete for the existing callers; general DAGs, cloud/vector providers and extension grants remain separate work.
-The installed /Users/eli/.cargo/bin/font-ml help advertises serve --model with a loopback OpenAI-compatible endpoint; no server or model was started.
-A read-only source inspection found /Users/eli/GH/repos/font-ml/src/serve.rs implements GET /v1/models and POST /v1/chat/completions with one resident model and sequential requests.
-Verify the exact supported protocol and cancellation behavior before choosing the adapter; the installed binary and sibling source are not assumed to be identical builds.
-Use deterministic offline fixtures to prove repeated requests reuse the worker, failures and cancellation retain truthful status, and no model state enters Project.
-The adapter must be consumed by a current host path, with a supported configuration route; do not add an unused provider wrapper or claim that existing font-ml run task processes are persistent.
-Keep assistant tool orchestration separate from model inference and preserve existing scope/revision guards at result publication.
-Review any new HTTP/runtime dependency explicitly and preserve browser unavailability for native process ownership.
-Do not start real models, download weights, connect providers or modify the sibling font-ml repository in this pass.
+Next dependency-ready work: D1/D2, general live DAG planning and consumed execution, with D5 compatibility handled alongside the contract changes.
+A-C are complete for their recorded acceptance scope; provider-neutral cloud/vector contracts, extension registries and restart recovery remain separate work.
+The current fixed plan is GraphExecutionPlan plus execution_plan in src/workflows/nodes_session.rs: exactly one live.font, one live.python and two live.proof nodes.
+The application adapter in src/application/editor/tools/nodes/execution.rs retains one recipe and a fixed proof pair; replacing the planner alone is not acceptance.
+Agree the bounded DAG execution, per-node lineage/results and compatibility contract before assigning at most two Sol workers with disjoint planner and host ownership.
+Support chained transforms, branching, multiple proofs and partial failure through actual application/MCP runs while keeping root edits behind explicit Apply.
+Preserve layout-independent semantic identities, immutable captures, bounded retention, cancellation and stale-result rejection; never make live execution save the source font implicitly.
+Keep existing schema-version-one saved graphs and clients on an explicit supported path when adding a new contract version.
+The persistent local Chat client is inference-only and externally managed; it is not a completed model-node or cloud-provider integration.
+Do not launch real models, download weights, connect providers or modify the sibling font-ml repository in this pass.
 Use Project-owned identities and existing atomic commit/history paths; B4 supplies generated outline operations without caller-created canonical identities or mutable font wrappers.
 Receipt-bearing rejected or cancelled edits may return ok=false with an error inside receipt.outcome; preserve those shapes explicitly rather than assuming every failure uses the generic top-level error envelope.
 Use at most two disjoint implementation workers.
@@ -428,3 +433,53 @@ Website guidance was audited read-only and remains accurate for this migration; 
 Only font-ml help and existing source were inspected for C3 planning; no persistent server or model was launched.
 All 21 original dirty baseline files were rehashed and remain unchanged; no push, merge, account connection, paid API call, model download or publication occurred.
 The coordinator remains ACTIVE every 30 minutes because C3 and D-H are still incomplete.
+
+
+2026-09-28: The sixth continuation completed C3 and revalidated C4 in aa5c81e50ddf373d8757a9396dab917e51008a11.
+The coordinator verified a clean integration branch and no active implementation assignments or Cargo jobs before starting GPT-6 Sol workers persistent_client and persistent_chat_host with disjoint ownership.
+The client worker owned workflows/local_chat.rs and its module export; the host worker owned Chat orchestration and configuration.
+GPT-6 Luna audited the configuration documentation read-only.
+The coordinator reviewed both worker diffs, added real HTTP/live-editor regression fixtures, implemented the document-lifetime publication guard, updated the panel and README, and serialized all Cargo validation.
+All workers are complete and no D-phase assignment is active.
+
+The client connects only to an explicitly configured literal loopback IP or localhost with a nonzero port, plain HTTP and root or /v1 path.
+It uses the narrow fixed-length, nonstreaming completion protocol advertised by the installed font-ml serve help and inspected in the sibling source; the exact installed binary's inference implementation was not exercised.
+It rejects remote endpoints, credentials, redirects, ambiguous framing, unsupported transfer encoding, oversized/truncated responses and malformed completion envelopes.
+Configured model identity and stream=false are host-owned; no provider state or network client enters Project.
+No new dependency was added.
+
+The application sends at most seven completions and six read/proposal tool calls per turn, with a 64-message maximum for accepted inference context, a 1 MiB request/context cap and a 4 MiB HTTP response cap.
+It checks a 120-second turn budget before inference and tool dispatch and after results; an already dispatched live operation remains non-preemptible under the existing socket timeout.
+Cancellation closes the client request and suppresses later dispatch/publication, but does not stop computation in the independently managed server or undo prior proposal creation.
+The server lifetime remains external and survives editor closure.
+Only project_info, font_info, read_glyph, proof, proposal_list and propose_edits are exposed through this route.
+The host replaces model-supplied document epochs, validates reply framing, allowed tools and top-level argument shapes for the complete call batch before dispatch, gives calls distinct transcript identities and does not retry uncertain live replies.
+The canonical operation owner validates each tool's nested arguments and edit guards when it executes.
+A changed document lifetime cancels the job and clears old model context before any pending final reply or artifact can publish, even when inference returned no tool calls.
+The existing per-turn GGUF process path remains available when no endpoint is configured.
+With an endpoint configured, malformed or non-UTF-8 endpoint/model values fail explicitly instead of falling back.
+
+Verification for aa5c81e:
+
+- /tmp/runebender-ai-foundation-persistent-client.log: all 6 focused local-client fixtures passed, including resident-server reuse, malformed/error/oversized/truncated responses, pre-cancellation and in-flight cancellation/deadlines.
+- /tmp/runebender-ai-foundation-persistent-chat.log: all 12 Chat tests passed, including 4 host-loop tests and 3 real HTTP/live-editor integration fixtures.
+- The real entry-point fixture ran with no selected GGUF or font-ml executable, read an unsaved width of 412, proposed 500, retained foreground width 412 and kept the document path absent on disk; the second user turn reused the same fixture server and conversation.
+- The other integration fixtures prove a cancelled inference response cannot dispatch its tool and a completed no-tool response cannot publish into a replacement document lifetime.
+- /tmp/runebender-ai-foundation-persistent-tests.log: cargo test --workspace --locked -- --test-threads=1 passed 1049 tests, 0 failed, 4 ignored across 23 suites.
+- /tmp/runebender-ai-foundation-persistent-clippy.log: strict all-target Clippy passed after literal-suffix, unit-return semicolon and assertion-message corrections; these were the only code changes after the full native suite and did not change behavior.
+- /tmp/runebender-ai-foundation-persistent-doc.log: workspace documentation passed.
+- /tmp/runebender-ai-foundation-persistent-headless.log: no-default-features library check passed.
+- cargo fmt --all --check, copyright and staged diff checks passed.
+- /tmp/runebender-ai-foundation-persistent-web.log: the separate browser release build passed in 4m 08s.
+- /tmp/runebender-ai-foundation-persistent-browser-smoke.log: the 1x headless browser smoke check passed; its temporary loopback server was stopped afterward.
+- /tmp/runebender-ai-persistent-proofs/chat-gray.png and chat-light.png: inspected native headless captures show the configured server label and hidden per-turn model controls with idle scrollbars; no foreground GUI was launched.
+
+Validation first caught a local variable shadowing the deadline helper, corrected before running the Chat fixtures.
+The integration fixture also exposed that the new-font template already contains A at width 600; setup now makes the intended width 412 through the canonical edit API before testing the read.
+No test expectations were weakened to accommodate those failures.
+Four ignored model/large-workflow tests remain outside runtime coverage; no real model, resident-weight measurement, cloud provider, Linux/Windows runtime, native pointer/IME/accessibility/GPU proof or server restart recovery is claimed.
+Native release/advisory checks remain in H, and the existing block 0.1.6 dependency warning remains.
+README documents the consumed configuration route and cancellation/server-lifetime limits.
+H4 should extend the website local-models guidance with the endpoint option and qualify the FAQ's “nothing is sent anywhere” wording to distinguish local loopback context transfer from cloud transfer.
+All 21 original dirty baseline paths were rehashed and remain unchanged; no push, merge, publication, account connection, paid API call or model download occurred.
+The 30-minute coordinator remains ACTIVE for D-H.
