@@ -32,3 +32,34 @@ Runebender owns the read/proposal tool loop and pins calls to the open document'
 Cancel closes the request and discards late results, but the server may continue computing and already dispatched tool operations are not undone.
 The server stays running across turns and when Runebender closes; stop it separately when finished.
 This route requires the native Unix live-editor endpoint and is unavailable in the browser.
+
+## External workflow worker contract
+
+`runebender nodes types --tool /path/to/font-ml --json` exposes the discovered task ports and execution policy.
+External tasks can advertise this optional block in each task returned by `tasks --json`:
+
+```json
+{"execution":{"schema_version":1,"cache":"input_fingerprint","rows_input":"json_argument"}}
+```
+
+Without this block, external tasks remain executable but run every time and reject Rows inputs.
+An explicit block requires version 1; unknown versions, fields, or policy values exclude that task from discovery.
+The authoring graph file remains version 1.
+
+`json_argument` sends each Rows input as one compact JSON array argument after its port flag, replacing underscores with hyphens in the flag name.
+For example, `report_rows` becomes `--report-rows '[{"glyph":"A","score":0.5}]'`; the runner builds argument vectors directly without a shell.
+Empty arrays, nested JSON, and Unicode are preserved.
+Each input permits at most 4096 rows, and all Rows arguments together permit at most 65536 UTF-8 bytes.
+Unsupported or oversized inputs fail before process launch, and a declared Rows output must be a JSON array in the worker's final report.
+
+`input_fingerprint` is an explicit promise by the trusted worker that declared inputs describe its dependencies.
+Cache reuse verifies the node definition, executable, input values and files, and retained output content; older cache files are invalidated.
+Model and adapter directories are hashed from their actual bytes, including additional artifacts; manifest digests alone are not trusted.
+This conservative check can add disk I/O for large local models.
+Workers depending on time, random state, environment variables, network responses, or unlisted files should use `cache: "never"` unless those dependencies are supplied as inputs.
+External effects are reported as `trusted_process`; this metadata grants no permissions and provides no process sandbox.
+Font-writing builtins and live document nodes are never reused from the disk cache.
+External declarations of `write_font` or `live_document` likewise force `cache: "never"` while retaining the `trusted_process` classification.
+
+These are offline worker contracts, not a claim of cloud-provider or model compatibility.
+Detached live model-worker capture and import remain separate work; the current native Local AI action still requires a saved UFO source.

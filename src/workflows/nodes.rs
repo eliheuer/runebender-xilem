@@ -144,6 +144,101 @@ impl Port {
     }
 }
 
+/// Whether a node result may be reused after its inputs have the same fingerprint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum NodeCachePolicy {
+    /// Run the node every time.
+    Never,
+    /// Reuse a successful result when the runner verifies its inputs and outputs.
+    InputFingerprint,
+}
+
+/// The externally visible effect of executing a node.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum NodeEffects {
+    /// No external state is changed or read.
+    Pure,
+    /// Read files without writing them.
+    ReadFiles,
+    /// Publish generated artifacts to disk.
+    WriteArtifacts,
+    /// Change font data.
+    WriteFont,
+    /// Use an open editor document or its session state.
+    LiveDocument,
+    /// Run an external program whose effects cannot be verified here.
+    TrustedProcess,
+}
+
+/// How a Rows input is passed to an external task.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RowsInputEncoding {
+    /// External Rows inputs cannot be supplied.
+    Unsupported,
+    /// Pass the complete Rows value as a JSON argument.
+    JsonArgument,
+}
+
+/// Versioned execution policy consumed by graph runners.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct NodeExecution {
+    /// Version of this execution policy contract; only version 1 is understood.
+    pub schema_version: u32,
+    /// Cache behavior after the runner has verified input and output fingerprints.
+    #[serde(default = "never_cache")]
+    pub cache: NodeCachePolicy,
+    /// The node's declared side effects.
+    #[serde(default = "trusted_process")]
+    pub effects: NodeEffects,
+    /// Encoding of external Rows inputs.
+    #[serde(default = "unsupported_rows")]
+    pub rows_input: RowsInputEncoding,
+}
+
+impl Default for NodeExecution {
+    fn default() -> Self {
+        Self::new(NodeCachePolicy::Never, NodeEffects::TrustedProcess)
+    }
+}
+
+impl NodeExecution {
+    /// A version 1 policy without external Rows inputs.
+    pub const fn new(cache: NodeCachePolicy, effects: NodeEffects) -> Self {
+        Self {
+            schema_version: 1,
+            cache,
+            effects,
+            rows_input: RowsInputEncoding::Unsupported,
+        }
+    }
+
+    /// Whether this policy permits a cache hit before runtime fingerprint checks.
+    pub fn cacheable(self) -> bool {
+        self.schema_version == 1
+            && self.cache == NodeCachePolicy::InputFingerprint
+            && !matches!(
+                self.effects,
+                NodeEffects::WriteFont | NodeEffects::LiveDocument
+            )
+    }
+}
+
+fn never_cache() -> NodeCachePolicy {
+    NodeCachePolicy::Never
+}
+
+fn trusted_process() -> NodeEffects {
+    NodeEffects::TrustedProcess
+}
+
+fn unsupported_rows() -> RowsInputEncoding {
+    RowsInputEncoding::Unsupported
+}
+
 /// A node type: what a node of it takes and gives.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct NodeType {
@@ -157,6 +252,9 @@ pub struct NodeType {
     /// Whether the tool that runs it is built. Core types always are.
     #[serde(default = "yes")]
     pub implemented: bool,
+    /// The versioned cache, effect, and Rows input contract.
+    #[serde(default)]
+    pub execution: NodeExecution,
     /// What it takes, in the order a node shows them.
     #[serde(default)]
     pub inputs: Vec<Port>,
@@ -204,6 +302,10 @@ pub fn core_types() -> Vec<NodeType> {
                    glyphs selected in the editor, or every glyph."
                 .into(),
             implemented: true,
+            execution: NodeExecution::new(
+                NodeCachePolicy::InputFingerprint,
+                NodeEffects::ReadFiles,
+            ),
             inputs: vec![],
             outputs: vec![
                 Port::output("source", Kind::Source, "The master."),
@@ -215,6 +317,10 @@ pub fn core_types() -> Vec<NodeType> {
             title: "Master".into(),
             help: "One master of the family, by style name.".into(),
             implemented: true,
+            execution: NodeExecution::new(
+                NodeCachePolicy::InputFingerprint,
+                NodeEffects::ReadFiles,
+            ),
             inputs: vec![Port::input(
                 "name",
                 Kind::Text,
@@ -228,6 +334,10 @@ pub fn core_types() -> Vec<NodeType> {
             title: "Model".into(),
             help: "A model directory from ~/.runebender/models.".into(),
             implemented: true,
+            execution: NodeExecution::new(
+                NodeCachePolicy::InputFingerprint,
+                NodeEffects::ReadFiles,
+            ),
             inputs: vec![Port::input(
                 "name",
                 Kind::Text,
@@ -243,6 +353,10 @@ pub fn core_types() -> Vec<NodeType> {
                    a row apply two."
                 .into(),
             implemented: true,
+            execution: NodeExecution::new(
+                NodeCachePolicy::InputFingerprint,
+                NodeEffects::ReadFiles,
+            ),
             inputs: vec![
                 Port::input("model", Kind::Model, true, "The model to patch."),
                 Port::input(
@@ -263,6 +377,10 @@ pub fn core_types() -> Vec<NodeType> {
                    tool left."
                 .into(),
             implemented: true,
+            execution: NodeExecution::new(
+                NodeCachePolicy::InputFingerprint,
+                NodeEffects::ReadFiles,
+            ),
             inputs: vec![
                 Port::input("source", Kind::Source, true, "The master."),
                 Port::input("name", Kind::Text, true, "The layer name."),
@@ -277,6 +395,7 @@ pub fn core_types() -> Vec<NodeType> {
                    compiled font positions marks the way the editor does."
                 .into(),
             implemented: true,
+            execution: NodeExecution::new(NodeCachePolicy::Never, NodeEffects::WriteFont),
             inputs: vec![Port::input("source", Kind::Source, true, "The master.")],
             outputs: vec![Port::output("path", Kind::Path, "The generated file.")],
         },
@@ -287,6 +406,7 @@ pub fn core_types() -> Vec<NodeType> {
                    anchors, as a proposal."
                 .into(),
             implemented: true,
+            execution: NodeExecution::new(NodeCachePolicy::Never, NodeEffects::WriteFont),
             inputs: vec![
                 Port::input("source", Kind::Source, true, "The master."),
                 Port::input(
@@ -308,6 +428,7 @@ pub fn core_types() -> Vec<NodeType> {
                    step per glyph. The one node that changes the font."
                 .into(),
             implemented: true,
+            execution: NodeExecution::new(NodeCachePolicy::Never, NodeEffects::WriteFont),
             inputs: vec![
                 Port::input("layer", Kind::Layer, true, "What to install."),
                 Port::input("glyphs", Kind::Glyphs, false, "Only these."),
@@ -328,6 +449,10 @@ pub fn core_types() -> Vec<NodeType> {
                    point error per glyph, and the mean-shift baseline."
                 .into(),
             implemented: true,
+            execution: NodeExecution::new(
+                NodeCachePolicy::InputFingerprint,
+                NodeEffects::ReadFiles,
+            ),
             inputs: vec![
                 Port::input("layer", Kind::Layer, true, "The proposal."),
                 Port::input("against", Kind::Source, true, "The master it should match."),
@@ -339,6 +464,10 @@ pub fn core_types() -> Vec<NodeType> {
             title: "Proof".into(),
             help: "An SVG sheet of a layer or a master.".into(),
             implemented: true,
+            execution: NodeExecution::new(
+                NodeCachePolicy::InputFingerprint,
+                NodeEffects::WriteArtifacts,
+            ),
             inputs: vec![
                 Port::input("source", Kind::Source, false, "A master."),
                 Port::input("layer", Kind::Layer, false, "Or a layer."),
@@ -351,6 +480,7 @@ pub fn core_types() -> Vec<NodeType> {
             title: "Note".into(),
             help: "Text on the canvas. Runs nothing.".into(),
             implemented: true,
+            execution: NodeExecution::new(NodeCachePolicy::InputFingerprint, NodeEffects::Pure),
             inputs: vec![Port::input("text", Kind::Text, false, "The note.")],
             outputs: vec![],
         },
@@ -382,13 +512,23 @@ impl Registry {
 
     /// Adds every task a tool reports, from the JSON its `tasks --json`
     /// prints: `{"tasks": [{name, title, help, implemented, inputs,
-    /// outputs}]}`. Returns how many arrived.
+    /// outputs, execution}]}`. Returns how many arrived.
+    ///
+    /// An execution block must name schema version 1 and contain only known fields.
+    /// Missing blocks retain conservative policy; malformed blocks skip their task.
+    /// External effects are always treated as trusted process execution, even when
+    /// a task declares a weaker effect. Explicit caching is the trusted tool's
+    /// dependency promise, not a verified purity guarantee.
+    /// Declared font writes or live-document effects always disable caching.
     ///
     /// Two inputs are not ports. `write` is always on in a graph, since
     /// the layer is the whole point, and a `flag` named `all` is
     /// covered by an empty `glyphs`. A `layer` output becomes a port
     /// named `layer` whose value is the layer's name.
     pub fn add_tool(&mut self, tool: &str, tasks_json: &Value) -> usize {
+        if matches!(tool, "core" | "live") {
+            return 0;
+        }
         let Some(tasks) = tasks_json.get("tasks").and_then(Value::as_array) else {
             return 0;
         };
@@ -397,6 +537,20 @@ impl Registry {
             let Some(name) = task.get("name").and_then(Value::as_str) else {
                 continue;
             };
+            let mut execution = match task.get("execution") {
+                Some(metadata) => match serde_json::from_value::<NodeExecution>(metadata.clone()) {
+                    Ok(policy) if policy.schema_version == 1 => policy,
+                    _ => continue,
+                },
+                None => NodeExecution::default(),
+            };
+            if matches!(
+                execution.effects,
+                NodeEffects::WriteFont | NodeEffects::LiveDocument
+            ) {
+                execution.cache = NodeCachePolicy::Never;
+            }
+            execution.effects = NodeEffects::TrustedProcess;
             let ports = |side: &str| -> Vec<Port> {
                 task.get(side)
                     .and_then(Value::as_array)
@@ -445,6 +599,7 @@ impl Registry {
                     .get("implemented")
                     .and_then(Value::as_bool)
                     .unwrap_or(false),
+                execution,
                 inputs,
                 outputs,
             });
@@ -993,6 +1148,147 @@ mod tests {
         );
         assert_eq!(t.output("layer").unwrap().kind, Kind::Layer);
         assert!(!r.get("font-ml.kern").unwrap().implemented);
+        assert_eq!(t.execution, NodeExecution::default());
+        assert!(!t.execution.cacheable());
+    }
+
+    #[test]
+    fn builtins_declare_consumable_policies() {
+        let registry = Registry::core();
+        for name in [
+            "core.source",
+            "core.master",
+            "core.model",
+            "core.adapter",
+            "core.layer",
+            "core.compare",
+            "core.proof",
+            "core.note",
+        ] {
+            assert!(registry.get(name).unwrap().execution.cacheable(), "{name}");
+        }
+        for name in [
+            "core.features",
+            "core.compose",
+            "core.install",
+            "live.font",
+            "live.fork",
+            "live.python",
+            "live.proof",
+            "live.apply",
+        ] {
+            assert!(!registry.get(name).unwrap().execution.cacheable(), "{name}");
+        }
+        assert_eq!(
+            registry.get("core.proof").unwrap().execution.effects,
+            NodeEffects::WriteArtifacts
+        );
+        assert_eq!(
+            registry.get("live.python").unwrap().execution.effects,
+            NodeEffects::TrustedProcess
+        );
+        assert_eq!(
+            registry.get("live.apply").unwrap().execution.effects,
+            NodeEffects::WriteFont
+        );
+        assert_eq!(
+            registry.get("core.compare").unwrap().execution.rows_input,
+            RowsInputEncoding::Unsupported
+        );
+    }
+
+    #[test]
+    fn external_execution_metadata_is_strict_and_conservative() {
+        let mut registry = Registry::core();
+        let tasks = serde_json::json!({"tasks": [
+            {"name": "opted_in", "implemented": true, "execution": {
+                "schema_version": 1,
+                "cache": "input_fingerprint",
+                "effects": "pure",
+                "rows_input": "json_argument"
+            }},
+            {"name": "legacy", "implemented": true},
+            {"name": "mutator", "implemented": true, "execution": {
+                "schema_version": 1, "cache": "input_fingerprint", "effects": "write_font"
+            }},
+            {"name": "session", "implemented": true, "execution": {
+                "schema_version": 1, "cache": "input_fingerprint", "effects": "live_document"
+            }},
+            {"name": "future", "implemented": true, "execution": {"schema_version": 2}},
+            {"name": "missing_version", "implemented": true, "execution": {"cache": "input_fingerprint"}},
+            {"name": "unknown_field", "implemented": true, "execution": {"schema_version": 1, "sandboxed": true}},
+            {"name": "unknown_policy", "implemented": true, "execution": {"schema_version": 1, "cache": "forever"}}
+        ]});
+        assert_eq!(registry.add_tool("worker", &tasks), 4);
+        for name in ["worker.mutator", "worker.session"] {
+            let execution = registry.get(name).unwrap().execution;
+            assert_eq!(execution.effects, NodeEffects::TrustedProcess);
+            assert_eq!(execution.cache, NodeCachePolicy::Never);
+            assert!(!execution.cacheable());
+        }
+        let opted_in = registry.get("worker.opted_in").unwrap();
+        assert!(opted_in.execution.cacheable());
+        assert_eq!(opted_in.execution.effects, NodeEffects::TrustedProcess);
+        assert_eq!(
+            opted_in.execution.rows_input,
+            RowsInputEncoding::JsonArgument
+        );
+        assert_eq!(
+            registry.get("worker.legacy").unwrap().execution,
+            NodeExecution::default()
+        );
+        for name in [
+            "future",
+            "missing_version",
+            "unknown_field",
+            "unknown_policy",
+        ] {
+            assert!(registry.get(&format!("worker.{name}")).is_none(), "{name}");
+        }
+        assert_eq!(registry.add_tool("core", &tasks), 0);
+        assert_eq!(registry.add_tool("live", &tasks), 0);
+        assert_eq!(
+            registry.get("core.source").unwrap().execution.effects,
+            NodeEffects::ReadFiles
+        );
+    }
+
+    #[test]
+    fn saved_graph_and_legacy_node_type_keep_their_contracts() {
+        let graph = demo();
+        let value = serde_json::to_value(&graph).unwrap();
+        assert!(value.get("execution").is_none());
+        assert_eq!(serde_json::from_value::<NodeGraph>(value).unwrap(), graph);
+
+        let mut legacy_type =
+            serde_json::to_value(Registry::core().get("core.note").unwrap()).unwrap();
+        legacy_type.as_object_mut().unwrap().remove("execution");
+        let restored: NodeType = serde_json::from_value(legacy_type).unwrap();
+        assert_eq!(restored.execution, NodeExecution::default());
+        assert!(!restored.execution.cacheable());
+
+        let future = NodeExecution::new(NodeCachePolicy::InputFingerprint, NodeEffects::Pure);
+        assert!(
+            !NodeExecution {
+                schema_version: 2,
+                ..future
+            }
+            .cacheable()
+        );
+        assert!(
+            !NodeExecution {
+                effects: NodeEffects::WriteFont,
+                ..future
+            }
+            .cacheable()
+        );
+        assert!(
+            !NodeExecution {
+                effects: NodeEffects::LiveDocument,
+                ..future
+            }
+            .cacheable()
+        );
     }
 
     #[test]

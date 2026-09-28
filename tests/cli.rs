@@ -483,6 +483,19 @@ fn nodes_run_runs_core_nodes_and_skips_them_the_second_time() {
     let proof = nodes.iter().find(|n| n["id"] == 2).expect("proof node");
     assert_eq!(proof["status"], "ran", "{out}");
 
+    // An artifact edited at the same path must not masquerade as a cached proof.
+    std::fs::write(&svg, "replaced artifact").expect("replace proof");
+    let (code, out) = run(&args);
+    assert_eq!(code, 0, "{out}");
+    let proof = out["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"] == 2)
+        .unwrap();
+    assert_eq!(proof["status"], "ran", "{out}");
+    assert!(std::fs::read_to_string(&svg).unwrap().contains("<svg"));
+
     // A missing output must be recreated from unchanged inputs.
     std::fs::remove_file(&svg).expect("remove proof");
     let (code, out) = run(&args);
@@ -508,7 +521,8 @@ fn nodes_run_invalidates_cache_when_worker_is_replaced_at_the_same_path() {
     .unwrap();
     let replace_worker = |version: u32| {
         let tasks = serde_json::json!({"tasks":[{
-            "name":"report", "implemented":true, "inputs":[], "outputs":[]
+            "name":"report", "implemented":true, "inputs":[], "outputs":[],
+            "execution":{"schema_version":1,"cache":"input_fingerprint"}
         }]});
         let report = serde_json::json!({"ok":true,"version":version});
         std::fs::write(
@@ -539,6 +553,134 @@ fn nodes_run_invalidates_cache_when_worker_is_replaced_at_the_same_path() {
         assert_eq!(result["nodes"][0]["status"], status, "{result}");
         assert_eq!(result["nodes"][0]["report"]["version"], version, "{result}");
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn nodes_rows_cross_real_worker_arguments_without_loss_and_obey_cache_policy() {
+    use serde_json::json;
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let (dir, ufo) = scratch_ufo();
+    let worker = dir.path().join("font-ml");
+    let manifest = dir.path().join("tasks.json");
+    let calls = dir.path().join("calls.txt");
+    let graph_path = dir.path().join("rows.nodes.json");
+    std::fs::write(&worker, r#"#!/usr/bin/env python3
+import json, pathlib, sys
+root = pathlib.Path(__file__).parent
+if sys.argv[1] == 'tasks':
+    print((root / 'tasks.json').read_text())
+    sys.exit(0)
+task = sys.argv[2]
+with (root / 'calls.txt').open('a') as log:
+    log.write(task + '\n')
+def arg(name):
+    return sys.argv[sys.argv.index(name) + 1]
+if task == 'emit':
+    print(json.dumps({'rows': json.loads(arg('--payload'))}, ensure_ascii=False))
+elif task == 'consume':
+    first = json.loads(arg('--first-rows'))
+    second = json.loads(arg('--second-rows'))
+    print(json.dumps({'rows': first + second, 'received': {'first': first, 'second': second}}, ensure_ascii=False))
+else:
+    raise RuntimeError('unexpected task')
+"#).unwrap();
+    std::fs::set_permissions(&worker, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let mut tasks = json!({"tasks":[
+        {"name":"emit","implemented":true,"inputs":[{"name":"payload","kind":"text","required":true}],"outputs":[{"name":"rows","kind":"rows"}],"execution":{"schema_version":1,"cache":"input_fingerprint"}},
+        {"name":"consume","implemented":true,"inputs":[{"name":"first_rows","kind":"rows","required":true},{"name":"second_rows","kind":"rows","required":true}],"outputs":[{"name":"rows","kind":"rows"}],"execution":{"schema_version":1,"cache":"input_fingerprint","rows_input":"json_argument","effects":"pure"}}
+    ]});
+    std::fs::write(&manifest, serde_json::to_vec(&tasks).unwrap()).unwrap();
+    let rows = json!([{"glyph":"alef.א","score":0.25,"nested":{"flags":[true,false,null],"text":"quote \" slash \\ newline\n --flag $(literal)"}},[1,"é",null],42]);
+    let mut graph = json!({"version":1,"nodes":[
+        {"id":1,"type":"font-ml.emit","values":{"payload":rows.to_string()}},
+        {"id":2,"type":"font-ml.consume"},
+        {"id":3,"type":"font-ml.emit","values":{"payload":"[]"}}
+    ],"links":[[1,"rows",2,"first_rows"],[3,"rows",2,"second_rows"]]});
+    std::fs::write(&graph_path, serde_json::to_vec(&graph).unwrap()).unwrap();
+    let args = [
+        "nodes",
+        "run",
+        graph_path.to_str().unwrap(),
+        "--font",
+        ufo.to_str().unwrap(),
+        "--tool",
+        worker.to_str().unwrap(),
+    ];
+    let (code, types) = run(&["nodes", "types", "--tool", worker.to_str().unwrap()]);
+    assert_eq!(code, 0, "{types}");
+    let consumer = types["types"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["name"] == "font-ml.consume")
+        .unwrap();
+    assert_eq!(consumer["execution"]["effects"], "trusted_process");
+    assert_eq!(consumer["execution"]["rows_input"], "json_argument");
+    for expected in ["ran", "skipped"] {
+        let (code, report) = run(&args);
+        assert_eq!(code, 0, "{report}");
+        let result = report["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["id"] == 2)
+            .unwrap();
+        assert_eq!(result["status"], expected, "{report}");
+        assert_eq!(
+            result["report"]["received"],
+            json!({"first":rows,"second":[]})
+        );
+    }
+    assert_eq!(std::fs::read_to_string(&calls).unwrap().lines().count(), 3);
+    let changed = json!([{"glyph":"alef.א","score":0.75}]);
+    graph["nodes"][0]["values"]["payload"] = json!(changed.to_string());
+    std::fs::write(&graph_path, serde_json::to_vec(&graph).unwrap()).unwrap();
+    let (code, report) = run(&args);
+    assert_eq!(code, 0, "{report}");
+    let result = report["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == 2)
+        .unwrap();
+    assert_eq!(result["status"], "ran", "{report}");
+    assert_eq!(result["report"]["received"]["first"], changed);
+    assert_eq!(std::fs::read_to_string(&calls).unwrap().lines().count(), 5);
+
+    // Discovery policy changes invalidate cache without changing executable bytes.
+    tasks["tasks"][1]["execution"]["cache"] = json!("never");
+    std::fs::write(&manifest, serde_json::to_vec(&tasks).unwrap()).unwrap();
+    for _ in 0..2 {
+        let (code, report) = run(&args);
+        assert_eq!(code, 0, "{report}");
+        let result = report["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["id"] == 2)
+            .unwrap();
+        assert_eq!(result["status"], "ran", "{report}");
+    }
+    let before = std::fs::read_to_string(&calls).unwrap();
+    assert_eq!(before.lines().count(), 7);
+    tasks["tasks"][1]["execution"]["rows_input"] = json!("unsupported");
+    std::fs::write(&manifest, serde_json::to_vec(&tasks).unwrap()).unwrap();
+    let (code, report) = run(&args);
+    assert_ne!(code, 0, "{report}");
+    let result = report["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == 2)
+        .unwrap();
+    assert_eq!(result["status"], "failed", "{report}");
+    assert!(
+        result["report"]["error"].as_str().unwrap().contains("Rows"),
+        "{report}"
+    );
+    assert_eq!(std::fs::read_to_string(&calls).unwrap(), before);
 }
 
 /// Drives the MCP server over its stdio: one JSON-RPC message per

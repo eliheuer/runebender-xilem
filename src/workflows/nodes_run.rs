@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Running a [`NodeGraph`]: each node in order, skipping what has not
-//! changed.
+//! changed when its execution policy permits reuse.
 //!
 //! Core nodes run here. Tool nodes run the tool as a subprocess, the
 //! way `runebender propose` does, so the model runtime never enters
 //! this crate. A node's inputs are hashed before it runs: the values
 //! typed into it, the hashes of the nodes it reads from, and for a
 //! font or a layer the source files themselves. The hash and the
-//! outputs are kept in a cache file beside the graph, and a node
-//! whose hash has not moved is skipped. That is `ComfyUI`'s rule, with
-//! the cache on disk instead of in a server.
+//! outputs are kept in a cache file beside the graph. A cacheable node
+//! whose input hash and output content have not moved is skipped.
+//! That is `ComfyUI`'s rule, with the cache on disk instead of in a server.
 //!
 //! Progress goes to a callback as [`Event`]s, so a shell shows them
 //! per node and the command line prints them as lines.
@@ -30,7 +30,7 @@ use crate::font::LayerView;
 use crate::font::project::Project;
 use crate::font::proposal;
 use crate::font::variable::{GlyphLayerAddress, LayerId, SourceId};
-use crate::workflows::nodes::{Kind, NodeGraph, NodeType, Port, Registry};
+use crate::workflows::nodes::{Kind, NodeGraph, NodeType, Port, Registry, RowsInputEncoding};
 use crate::workflows::process::{
     self, OutputStream, ProcessCancellation, ProcessLimits, ProcessOutcome,
 };
@@ -138,28 +138,17 @@ impl RunValue {
             }
             Self::Model { path, adapters } => {
                 path.hash(hasher);
-                let mut complete = hash_optional_file(&path.join("config.json"), hasher);
-                complete &= hash_optional_file(&path.join("manifest.json"), hasher);
-                let manifest = std::fs::read_to_string(path.join("manifest.json"))
-                    .ok()
-                    .and_then(|t| serde_json::from_str::<Value>(&t).ok());
-                match manifest.and_then(|m| m.get("weights_sha256")?.as_str().map(String::from)) {
-                    Some(digest) => digest.hash(hasher),
-                    None => complete &= hash_file(&path.join("weights.safetensors"), hasher),
-                }
+                let mut complete = hash_tree(path, hasher);
                 for (dir, strength) in adapters {
                     dir.hash(hasher);
                     strength.to_bits().hash(hasher);
-                    complete &= hash_optional_file(&dir.join("adapter.json"), hasher);
-                    complete &= hash_file(&dir.join("adapter.safetensors"), hasher);
+                    complete &= hash_tree(dir, hasher);
                 }
                 complete
             }
             Self::Adapter { path } => {
                 path.hash(hasher);
-                let mut complete = hash_optional_file(&path.join("adapter.json"), hasher);
-                complete &= hash_file(&path.join("adapter.safetensors"), hasher);
-                complete
+                hash_tree(path, hasher)
             }
             Self::Glyphs { names } => {
                 names.hash(hasher);
@@ -297,22 +286,6 @@ fn hash_file(path: &Path, hasher: &mut impl Hasher) -> bool {
     true
 }
 
-/// Absence of optional model metadata is a stable input; an unreadable
-/// metadata file is not.
-fn hash_optional_file(path: &Path, hasher: &mut impl Hasher) -> bool {
-    match std::fs::metadata(path) {
-        Ok(_) => hash_file(path, hasher),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            "missing optional file".hash(hasher);
-            true
-        }
-        Err(error) => {
-            error.kind().hash(hasher);
-            false
-        }
-    }
-}
-
 /// How a node ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
@@ -360,9 +333,23 @@ pub struct RunReport {
 
 /// What the cache file beside the graph holds: the last result per
 /// node, by id.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Cache {
+    #[serde(default)]
+    version: u32,
     nodes: BTreeMap<u32, NodeResult>,
+    #[serde(default)]
+    output_fingerprints: BTreeMap<u32, BTreeMap<String, String>>,
+}
+
+impl Default for Cache {
+    fn default() -> Self {
+        Self {
+            version: 2,
+            nodes: BTreeMap::new(),
+            output_fingerprints: BTreeMap::new(),
+        }
+    }
 }
 
 /// The cache file for a graph file.
@@ -693,6 +680,9 @@ pub fn run(graph: &NodeGraph, registry: &Registry, ctx: &mut RunContext<'_>) -> 
         .and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|t| serde_json::from_str(&t).ok())
         .unwrap_or_default();
+    if cache.version != 2 {
+        cache = Cache::default();
+    }
     let order = graph.order().unwrap_or_default();
     let total = order.len();
     // Cache files survive rebuilds. Hash the running implementation once
@@ -721,6 +711,7 @@ pub fn run(graph: &NodeGraph, registry: &Registry, ctx: &mut RunContext<'_>) -> 
                 error: Some("cancelled before node start".into()),
             });
             cache.nodes.remove(&id);
+            cache.output_fingerprints.remove(&id);
             results.insert(id, result);
             ok = false;
             continue;
@@ -744,6 +735,24 @@ pub fn run(graph: &NodeGraph, registry: &Registry, ctx: &mut RunContext<'_>) -> 
             index: index + 1,
             total,
         });
+        if node_type.execution.schema_version != 1 {
+            let error = format!(
+                "unsupported execution schema version {} for {}",
+                node_type.execution.schema_version, node.type_name
+            );
+            let result = failed(id, &node.type_name, &error, 0.0);
+            (ctx.on_event)(Event::End {
+                id,
+                status: Status::Failed,
+                seconds: 0.0,
+                error: Some(error),
+            });
+            cache.nodes.remove(&id);
+            cache.output_fingerprints.remove(&id);
+            results.insert(id, result);
+            ok = false;
+            continue;
+        }
 
         // Gather inputs: links first, then typed values, then defaults.
         let mut values = BTreeMap::new();
@@ -752,6 +761,10 @@ pub fn run(graph: &NodeGraph, registry: &Registry, ctx: &mut RunContext<'_>) -> 
         let mut cacheable_inputs = runtime_cacheable;
         runtime_hash.hash(&mut hasher);
         node.type_name.hash(&mut hasher);
+        match serde_json::to_vec(node_type) {
+            Ok(definition) => definition.hash(&mut hasher),
+            Err(_) => cacheable_inputs = false,
+        }
         let external = node_type.tool() != "core";
         if external {
             let binary = ctx
@@ -819,6 +832,8 @@ pub fn run(graph: &NodeGraph, registry: &Registry, ctx: &mut RunContext<'_>) -> 
             }
         }
         if blocked {
+            cache.nodes.remove(&id);
+            cache.output_fingerprints.remove(&id);
             let result = NodeResult {
                 id,
                 type_name: node.type_name.clone(),
@@ -840,18 +855,22 @@ pub fn run(graph: &NodeGraph, registry: &Registry, ctx: &mut RunContext<'_>) -> 
         }
         let hash = format!("{:016x}", hasher.finish());
 
-        // The cache answers when nothing moved. Install is never
-        // skipped: it changes the font, and the cache does not know
-        // what the designer did to the foreground since.
+        // Cache reuse is governed by the declared execution policy and
+        // by the current content of every retained output.
         let cached = cache.nodes.get(&id);
         if !ctx.force
             && !ctx.cancellation.is_cancelled()
+            && node_type.execution.cacheable()
             && cacheable_inputs
-            && node.type_name != "core.install"
             && let Some(c) = cached
             && c.hash == hash
             && c.status == Status::Ran
-            && outputs_still_there(&c.outputs)
+            && cache
+                .output_fingerprints
+                .get(&id)
+                .is_some_and(|fingerprints| {
+                    output_fingerprints(&c.outputs).is_some_and(|current| current == *fingerprints)
+                })
         {
             let mut result = c.clone();
             result.status = Status::Skipped;
@@ -897,12 +916,19 @@ pub fn run(graph: &NodeGraph, registry: &Registry, ctx: &mut RunContext<'_>) -> 
                 _ => None,
             },
         });
-        if result.status == Status::Ran {
+        if result.status == Status::Ran && node_type.execution.cacheable() && cacheable_inputs {
             let mut stored = result.clone();
             stored.status = Status::Ran;
-            cache.nodes.insert(id, stored);
+            if let Some(fingerprints) = output_fingerprints(&result.outputs) {
+                cache.nodes.insert(id, stored);
+                cache.output_fingerprints.insert(id, fingerprints);
+            } else {
+                cache.nodes.remove(&id);
+                cache.output_fingerprints.remove(&id);
+            }
         } else {
             cache.nodes.remove(&id);
+            cache.output_fingerprints.remove(&id);
         }
         results.insert(id, result);
     }
@@ -946,18 +972,28 @@ pub fn validate_proposal_workflow(graph: &NodeGraph) -> Result<(), String> {
     Ok(())
 }
 
-/// Whether a cached node's outputs still exist on disk, so a layer a
-/// designer discarded is not handed on as if it were there.
-fn outputs_still_there(outputs: &BTreeMap<String, RunValue>) -> bool {
-    outputs.values().all(|v| match v {
-        RunValue::Layer { source, name } => {
-            layer_dir(source, name).is_some_and(|d| d.join("contents.plist").is_file())
+/// Content fingerprints for retained outputs. Missing or unreadable
+/// artifacts prevent reuse, including when their paths stay the same.
+fn output_fingerprints(outputs: &BTreeMap<String, RunValue>) -> Option<BTreeMap<String, String>> {
+    let mut fingerprints = BTreeMap::new();
+    for (name, value) in outputs {
+        let mut hasher = std::hash::DefaultHasher::new();
+        let complete = match value {
+            RunValue::Layer { source, name } => {
+                source.hash(&mut hasher);
+                name.hash(&mut hasher);
+                layer_dir(source, name).is_some_and(|dir| {
+                    dir.join("contents.plist").is_file() && hash_tree(source, &mut hasher)
+                })
+            }
+            _ => value.fingerprint(&mut hasher),
+        };
+        if !complete {
+            return None;
         }
-        RunValue::Source { path } => path.exists(),
-        RunValue::Model { path, .. } | RunValue::Adapter { path } => path.is_dir(),
-        RunValue::Path { path } => path.is_file(),
-        _ => true,
-    })
+        fingerprints.insert(name.clone(), format!("{:016x}", hasher.finish()));
+    }
+    Some(fingerprints)
 }
 
 fn failed(id: u32, type_name: &str, error: &str, seconds: f64) -> NodeResult {
@@ -1325,6 +1361,7 @@ fn run_tool_node(
     let mut cmd = std::process::Command::new(&binary);
     cmd.arg("run").arg(task);
     let mut source: Option<PathBuf> = None;
+    let mut rows_bytes = 0;
     for port in &node_type.inputs {
         let Some(value) = inputs.get(&port.name) else {
             continue;
@@ -1375,7 +1412,34 @@ fn run_tool_node(
             RunValue::Layer { name, .. } => {
                 cmd.arg(format!("--{}", port.name)).arg(name);
             }
-            RunValue::Rows { .. } => {}
+            RunValue::Rows { rows } => {
+                if rows.len() > 4096 {
+                    return Err(format!(
+                        "{}: Rows input has {} rows; maximum is 4096",
+                        port.name,
+                        rows.len()
+                    ));
+                }
+                let encoded = serde_json::to_string(rows)
+                    .map_err(|error| format!("{}: cannot serialize Rows: {error}", port.name))?;
+                rows_bytes += encoded.len();
+                if rows_bytes > 64 * 1024 {
+                    return Err(format!(
+                        "Rows inputs total {rows_bytes} bytes; maximum is 65536"
+                    ));
+                }
+                match node_type.execution.rows_input {
+                    RowsInputEncoding::JsonArgument => {
+                        cmd.arg(format!("--{}", port.name)).arg(encoded);
+                    }
+                    RowsInputEncoding::Unsupported => {
+                        return Err(format!(
+                            "{}: Rows input requires json_argument execution support",
+                            port.name
+                        ));
+                    }
+                }
+            }
         }
     }
     if tool == "font-ml"
@@ -1457,7 +1521,12 @@ fn run_tool_node(
                     .get(&port.name)
                     .and_then(Value::as_array)
                     .cloned()
-                    .unwrap_or_default();
+                    .ok_or_else(|| {
+                        format!(
+                            "{tool} {task}: declared Rows output {} is missing or is not an array",
+                            port.name
+                        )
+                    })?;
                 out.insert(port.name.clone(), RunValue::Rows { rows });
             }
             Kind::Path => {
@@ -1739,6 +1808,7 @@ mod tests {
 
     use super::*;
     use crate::font::project::SourceInput;
+    use crate::workflows::nodes::{NodeCachePolicy, NodeEffects, NodeExecution};
 
     struct Scratch(PathBuf);
 
@@ -1779,7 +1849,254 @@ mod tests {
             implemented: true,
             inputs: Vec::new(),
             outputs: Vec::new(),
+            execution: NodeExecution::default(),
         }
+    }
+
+    #[cfg(unix)]
+    fn fixture_context<'a>(
+        scratch: &'a Scratch,
+        binary: PathBuf,
+        cache: Option<PathBuf>,
+        on_event: &'a mut dyn FnMut(Event),
+    ) -> RunContext<'a> {
+        RunContext {
+            font: &scratch.0,
+            master: None,
+            glyphs: Vec::new(),
+            tools: BTreeMap::from([("fixture".into(), binary)]),
+            models_dir: None,
+            device: None,
+            force: false,
+            cache,
+            cancellation: ProcessCancellation::default(),
+            process_limits: ProcessLimits::default(),
+            on_event,
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn default_and_font_writing_workers_run_each_time_and_unknown_versions_never_spawn() {
+        let scratch = Scratch::new();
+        let binary = worker(&scratch, "printf 'x' >> \"$0.calls\"; printf '{}\\n'");
+        let calls = scratch.0.join("worker.calls");
+        let cache = scratch.0.join("cache.json");
+        let mut graph = NodeGraph::default();
+        graph.add("fixture.transform", [0.0, 0.0]);
+        let mut events = |_| {};
+        let mut run_with = |node: NodeType| {
+            let registry = Registry { types: vec![node] };
+            let mut ctx =
+                fixture_context(&scratch, binary.clone(), Some(cache.clone()), &mut events);
+            run(&graph, &registry, &mut ctx)
+        };
+
+        let node = worker_node();
+        assert_eq!(run_with(node.clone()).nodes[0].status, Status::Ran);
+        assert_eq!(run_with(node.clone()).nodes[0].status, Status::Ran);
+        assert_eq!(std::fs::read(&calls).unwrap(), b"xx");
+        let mut mutator = node.clone();
+        mutator.execution =
+            NodeExecution::new(NodeCachePolicy::InputFingerprint, NodeEffects::WriteFont);
+        assert_eq!(run_with(mutator.clone()).nodes[0].status, Status::Ran);
+        assert_eq!(run_with(mutator).nodes[0].status, Status::Ran);
+        assert_eq!(std::fs::read(&calls).unwrap(), b"xxxx");
+
+        let mut future = node;
+        future.execution.schema_version = 99;
+        let report = run_with(future);
+        assert!(!report.ok);
+        assert!(
+            report.nodes[0].report["error"]
+                .as_str()
+                .unwrap()
+                .contains("schema version 99")
+        );
+        assert_eq!(std::fs::read(&calls).unwrap(), b"xxxx");
+        let retained: Cache = serde_json::from_slice(&std::fs::read(cache).unwrap()).unwrap();
+        assert!(retained.nodes.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn model_and_adapter_artifact_edits_reach_downstream_worker() {
+        let scratch = Scratch::new();
+        let model = scratch.0.join("model");
+        std::fs::create_dir(&model).unwrap();
+        std::fs::write(model.join("config.json"), b"{}").unwrap();
+        std::fs::write(
+            model.join("manifest.json"),
+            br#"{"weights_sha256":"stale"}"#,
+        )
+        .unwrap();
+        std::fs::write(model.join("weights.safetensors"), b"first").unwrap();
+        let adapter = scratch.0.join("adapter");
+        std::fs::create_dir(&adapter).unwrap();
+        std::fs::write(adapter.join("adapter.json"), b"{}").unwrap();
+        std::fs::write(adapter.join("adapter.safetensors"), b"first").unwrap();
+
+        let binary = worker(&scratch, "printf 'x' >> \"$0.calls\"; printf '{}\\n'");
+        let calls = scratch.0.join("worker.calls");
+        let mut node = worker_node();
+        node.execution = NodeExecution::new(
+            NodeCachePolicy::InputFingerprint,
+            NodeEffects::TrustedProcess,
+        );
+        node.inputs.push(Port {
+            name: "model".into(),
+            kind: Kind::Model,
+            required: true,
+            default: None,
+            help: String::new(),
+        });
+        let registry = Registry {
+            types: vec![
+                crate::workflows::nodes::core_types()
+                    .into_iter()
+                    .find(|node| node.name == "core.model")
+                    .unwrap(),
+                crate::workflows::nodes::core_types()
+                    .into_iter()
+                    .find(|node| node.name == "core.adapter")
+                    .unwrap(),
+                node,
+            ],
+        };
+        let mut graph = NodeGraph::default();
+        let model_id = graph.add("core.model", [0.0, 0.0]);
+        graph.node_mut(model_id).unwrap().values.insert(
+            "name".into(),
+            Value::String(model.to_string_lossy().into_owned()),
+        );
+        let adapter_id = graph.add("core.adapter", [100.0, 0.0]);
+        graph.node_mut(adapter_id).unwrap().values.insert(
+            "name".into(),
+            Value::String(adapter.to_string_lossy().into_owned()),
+        );
+        graph.connect(model_id, "model", adapter_id, "model");
+        let worker_id = graph.add("fixture.transform", [200.0, 0.0]);
+        graph.connect(adapter_id, "model", worker_id, "model");
+        let mut events = |_| {};
+        let mut run_graph = || {
+            let mut ctx = fixture_context(
+                &scratch,
+                binary.clone(),
+                Some(scratch.0.join("cache.json")),
+                &mut events,
+            );
+            run(&graph, &registry, &mut ctx)
+        };
+        let first = run_graph();
+        assert!(first.ok, "{first:?}");
+        assert_eq!(first.nodes[2].status, Status::Ran);
+        let second = run_graph();
+        assert_eq!(second.nodes[0].status, Status::Skipped);
+        assert_eq!(second.nodes[1].status, Status::Skipped);
+        assert_eq!(second.nodes[2].status, Status::Skipped);
+        std::fs::write(model.join("weights.safetensors"), b"other").unwrap();
+        let changed = run_graph();
+        assert!(changed.ok, "{changed:?}");
+        assert_eq!(changed.nodes[0].status, Status::Ran);
+        assert_eq!(changed.nodes[1].status, Status::Ran);
+        assert_eq!(changed.nodes[2].status, Status::Ran);
+        assert_eq!(first.nodes[0].hash, changed.nodes[0].hash);
+        assert_ne!(first.nodes[2].hash, changed.nodes[2].hash);
+        std::fs::write(model.join("tokenizer.json"), b"changed tokenizer").unwrap();
+        let extra_model = run_graph();
+        assert_eq!(extra_model.nodes[2].status, Status::Ran);
+        std::fs::write(adapter.join("extra.safetensors"), b"additional shard").unwrap();
+        let extra_adapter = run_graph();
+        assert!(extra_adapter.ok, "{extra_adapter:?}");
+        assert_eq!(extra_adapter.nodes[0].status, Status::Skipped);
+        assert_eq!(extra_adapter.nodes[1].status, Status::Ran);
+        assert_eq!(extra_adapter.nodes[2].status, Status::Ran);
+        assert_eq!(std::fs::read(calls).unwrap(), b"xxxx");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rows_inputs_are_bounded_and_require_opt_in_before_spawn() {
+        let scratch = Scratch::new();
+        let binary = worker(&scratch, "printf 'x' >> \"$0.calls\"; printf '{}\\n'");
+        let mut node = worker_node();
+        node.inputs.push(Port {
+            name: "report_rows".into(),
+            kind: Kind::Rows,
+            required: true,
+            default: None,
+            help: String::new(),
+        });
+        let mut events = |_| {};
+        let mut ctx = fixture_context(&scratch, binary, None, &mut events);
+        let inputs = |rows| Inputs {
+            values: BTreeMap::from([("report_rows".into(), RunValue::Rows { rows })]),
+        };
+        let unsupported = run_tool_node(1, &node, &inputs(vec![]), &mut ctx).unwrap_err();
+        assert!(
+            unsupported.contains("requires json_argument"),
+            "{unsupported}"
+        );
+        node.execution.rows_input = RowsInputEncoding::JsonArgument;
+        let count =
+            run_tool_node(1, &node, &inputs(vec![Value::Null; 4097]), &mut ctx).unwrap_err();
+        assert!(count.contains("maximum is 4096"), "{count}");
+        let bytes = run_tool_node(
+            1,
+            &node,
+            &inputs(vec![Value::String("a".repeat(65536))]),
+            &mut ctx,
+        )
+        .unwrap_err();
+        assert!(bytes.contains("maximum is 65536"), "{bytes}");
+        node.inputs.push(Port {
+            name: "other_rows".into(),
+            kind: Kind::Rows,
+            required: true,
+            default: None,
+            help: String::new(),
+        });
+        let aggregate = Inputs {
+            values: BTreeMap::from([
+                (
+                    "report_rows".into(),
+                    RunValue::Rows {
+                        rows: vec![Value::String("a".repeat(32768))],
+                    },
+                ),
+                (
+                    "other_rows".into(),
+                    RunValue::Rows {
+                        rows: vec![Value::String("b".repeat(32768))],
+                    },
+                ),
+            ]),
+        };
+        let total = run_tool_node(1, &node, &aggregate, &mut ctx).unwrap_err();
+        assert!(total.contains("maximum is 65536"), "{total}");
+        assert!(!scratch.0.join("worker.calls").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn declared_rows_output_requires_an_array() {
+        let scratch = Scratch::new();
+        let binary = worker(&scratch, "printf '{\"rows\":null}\\n'");
+        let mut node = worker_node();
+        node.outputs.push(Port {
+            name: "rows".into(),
+            kind: Kind::Rows,
+            required: false,
+            default: None,
+            help: String::new(),
+        });
+        let mut events = |_| {};
+        let mut ctx = fixture_context(&scratch, binary, None, &mut events);
+        let inputs = Inputs {
+            values: BTreeMap::new(),
+        };
+        let error = run_tool_node(1, &node, &inputs, &mut ctx).unwrap_err();
+        assert!(error.contains("missing or is not an array"), "{error}");
     }
 
     #[cfg(unix)]
@@ -1997,6 +2314,19 @@ mod tests {
         );
     }
 
+    #[test]
+    fn cached_artifact_fingerprint_changes_when_bytes_change_at_same_path() {
+        let scratch = Scratch::new();
+        let path = scratch.0.join("proof.svg");
+        std::fs::write(&path, b"first").unwrap();
+        let outputs = BTreeMap::from([("path".into(), RunValue::Path { path: path.clone() })]);
+        let first = output_fingerprints(&outputs).unwrap();
+        std::fs::write(&path, b"other").unwrap();
+        assert_ne!(output_fingerprints(&outputs).unwrap(), first);
+        std::fs::remove_file(path).unwrap();
+        assert!(output_fingerprints(&outputs).is_none());
+    }
+
     #[cfg(unix)]
     #[test]
     fn source_fingerprint_refuses_a_directory_symlink_loop() {
@@ -2183,6 +2513,7 @@ mod tests {
             implemented: true,
             inputs: Vec::new(),
             outputs: Vec::new(),
+            execution: NodeExecution::new(NodeCachePolicy::Never, NodeEffects::WriteFont),
         };
         let inputs = Inputs {
             values: BTreeMap::from([

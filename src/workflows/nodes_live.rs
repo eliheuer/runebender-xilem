@@ -3,7 +3,7 @@
 
 //! Resolve live graph connections to isolated font versions without saving the root.
 
-use super::nodes::{Kind, NodeGraph, NodeType, Port};
+use super::nodes::{Kind, NodeCachePolicy, NodeEffects, NodeExecution, NodeGraph, NodeType, Port};
 use crate::font::{experiments, project::Project, variable::SourceId};
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -43,6 +43,14 @@ pub fn types() -> Vec<NodeType> {
         help: "Runs in the live editor. Inputs are preserved; applying to the root is explicit."
             .into(),
         implemented: true,
+        execution: NodeExecution::new(
+            NodeCachePolicy::Never,
+            match name {
+                "live.python" => NodeEffects::TrustedProcess,
+                "live.apply" => NodeEffects::WriteFont,
+                _ => NodeEffects::LiveDocument,
+            },
+        ),
         inputs: {
             let mut ports = if input {
                 vec![port("font", true)]
