@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="exclam" format="2">
+	<unicode hex="0021"/>
+	<advance width="288"/>
+	<outline>
+		<contour>
+			<point x="64" y="16" type="line"/>
+			<point x="80" y="0" type="line"/>
+			<point x="208" y="0" type="line"/>
+			<point x="224" y="16" type="line"/>
+			<point x="224" y="144" type="line"/>
+			<point x="208" y="160" type="line"/>
+			<point x="80" y="160" type="line"/>
+			<point x="64" y="144" type="line"/>
+		</contour>
+		<contour>
+			<point x="104" y="224" type="line"/>
+			<point x="120" y="208" type="line"/>
+			<point x="168" y="208" type="line"/>
+			<point x="184" y="224" type="line"/>
+			<point x="224" y="480" type="line"/>
+			<point x="224" y="752" type="line"/>
+			<point x="208" y="768" type="line"/>
+			<point x="80" y="768" type="line"/>
+			<point x="64" y="752" type="line"/>
+			<point x="64" y="480" type="line"/>
+		</contour>
+	</outline>
+	<lib>
+		<dict>
+			<key>org.fontgarden.transfer</key>
+			<string>glyph-transfer v2 lambda 1.0 &lt;- Helvetica Bold &apos;!&apos;</string>
+			<key>public.markColor</key>
+			<string>0.09,0.72,0.44,1</string>
+		</dict>
+	</lib>
+</glyph>

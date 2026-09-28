@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="alefbelow-ar" format="2">
+	<unicode hex="0656"/>
+	<outline>
+		<contour>
+			<point x="52" y="-332" type="line"/>
+			<point x="172" y="-332" type="line"/>
+			<point x="172" y="-84" type="line"/>
+			<point x="52" y="-84" type="line"/>
+		</contour>
+	</outline>
+	<anchor name="top" x="112" y="-84"/>
+	<anchor name="bottomDots" x="112" y="-332"/>
+	<anchor name="topDots" x="112" y="-84"/>
+	<anchor name="bottom" x="112" y="-380"/>
+	<anchor name="_bottom" x="112" y="28"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

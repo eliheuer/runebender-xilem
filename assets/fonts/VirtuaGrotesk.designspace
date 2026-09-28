@@ -1,0 +1,48 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<designspace format="5">
+  <axes>
+    <axis name="Weight" tag="wght" default="400" minimum="400" maximum="700"/>
+  </axes>
+  <sources>
+    <source familyname="Virtua Grotesk" stylename="Regular" name="Virtua Grotesk Regular" filename="VirtuaGrotesk-Regular.ufo">
+      <location>
+        <dimension name="Weight" xvalue="400"/>
+      </location>
+    </source>
+    <source familyname="Virtua Grotesk" stylename="Bold" name="Virtua Grotesk Bold" filename="VirtuaGrotesk-Bold.ufo">
+      <location>
+        <dimension name="Weight" xvalue="700"/>
+      </location>
+    </source>
+  </sources>
+  <instances>
+    <instance familyname="Virtua Grotesk" stylename="Regular" name="Virtua Grotesk Regular" filename="instance_ufo/VirtuaGrotesk-Regular.ufo" stylemapfamilyname="Virtua Grotesk" stylemapstylename="regular">
+      <location>
+        <dimension name="Weight" xvalue="400"/>
+      </location>
+    </instance>
+    <instance familyname="Virtua Grotesk" stylename="Medium" name="Virtua Grotesk Medium" filename="instance_ufo/VirtuaGrotesk-Medium.ufo" stylemapfamilyname="Virtua Grotesk Medium" stylemapstylename="regular">
+      <location>
+        <dimension name="Weight" xvalue="500"/>
+      </location>
+    </instance>
+    <instance familyname="Virtua Grotesk" stylename="SemiBold" name="Virtua Grotesk SemiBold" filename="instance_ufo/VirtuaGrotesk-SemiBold.ufo" stylemapfamilyname="Virtua Grotesk SemiBold" stylemapstylename="regular">
+      <location>
+        <dimension name="Weight" xvalue="600"/>
+      </location>
+    </instance>
+    <instance familyname="Virtua Grotesk" stylename="Bold" name="Virtua Grotesk Bold" filename="instance_ufo/VirtuaGrotesk-Bold.ufo" stylemapfamilyname="Virtua Grotesk" stylemapstylename="bold">
+      <location>
+        <dimension name="Weight" xvalue="700"/>
+      </location>
+    </instance>
+  </instances>
+  <rules processing="last">
+    <rule name="a bold">
+      <conditionset>
+        <condition name="Weight" minimum="500" maximum="700"/>
+      </conditionset>
+      <sub name="a" with="a.bold"/>
+    </rule>
+  </rules>
+</designspace>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="yodyod-hb" format="2">
+	<unicode hex="05F2"/>
+	<advance width="438"/>
+	<outline>
+		<contour>
+			<point x="142" y="274" type="line"/>
+			<point x="142" y="576" type="line"/>
+			<point x="56" y="576" type="line"/>
+			<point x="56" y="274" type="line"/>
+		</contour>
+		<contour>
+			<point x="382" y="274" type="line"/>
+			<point x="382" y="576" type="line"/>
+			<point x="296" y="576" type="line"/>
+			<point x="296" y="274" type="line"/>
+		</contour>
+	</outline>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0.27,0.44,1,1</string>
+		</dict>
+	</lib>
+</glyph>

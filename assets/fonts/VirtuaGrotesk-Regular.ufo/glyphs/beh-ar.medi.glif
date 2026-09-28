@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="beh-ar.medi" format="2">
+	<advance width="408"/>
+	<outline>
+		<component base="behDotless-ar.medi"/>
+		<component base="dotbelow-ar" xOffset="92" yOffset="8" identifier="4869f996-6e63-431f-ba98-64020cb9f410"/>
+	</outline>
+	<lib>
+		<dict>
+			<key>com.runebender.markLabel</key>
+			<string>green</string>
+			<key>public.markColor</key>
+			<string>0.09,0.72,0.44,1</string>
+		</dict>
+	</lib>
+</glyph>

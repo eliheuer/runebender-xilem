@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="one" format="2">
+	<unicode hex="0031"/>
+	<advance width="464"/>
+	<outline>
+		<contour>
+			<point x="212" y="0" type="line"/>
+			<point x="360" y="0" type="line"/>
+			<point x="376" y="16" type="line"/>
+			<point x="376" y="752" type="line"/>
+			<point x="360" y="768" type="line"/>
+			<point x="244" y="768" type="line"/>
+			<point x="228" y="752" type="line"/>
+			<point x="210" y="660"/>
+			<point x="124" y="624"/>
+			<point x="56" y="624" type="curve"/>
+			<point x="40" y="608" type="line"/>
+			<point x="40" y="512" type="line"/>
+			<point x="56" y="496" type="line"/>
+			<point x="188" y="496" type="line"/>
+			<point x="196" y="488" type="line"/>
+			<point x="196" y="16" type="line"/>
+		</contour>
+	</outline>
+	<lib>
+		<dict>
+			<key>org.fontgarden.transfer</key>
+			<string>glyph-transfer v2 lambda 1.0 &lt;- image crop-one.png</string>
+			<key>public.markColor</key>
+			<string>0.09,0.72,0.44,1</string>
+		</dict>
+	</lib>
+</glyph>

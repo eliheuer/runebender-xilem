@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="K" format="2">
+	<unicode hex="004B"/>
+	<advance width="732"/>
+	<outline>
+		<contour>
+			<point x="80" y="16" type="line"/>
+			<point x="96" y="0" type="line"/>
+			<point x="164" y="0" type="line"/>
+			<point x="180" y="16" type="line"/>
+			<point x="180" y="272" type="line"/>
+			<point x="326" y="380" type="line"/>
+			<point x="334" y="380" type="line"/>
+			<point x="638" y="0" type="line"/>
+			<point x="700" y="0" type="line"/>
+			<point x="716" y="16" type="line"/>
+			<point x="716" y="64" type="line"/>
+			<point x="404" y="456" type="line"/>
+			<point x="404" y="464" type="line"/>
+			<point x="672" y="704" type="line"/>
+			<point x="672" y="752" type="line"/>
+			<point x="656" y="768" type="line"/>
+			<point x="604" y="768" type="line"/>
+			<point x="188" y="412" type="line"/>
+			<point x="180" y="412" type="line"/>
+			<point x="180" y="752" type="line"/>
+			<point x="164" y="768" type="line"/>
+			<point x="96" y="768" type="line"/>
+			<point x="80" y="752" type="line"/>
+		</contour>
+	</outline>
+	<anchor name="top" x="370" y="768"/>
+	<anchor name="bottom" x="370" y="0"/>
+	<lib>
+		<dict>
+			<key>com.runebender.markLabel</key>
+			<string>pink</string>
+			<key>public.markColor</key>
+			<string>0.9,0.42,0.67,1</string>
+		</dict>
+	</lib>
+</glyph>

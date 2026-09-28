@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="lam_alefWasla-ar" format="2">
+	<advance width="496"/>
+	<outline>
+		<component base="lam_alef-ar"/>
+		<component base="wasla-ar" xOffset="276" yOffset="208" identifier="la1586853124"/>
+	</outline>
+	<anchor name="top" x="388" y="1104"/>
+	<anchor name="bottom" x="252" y="0"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+			<key>public.objectLibs</key>
+			<dict>
+				<key>la1586853124</key>
+				<dict>
+					<key>com.glyphsapp.component.alignment</key>
+					<integer>-1</integer>
+				</dict>
+			</dict>
+		</dict>
+	</lib>
+</glyph>

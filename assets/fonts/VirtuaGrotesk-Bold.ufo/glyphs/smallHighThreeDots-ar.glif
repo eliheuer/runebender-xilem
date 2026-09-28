@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="smallHighThreeDots-ar" format="2">
+	<unicode hex="06DB"/>
+	<outline>
+		<component base="threedotsupabove-ar"/>
+	</outline>
+	<anchor name="top" x="232" y="1100"/>
+	<anchor name="_top" x="232" y="516"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

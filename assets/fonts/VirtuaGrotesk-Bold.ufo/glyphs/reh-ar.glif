@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="reh-ar" format="2">
+	<unicode hex="0631"/>
+	<advance width="672"/>
+	<outline>
+		<contour>
+			<point x="540" y="0" type="curve" smooth="yes"/>
+			<point x="540" y="424" type="line"/>
+			<point x="506" y="460" type="line"/>
+			<point x="406" y="460" type="line"/>
+			<point x="372" y="424" type="line"/>
+			<point x="372" y="24" type="line" smooth="yes"/>
+			<point x="382" y="-84"/>
+			<point x="360" y="-124"/>
+			<point x="232" y="-124" type="curve" smooth="yes"/>
+			<point x="30" y="-124" type="line"/>
+			<point x="-4" y="-160" type="line"/>
+			<point x="-4" y="-248" type="line"/>
+			<point x="30" y="-284" type="line"/>
+			<point x="248" y="-284" type="line" smooth="yes"/>
+			<point x="466" y="-276"/>
+			<point x="540" y="-192"/>
+		</contour>
+	</outline>
+	<anchor name="bottom" x="268" y="-284"/>
+	<anchor name="top" x="268" y="460"/>
+	<anchor name="bottomDots" x="268" y="-284"/>
+	<anchor name="topDots" x="268" y="460"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

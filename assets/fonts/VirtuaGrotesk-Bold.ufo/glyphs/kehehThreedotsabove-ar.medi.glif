@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="kehehThreedotsabove-ar.medi" format="2">
+	<advance width="640"/>
+	<outline>
+		<component base="keheh-ar.medi"/>
+		<component base="threedotsupabove-ar" xOffset="98" yOffset="42"/>
+	</outline>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="ghain-ar.init" format="2">
+	<advance width="468"/>
+	<outline>
+		<component base="ain-ar.init"/>
+		<component base="dotabove-ar"/>
+	</outline>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0.09,0.72,0.44,1</string>
+		</dict>
+	</lib>
+</glyph>

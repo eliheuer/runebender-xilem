@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="tehMarbuta-ar.fina" format="2">
+	<advance width="536"/>
+	<outline>
+		<component base="heh-ar.fina"/>
+		<component base="twodotshorizontalabove-ar" xOffset="96" yOffset="-152"/>
+	</outline>
+	<lib>
+		<dict>
+			<key>com.runebender.markLabel</key>
+			<string>blue</string>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

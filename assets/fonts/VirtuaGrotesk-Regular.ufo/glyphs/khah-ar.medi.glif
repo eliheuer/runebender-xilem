@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="khah-ar.medi" format="2">
+	<advance width="704"/>
+	<outline>
+		<component base="hah-ar.medi"/>
+		<component base="dotabove-ar" xOffset="174" yOffset="-46"/>
+	</outline>
+	<lib>
+		<dict>
+			<key>com.runebender.markLabel</key>
+			<string>blue</string>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

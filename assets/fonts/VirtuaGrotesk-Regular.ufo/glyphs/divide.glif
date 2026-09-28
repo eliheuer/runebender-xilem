@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="divide" format="2">
+	<unicode hex="00F7"/>
+	<advance width="600"/>
+	<outline>
+		<contour>
+			<point x="96" y="332" type="line"/>
+			<point x="504" y="332" type="line"/>
+			<point x="504" y="412" type="line"/>
+			<point x="96" y="412" type="line"/>
+		</contour>
+		<contour>
+			<point x="272" y="524" type="line"/>
+			<point x="328" y="524" type="line"/>
+			<point x="328" y="580" type="line"/>
+			<point x="272" y="580" type="line"/>
+		</contour>
+		<contour>
+			<point x="272" y="164" type="line"/>
+			<point x="328" y="164" type="line"/>
+			<point x="328" y="220" type="line"/>
+			<point x="272" y="220" type="line"/>
+		</contour>
+	</outline>
+	<lib>
+		<dict>
+			<key>com.runebender.markLabel</key>
+			<string>purple</string>
+			<key>public.markColor</key>
+			<string>0.54,0.44,0.88,1</string>
+		</dict>
+	</lib>
+</glyph>

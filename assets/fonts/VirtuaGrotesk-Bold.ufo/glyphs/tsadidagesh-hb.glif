@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="tsadidagesh-hb" format="2">
+	<unicode hex="FB46"/>
+	<advance width="506"/>
+	<outline>
+		<contour>
+			<point x="492" y="0" type="line"/>
+			<point x="492" y="74" type="line"/>
+			<point x="342" y="278" type="line"/>
+			<point x="386" y="295"/>
+			<point x="464" y="343"/>
+			<point x="464" y="442" type="curve" smooth="yes"/>
+			<point x="476" y="576" type="line"/>
+			<point x="388" y="576" type="line"/>
+			<point x="374" y="454" type="line" smooth="yes"/>
+			<point x="374" y="402"/>
+			<point x="352" y="353"/>
+			<point x="302" y="334" type="curve"/>
+			<point x="122" y="576" type="line"/>
+			<point x="14" y="576" type="line"/>
+			<point x="386" y="80" type="line"/>
+			<point x="48" y="80" type="line"/>
+			<point x="48" y="0" type="line"/>
+		</contour>
+		<contour>
+			<point x="164" y="152" type="curve" smooth="yes"/>
+			<point x="184" y="152"/>
+			<point x="200" y="169"/>
+			<point x="200" y="190" type="curve" smooth="yes"/>
+			<point x="200" y="210"/>
+			<point x="184" y="226"/>
+			<point x="162" y="226" type="curve" smooth="yes"/>
+			<point x="142" y="226"/>
+			<point x="126" y="210"/>
+			<point x="126" y="190" type="curve" smooth="yes"/>
+			<point x="126" y="169"/>
+			<point x="144" y="152"/>
+		</contour>
+	</outline>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0.27,0.44,1,1</string>
+		</dict>
+	</lib>
+</glyph>

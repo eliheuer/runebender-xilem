@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="hehGoal-ar.fina" format="2">
+	<advance width="558"/>
+	<outline>
+		<contour>
+			<point x="290" y="208" type="curve" smooth="yes"/>
+			<point x="296" y="174"/>
+			<point x="280" y="134"/>
+			<point x="224" y="158" type="curve" smooth="yes"/>
+			<point x="190" y="128"/>
+			<point x="158" y="152"/>
+			<point x="158" y="208" type="curve" smooth="yes"/>
+			<point x="150" y="248"/>
+			<point x="168" y="282"/>
+			<point x="224" y="282" type="curve" smooth="yes"/>
+			<point x="258" y="288"/>
+			<point x="290" y="264"/>
+		</contour>
+		<contour>
+			<point x="2" y="208" type="curve" smooth="yes"/>
+			<point x="10" y="74"/>
+			<point x="116" y="0"/>
+			<point x="224" y="0" type="curve" smooth="yes"/>
+			<point x="276" y="0"/>
+			<point x="360" y="6"/>
+			<point x="372" y="60" type="curve"/>
+			<point x="372" y="60" type="line"/>
+			<point x="404" y="-14"/>
+			<point x="464" y="0"/>
+			<point x="558" y="0" type="curve"/>
+			<point x="558" y="176" type="line"/>
+			<point x="492" y="176"/>
+			<point x="446" y="152"/>
+			<point x="446" y="208" type="curve" smooth="yes"/>
+			<point x="446" y="408" type="line"/>
+			<point x="414" y="438" type="line"/>
+			<point x="322" y="438" type="line"/>
+			<point x="290" y="408" type="line"/>
+			<point x="312" y="366" type="line"/>
+			<point x="308" y="366" type="line"/>
+			<point x="302" y="394"/>
+			<point x="254" y="414"/>
+			<point x="208" y="414" type="curve" smooth="yes"/>
+			<point x="86" y="410"/>
+			<point x="2" y="326"/>
+		</contour>
+	</outline>
+	<anchor name="bottom" x="280" y="-14"/>
+	<anchor name="top" x="280" y="438"/>
+	<anchor name="bottomDots" x="280" y="-14"/>
+	<anchor name="topDots" x="280" y="438"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0.09,0.72,0.44,1</string>
+		</dict>
+	</lib>
+</glyph>

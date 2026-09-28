@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="A" format="2">
+	<unicode hex="0041"/>
+	<advance width="792"/>
+	<outline>
+		<contour>
+			<point x="56" y="0" type="line"/>
+			<point x="208" y="0" type="line"/>
+			<point x="224" y="16" type="line"/>
+			<point x="256" y="128" type="line"/>
+			<point x="264" y="136" type="line"/>
+			<point x="524" y="136" type="line"/>
+			<point x="532" y="128" type="line"/>
+			<point x="568" y="16" type="line"/>
+			<point x="584" y="0" type="line"/>
+			<point x="736" y="0" type="line"/>
+			<point x="752" y="16" type="line"/>
+			<point x="752" y="64" type="line"/>
+			<point x="496" y="752" type="line"/>
+			<point x="480" y="768" type="line"/>
+			<point x="312" y="768" type="line"/>
+			<point x="296" y="752" type="line"/>
+			<point x="40" y="64" type="line"/>
+			<point x="40" y="16" type="line"/>
+		</contour>
+		<contour>
+			<point x="312" y="272" type="line"/>
+			<point x="304" y="280" type="line"/>
+			<point x="384" y="544" type="line"/>
+			<point x="400" y="544" type="line"/>
+			<point x="488" y="280" type="line"/>
+			<point x="480" y="272" type="line"/>
+		</contour>
+	</outline>
+	<anchor name="top" x="396" y="768"/>
+	<anchor name="bottom" x="396" y="0"/>
+	<lib>
+		<dict>
+			<key>org.fontgarden.transfer</key>
+			<string>glyph-transfer v2 lambda 1.0 &lt;- image crop-A.png</string>
+			<key>public.markColor</key>
+			<string>0.09,0.72,0.44,1</string>
+		</dict>
+	</lib>
+</glyph>

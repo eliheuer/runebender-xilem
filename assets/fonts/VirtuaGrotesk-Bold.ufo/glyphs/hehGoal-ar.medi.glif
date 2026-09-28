@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="hehGoal-ar.medi" format="2">
+	<advance width="516"/>
+	<outline>
+		<contour>
+			<point x="288" y="-164" type="curve" smooth="yes"/>
+			<point x="224" y="-180"/>
+			<point x="188" y="-104"/>
+			<point x="188" y="-40" type="curve" smooth="yes"/>
+			<point x="162" y="-10" type="line"/>
+			<point x="164" y="0" type="line"/>
+			<point x="288" y="0" type="line" smooth="yes"/>
+			<point x="318" y="0"/>
+			<point x="348" y="-40"/>
+			<point x="348" y="-96" type="curve" smooth="yes"/>
+			<point x="358" y="-132"/>
+			<point x="344" y="-164"/>
+		</contour>
+		<contour>
+			<point x="192" y="176" type="curve" smooth="yes"/>
+			<point x="162" y="176" type="line"/>
+			<point x="158" y="114" type="line"/>
+			<point x="188" y="240" type="line" smooth="yes"/>
+			<point x="178" y="276"/>
+			<point x="192" y="308"/>
+			<point x="248" y="308" type="curve" smooth="yes"/>
+			<point x="278" y="316"/>
+			<point x="308" y="296"/>
+			<point x="308" y="240" type="curve" smooth="yes"/>
+			<point x="330" y="168"/>
+			<point x="256" y="176"/>
+		</contour>
+		<contour>
+			<point x="288" y="-324" type="curve" smooth="yes"/>
+			<point x="444" y="-312"/>
+			<point x="516" y="-216"/>
+			<point x="516" y="-112" type="curve" smooth="yes"/>
+			<point x="510" y="-42"/>
+			<point x="476" y="-2"/>
+			<point x="438" y="-6" type="curve"/>
+			<point x="438" y="0" type="line"/>
+			<point x="516" y="0" type="line"/>
+			<point x="516" y="176" type="line"/>
+			<point x="356" y="176" type="line"/>
+			<point x="356" y="110" type="line"/>
+			<point x="418" y="108"/>
+			<point x="468" y="176"/>
+			<point x="468" y="256" type="curve" smooth="yes"/>
+			<point x="460" y="384"/>
+			<point x="368" y="476"/>
+			<point x="248" y="476" type="curve" smooth="yes"/>
+			<point x="102" y="466"/>
+			<point x="20" y="368"/>
+			<point x="20" y="240" type="curve" smooth="yes"/>
+			<point x="50" y="114" type="line"/>
+			<point x="46" y="176" type="line"/>
+			<point x="0" y="176" type="line"/>
+			<point x="-16" y="160" type="line"/>
+			<point x="-16" y="16" type="line"/>
+			<point x="0" y="0" type="line"/>
+			<point x="44" y="0" type="line"/>
+			<point x="46" y="-10" type="line"/>
+			<point x="20" y="-40" type="line" smooth="yes"/>
+			<point x="24" y="-182"/>
+			<point x="128" y="-324"/>
+		</contour>
+	</outline>
+	<anchor name="bottom" x="250" y="-324"/>
+	<anchor name="top" x="250" y="476"/>
+	<anchor name="bottomDots" x="250" y="-324"/>
+	<anchor name="topDots" x="250" y="476"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0.09,0.72,0.44,1</string>
+		</dict>
+	</lib>
+</glyph>

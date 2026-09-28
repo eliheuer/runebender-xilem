@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="U" format="2">
+	<unicode hex="0055"/>
+	<advance width="792"/>
+	<outline>
+		<contour>
+			<point x="204" y="-16"/>
+			<point x="396" y="-16" type="curve" smooth="yes"/>
+			<point x="588" y="-16"/>
+			<point x="720" y="68"/>
+			<point x="720" y="260" type="curve" smooth="yes"/>
+			<point x="720" y="752" type="line"/>
+			<point x="704" y="768" type="line"/>
+			<point x="544" y="768" type="line"/>
+			<point x="528" y="752" type="line"/>
+			<point x="528" y="276" type="line" smooth="yes"/>
+			<point x="528" y="196"/>
+			<point x="476" y="128"/>
+			<point x="396" y="128" type="curve" smooth="yes"/>
+			<point x="316" y="128"/>
+			<point x="264" y="196"/>
+			<point x="264" y="276" type="curve" smooth="yes"/>
+			<point x="264" y="752" type="line"/>
+			<point x="248" y="768" type="line"/>
+			<point x="88" y="768" type="line"/>
+			<point x="72" y="752" type="line"/>
+			<point x="72" y="260" type="line" smooth="yes"/>
+			<point x="72" y="68"/>
+		</contour>
+	</outline>
+	<anchor name="top" x="396" y="768"/>
+	<anchor name="bottom" x="396" y="0"/>
+	<lib>
+		<dict>
+			<key>org.fontgarden.transfer</key>
+			<string>glyph-transfer v2 lambda 1.0 &lt;- image crop-U.png</string>
+			<key>public.markColor</key>
+			<string>0.09,0.72,0.44,1</string>
+		</dict>
+	</lib>
+</glyph>

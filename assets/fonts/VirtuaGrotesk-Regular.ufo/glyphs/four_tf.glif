@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="four.tf" format="2">
+	<advance width="664"/>
+	<outline>
+		<contour>
+			<point x="412" y="0" type="line"/>
+			<point x="480" y="0" type="line"/>
+			<point x="496" y="16" type="line"/>
+			<point x="496" y="166" type="line"/>
+			<point x="504" y="174" type="line"/>
+			<point x="598" y="174" type="line"/>
+			<point x="614" y="190" type="line"/>
+			<point x="614" y="246" type="line"/>
+			<point x="598" y="262" type="line"/>
+			<point x="504" y="262" type="line"/>
+			<point x="496" y="270" type="line"/>
+			<point x="496" y="752" type="line"/>
+			<point x="480" y="768" type="line"/>
+			<point x="416" y="768" type="line"/>
+			<point x="48" y="254" type="line"/>
+			<point x="48" y="190" type="line"/>
+			<point x="64" y="174" type="line"/>
+			<point x="388" y="174" type="line"/>
+			<point x="396" y="166" type="line"/>
+			<point x="396" y="16" type="line"/>
+		</contour>
+		<contour>
+			<point x="168" y="262" type="line"/>
+			<point x="168" y="270" type="line"/>
+			<point x="388" y="584" type="line"/>
+			<point x="396" y="584" type="line"/>
+			<point x="396" y="270" type="line"/>
+			<point x="388" y="262" type="line"/>
+		</contour>
+	</outline>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0.27,0.44,1,1</string>
+		</dict>
+	</lib>
+</glyph>

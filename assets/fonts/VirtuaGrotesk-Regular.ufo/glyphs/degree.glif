@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="degree" format="2">
+	<unicode hex="00B0"/>
+	<advance width="600"/>
+	<outline>
+		<contour>
+			<point x="212" y="584" type="line"/>
+			<point x="256" y="508" type="line"/>
+			<point x="344" y="508" type="line"/>
+			<point x="388" y="584" type="line"/>
+			<point x="344" y="660" type="line"/>
+			<point x="256" y="660" type="line"/>
+		</contour>
+		<contour>
+			<point x="256" y="584" type="line"/>
+			<point x="278" y="622" type="line"/>
+			<point x="322" y="622" type="line"/>
+			<point x="344" y="584" type="line"/>
+			<point x="322" y="546" type="line"/>
+			<point x="278" y="546" type="line"/>
+		</contour>
+	</outline>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>1,0.29,0.24,1</string>
+		</dict>
+	</lib>
+</glyph>

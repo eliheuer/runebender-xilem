@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="O" format="2">
+	<unicode hex="004F"/>
+	<advance width="864"/>
+	<outline>
+		<contour>
+			<point x="224" y="-16"/>
+			<point x="432" y="-16" type="curve" smooth="yes"/>
+			<point x="640" y="-16"/>
+			<point x="808" y="128"/>
+			<point x="808" y="384" type="curve" smooth="yes"/>
+			<point x="808" y="640"/>
+			<point x="640" y="784"/>
+			<point x="432" y="784" type="curve" smooth="yes"/>
+			<point x="224" y="784"/>
+			<point x="56" y="640"/>
+			<point x="56" y="384" type="curve" smooth="yes"/>
+			<point x="56" y="128"/>
+		</contour>
+		<contour>
+			<point x="560" y="132"/>
+			<point x="432" y="132" type="curve" smooth="yes"/>
+			<point x="304" y="132"/>
+			<point x="260" y="256"/>
+			<point x="260" y="384" type="curve" smooth="yes"/>
+			<point x="260" y="512"/>
+			<point x="304" y="636"/>
+			<point x="432" y="636" type="curve" smooth="yes"/>
+			<point x="560" y="636"/>
+			<point x="604" y="512"/>
+			<point x="604" y="384" type="curve" smooth="yes"/>
+			<point x="604" y="256"/>
+		</contour>
+	</outline>
+	<anchor name="top" x="432" y="768"/>
+	<anchor name="bottom" x="432" y="0"/>
+	<lib>
+		<dict>
+			<key>org.fontgarden.transfer</key>
+			<string>glyph-transfer v2 lambda 1.0 &lt;- image crop-O.png</string>
+			<key>public.markColor</key>
+			<string>0.09,0.72,0.44,1</string>
+		</dict>
+	</lib>
+</glyph>

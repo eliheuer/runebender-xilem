@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="kasra-ar" format="2">
+	<unicode hex="0650"/>
+	<outline>
+		<contour>
+			<point x="0" y="-240" type="line"/>
+			<point x="224" y="-176" type="line"/>
+			<point x="224" y="-104" type="line"/>
+			<point x="0" y="-168" type="line"/>
+		</contour>
+	</outline>
+	<anchor name="top" x="112" y="-104"/>
+	<anchor name="bottomDots" x="112" y="-240"/>
+	<anchor name="topDots" x="112" y="-104"/>
+	<anchor name="bottom" x="112" y="-288"/>
+	<anchor name="_bottom" x="112" y="8"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

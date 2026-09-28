@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="ellipsis" format="2">
+	<unicode hex="2026"/>
+	<advance width="600"/>
+	<outline>
+		<contour>
+			<point x="132" y="40" type="line"/>
+			<point x="180" y="40" type="line"/>
+			<point x="180" y="88" type="line"/>
+			<point x="132" y="88" type="line"/>
+		</contour>
+		<contour>
+			<point x="276" y="40" type="line"/>
+			<point x="324" y="40" type="line"/>
+			<point x="324" y="88" type="line"/>
+			<point x="276" y="88" type="line"/>
+		</contour>
+		<contour>
+			<point x="420" y="40" type="line"/>
+			<point x="468" y="40" type="line"/>
+			<point x="468" y="88" type="line"/>
+			<point x="420" y="88" type="line"/>
+		</contour>
+	</outline>
+	<lib>
+		<dict>
+			<key>com.runebender.markLabel</key>
+			<string>purple</string>
+			<key>public.markColor</key>
+			<string>0.54,0.44,0.88,1</string>
+		</dict>
+	</lib>
+</glyph>

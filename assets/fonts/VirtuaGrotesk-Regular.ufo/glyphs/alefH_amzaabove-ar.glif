@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="alefHamzaabove-ar" format="2">
+	<unicode hex="0623"/>
+	<advance width="224"/>
+	<outline>
+		<component base="alef-ar"/>
+		<component base="hamzaabove-ar" yOffset="-16" identifier="bd1764e5-b176-460a-bded-f45b7920723d"/>
+	</outline>
+	<lib>
+		<dict>
+			<key>com.runebender.markLabel</key>
+			<string>green</string>
+			<key>public.markColor</key>
+			<string>0.09,0.72,0.44,1</string>
+			<key>public.objectLibs</key>
+			<dict>
+				<key>bd1764e5-b176-460a-bded-f45b7920723d</key>
+				<dict>
+					<key>com.glyphsapp.component.alignment</key>
+					<integer>-1</integer>
+				</dict>
+			</dict>
+		</dict>
+	</lib>
+</glyph>

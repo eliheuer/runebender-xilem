@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="semicolon-ar" format="2">
+	<unicode hex="061B"/>
+	<advance width="240"/>
+	<outline>
+		<contour>
+			<point x="168" y="-120" type="line"/>
+			<point x="168" y="-104" type="line"/>
+			<point x="136" y="-24" type="line"/>
+			<point x="136" y="-8" type="line"/>
+			<point x="144" y="0" type="line"/>
+			<point x="168" y="0" type="line"/>
+			<point x="184" y="16" type="line"/>
+			<point x="184" y="112" type="line"/>
+			<point x="168" y="128" type="line"/>
+			<point x="72" y="128" type="line"/>
+			<point x="56" y="112" type="line"/>
+			<point x="56" y="0" type="line"/>
+			<point x="120" y="-128" type="line"/>
+			<point x="136" y="-136" type="line"/>
+			<point x="152" y="-136" type="line"/>
+		</contour>
+		<contour>
+			<point x="184" y="464" type="line"/>
+			<point x="184" y="560" type="line"/>
+			<point x="168" y="576" type="line"/>
+			<point x="72" y="576" type="line"/>
+			<point x="56" y="560" type="line"/>
+			<point x="56" y="464" type="line"/>
+			<point x="72" y="448" type="line"/>
+			<point x="168" y="448" type="line"/>
+		</contour>
+	</outline>
+	<anchor name="bottom" x="120" y="-136"/>
+	<anchor name="top" x="120" y="576"/>
+	<anchor name="bottomDots" x="120" y="-136"/>
+	<anchor name="topDots" x="120" y="576"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

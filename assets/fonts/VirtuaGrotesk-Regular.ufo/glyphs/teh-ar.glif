@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="teh-ar" format="2">
+	<unicode hex="062A"/>
+	<advance width="944"/>
+	<outline>
+		<component base="behDotless-ar"/>
+		<component base="twodotshorizontalabove-ar" xOffset="264" yOffset="-288" identifier="f2b4c753-e91e-4215-a725-0dbe9f370783"/>
+	</outline>
+	<lib>
+		<dict>
+			<key>com.runebender.markLabel</key>
+			<string>blue</string>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

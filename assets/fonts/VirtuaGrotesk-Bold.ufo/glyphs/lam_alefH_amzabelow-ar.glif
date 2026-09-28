@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="lam_alefHamzabelow-ar" format="2">
+	<advance width="584"/>
+	<outline>
+		<component base="lam_alef-ar"/>
+		<component base="hamzabelow-ar" identifier="la6103295244"/>
+	</outline>
+	<anchor name="top" x="272" y="768"/>
+	<anchor name="bottom" x="112" y="-318"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+			<key>public.objectLibs</key>
+			<dict>
+				<key>la6103295244</key>
+				<dict>
+					<key>com.glyphsapp.component.alignment</key>
+					<integer>-1</integer>
+				</dict>
+			</dict>
+		</dict>
+	</lib>
+</glyph>

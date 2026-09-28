@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="seenSixdots-ar" format="2">
+	<unicode hex="069C"/>
+	<advance width="1504"/>
+	<outline>
+		<component base="seen-ar"/>
+		<component base="threedotsdownabove-ar" xOffset="840" yOffset="-112"/>
+	</outline>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

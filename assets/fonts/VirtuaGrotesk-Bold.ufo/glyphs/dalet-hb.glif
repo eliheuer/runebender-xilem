@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="dalet-hb" format="2">
+	<unicode hex="05D3"/>
+	<advance width="624"/>
+	<outline>
+		<contour>
+			<point x="64" y="556" type="line"/>
+			<point x="64" y="488" type="line"/>
+			<point x="84" y="468" type="line"/>
+			<point x="376" y="468" type="line"/>
+			<point x="396" y="448" type="line"/>
+			<point x="396" y="22" type="line"/>
+			<point x="418" y="0" type="line"/>
+			<point x="480" y="0" type="line"/>
+			<point x="502" y="22" type="line"/>
+			<point x="502" y="556" type="line"/>
+			<point x="482" y="576" type="line"/>
+			<point x="84" y="576" type="line"/>
+		</contour>
+	</outline>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>1,0.29,0.24,1</string>
+		</dict>
+	</lib>
+</glyph>

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="N" format="2">
+	<unicode hex="004E"/>
+	<advance width="824"/>
+	<outline>
+		<contour>
+			<point x="96" y="0" type="line"/>
+			<point x="248" y="0" type="line"/>
+			<point x="264" y="16" type="line"/>
+			<point x="264" y="440" type="line"/>
+			<point x="272" y="440" type="line"/>
+			<point x="552" y="16" type="line"/>
+			<point x="568" y="0" type="line"/>
+			<point x="728" y="0" type="line"/>
+			<point x="744" y="16" type="line"/>
+			<point x="744" y="752" type="line"/>
+			<point x="728" y="768" type="line"/>
+			<point x="568" y="768" type="line"/>
+			<point x="552" y="752" type="line"/>
+			<point x="552" y="336" type="line"/>
+			<point x="544" y="336" type="line"/>
+			<point x="272" y="752" type="line"/>
+			<point x="256" y="768" type="line"/>
+			<point x="96" y="768" type="line"/>
+			<point x="80" y="752" type="line"/>
+			<point x="80" y="16" type="line"/>
+		</contour>
+	</outline>
+	<anchor name="top" x="412" y="768"/>
+	<anchor name="bottom" x="412" y="0"/>
+	<lib>
+		<dict>
+			<key>org.fontgarden.transfer</key>
+			<string>glyph-transfer v2 lambda 1.0 &lt;- image crop-N.png</string>
+			<key>public.markColor</key>
+			<string>0.09,0.72,0.44,1</string>
+		</dict>
+	</lib>
+</glyph>

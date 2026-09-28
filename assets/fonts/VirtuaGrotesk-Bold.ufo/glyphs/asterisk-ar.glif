@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="asterisk-ar" format="2">
+	<unicode hex="066D"/>
+	<advance width="728"/>
+	<outline>
+		<contour>
+			<point x="288" y="158" type="line"/>
+			<point x="372" y="376" type="line"/>
+			<point x="578" y="386" type="line"/>
+			<point x="418" y="518" type="line"/>
+			<point x="476" y="734" type="line"/>
+			<point x="288" y="612" type="line"/>
+			<point x="100" y="734" type="line"/>
+			<point x="158" y="518" type="line"/>
+			<point x="-2" y="386" type="line"/>
+			<point x="204" y="376" type="line"/>
+		</contour>
+	</outline>
+	<anchor name="bottom" x="288" y="158"/>
+	<anchor name="top" x="288" y="734"/>
+	<anchor name="bottomDots" x="288" y="158"/>
+	<anchor name="topDots" x="288" y="734"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="invertedDamma-ar" format="2">
+	<unicode hex="0657"/>
+	<outline>
+		<contour>
+			<point x="280" y="712" type="curve" smooth="yes"/>
+			<point x="252" y="712"/>
+			<point x="232" y="732"/>
+			<point x="232" y="760" type="curve" smooth="yes"/>
+			<point x="232" y="788"/>
+			<point x="252" y="808"/>
+			<point x="280" y="808" type="curve" smooth="yes"/>
+			<point x="344" y="808" type="line"/>
+			<point x="348" y="808" type="line"/>
+			<point x="348" y="800" type="line" smooth="yes"/>
+			<point x="348" y="736"/>
+			<point x="308" y="712"/>
+		</contour>
+		<contour>
+			<point x="280" y="992" type="curve" smooth="yes"/>
+			<point x="128" y="992" type="line" smooth="yes"/>
+			<point x="80" y="992"/>
+			<point x="64" y="968"/>
+			<point x="64" y="920" type="curve" smooth="yes"/>
+			<point x="64" y="904" type="line"/>
+			<point x="72" y="896" type="line"/>
+			<point x="104" y="896" type="line"/>
+			<point x="112" y="904" type="line"/>
+			<point x="112" y="920" type="line" smooth="yes"/>
+			<point x="112" y="932"/>
+			<point x="116" y="936"/>
+			<point x="128" y="936" type="curve" smooth="yes"/>
+			<point x="280" y="936" type="line" smooth="yes"/>
+			<point x="316" y="936"/>
+			<point x="348" y="912"/>
+			<point x="348" y="872" type="curve" smooth="yes"/>
+			<point x="348" y="868" type="line"/>
+			<point x="344" y="864" type="line"/>
+			<point x="280" y="864" type="line" smooth="yes"/>
+			<point x="224" y="864"/>
+			<point x="184" y="820"/>
+			<point x="184" y="760" type="curve" smooth="yes"/>
+			<point x="184" y="696"/>
+			<point x="226" y="660"/>
+			<point x="280" y="660" type="curve" smooth="yes"/>
+			<point x="344" y="660"/>
+			<point x="396" y="710"/>
+			<point x="396" y="808" type="curve" smooth="yes"/>
+			<point x="396" y="864" type="line" smooth="yes"/>
+			<point x="396" y="938"/>
+			<point x="346" y="992"/>
+		</contour>
+	</outline>
+	<anchor name="bottom" x="230" y="660"/>
+	<anchor name="bottomDots" x="230" y="660"/>
+	<anchor name="topDots" x="230" y="992"/>
+	<anchor name="top" x="230" y="1040"/>
+	<anchor name="_top" x="230" y="548"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

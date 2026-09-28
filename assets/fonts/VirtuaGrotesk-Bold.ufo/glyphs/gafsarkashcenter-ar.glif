@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="gafsarkashcenter-ar" format="2">
+	<advance width="376"/>
+	<outline>
+		<contour>
+			<point x="26" y="196" type="line"/>
+			<point x="164" y="196" type="line" smooth="yes"/>
+			<point x="234" y="202"/>
+			<point x="278" y="248"/>
+			<point x="278" y="296" type="curve" smooth="yes"/>
+			<point x="264" y="366"/>
+			<point x="212" y="396"/>
+			<point x="164" y="396" type="curve" smooth="yes"/>
+			<point x="104" y="386" type="line" smooth="yes"/>
+			<point x="96" y="374"/>
+			<point x="90" y="378"/>
+			<point x="90" y="392" type="curve" smooth="yes"/>
+			<point x="82" y="396"/>
+			<point x="90" y="388"/>
+			<point x="104" y="388" type="curve" smooth="yes"/>
+			<point x="224" y="388" type="line"/>
+			<point x="254" y="420" type="line"/>
+			<point x="254" y="460" type="line"/>
+			<point x="224" y="492" type="line"/>
+			<point x="110" y="492" type="line" smooth="yes"/>
+			<point x="44" y="486"/>
+			<point x="-4" y="444"/>
+			<point x="-4" y="392" type="curve" smooth="yes"/>
+			<point x="12" y="318"/>
+			<point x="64" y="292"/>
+			<point x="110" y="292" type="curve" smooth="yes"/>
+			<point x="170" y="302" type="line" smooth="yes"/>
+			<point x="178" y="314"/>
+			<point x="178" y="310"/>
+			<point x="170" y="296" type="curve" smooth="yes"/>
+			<point x="188" y="288"/>
+			<point x="184" y="284"/>
+			<point x="170" y="300" type="curve" smooth="yes"/>
+			<point x="26" y="300" type="line"/>
+			<point x="-4" y="268" type="line"/>
+			<point x="-4" y="228" type="line"/>
+		</contour>
+	</outline>
+	<anchor name="bottom" x="136" y="196"/>
+	<anchor name="bottomDots" x="136" y="196"/>
+	<anchor name="topDots" x="136" y="492"/>
+	<anchor name="top" x="137" y="540"/>
+	<anchor name="_topDots" x="137" y="84"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

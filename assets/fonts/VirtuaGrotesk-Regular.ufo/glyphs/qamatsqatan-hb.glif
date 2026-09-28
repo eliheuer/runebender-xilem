@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="qamatsqatan-hb" format="2">
+	<unicode hex="05C7"/>
+	<outline>
+		<contour>
+			<point x="160" y="-182" type="line"/>
+			<point x="152" y="-96" type="line"/>
+			<point x="234" y="-96" type="line"/>
+			<point x="234" y="-48" type="line"/>
+			<point x="32" y="-48" type="line"/>
+			<point x="32" y="-96" type="line"/>
+			<point x="116" y="-96" type="line"/>
+			<point x="110" y="-182" type="line"/>
+		</contour>
+	</outline>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0.27,0.44,1,1</string>
+		</dict>
+	</lib>
+</glyph>

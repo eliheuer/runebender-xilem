@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="arabicNumberSign" format="2">
+	<unicode hex="0600"/>
+	<outline>
+		<contour>
+			<point x="-212" y="596" type="line"/>
+			<point x="-130" y="512" type="line"/>
+			<point x="130" y="512" type="line"/>
+			<point x="212" y="596" type="line"/>
+			<point x="130" y="680" type="line"/>
+			<point x="-130" y="680" type="line"/>
+		</contour>
+	</outline>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>1,0.29,0.24,1</string>
+		</dict>
+	</lib>
+</glyph>

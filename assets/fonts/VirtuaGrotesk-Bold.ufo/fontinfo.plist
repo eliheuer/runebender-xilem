@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>ascender</key>
+	<integer>768</integer>
+	<key>capHeight</key>
+	<integer>768</integer>
+	<key>copyright</key>
+	<string>Copyright 2025 The Virtua Grotesk Project Authors (https://github.com/eliheuer/virtua-grotesk)</string>
+	<key>descender</key>
+	<integer>-256</integer>
+	<key>familyName</key>
+	<string>Virtua Grotesk</string>
+	<key>guidelines</key>
+	<array/>
+	<key>italicAngle</key>
+	<integer>0</integer>
+	<key>openTypeHeadCreated</key>
+	<string>2024/10/25 01:05:46</string>
+	<key>openTypeHheaAscender</key>
+	<integer>1024</integer>
+	<key>openTypeHheaDescender</key>
+	<integer>-256</integer>
+	<key>openTypeHheaLineGap</key>
+	<integer>0</integer>
+	<key>openTypeNameDesigner</key>
+	<string>Eli Heuer</string>
+	<key>openTypeNameLicense</key>
+	<string>This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: https://openfontlicense.org</string>
+	<key>openTypeNameLicenseURL</key>
+	<string>https://openfontlicense.org</string>
+	<key>openTypeNameManufacturer</key>
+	<string>The Virtua Grotesk Project Authors</string>
+	<key>openTypeNameManufacturerURL</key>
+	<string>https://github.com/eliheuer/virtua-grotesk</string>
+	<key>openTypeOS2Selection</key>
+	<array>
+		<integer>7</integer>
+	</array>
+	<key>openTypeOS2TypoAscender</key>
+	<integer>1024</integer>
+	<key>openTypeOS2TypoDescender</key>
+	<integer>-256</integer>
+	<key>openTypeOS2TypoLineGap</key>
+	<integer>0</integer>
+	<key>openTypeOS2VendorID</key>
+	<string>FTGD</string>
+	<key>openTypeOS2WeightClass</key>
+	<integer>700</integer>
+	<key>openTypeOS2WidthClass</key>
+	<integer>5</integer>
+	<key>openTypeOS2WinAscent</key>
+	<integer>1152</integer>
+	<key>openTypeOS2WinDescent</key>
+	<integer>512</integer>
+	<key>postscriptBlueValues</key>
+	<array/>
+	<key>postscriptFamilyBlues</key>
+	<array/>
+	<key>postscriptFamilyOtherBlues</key>
+	<array/>
+	<key>postscriptOtherBlues</key>
+	<array/>
+	<key>postscriptStemSnapH</key>
+	<array/>
+	<key>postscriptStemSnapV</key>
+	<array/>
+	<key>postscriptUnderlinePosition</key>
+	<integer>-100</integer>
+	<key>postscriptUnderlineThickness</key>
+	<integer>50</integer>
+	<key>styleMapFamilyName</key>
+	<string>Virtua Grotesk</string>
+	<key>styleMapStyleName</key>
+	<string>bold</string>
+	<key>styleName</key>
+	<string>Bold</string>
+	<key>unitsPerEm</key>
+	<integer>1024</integer>
+	<key>versionMajor</key>
+	<integer>1</integer>
+	<key>versionMinor</key>
+	<integer>0</integer>
+	<key>xHeight</key>
+	<integer>576</integer>
+</dict>
+</plist>

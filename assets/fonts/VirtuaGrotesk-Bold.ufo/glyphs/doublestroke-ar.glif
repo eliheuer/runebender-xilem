@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="doublestroke-ar" format="2">
+	<advance width="392"/>
+	<outline>
+		<contour>
+			<point x="12" y="458" type="line"/>
+			<point x="148" y="484" type="line"/>
+			<point x="148" y="484" type="line"/>
+			<point x="148" y="768" type="line"/>
+			<point x="148" y="768" type="line"/>
+			<point x="12" y="768" type="line"/>
+			<point x="12" y="768" type="line"/>
+			<point x="12" y="458" type="line"/>
+		</contour>
+		<contour>
+			<point x="172" y="458" type="line"/>
+			<point x="308" y="484" type="line"/>
+			<point x="308" y="484" type="line"/>
+			<point x="308" y="768" type="line"/>
+			<point x="308" y="768" type="line"/>
+			<point x="172" y="768" type="line"/>
+			<point x="172" y="768" type="line"/>
+			<point x="172" y="458" type="line"/>
+		</contour>
+	</outline>
+	<anchor name="bottom" x="160" y="458"/>
+	<anchor name="top" x="160" y="768"/>
+	<anchor name="bottomDots" x="160" y="458"/>
+	<anchor name="topDots" x="160" y="768"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

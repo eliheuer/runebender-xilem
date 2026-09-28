@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="fatha-ar" format="2">
+	<unicode hex="064E"/>
+	<outline>
+		<contour>
+			<point x="-36" y="664" type="line"/>
+			<point x="260" y="768" type="line"/>
+			<point x="260" y="880" type="line"/>
+			<point x="-36" y="794" type="line"/>
+		</contour>
+	</outline>
+	<anchor name="bottom" x="112" y="664"/>
+	<anchor name="bottomDots" x="112" y="664"/>
+	<anchor name="topDots" x="112" y="880"/>
+	<anchor name="top" x="112" y="928"/>
+	<anchor name="_top" x="112" y="552"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

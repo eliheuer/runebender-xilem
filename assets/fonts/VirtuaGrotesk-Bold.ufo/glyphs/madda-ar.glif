@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="madda-ar" format="2">
+	<unicode hex="0653"/>
+	<outline>
+		<contour>
+			<point x="8" y="684" type="line"/>
+			<point x="340" y="684" type="line"/>
+			<point x="280" y="804" type="line"/>
+			<point x="-52" y="804" type="line"/>
+		</contour>
+	</outline>
+	<anchor name="bottom" x="144" y="684"/>
+	<anchor name="bottomDots" x="144" y="684"/>
+	<anchor name="topDots" x="144" y="804"/>
+	<anchor name="top" x="144" y="852"/>
+	<anchor name="_top" x="144" y="572"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

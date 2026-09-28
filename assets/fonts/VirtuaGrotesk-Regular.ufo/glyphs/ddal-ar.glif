@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="ddal-ar" format="2">
+	<unicode hex="0688"/>
+	<advance width="480"/>
+	<outline>
+		<contour>
+			<point x="272" y="0" type="line" smooth="yes"/>
+			<point x="412" y="0"/>
+			<point x="448" y="56"/>
+			<point x="448" y="192" type="curve" smooth="yes"/>
+			<point x="448" y="384" type="line"/>
+			<point x="432" y="400" type="line"/>
+			<point x="368" y="400" type="line"/>
+			<point x="352" y="384" type="line"/>
+			<point x="352" y="192" type="line" smooth="yes"/>
+			<point x="352" y="128"/>
+			<point x="336" y="112"/>
+			<point x="272" y="112" type="curve" smooth="yes"/>
+			<point x="208" y="112" type="line" smooth="yes"/>
+			<point x="144" y="112"/>
+			<point x="128" y="128"/>
+			<point x="128" y="192" type="curve" smooth="yes"/>
+			<point x="128" y="256" type="line"/>
+			<point x="112" y="272" type="line"/>
+			<point x="48" y="272" type="line"/>
+			<point x="32" y="256" type="line"/>
+			<point x="32" y="176" type="line" smooth="yes"/>
+			<point x="32" y="48"/>
+			<point x="80" y="0"/>
+			<point x="208" y="0" type="curve" smooth="yes"/>
+		</contour>
+	</outline>
+	<anchor name="bottom" x="240" y="0"/>
+	<anchor name="top" x="240" y="400"/>
+	<anchor name="bottomDots" x="240" y="0"/>
+	<anchor name="topDots" x="240" y="400"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0.09,0.72,0.44,1</string>
+		</dict>
+	</lib>
+</glyph>

@@ -1,0 +1,334 @@
+# Prefix: Languagesystems
+languagesystem DFLT dflt;
+languagesystem arab dflt;
+languagesystem latn dflt;
+
+@FIGURES_PROPORTIONAL = [zero one two three four five six seven eight nine];
+@FIGURES_TABULAR = [zero.tf one.tf two.tf three.tf four.tf five.tf six.tf seven.tf eight.tf nine.tf];
+@SOFT_DOTTED_BASES = [i j];
+@SOFT_DOTTED_DOTLESS = [idotless jdotless];
+@SOFT_DOTTED_ABOVE_MARKS = [acutecomb gravecomb circumflexcomb tildecomb macroncomb brevecomb dotaccentcomb dieresiscomb ringcomb hungarumlautcomb caroncomb];
+
+feature aalt {
+# automatic
+feature tnum;
+feature init;
+feature medi;
+feature fina;
+} aalt;
+
+feature locl {
+script latn;
+language CAT;
+lookup CAT_MIDDLEDOT {
+	sub l periodcentered' l by periodcentered.loclCAT;
+	sub L periodcentered' L by periodcentered.loclCAT.case;
+} CAT_MIDDLEDOT;
+} locl;
+
+feature tnum {
+sub @FIGURES_PROPORTIONAL by @FIGURES_TABULAR;
+} tnum;
+
+@ARAB_MARK_BASES = [dottedCircle alef-ar beh-ar teh-ar jeem-ar seen-ar sad-ar tah-ar meem-ar noon-ar heh-ar waw-ar yeh-ar];
+@LATIN_TOP_BASES = [A B C D E F G H I J K L M N O P Q R S T U V W X Y Z a b c d dottedCircle e f g h i idotless j jdotless k l m n o p q r s t u v w x y z];
+@LATIN_BOTTOM_BASES = [A B C D E F G H I J K L M N O P Q R S T U V W X Y Z a b c d dottedCircle e f g h i idotless j k l m n o p q r s t u v w x y z];
+
+feature ccmp {
+# automatic
+	lookup ccmp_soft_dotted_ligature_0 {
+		lookupflag 0;
+		sub iogonek dotaccentcomb by dotlessiogonek;
+	} ccmp_soft_dotted_ligature_0;
+
+	lookup ccmp_soft_dotted_context_1 {
+		# UseMarkFilteringSet makes the lookup skip below-marks (comma/cedilla/
+		# ogonek) so i/j still lose their dot when an above-mark follows a
+		# below-mark, e.g. i + commaaccentcomb + acutecomb. Fixes fontbakery
+		# soft_dotted WARN for the "other cases" (below+above stacks).
+		lookupflag UseMarkFilteringSet @SOFT_DOTTED_ABOVE_MARKS;
+		sub iogonek' @SOFT_DOTTED_ABOVE_MARKS by dotlessiogonek;
+		sub @SOFT_DOTTED_BASES' @SOFT_DOTTED_ABOVE_MARKS by @SOFT_DOTTED_DOTLESS;
+	} ccmp_soft_dotted_context_1;
+
+	lookup ccmp_arab_2 {
+	lookupflag 0;
+	sub hamzaabove-ar damma-ar by hamzaaboveDamma-ar;
+	sub damma-ar hamzaabove-ar by hamzaaboveDamma-ar;
+	sub hamzaabove-ar dammatan-ar by hamzaaboveDammatan-ar;
+	sub dammatan-ar hamzaabove-ar by hamzaaboveDammatan-ar;
+	sub hamzaabove-ar fatha-ar by hamzaaboveFatha-ar;
+	sub fatha-ar hamzaabove-ar by hamzaaboveFatha-ar;
+	sub hamzaabove-ar fathatan-ar by hamzaaboveFathatan-ar;
+	sub fathatan-ar hamzaabove-ar by hamzaaboveFathatan-ar;
+	sub hamzaabove-ar sukun-ar by hamzaaboveSukun-ar;
+	sub sukun-ar hamzaabove-ar by hamzaaboveSukun-ar;
+	sub hamzabelow-ar kasra-ar by hamzabelowKasra-ar;
+	sub kasra-ar hamzabelow-ar by hamzabelowKasra-ar;
+	sub hamzabelow-ar kasratan-ar by hamzabelowKasratan-ar;
+	sub kasratan-ar hamzabelow-ar by hamzabelowKasratan-ar;
+	sub shadda-ar alefabove-ar by shaddaAlefabove-ar;
+	sub alefabove-ar shadda-ar by shaddaAlefabove-ar;
+	sub shadda-ar damma-ar by shaddaDamma-ar;
+	sub damma-ar shadda-ar by shaddaDamma-ar;
+	sub shadda-ar dammatan-ar by shaddaDammatan-ar;
+	sub dammatan-ar shadda-ar by shaddaDammatan-ar;
+	sub shadda-ar fatha-ar by shaddaFatha-ar;
+	sub fatha-ar shadda-ar by shaddaFatha-ar;
+	sub shadda-ar fathatan-ar by shaddaFathatan-ar;
+	sub fathatan-ar shadda-ar by shaddaFathatan-ar;
+	sub shadda-ar kasra-ar by shaddaKasra-ar;
+	sub kasra-ar shadda-ar by shaddaKasra-ar;
+	sub shadda-ar kasratan-ar by shaddaKasratan-ar;
+	sub kasratan-ar shadda-ar by shaddaKasratan-ar;
+	} ccmp_arab_2;
+
+script DFLT;
+language dflt;
+lookup ccmp_soft_dotted_ligature_0;
+lookup ccmp_soft_dotted_context_1;
+script latn;
+language dflt;
+lookup ccmp_soft_dotted_ligature_0;
+lookup ccmp_soft_dotted_context_1;
+script arab;
+lookup ccmp_arab_2;
+} ccmp;
+
+feature init {
+# automatic
+sub behDotless-ar by behDotless-ar.init;
+sub beh-ar by beh-ar.init;
+sub peh-ar by peh-ar.init;
+sub tteheh-ar by tteheh-ar.init;
+sub beeh-ar by beeh-ar.init;
+sub tehRing-ar by tehRing-ar.init;
+sub tehThreedotsdown-ar by tehThreedotsdown-ar.init;
+sub teh-ar by teh-ar.init;
+sub tteh-ar by tteh-ar.init;
+sub theh-ar by theh-ar.init;
+sub jeem-ar by jeem-ar.init;
+sub tcheh-ar by tcheh-ar.init;
+sub hah-ar by hah-ar.init;
+sub khah-ar by khah-ar.init;
+sub seen-ar by seen-ar.init;
+sub seenSixdots-ar by seenSixdots-ar.init;
+sub sheen-ar by sheen-ar.init;
+sub sad-ar by sad-ar.init;
+sub dad-ar by dad-ar.init;
+sub tah-ar by tah-ar.init;
+sub zah-ar by zah-ar.init;
+sub ain-ar by ain-ar.init;
+sub ghain-ar by ghain-ar.init;
+sub feh-ar by feh-ar.init;
+sub veh-ar by veh-ar.init;
+sub fehDotless-ar by fehDotless-ar.init;
+sub fehDotmovedbelow-ar by fehDotmovedbelow-ar.init;
+sub fehThreedotsbelow-ar by fehThreedotsbelow-ar.init;
+sub qaf-ar by qaf-ar.init;
+sub qafDotabove-ar by qafDotabove-ar.init;
+sub qafThreedotsabove-ar by qafThreedotsabove-ar.init;
+sub kaf-ar by kaf-ar.init;
+sub keheh-ar by keheh-ar.init;
+sub kehehThreedotsabove-ar by kehehThreedotsabove-ar.init;
+sub gaf-ar by gaf-ar.init;
+sub lam-ar by lam-ar.init;
+sub meem-ar by meem-ar.init;
+sub noon-ar by noon-ar.init;
+sub heh-ar by heh-ar.init;
+sub hehDoachashmee-ar by hehDoachashmee-ar.init;
+sub hehGoal-ar by hehGoal-ar.init;
+sub hehGoalHamzaabove-ar by hehGoalHamzaabove-ar.init;
+sub alefMaksura-ar by alefMaksura-ar.init;
+sub yeh-ar by yeh-ar.init;
+sub farsiYeh-ar by farsiYeh-ar.init;
+sub yehHamzaabove-ar by yehHamzaabove-ar.init;
+} init;
+
+feature medi {
+# automatic
+sub behDotless-ar by behDotless-ar.medi;
+sub beh-ar by beh-ar.medi;
+sub peh-ar by peh-ar.medi;
+sub tteheh-ar by tteheh-ar.medi;
+sub beeh-ar by beeh-ar.medi;
+sub tehRing-ar by tehRing-ar.medi;
+sub tehThreedotsdown-ar by tehThreedotsdown-ar.medi;
+sub teh-ar by teh-ar.medi;
+sub tteh-ar by tteh-ar.medi;
+sub theh-ar by theh-ar.medi;
+sub jeem-ar by jeem-ar.medi;
+sub tcheh-ar by tcheh-ar.medi;
+sub hah-ar by hah-ar.medi;
+sub khah-ar by khah-ar.medi;
+sub seen-ar by seen-ar.medi;
+sub seenSixdots-ar by seenSixdots-ar.medi;
+sub sheen-ar by sheen-ar.medi;
+sub sad-ar by sad-ar.medi;
+sub dad-ar by dad-ar.medi;
+sub tah-ar by tah-ar.medi;
+sub zah-ar by zah-ar.medi;
+sub ain-ar by ain-ar.medi;
+sub ghain-ar by ghain-ar.medi;
+sub feh-ar by feh-ar.medi;
+sub veh-ar by veh-ar.medi;
+sub fehDotless-ar by fehDotless-ar.medi;
+sub fehDotmovedbelow-ar by fehDotmovedbelow-ar.medi;
+sub fehThreedotsbelow-ar by fehThreedotsbelow-ar.medi;
+sub qaf-ar by qaf-ar.medi;
+sub qafDotabove-ar by qafDotabove-ar.medi;
+sub qafThreedotsabove-ar by qafThreedotsabove-ar.medi;
+sub kaf-ar by kaf-ar.medi;
+sub keheh-ar by keheh-ar.medi;
+sub kehehThreedotsabove-ar by kehehThreedotsabove-ar.medi;
+sub gaf-ar by gaf-ar.medi;
+sub lam-ar by lam-ar.medi;
+sub meem-ar by meem-ar.medi;
+sub noon-ar by noon-ar.medi;
+sub heh-ar by heh-ar.medi;
+sub hehDoachashmee-ar by hehDoachashmee-ar.medi;
+sub hehGoal-ar by hehGoal-ar.medi;
+sub hehGoalHamzaabove-ar by hehGoalHamzaabove-ar.medi;
+sub alefMaksura-ar by alefMaksura-ar.medi;
+sub yeh-ar by yeh-ar.medi;
+sub farsiYeh-ar by farsiYeh-ar.medi;
+sub yehHamzaabove-ar by yehHamzaabove-ar.medi;
+} medi;
+
+feature fina {
+# automatic
+sub alef-ar by alef-ar.fina;
+sub alefHamzaabove-ar by alefHamzaabove-ar.fina;
+sub alefHamzabelow-ar by alefHamzabelow-ar.fina;
+sub alefMadda-ar by alefMadda-ar.fina;
+sub alefWasla-ar by alefWasla-ar.fina;
+sub behDotless-ar by behDotless-ar.fina;
+sub beh-ar by beh-ar.fina;
+sub peh-ar by peh-ar.fina;
+sub tteheh-ar by tteheh-ar.fina;
+sub beeh-ar by beeh-ar.fina;
+sub tehRing-ar by tehRing-ar.fina;
+sub tehThreedotsdown-ar by tehThreedotsdown-ar.fina;
+sub teh-ar by teh-ar.fina;
+sub tteh-ar by tteh-ar.fina;
+sub theh-ar by theh-ar.fina;
+sub jeem-ar by jeem-ar.fina;
+sub tcheh-ar by tcheh-ar.fina;
+sub hah-ar by hah-ar.fina;
+sub khah-ar by khah-ar.fina;
+sub dal-ar by dal-ar.fina;
+sub ddal-ar by ddal-ar.fina;
+sub thal-ar by thal-ar.fina;
+sub reh-ar by reh-ar.fina;
+sub rreh-ar by rreh-ar.fina;
+sub zain-ar by zain-ar.fina;
+sub jeh-ar by jeh-ar.fina;
+sub seen-ar by seen-ar.fina;
+sub seenSixdots-ar by seenSixdots-ar.fina;
+sub sheen-ar by sheen-ar.fina;
+sub sad-ar by sad-ar.fina;
+sub dad-ar by dad-ar.fina;
+sub tah-ar by tah-ar.fina;
+sub zah-ar by zah-ar.fina;
+sub ain-ar by ain-ar.fina;
+sub ghain-ar by ghain-ar.fina;
+sub feh-ar by feh-ar.fina;
+sub veh-ar by veh-ar.fina;
+sub fehDotless-ar by fehDotless-ar.fina;
+sub fehDotmovedbelow-ar by fehDotmovedbelow-ar.fina;
+sub fehThreedotsbelow-ar by fehThreedotsbelow-ar.fina;
+sub qafDotless-ar by qafDotless-ar.fina;
+sub qaf-ar by qaf-ar.fina;
+sub qafDotabove-ar by qafDotabove-ar.fina;
+sub qafThreedotsabove-ar by qafThreedotsabove-ar.fina;
+sub kaf-ar by kaf-ar.fina;
+sub keheh-ar by keheh-ar.fina;
+sub kehehThreedotsabove-ar by kehehThreedotsabove-ar.fina;
+sub gaf-ar by gaf-ar.fina;
+sub lam-ar by lam-ar.fina;
+sub meem-ar by meem-ar.fina;
+sub noon-ar by noon-ar.fina;
+sub noonghunna-ar by noonghunna-ar.fina;
+sub heh-ar by heh-ar.fina;
+sub hehDoachashmee-ar by hehDoachashmee-ar.fina;
+sub hehGoal-ar by hehGoal-ar.fina;
+sub hehGoalHamzaabove-ar by hehGoalHamzaabove-ar.fina;
+sub tehMarbuta-ar by tehMarbuta-ar.fina;
+sub tehMarbutaGoal-ar by tehMarbutaGoal-ar.fina;
+sub waw-ar by waw-ar.fina;
+sub wawHamzaabove-ar by wawHamzaabove-ar.fina;
+sub alefMaksura-ar by alefMaksura-ar.fina;
+sub yeh-ar by yeh-ar.fina;
+sub farsiYeh-ar by farsiYeh-ar.fina;
+sub yehHamzaabove-ar by yehHamzaabove-ar.fina;
+sub yehBarree-ar by yehBarree-ar.fina;
+sub lam_alef-ar by lam_alef-ar.fina;
+sub lam_alefHamzaabove-ar by lam_alefHamzaabove-ar.fina;
+sub lam_alefHamzabelow-ar by lam_alefHamzabelow-ar.fina;
+sub lam_alefMadda-ar by lam_alefMadda-ar.fina;
+sub lam_alefWasla-ar by lam_alefWasla-ar.fina;
+} fina;
+
+feature rlig {
+# automatic
+script arab;
+lookup rlig_arab_0 {
+	lookupflag IgnoreMarks;
+	sub lam-ar.init alef-ar.fina by lam_alef-ar;
+	sub lam-ar.medi alef-ar.fina by lam_alef-ar.fina;
+	sub lam-ar.init alefHamzaabove-ar.fina by lam_alefHamzaabove-ar;
+	sub lam-ar.medi alefHamzaabove-ar.fina by lam_alefHamzaabove-ar.fina;
+	sub lam-ar.init alefHamzabelow-ar.fina by lam_alefHamzabelow-ar;
+	sub lam-ar.medi alefHamzabelow-ar.fina by lam_alefHamzabelow-ar.fina;
+	sub lam-ar.init alefMadda-ar.fina by lam_alefMadda-ar;
+	sub lam-ar.medi alefMadda-ar.fina by lam_alefMadda-ar.fina;
+	sub lam-ar.init alefWasla-ar.fina by lam_alefWasla-ar;
+	sub lam-ar.medi alefWasla-ar.fina by lam_alefWasla-ar.fina;
+} rlig_arab_0;
+} rlig;
+
+# --- Arabic: centred vs offset dots -----------------------------------------
+#
+# The dot sits under the tooth by default: the position that never collides,
+# and what you get with calt off. It moves to the middle only when the next
+# letter leaves the space clear.
+#
+# The first version had this the other way round — centre unless the next
+# letter was on a short list — so centred was effectively the default and the
+# dot ran into every descender that was not on it.
+
+# Centring is the special case, not the default. The dot moves to the middle
+# only before alef, where beh's tooth and alef's stem read as one bowl and a
+# dot under the tooth looks pushed to the edge of it.
+#
+# This was a list of 70 letters — everything that did not descend — which made
+# centred the normal look and the offset the exception. That is backwards.
+# Add letters here one at a time, when a word shows it is wanted.
+@AR_CLEAR_BELOW_NEXT = [
+    alef-ar.fina alefHamzaabove-ar.fina alefHamzabelow-ar.fina
+    alefMadda-ar.fina alefWasla-ar.fina
+];
+
+# The reverse case: the letter *before* reaches under the one that follows.
+# reh and zain do not join to the left, so what comes after them is an initial
+# form, and their tail sweeps back under its right-hand side — exactly where
+# yeh's offset dots sit. Centring moves the dots out from under the tail.
+@AR_TAIL_BELOW_PREV = [
+    reh-ar reh-ar.fina zain-ar zain-ar.fina
+    jeh-ar jeh-ar.fina rreh-ar rreh-ar.fina
+];
+
+feature calt {
+script arab;
+language dflt;
+lookup calt_arab_dots {
+	# beh: one dot.
+	sub beh-ar.init' @AR_CLEAR_BELOW_NEXT by beh-ar.init.ctr;
+
+	# yeh: two dots, 416 units of them against beh's 160. They reach much
+	# further into whatever follows, so this class will probably want to be
+	# narrower than beh's rather than the same one.
+	sub yeh-ar.init' @AR_CLEAR_BELOW_NEXT by yeh-ar.init.ctr;
+	sub @AR_TAIL_BELOW_PREV yeh-ar.init' by yeh-ar.init.ctr;
+} calt_arab_dots;
+} calt;

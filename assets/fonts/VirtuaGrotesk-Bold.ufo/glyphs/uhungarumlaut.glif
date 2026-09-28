@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="uhungarumlaut" format="2">
+	<unicode hex="0171"/>
+	<advance width="672"/>
+	<outline>
+		<component base="u"/>
+		<component base="hungarumlaut" xOffset="132"/>
+	</outline>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>1,0.29,0.24,1</string>
+		</dict>
+	</lib>
+</glyph>

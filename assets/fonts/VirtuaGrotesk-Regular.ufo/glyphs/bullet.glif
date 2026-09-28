@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="bullet" format="2">
+	<unicode hex="2022"/>
+	<advance width="600"/>
+	<outline>
+		<contour>
+			<point x="256" y="312" type="line"/>
+			<point x="344" y="312" type="line"/>
+			<point x="344" y="400" type="line"/>
+			<point x="256" y="400" type="line"/>
+		</contour>
+	</outline>
+	<lib>
+		<dict>
+			<key>com.runebender.markLabel</key>
+			<string>purple</string>
+			<key>public.markColor</key>
+			<string>0.54,0.44,0.88,1</string>
+		</dict>
+	</lib>
+</glyph>

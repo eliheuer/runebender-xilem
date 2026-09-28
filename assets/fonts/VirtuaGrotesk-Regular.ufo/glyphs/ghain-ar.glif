@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="ghain-ar" format="2">
+	<unicode hex="063A"/>
+	<advance width="784"/>
+	<outline>
+		<component base="ain-ar"/>
+		<component base="dotabove-ar" xOffset="248"/>
+	</outline>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="shaddaFathatan-ar" format="2">
+	<outline>
+		<component base="shadda-ar"/>
+		<component base="fatha-ar" yOffset="176"/>
+		<component base="fatha-ar" yOffset="184"/>
+	</outline>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

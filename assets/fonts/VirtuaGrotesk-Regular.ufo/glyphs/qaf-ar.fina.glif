@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="qaf-ar.fina" format="2">
+	<advance width="576"/>
+	<outline>
+		<component base="qafDotless-ar.fina"/>
+		<component base="twodotshorizontalabove-ar" xOffset="104" yOffset="-202" identifier="1c19b31a-36a2-442c-9a55-f7fca5127e44"/>
+	</outline>
+	<lib>
+		<dict>
+			<key>com.runebender.markLabel</key>
+			<string>blue</string>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

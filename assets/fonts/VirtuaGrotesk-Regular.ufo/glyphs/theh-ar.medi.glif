@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="theh-ar.medi" format="2">
+	<advance width="408"/>
+	<outline>
+		<component base="behDotless-ar.medi"/>
+		<component base="threedotsupabove-ar" xOffset="-28" yOffset="-256"/>
+	</outline>
+	<lib>
+		<dict>
+			<key>com.runebender.markLabel</key>
+			<string>green</string>
+			<key>public.markColor</key>
+			<string>0.09,0.72,0.44,1</string>
+		</dict>
+	</lib>
+</glyph>

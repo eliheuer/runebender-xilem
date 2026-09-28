@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="grave" format="2">
+	<unicode hex="0060"/>
+	<advance width="300"/>
+	<outline>
+		<contour>
+			<point x="200" y="654" type="line"/>
+			<point x="200" y="670" type="line"/>
+			<point x="148" y="816" type="line"/>
+			<point x="132" y="832" type="line"/>
+			<point x="48" y="832" type="line"/>
+			<point x="32" y="816" type="line"/>
+			<point x="32" y="800" type="line"/>
+			<point x="124" y="654" type="line"/>
+			<point x="140" y="638" type="line"/>
+			<point x="184" y="638" type="line"/>
+		</contour>
+	</outline>
+	<anchor name="_top" x="164" y="576"/>
+	<lib>
+		<dict>
+			<key>com.runebender.markLabel</key>
+			<string>yellow</string>
+			<key>public.markColor</key>
+			<string>1,0.86,0.2,1</string>
+		</dict>
+	</lib>
+</glyph>

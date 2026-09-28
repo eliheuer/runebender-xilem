@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="quoteright" format="2">
+	<unicode hex="2019"/>
+	<advance width="200"/>
+	<outline>
+		<component base="comma" xOffset="-8" yOffset="640" identifier="1300c4c8-b915-4930-949c-bdb1dbf442fe"/>
+	</outline>
+	<lib>
+		<dict>
+			<key>com.runebender.markLabel</key>
+			<string>purple</string>
+			<key>public.markColor</key>
+			<string>0.54,0.44,0.88,1</string>
+			<key>public.objectLibs</key>
+			<dict>
+				<key>1300c4c8-b915-4930-949c-bdb1dbf442fe</key>
+				<dict>
+					<key>com.glyphsapp.component.alignment</key>
+					<integer>-1</integer>
+				</dict>
+			</dict>
+		</dict>
+	</lib>
+</glyph>

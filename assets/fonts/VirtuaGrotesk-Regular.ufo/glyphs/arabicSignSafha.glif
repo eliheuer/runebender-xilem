@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="arabicSignSafha" format="2">
+	<unicode hex="0603"/>
+	<outline>
+		<contour>
+			<point x="-156" y="644" type="line"/>
+			<point x="-100" y="540" type="line"/>
+			<point x="0" y="588" type="line"/>
+			<point x="100" y="540" type="line"/>
+			<point x="156" y="644" type="line"/>
+			<point x="0" y="700" type="line"/>
+		</contour>
+	</outline>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>1,0.29,0.24,1</string>
+		</dict>
+	</lib>
+</glyph>

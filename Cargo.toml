@@ -1,20 +1,92 @@
-[workspace]
-members = ["."]
-default-members = ["."]
-resolver = "2"
-
-[workspace.package]
+[package]
+name = "runebender"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.96"
 license = "Apache-2.0 OR MIT"
+description = "Runebender, a font editor built with Xilem"
 repository = "https://github.com/eliheuer/runebender-xilem"
+keywords = ["font", "editor", "typography", "ufo", "xilem"]
+categories = ["graphics", "text-editors"]
+publish = false
+
+[[bin]]
+name = "runebender"
+path = "src/main.rs"
+required-features = ["application"]
+
+[features]
+default = ["application"]
+application = [
+    "dep:base64",
+    "dep:clap",
+    "dep:copypasta",
+    "dep:image",
+    "dep:imaging_vello_cpu",
+    "dep:masonry",
+    "dep:muda",
+    "dep:notify",
+    "dep:regex",
+    "dep:rfd",
+    "dep:tokio",
+    "dep:winit",
+    "dep:xilem",
+]
+
+[lints]
+workspace = true
+
+[dependencies]
+xilem = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a", optional = true }
+masonry = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a", optional = true }
+clap = { version = "4", features = ["derive"], optional = true }
+base64 = { version = "0.22.1", optional = true }
+norad = "0.18"
+babelfont = { git = "https://github.com/simoncozens/babelfont-rs", rev = "29bdedbbfa7d3150b651dbd7c94fce6b79677ca4", default-features = false, features = ["types", "glyphs", "fontir"] }
+fontdrasil = "=1.0.0"
+fontc = { version = "=1.0.0", default-features = false }
+kurbo = "0.13"
+linesweeper = "0.4"
+skrifa = "0.46.2"
+glyphslib = "0.2.7"
+img2bez = { git = "https://github.com/eliheuer/img2bez", rev = "80bdb2e6d0226449a5e9bf05a49b3339276020c8", default-features = false }
+plist = { version = "1.4", features = ["serde"] }
+quick-xml = { version = "0.41", features = ["serialize"] }
+serde = { version = "1.0", features = ["derive"] }
+schemars = "1.2"
+sha2 = "0.10"
+regex = { version = "1", optional = true }
+serde_json = "1"
+unicode-general-category = "0.6"
+unicode-normalization = "0.1"
+unicode-bidi = { version = "0.3.18", default-features = false, features = ["hardcoded-data"] }
+fea-rs = "=1.0.0"
+harfrust = "0.5"
+write-fonts = "0.52"
+kurbo_09 = { package = "kurbo", version = "0.9.5" }
+spline = { git = "https://github.com/linebender/spline", rev = "83f46cbfebb1f5d6042059c867719c0010073d42" }
+copypasta = { version = "0.10.2", optional = true }
+winit = { version = "0.30", optional = true }
+notify = { version = "8", optional = true }
+rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"], optional = true }
+tokio = { version = "1", features = ["rt", "time"], optional = true }
+imaging_vello_cpu = { version = "0.0.1", optional = true }
+image = { version = "0.25", default-features = false, features = ["png"], optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+muda = { version = "0.19", optional = true }
+
+[dev-dependencies]
+masonry_testing = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a" }
+syn = { version = "2.0.119", features = ["full", "visit"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
 
-# LINEBENDER LINT SET - Cargo.toml - v8
-# See https://linebender.org/wiki/canonical-lints/
 keyword_idents_2024 = "forbid"
 non_ascii_idents = "forbid"
 non_local_definitions = "forbid"
@@ -59,118 +131,3 @@ cargo_common_metadata = "warn"
 negative_feature_names = "warn"
 redundant_feature_names = "warn"
 wildcard_dependencies = "warn"
-# END LINEBENDER LINT SET
-
-[package]
-name = "runebender"
-version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
-description = "Runebender, a font editor built with Xilem"
-repository.workspace = true
-keywords = ["font", "editor", "typography", "ufo", "xilem"]
-categories = ["graphics", "text-editors"]
-publish = false
-
-[[bin]]
-name = "runebender"
-path = "src/main.rs"
-required-features = ["application"]
-
-[features]
-default = ["application"]
-application = [
-    "dep:base64",
-    "dep:clap",
-    "dep:copypasta",
-    "dep:image",
-    "dep:imaging_vello_cpu",
-    "dep:masonry",
-    "dep:muda",
-    "dep:notify",
-    "dep:regex",
-    "dep:rfd",
-    "dep:tokio",
-    "dep:winit",
-    "dep:xilem",
-]
-
-[lints]
-workspace = true
-
-[dependencies]
-# Upstream Xilem, pinned so framework changes remain deliberate and reviewable.
-xilem = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a", optional = true }
-masonry = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a", optional = true }
-# Command parsing and MCP proof encoding belong to the application.
-clap = { version = "4", features = ["derive"], optional = true }
-base64 = { version = "0.22.1", optional = true }
-# Font data and geometry.
-norad = "0.18"
-# Shared variable document and in-memory fontc compilation. UFO persistence uses
-# our preserving Norad adapter rather than Babelfont's narrowing UFO converter.
-babelfont = { git = "https://github.com/simoncozens/babelfont-rs", rev = "29bdedbbfa7d3150b651dbd7c94fce6b79677ca4", default-features = false, features = ["types", "glyphs", "fontir"] }
-# Coordinate types for the private Babelfont adapter; already required by Babelfont.
-fontdrasil = "=1.0.0"
-# Compile our UFO-derived Babelfont source without Glyphs-specific FEA rewrites.
-fontc = { version = "=1.0.0", default-features = false }
-kurbo = "0.13"
-linesweeper = "0.4"
-# Share the outline reader already used by Babelfont's compiler adapters.
-skrifa = "0.46.2"
-# Imports Glyphs sources and traces images into editable outlines.
-glyphslib = "0.2.7"
-img2bez = { git = "https://github.com/eliheuer/img2bez", rev = "80bdb2e6d0226449a5e9bf05a49b3339276020c8", default-features = false }
-plist = { version = "1.4", features = ["serde"] }
-quick-xml = { version = "0.41", features = ["serialize"] }
-# Structured font metadata and agent contracts.
-serde = { version = "1.0", features = ["derive"] }
-schemars = "1.2"
-sha2 = "0.10"
-# Typed values in a nodes file, which the font engine keeps as JSON.
-regex = { version = "1", optional = true }
-serde_json = "1"
-# Text classification, feature compilation, bidi, and Harfrust shaping.
-unicode-general-category = "0.6"
-unicode-normalization = "0.1"
-unicode-bidi = { version = "0.3.18", default-features = false, features = ["hardcoded-data"] }
-# Keep shaping's feature compiler and table writer aligned with fontc 1.0.
-fea-rs = "=1.0.0"
-harfrust = "0.5"
-write-fonts = "0.52"
-# The hyperbezier solver still uses spline's Kurbo 0.9 API.
-kurbo_09 = { package = "kurbo", version = "0.9.5" }
-spline = { git = "https://github.com/linebender/spline", rev = "83f46cbfebb1f5d6042059c867719c0010073d42" }
-# System text clipboard for the glyph-grid Copy as Text command.
-copypasta = { version = "0.10.2", optional = true }
-winit = { version = "0.30", optional = true }
-# Reload when the font sources change on disk.
-notify = { version = "8", optional = true }
-# Cross-platform native file and folder prompts for File, Nodes, and image
-# commands. Xilem/winit intentionally do not supply dialog APIs.
-rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"], optional = true }
-# Headless rendering, for review screenshots and for agents to see their
-# own output. Upstream Xilem has no such path, so this is application-side.
-tokio = { version = "1", features = ["rt", "time"], optional = true }
-# The headless renderer. masonry_testing would be less code, but it
-# builds its RenderRoot with system fonts turned off, so screenshots of
-# anything outside the default font come out blank. See src/screenshot.rs.
-imaging_vello_cpu = { version = "0.0.1", optional = true }
-# Writing the screenshot. PNG is the only format it needs.
-image = { version = "0.25", default-features = false, features = ["png"], optional = true }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-# macOS owns its menu bar at the application level. Linux and Windows use the
-# in-window menu and must not initialize muda's global native event channel.
-muda = { version = "0.19", optional = true }
-
-[dev-dependencies]
-# Still the right tool for widget tests, where a fixed font and no system
-# fonts is exactly what you want. Just not for screenshots of the application.
-masonry_testing = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a" }
-syn = { version = "2.0.119", features = ["full", "visit"] }
-
-[profile.release]
-lto = "thin"
-codegen-units = 1

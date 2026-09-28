@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="behDotless-ar.medi" format="2">
+	<advance width="408"/>
+	<outline>
+		<contour>
+			<point x="64" y="0" type="curve" smooth="yes"/>
+			<point x="0" y="0" type="line"/>
+			<point x="-16" y="16" type="line"/>
+			<point x="-16" y="80" type="line"/>
+			<point x="0" y="96" type="line"/>
+			<point x="64" y="96" type="line" smooth="yes"/>
+			<point x="128" y="96"/>
+			<point x="160" y="128"/>
+			<point x="160" y="192" type="curve" smooth="yes"/>
+			<point x="160" y="320" type="line"/>
+			<point x="176" y="336" type="line"/>
+			<point x="232" y="336" type="line"/>
+			<point x="248" y="320" type="line"/>
+			<point x="248" y="192" type="line" smooth="yes"/>
+			<point x="248" y="128"/>
+			<point x="280" y="96"/>
+			<point x="344" y="96" type="curve" smooth="yes"/>
+			<point x="408" y="96" type="line"/>
+			<point x="408" y="0" type="line"/>
+			<point x="344" y="0" type="line" smooth="yes"/>
+			<point x="280" y="0"/>
+			<point x="248" y="0"/>
+			<point x="216" y="64" type="curve"/>
+			<point x="208" y="64" type="line"/>
+			<point x="176" y="0"/>
+			<point x="128" y="0"/>
+		</contour>
+	</outline>
+	<anchor name="bottomDots" x="204" y="8"/>
+	<anchor name="top" x="204" y="420"/>
+	<anchor name="topDots" x="204" y="320"/>
+	<anchor name="bottom" x="216" y="-8"/>
+	<lib>
+		<dict>
+			<key>com.runebender.markLabel</key>
+			<string>green</string>
+			<key>public.markColor</key>
+			<string>0.09,0.72,0.44,1</string>
+		</dict>
+	</lib>
+</glyph>

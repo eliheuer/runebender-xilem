@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="wasla-ar" format="2">
+	<advance width="224"/>
+	<outline>
+		<contour>
+			<point x="112" y="848" type="curve" smooth="yes"/>
+			<point x="64" y="848"/>
+			<point x="24" y="808"/>
+			<point x="24" y="760" type="curve" smooth="yes"/>
+			<point x="24" y="712"/>
+			<point x="64" y="672"/>
+			<point x="112" y="672" type="curve" smooth="yes"/>
+			<point x="160" y="672"/>
+			<point x="200" y="712"/>
+			<point x="200" y="760" type="curve" smooth="yes"/>
+			<point x="200" y="808"/>
+			<point x="160" y="848"/>
+		</contour>
+		<contour>
+			<point x="112" y="792" type="curve" smooth="yes"/>
+			<point x="130" y="792"/>
+			<point x="144" y="778"/>
+			<point x="144" y="760" type="curve" smooth="yes"/>
+			<point x="144" y="742"/>
+			<point x="130" y="728"/>
+			<point x="112" y="728" type="curve" smooth="yes"/>
+			<point x="94" y="728"/>
+			<point x="80" y="742"/>
+			<point x="80" y="760" type="curve" smooth="yes"/>
+			<point x="80" y="778"/>
+			<point x="94" y="792"/>
+		</contour>
+	</outline>
+	<anchor name="bottom" x="112" y="672"/>
+	<anchor name="bottomDots" x="112" y="672"/>
+	<anchor name="topDots" x="112" y="848"/>
+	<anchor name="top" x="112" y="896"/>
+	<anchor name="_top" x="112" y="560"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

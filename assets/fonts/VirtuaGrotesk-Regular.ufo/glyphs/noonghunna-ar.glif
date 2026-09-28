@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="noonghunna-ar" format="2">
+	<unicode hex="06BA"/>
+	<advance width="680"/>
+	<outline>
+		<contour>
+			<point x="64" y="144" type="line" smooth="yes"/>
+			<point x="64" y="-48"/>
+			<point x="148" y="-160"/>
+			<point x="340" y="-160" type="curve" smooth="yes"/>
+			<point x="532" y="-160"/>
+			<point x="616" y="-48"/>
+			<point x="616" y="144" type="curve" smooth="yes"/>
+			<point x="616" y="272" type="line"/>
+			<point x="600" y="288" type="line"/>
+			<point x="536" y="288" type="line"/>
+			<point x="520" y="272" type="line"/>
+			<point x="520" y="144" type="line" smooth="yes"/>
+			<point x="520" y="0"/>
+			<point x="428" y="-56"/>
+			<point x="340" y="-56" type="curve" smooth="yes"/>
+			<point x="252" y="-56"/>
+			<point x="160" y="0"/>
+			<point x="160" y="144" type="curve" smooth="yes"/>
+			<point x="160" y="272" type="line"/>
+			<point x="144" y="288" type="line"/>
+			<point x="80" y="288" type="line"/>
+			<point x="64" y="272" type="line"/>
+		</contour>
+	</outline>
+	<anchor name="top" x="340" y="272"/>
+	<anchor name="topDots" x="340" y="288"/>
+	<anchor name="bottom" x="340" y="-176"/>
+	<anchor name="bottomDots" x="340" y="-176"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0.09,0.72,0.44,1</string>
+		</dict>
+	</lib>
+</glyph>

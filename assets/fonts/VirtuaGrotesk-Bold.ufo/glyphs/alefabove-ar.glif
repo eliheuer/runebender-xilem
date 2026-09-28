@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="alefabove-ar" format="2">
+	<unicode hex="0670"/>
+	<outline>
+		<contour>
+			<point x="52" y="660" type="line"/>
+			<point x="172" y="660" type="line"/>
+			<point x="172" y="908" type="line"/>
+			<point x="52" y="908" type="line"/>
+		</contour>
+	</outline>
+	<anchor name="bottom" x="112" y="660"/>
+	<anchor name="bottomDots" x="112" y="660"/>
+	<anchor name="topDots" x="112" y="908"/>
+	<anchor name="top" x="112" y="956"/>
+	<anchor name="_top" x="112" y="548"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

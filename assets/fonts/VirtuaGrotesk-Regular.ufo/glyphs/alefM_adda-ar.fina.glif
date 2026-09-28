@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="alefMadda-ar.fina" format="2">
+	<advance width="256"/>
+	<outline>
+		<component base="alef-ar.fina"/>
+		<component base="madda-ar" xOffset="-28" yOffset="168"/>
+	</outline>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

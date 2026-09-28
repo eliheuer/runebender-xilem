@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="V" format="2">
+	<unicode hex="0056"/>
+	<advance width="756"/>
+	<outline>
+		<contour>
+			<point x="242" y="16" type="line"/>
+			<point x="258" y="0" type="line"/>
+			<point x="498" y="0" type="line"/>
+			<point x="514" y="16" type="line"/>
+			<point x="724" y="696" type="line"/>
+			<point x="724" y="752" type="line"/>
+			<point x="708" y="768" type="line"/>
+			<point x="532" y="768" type="line"/>
+			<point x="516" y="752" type="line"/>
+			<point x="390" y="312" type="line"/>
+			<point x="382" y="312" type="line"/>
+			<point x="256" y="752" type="line"/>
+			<point x="240" y="768" type="line"/>
+			<point x="48" y="768" type="line"/>
+			<point x="32" y="752" type="line"/>
+			<point x="32" y="696" type="line"/>
+		</contour>
+	</outline>
+	<anchor name="bottom" x="378" y="0"/>
+	<anchor name="top" x="378" y="768"/>
+	<lib>
+		<dict>
+			<key>org.fontgarden.transfer</key>
+			<string>glyph-transfer v2 lambda 1.0 &lt;- image crop-V.png</string>
+			<key>public.markColor</key>
+			<string>0.09,0.72,0.44,1</string>
+		</dict>
+	</lib>
+</glyph>

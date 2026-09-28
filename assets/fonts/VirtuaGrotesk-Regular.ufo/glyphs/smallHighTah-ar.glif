@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="smallHighTah-ar" format="2">
+	<unicode hex="0615"/>
+	<outline>
+		<contour>
+			<point x="96" y="688" type="line"/>
+			<point x="192" y="688" type="line"/>
+			<point x="192" y="848" type="line"/>
+			<point x="96" y="848" type="line"/>
+		</contour>
+		<contour>
+			<point x="48" y="848" type="line"/>
+			<point x="240" y="848" type="line"/>
+			<point x="240" y="848" type="line"/>
+			<point x="240" y="912" type="line"/>
+			<point x="240" y="912" type="line"/>
+			<point x="48" y="912" type="line"/>
+			<point x="48" y="912" type="line"/>
+			<point x="48" y="848" type="line"/>
+		</contour>
+	</outline>
+	<anchor name="bottom" x="144" y="688"/>
+	<anchor name="bottomDots" x="144" y="688"/>
+	<anchor name="topDots" x="144" y="912"/>
+	<anchor name="top" x="144" y="960"/>
+	<anchor name="_top" x="144" y="576"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

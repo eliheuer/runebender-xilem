@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="smallHighZain-ar" format="2">
+	<unicode hex="0617"/>
+	<outline>
+		<contour>
+			<point x="94" y="660" type="line"/>
+			<point x="194" y="660" type="line"/>
+			<point x="228" y="696" type="line"/>
+			<point x="228" y="840" type="line"/>
+			<point x="194" y="876" type="line"/>
+			<point x="94" y="876" type="line"/>
+			<point x="60" y="840" type="line"/>
+			<point x="60" y="696" type="line"/>
+		</contour>
+		<contour>
+			<point x="76" y="852" type="line"/>
+			<point x="212" y="852" type="line"/>
+			<point x="212" y="852" type="line"/>
+			<point x="212" y="972" type="line"/>
+			<point x="212" y="972" type="line"/>
+			<point x="76" y="972" type="line"/>
+			<point x="76" y="972" type="line"/>
+			<point x="76" y="852" type="line"/>
+		</contour>
+	</outline>
+	<anchor name="bottom" x="144" y="660"/>
+	<anchor name="bottomDots" x="144" y="660"/>
+	<anchor name="topDots" x="144" y="972"/>
+	<anchor name="top" x="144" y="1020"/>
+	<anchor name="_top" x="144" y="548"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

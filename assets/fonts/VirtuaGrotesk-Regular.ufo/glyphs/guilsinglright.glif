@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="guilsinglright" format="2">
+	<unicode hex="203A"/>
+	<advance width="600"/>
+	<outline>
+		<contour>
+			<point x="132" y="568" type="line"/>
+			<point x="64" y="500" type="line"/>
+			<point x="220" y="372" type="line"/>
+			<point x="64" y="244" type="line"/>
+			<point x="132" y="176" type="line"/>
+			<point x="352" y="340" type="line"/>
+			<point x="352" y="404" type="line"/>
+		</contour>
+	</outline>
+	<lib>
+		<dict>
+			<key>com.runebender.markLabel</key>
+			<string>purple</string>
+			<key>public.markColor</key>
+			<string>0.54,0.44,0.88,1</string>
+		</dict>
+	</lib>
+</glyph>

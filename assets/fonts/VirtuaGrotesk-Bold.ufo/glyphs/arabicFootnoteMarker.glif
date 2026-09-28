@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="arabicFootnoteMarker" format="2">
+	<unicode hex="0602"/>
+	<outline>
+		<contour>
+			<point x="-212" y="620" type="line"/>
+			<point x="-62" y="470" type="line"/>
+			<point x="24" y="524" type="line"/>
+			<point x="110" y="470" type="line"/>
+			<point x="212" y="572" type="line"/>
+			<point x="62" y="722" type="line"/>
+			<point x="-24" y="668" type="line"/>
+			<point x="-110" y="722" type="line"/>
+		</contour>
+	</outline>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>1,0.29,0.24,1</string>
+		</dict>
+	</lib>
+</glyph>

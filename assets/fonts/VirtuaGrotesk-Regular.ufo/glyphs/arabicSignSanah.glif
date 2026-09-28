@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="arabicSignSanah" format="2">
+	<unicode hex="0601"/>
+	<outline>
+		<contour>
+			<point x="-156" y="544" type="line"/>
+			<point x="-84" y="600" type="line"/>
+			<point x="84" y="600" type="line"/>
+			<point x="156" y="544" type="line"/>
+			<point x="96" y="656" type="line"/>
+			<point x="-96" y="656" type="line"/>
+		</contour>
+	</outline>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>1,0.29,0.24,1</string>
+		</dict>
+	</lib>
+</glyph>

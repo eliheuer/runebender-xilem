@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="hamzaaboveDammatan-ar" format="2">
+	<outline>
+		<component base="hamzaabove-ar"/>
+		<component base="damma-ar" xOffset="-118" yOffset="102"/>
+		<component base="damma-ar" xOffset="-118" yOffset="32"/>
+	</outline>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

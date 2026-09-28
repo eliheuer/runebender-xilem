@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="imacron" format="2">
+	<unicode hex="012B"/>
+	<advance width="248"/>
+	<outline>
+		<component base="idotless"/>
+		<component base="macron" xOffset="-56"/>
+	</outline>
+	<lib>
+		<dict>
+			<key>com.runebender.markLabel</key>
+			<string>pink</string>
+			<key>public.markColor</key>
+			<string>0.9,0.42,0.67,1</string>
+		</dict>
+	</lib>
+</glyph>

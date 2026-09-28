@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="dateSeparator-ar" format="2">
+	<unicode hex="060D"/>
+	<advance width="256"/>
+	<outline>
+		<contour>
+			<point x="96" y="0" type="line"/>
+			<point x="160" y="0" type="line"/>
+			<point x="160" y="0" type="line"/>
+			<point x="160" y="640" type="line"/>
+			<point x="160" y="640" type="line"/>
+			<point x="96" y="640" type="line"/>
+			<point x="96" y="640" type="line"/>
+			<point x="96" y="0" type="line"/>
+		</contour>
+	</outline>
+	<anchor name="bottom" x="128" y="0"/>
+	<anchor name="top" x="128" y="640"/>
+	<anchor name="bottomDots" x="128" y="0"/>
+	<anchor name="topDots" x="128" y="640"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

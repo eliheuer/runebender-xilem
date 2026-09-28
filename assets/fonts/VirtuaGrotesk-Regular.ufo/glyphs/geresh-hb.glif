@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="geresh-hb" format="2">
+	<unicode hex="05F3"/>
+	<advance width="200"/>
+	<outline>
+		<contour>
+			<point x="78" y="486" type="line"/>
+			<point x="186" y="784" type="line"/>
+			<point x="80" y="784" type="line"/>
+			<point x="14" y="486" type="line"/>
+		</contour>
+	</outline>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0.27,0.44,1,1</string>
+		</dict>
+	</lib>
+</glyph>

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="kaf-ar.init" format="2">
+	<advance width="736"/>
+	<outline>
+		<contour>
+			<point x="0" y="0" type="line"/>
+			<point x="528" y="0" type="line" smooth="yes"/>
+			<point x="656" y="0"/>
+			<point x="736" y="72"/>
+			<point x="736" y="200" type="curve" smooth="yes"/>
+			<point x="736" y="328"/>
+			<point x="656" y="384"/>
+			<point x="528" y="384" type="curve" smooth="yes"/>
+			<point x="320" y="384" type="line" smooth="yes"/>
+			<point x="256" y="384"/>
+			<point x="224" y="432"/>
+			<point x="224" y="480" type="curve" smooth="yes"/>
+			<point x="224" y="528"/>
+			<point x="256" y="576"/>
+			<point x="320" y="576" type="curve" smooth="yes"/>
+			<point x="560" y="576" type="line"/>
+			<point x="576" y="592" type="line"/>
+			<point x="576" y="664" type="line"/>
+			<point x="560" y="680" type="line"/>
+			<point x="336" y="680" type="line" smooth="yes"/>
+			<point x="208" y="680"/>
+			<point x="128" y="616"/>
+			<point x="128" y="488" type="curve" smooth="yes"/>
+			<point x="128" y="360"/>
+			<point x="208" y="296"/>
+			<point x="336" y="296" type="curve" smooth="yes"/>
+			<point x="544" y="296" type="line" smooth="yes"/>
+			<point x="608" y="296"/>
+			<point x="640" y="248"/>
+			<point x="640" y="200" type="curve" smooth="yes"/>
+			<point x="640" y="152"/>
+			<point x="610" y="104"/>
+			<point x="544" y="104" type="curve" smooth="yes"/>
+			<point x="0" y="104" type="line"/>
+			<point x="-16" y="88" type="line"/>
+			<point x="-16" y="16" type="line"/>
+		</contour>
+	</outline>
+	<anchor name="bottomDots" x="296" y="-24"/>
+	<anchor name="topDots" x="288" y="680"/>
+	<anchor name="top" x="288" y="704"/>
+	<anchor name="bottom" x="296" y="0"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

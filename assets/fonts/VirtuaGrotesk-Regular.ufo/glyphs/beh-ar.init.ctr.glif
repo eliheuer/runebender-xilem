@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="beh-ar.init.ctr" format="2">
+	<advance width="288"/>
+	<outline>
+		<component base="behDotless-ar.init"/>
+		<component base="dotbelow-ar" xOffset="-112" identifier="c7f1a2e0-0001-4000-8000-000000000001"/>
+	</outline>
+	<lib>
+		<dict>
+			<key>com.runebender.markLabel</key>
+			<string>green</string>
+			<key>public.markColor</key>
+			<string>0.09,0.72,0.44,1</string>
+			<key>public.objectLibs</key>
+			<dict>
+				<key>c7f1a2e0-0001-4000-8000-000000000001</key>
+				<dict>
+					<key>com.glyphsapp.component.alignment</key>
+					<integer>-1</integer>
+				</dict>
+			</dict>
+		</dict>
+	</lib>
+</glyph>

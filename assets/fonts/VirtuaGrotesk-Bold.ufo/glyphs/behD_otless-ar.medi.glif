@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="behDotless-ar.medi" format="2">
+	<advance width="484"/>
+	<outline>
+		<contour>
+			<point x="96" y="0" type="curve" smooth="yes"/>
+			<point x="0" y="0" type="line"/>
+			<point x="-16" y="16" type="line"/>
+			<point x="-16" y="160" type="line"/>
+			<point x="0" y="176" type="line"/>
+			<point x="96" y="176" type="line" smooth="yes"/>
+			<point x="134" y="176"/>
+			<point x="156" y="136"/>
+			<point x="156" y="200" type="curve" smooth="yes"/>
+			<point x="156" y="336" type="line"/>
+			<point x="190" y="372" type="line"/>
+			<point x="290" y="372" type="line"/>
+			<point x="324" y="336" type="line"/>
+			<point x="324" y="200" type="line" smooth="yes"/>
+			<point x="314" y="156"/>
+			<point x="320" y="176"/>
+			<point x="384" y="176" type="curve" smooth="yes"/>
+			<point x="516" y="176" type="line"/>
+			<point x="516" y="0" type="line"/>
+			<point x="384" y="0" type="line" smooth="yes"/>
+			<point x="326" y="0"/>
+			<point x="246" y="-6"/>
+			<point x="252" y="60" type="curve"/>
+			<point x="244" y="60" type="line"/>
+			<point x="218" y="-22"/>
+			<point x="160" y="0"/>
+		</contour>
+	</outline>
+	<anchor name="bottomDots" x="240" y="24"/>
+	<anchor name="top" x="240" y="420"/>
+	<anchor name="topDots" x="240" y="432"/>
+	<anchor name="bottom" x="208" y="-8"/>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0.09,0.72,0.44,1</string>
+		</dict>
+	</lib>
+</glyph>

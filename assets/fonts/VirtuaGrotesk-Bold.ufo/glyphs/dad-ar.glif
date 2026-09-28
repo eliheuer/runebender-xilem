@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="dad-ar" format="2">
+	<unicode hex="0636"/>
+	<advance width="1840"/>
+	<outline>
+		<component base="sad-ar"/>
+		<component base="dotabove-ar" xOffset="1052" yOffset="-112"/>
+	</outline>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0,0.67,0.91,1</string>
+		</dict>
+	</lib>
+</glyph>

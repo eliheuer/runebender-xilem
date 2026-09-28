@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="gimeldagesh-hb" format="2">
+	<unicode hex="FB32"/>
+	<advance width="380"/>
+	<outline>
+		<contour>
+			<point x="366" y="0" type="line"/>
+			<point x="260" y="460" type="line"/>
+			<point x="260" y="531"/>
+			<point x="213" y="576"/>
+			<point x="132" y="576" type="curve" smooth="yes"/>
+			<point x="46" y="576" type="line"/>
+			<point x="46" y="498" type="line"/>
+			<point x="106" y="498" type="line" smooth="yes"/>
+			<point x="158" y="498"/>
+			<point x="188" y="478"/>
+			<point x="188" y="402" type="curve"/>
+			<point x="214" y="300" type="line"/>
+			<point x="158" y="284" type="line" smooth="yes"/>
+			<point x="78" y="259"/>
+			<point x="40" y="208"/>
+			<point x="40" y="132" type="curve"/>
+			<point x="14" y="0" type="line"/>
+			<point x="102" y="0" type="line"/>
+			<point x="120" y="98" type="line"/>
+			<point x="120" y="152"/>
+			<point x="164" y="236"/>
+			<point x="228" y="236" type="curve"/>
+			<point x="282" y="0" type="line"/>
+		</contour>
+		<contour>
+			<point x="80" y="330" type="curve" smooth="yes"/>
+			<point x="100" y="330"/>
+			<point x="116" y="346"/>
+			<point x="116" y="366" type="curve" smooth="yes"/>
+			<point x="116" y="387"/>
+			<point x="100" y="404"/>
+			<point x="78" y="404" type="curve" smooth="yes"/>
+			<point x="58" y="404"/>
+			<point x="42" y="388"/>
+			<point x="42" y="366" type="curve" smooth="yes"/>
+			<point x="42" y="346"/>
+			<point x="58" y="330"/>
+		</contour>
+	</outline>
+	<lib>
+		<dict>
+			<key>public.markColor</key>
+			<string>0.27,0.44,1,1</string>
+		</dict>
+	</lib>
+</glyph>
