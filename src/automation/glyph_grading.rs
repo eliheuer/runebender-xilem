@@ -20,6 +20,9 @@ use crate::font::project::Project;
 use crate::font::variable::{GlyphLayerAddress, LayerId, SourceId};
 use crate::ui::theme::ufo_rgba_for_label;
 
+// Existing approved Arabic drawings use this saved value, predating the current UFO palette.
+const LEGACY_GREEN_UFO_RGBA: &str = "0.09,0.72,0.44,1";
+
 /// Human grade interpreted as an automation permission, never assigned by this helper.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -205,12 +208,16 @@ fn grade(layer: LayerView<'_>) -> GlyphGrade {
     match (label, color) {
         (Some(label), Some(color)) => {
             let grade = GlyphGrade::from_label(label);
-            if grade != GlyphGrade::Unknown && canonical_color(label) == Some(color) {
+            if grade != GlyphGrade::Unknown
+                && (canonical_color(label) == Some(color)
+                    || (grade == GlyphGrade::Green && color == legacy_green_color()))
+            {
                 grade
             } else {
                 GlyphGrade::Unknown
             }
         }
+        (None, Some(color)) if color == legacy_green_color() => GlyphGrade::Green,
         (None, Some(color)) => ["red", "orange", "yellow", "green", "blue", "purple", "pink"]
             .into_iter()
             .find(|label| canonical_color(label) == Some(color))
@@ -218,6 +225,10 @@ fn grade(layer: LayerView<'_>) -> GlyphGrade {
             .unwrap_or(GlyphGrade::Unknown),
         _ => GlyphGrade::Unknown,
     }
+}
+
+fn legacy_green_color() -> MarkColor {
+    MarkColor::parse(LEGACY_GREEN_UFO_RGBA).expect("checked legacy green palette value")
 }
 
 fn canonical_color(label: &str) -> Option<MarkColor> {
@@ -417,6 +428,115 @@ mod tests {
         assert_eq!(
             grade(project.document_layer("unmarked", &layer).unwrap()),
             GlyphGrade::Unknown
+        );
+    }
+
+    #[test]
+    fn exact_legacy_green_is_frozen_reference_even_without_label() {
+        let mut font = norad::Font::new();
+        for (name, label, color) in [
+            ("red", Some("red"), "1,0,0,1"),
+            ("legacy_label", Some("green"), LEGACY_GREEN_UFO_RGBA),
+            ("legacy_color_only", None, LEGACY_GREEN_UFO_RGBA),
+            ("conflict", Some("red"), LEGACY_GREEN_UFO_RGBA),
+        ] {
+            let mut glyph = norad::Glyph::new(name);
+            glyph.width = 400.0;
+            glyph.lib.insert(
+                crate::font::model::glyph_metadata::MARK_COLOR_KEY.into(),
+                plist::Value::String(color.into()),
+            );
+            if let Some(label) = label {
+                glyph.lib.insert(
+                    crate::font::model::glyph_metadata::MARK_LABEL_KEY.into(),
+                    plist::Value::String(label.into()),
+                );
+            }
+            if name != "red" {
+                glyph.contours.push(norad::Contour::new(
+                    [(10.0, 0.0), (80.0, 0.0), (80.0, 110.0), (10.0, 110.0)]
+                        .into_iter()
+                        .map(|(x, y)| {
+                            norad::ContourPoint::new(
+                                x,
+                                y,
+                                norad::PointType::Line,
+                                false,
+                                None,
+                                None,
+                            )
+                        })
+                        .collect(),
+                    None,
+                ));
+            }
+            font.default_layer_mut().insert_glyph(glyph);
+        }
+        let project = Project::from_source(crate::font::project::SourceInput::from_font(
+            font,
+            std::env::temp_dir().join("legacy-green-policy.ufo"),
+        ));
+        let layer = project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
+        let legacy = legacy_green_color();
+        for glyph in ["legacy_label", "legacy_color_only"] {
+            let layer_view = project.document_layer(glyph, &layer).unwrap();
+            assert_eq!(layer_view.mark_color().unwrap(), Some(legacy));
+            let actual = grade(layer_view);
+            assert_eq!(actual, GlyphGrade::Green);
+            assert!(actual.is_reference());
+            assert!(!actual.permits_replacement());
+            let reference = GradingReferenceRequest {
+                guard: guard(&project, glyph),
+                rationale: "Approved Arabic joining and stroke reference".into(),
+            };
+            assert!(
+                capture_replacement_context(
+                    &project,
+                    SourceId(0),
+                    &guard(&project, "red"),
+                    &[reference]
+                )
+                .is_ok()
+            );
+            assert!(
+                capture_replacement_context(
+                    &project,
+                    SourceId(0),
+                    &guard(&project, glyph),
+                    &[GradingReferenceRequest {
+                        guard: guard(
+                            &project,
+                            if glyph == "legacy_label" {
+                                "legacy_color_only"
+                            } else {
+                                "legacy_label"
+                            },
+                        ),
+                        rationale: "Other approved Arabic stroke reference".into(),
+                    }]
+                )
+                .is_err()
+            );
+        }
+        assert_eq!(
+            grade(project.document_layer("conflict", &layer).unwrap()),
+            GlyphGrade::Unknown
+        );
+        let reference = GradingReferenceRequest {
+            guard: guard(&project, "conflict"),
+            rationale: "Conflicting red label must not become an approved reference".into(),
+        };
+        assert!(
+            capture_replacement_context(
+                &project,
+                SourceId(0),
+                &guard(&project, "red"),
+                &[reference]
+            )
+            .is_err()
         );
     }
 

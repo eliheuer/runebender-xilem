@@ -1,6 +1,6 @@
 # Virtua Regular AI workflow checklist
 
-Status: B1-B3 and C1-C3 validated; D1 validated; D2 adapter offline-validated; real trial pending; trial preflight complete, target preference requested.
+Status: B1-B3 and C1-C3 validated; D1 validated; D2 real local inference completed but drawing failed visual inspection; connected local candidate transport pending.
 Created: 2026-09-28.
 Coordinator: this Codex task, with Astra owning architecture and integration review.
 Worktree: /Users/eli/.codex/worktrees/virtua-regular-ai/runebender-xilem.
@@ -409,3 +409,36 @@ Limits: installed runner fits an ink box rather than C2 full-image calibration; 
 No actual inference or font edits occurred.
 Next bounded Sol assignment is read-only fresh post-grading trial preparation: eligible red Regular Arabic target shortlist, explicit green/purple related references, and existing suitable sketch input if present.
 Do not choose or edit font sources, run models, or treat model scores as approval; return concrete trial recommendations to coordinator before execution.
+
+### First real-trial selection and palette correction
+Coordinator selects red Regular kaf-ar.medi for a scratch-only trial, with medial context مكتبة.
+Fresh worker inventory at Virtua d3184df9abfb4fedce16dd9f5b075324132847c7 finds target width 808, two contours, 68 points and four anchors.
+Closest approved references: kaf-ar.init and kaf-ar.fina; lam-ar.medi supplies joining context.
+These green-labeled references use legacy 0.09,0.72,0.44,1, already recognized by existing theme regression tests, but D1 exact current-palette matching rejects them.
+Sol owns a narrow D1 compatibility correction: recognize this documented exact legacy green alias without hue-nearest authorization, keep unknown/conflicting labels rejected, add regression coverage.
+No source recoloring, permission widening to red-like hues, or source edits.
+After corrected reference capture, prepare a scratch input from the red target as a model smoke test, not a claim that its existing flawed shape is good.
+Suggested 512-square calibration: 2 font units per pixel, left boundary -112, pixel baseline 400, font baseline 0; measure actual raster ink bounds.
+Use concrete runs/sketchpre checkpoint; no Bold edits or direct --install.
+Original checkout had unrelated notdef.glif plus documentation changes; preserve all.
+
+### Scratch trial preparation, legacy test pending
+Scratch Regular source copied read-only from original to /private/tmp/runebender-kaf-trial-sjiv0m10/VirtuaGrotesk-Regular.ufo, with source-manifest.json recording each copied file SHA-256.
+Temporary reviewed driver: /private/tmp/runebender-kaf-d2-trial-driver/src/main.rs; not executed yet.
+Legacy palette test failed at glyph_grading.rs457 with InvalidLayerMetadata while constructing legacy/conflicting metadata through the strict editor setter; two other grading tests passed.
+Sol is correcting the fixture to use the import/preservation path rather than weakening setter or grading policy.
+No Cargo job or inference remains active; real D2 result still pending.
+
+### First real local inference: execution passes, drawing fails
+The exact legacy-green import regression now passes: `cargo test --locked --lib automation::glyph_grading -- --test-threads=1` passed 3 tests.
+All-target Clippy with warnings denied, cargo fmt check, git diff check and `cargo build --lib --locked` passed with the shared target and two build jobs.
+The temporary driver linked the repository locked library directly; no standalone dependency resolution was used for the actual run.
+One scratch-only sketchpre inference completed with seed 20260928, temperature 0, one candidate and a 120-second process deadline.
+Result: /private/tmp/runebender-kaf-trial-sjiv0m10/result-01/candidate.json; runtime/checkpoint/input identities and grading context are retained alongside it.
+The input was the existing red drawing rasterized as a smoke test, not a newly approved sketch; references were captured but the installed model does not consume them at inference.
+Output contains one contour and 159 points; script score -8.653044521870807 is not aesthetic evidence.
+Coordinator rendered candidate.svg/candidate.png from the returned vector points and inspected it: tangled overlapping geometry, lost medial kaf structure, unusable as a replacement.
+No Apply, source save, color change, training, download or second inference occurred.
+D2 stays unchecked: execution is demonstrated, useful output and connected candidate workflow are not yet demonstrated.
+Sol owns the bounded local-sketch-to-existing-node-candidate integration and offline lifecycle tests; no Cargo, inference, commits or checklist edits.
+Next design trial should use a better sketch or reference-conditioned alternative, rather than blindly rerunning this checkpoint.
