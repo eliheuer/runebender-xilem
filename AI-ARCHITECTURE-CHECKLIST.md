@@ -70,20 +70,23 @@ Trusted local Python is not an OS sandbox; do not imply otherwise.
 - [ ] B2. Centralize transport-facing schemas, result contracts, and effect metadata while preserving strongly typed engine APIs.
   Initial consumed descriptor slice integrated as 0380293: per-surface effects, shared host input schemas, and concrete result schemas for project_info, editor_connect, editor_sessions, and export_proof.
   CLI discovery exposes the same descriptors through opt-in agent tools --contracts; default assistant tool payloads remain compatible.
-  Keep this gate open until the guarded edit/receipt, proof-job, and graph result contracts have typed ownership and comprehensive schema coverage.
+  Proof-job result contracts are integrated as 7a8e80e with typed lifecycle payloads, shared generated schemas, and real MCP decoding checks.
+  Keep this gate open until guarded edit/receipt and graph result contracts have typed ownership and comprehensive schema coverage.
   Unverified output schemas remain absent rather than advertising a generic object as a complete contract.
 - [x] B3. Return structured MCP results and truthful schemas/annotations, preserving text and proof images for compatibility.
   Integrated as 0380293 with negotiated protocol feature gates and one shared metadata value for text and structuredContent.
   Verified CLI/MCP success/error parity, four supported protocol versions plus fallback, proof image separation, existing retry/cancellation regressions, and real application proof/edit fixtures.
-  Output schemas are deliberately limited to the verified discovery/export subset tracked in B2; this is not certification of every MCP feature.
+  Output schemas cover the verified discovery/export and proof-job subsets tracked in B2; this is not certification of every MCP feature.
 - [ ] B4. Extend recipe captures to useful outline operations and provide guarded structural editing for shape generators.
   Verify exact retries, stale reads, full-batch rejection, dependent glyph invalidation, and one-step undo.
 - [x] B5. Remove identified reverse dependencies: engine mark metadata must not depend on loading a UI theme; live workflows must call typed engine operations rather than a transport dispatcher.
   Integrated as 0ca60b6 with raw canonical mark values, application palette resolution, typed workflow application, and dependency-direction regression checks.
   Verified: 979 native tests, strict Clippy, browser release build and quality matrix, plus inspected Gray/Light headless captures.
 
-- [ ] B6. Preserve explicit source creation timestamps at the canonical metadata/import boundary and define a deterministic absent-date fallback.
-  Verify repeat open/compile behavior separately from same-snapshot compiler determinism.
+- [x] B6. Preserve explicit source creation timestamps at the canonical metadata/import boundary and define a deterministic absent-date fallback.
+  Integrated as 837c300 with raw canonical per-source dates, strict compiler validation, and a fixed 2000-01-01 UTC compilation fallback for undated sources.
+  File > New Font records its intentional creation time once; compiling an undated import does not add a source date.
+  Verified independent UFO reopen/compile byte equality, exact date import/export, default-source selection, malformed-date rejection, and unchanged source bytes.
 
 ### C. Make worker execution consistent
 
@@ -159,12 +162,13 @@ Keep small typed Rust APIs at these boundaries; transport schemas and registries
 | Assistant and model providers | `application/editor/tools/chat.rs`, `application/editor/tools/local_ai.rs` | Keep assistant conversations separate from model-worker jobs; host adapters own credentials, process/network calls and sendable context; results share validated artifact/proposal routes. |
 
 The initial shared-operation slices remove the live workflow's call into the JSON transport dispatcher and provide result/effect descriptors consumed by CLI discovery and MCP.
-B2 still requires complete typed contracts for guarded edits, receipts, proof jobs and graph operations.
+B2 still requires complete typed contracts for guarded edits, receipts and graph operations; proof-job contracts now have typed ownership.
 The structural-edit slice must prove generated contours can preview, reject stale input, apply atomically and undo before expanding provider integration.
 The cache fix hashes full UFO inputs conservatively; precise dependency-aware caching is a later performance improvement, not a prerequisite for correctness.
 Compiler timestamp normalization covers repeated builds of the same captured Babelfont input.
-A separate metadata follow-up is required before claiming reproducibility across reopening source files: canonical UFO import currently retains `openTypeHeadCreated` in source-format preservation but does not map it into `font.date`, and an undated import samples its creation fallback on load.
-Resolve that at the canonical import/metadata boundary, not with a compiler-only UFO projection workaround.
+B6 additionally preserves exact canonical `openTypeHeadCreated` values and maps the default source date into `font.date`.
+Undated sources use a fixed compilation-only date while remaining undated in source metadata.
+Independent UFO reopening and compilation are verified separately from same-capture determinism; this is not a blanket guarantee of byte reproducibility across every compiler version or platform.
 
 ## Execution record
 
@@ -192,9 +196,10 @@ Verification logs:
 - /tmp/runebender-ai-foundation-headless.log: no-default-features library check passed.
 
 
-Next dependency-ready work: finish B2 typed result contracts for guarded edits/receipts, proof jobs, and graph operations, then extend structural editing in B4.
-B3 and B5 are complete.
-B6 source-date work is independently ready; keep it in a separate assignment and commit from transport changes.
+Next dependency-ready work: finish B2 typed result contracts for guarded edits/receipts and graph operations, then extend structural editing in B4.
+B3, B5 and B6 are complete; the proof-job portion of B2 is integrated.
+Keep edit/receipt and graph assignments disjoint, with the coordinator owning shared descriptor integration and real transport fixture changes.
+Receipt-bearing rejected or cancelled edits may return ok=false with an error inside receipt.outcome; preserve those shapes explicitly rather than assuming every failure uses the generic top-level error envelope.
 Use at most two disjoint implementation workers.
 The recurring coordinator is active every 30 minutes and should remain quiet unless there is a verified milestone, actionable failure, completion, or user decision.
 
@@ -253,3 +258,31 @@ The four ignored real-model/larger font tests remain unexecuted runtime coverage
 No new dependency was added, no provider/account was connected, and no native foreground window was opened.
 The coordinator remains active every 30 minutes.
 All 21 original dirty baseline paths were rehashed and remain unchanged.
+
+
+2026-09-28: The second continuation completed B6 in 837c300d4cf67a2405d7237c4bf14584252ed3d0 and the proof-job portion of B2 in 7a8e80e1d286cffe94cf4b070073665f334490c3.
+The coordinator checked the integration branch, existing workers and shared Cargo slot before dispatching two GPT-6 Sol workers with disjoint font metadata and proof contract ownership.
+Both workers are complete, and their diffs were reviewed before integration; there are no outstanding assignments from this continuation.
+The source-date change preserves exact per-source values and rejects malformed explicit dates before compilation.
+The proof contract change keeps the existing flat JSON representation while requiring complete metadata for completed results and an error for failed results.
+The coordinator strengthened the lifecycle representation, integrated shared MCP output schemas, preserved root-relative schema definitions, and added typed decoding to the real application proof fixture.
+Schema verification covers state-specific required fields, local references and actual typed payloads; it does not use an external JSON Schema validation engine.
+
+Verification for both implementation commits:
+
+- /tmp/runebender-ai-foundation-proof-dates-unit.log: 51 focused automation tests passed.
+- /tmp/runebender-ai-foundation-proof-dates-integration.log: 7 canonical font-info, 16 compiler and 4 real application fixture tests passed.
+- /tmp/runebender-ai-foundation-proof-dates-tests.log: full native suite, 994 passed, 0 failed, 4 ignored across 23 suites.
+- /tmp/runebender-ai-foundation-proof-dates-clippy.log: strict all-target Clippy passed.
+- /tmp/runebender-ai-foundation-proof-dates-doc.log: workspace documentation passed.
+- /tmp/runebender-ai-foundation-proof-dates-headless.log: no-default-features library check passed.
+- Formatting, copyright, and staged diff checks passed.
+- /tmp/runebender-ai-foundation-proof-dates-web.log: browser release build passed.
+- /tmp/runebender-ai-foundation-proof-dates-browser-smoke.log: headless smoke check passed at 1x density; the temporary loopback server was stopped.
+
+No view behavior changed, so the earlier B5 density matrix and Gray/Light native captures were not repeated.
+Native release and advisory checks remain part of H acceptance and were not rerun in this continuation.
+The four ignored real-model/larger font tests and existing block 0.1.6 dependency warning remain unchanged.
+No new dependency was added, no account or model provider was connected, and nothing was pushed or merged into the original checkout.
+All 21 original dirty baseline files were rehashed and remain unchanged.
+The 30-minute coordinator remains active because the broader architecture checklist is not yet complete.
