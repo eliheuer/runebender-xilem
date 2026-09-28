@@ -1,6 +1,6 @@
 # Virtua Regular AI workflow checklist
 
-Status: B1-B3 and C1-C3 validated; D1 assigned next; trial preflight complete, target preference requested.
+Status: B1-B3 and C1-C3 validated; D1 validated; D2 adapter assigned next; trial preflight complete, target preference requested.
 Created: 2026-09-28.
 Coordinator: this Codex task, with Astra owning architecture and integration review.
 Worktree: /Users/eli/.codex/worktrees/virtua-regular-ai/runebender-xilem.
@@ -167,7 +167,7 @@ Do not repair or synthesize Bold to make the trial pass.
 Regular-only drafts must not be mislabeled variable-font release artifacts.
 
 ### D. Reference selection and generator execution (Sol; context A, candidates C)
-- [ ] D1. Resolve grades and relevant Arabic references from current canonical/scratch data; no arbitrary alphabetic selection; refuse protected/unknown automatic targets.
+- [x] D1. Resolve grades and relevant Arabic references from current canonical/scratch data; no arbitrary alphabetic selection; refuse protected/unknown automatic targets.
 - [ ] D2. Run a pinned installed sketch checkpoint over one calibrated scratch image, returning an outline without invoking its unsafe direct-install option.
 - [ ] D3. Export a cloud reference package and ingest a generated image with provenance via MCP/workflow operations; reuse available image-generation clients before adding an account-settings subsystem.
 - [ ] D4. Retain at most three initial candidates and a direct-trace baseline where relevant; expose honest unsupported/missing-runtime errors and cancellation.
@@ -386,3 +386,16 @@ Implement current seven-color semantics from Virtua README; only red replacement
 Do not infer reference relevance from alphabetical order; require explicit related reference selection and record current grade/source/revision/geometry.
 No actual glyph target chosen automatically; fresh source inventory can be read only after generic policy implementation.
 Workers do not run Cargo, commit or edit this checklist.
+
+### D1 acceptance
+Implementation: 87a4234.
+Serialized focused tests passed: automation::glyph_grading (2), nodes::trace (3), calibrated_trace (2), automation::agent_nodes (7); zero failures or ignored tests in successful runs.
+Commands used `cargo test --locked --lib` for automation filters and `cargo test --locked --bin runebender` for native filters, each with `-- --test-threads=1`, shared CARGO_TARGET_DIR and CARGO_BUILD_JOBS=2.
+Coordinator corrected palette String borrowing/import errors before successful tests and an obfuscated-if lint afterward.
+Final `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo fmt --all --check`, and `git diff --check` passed.
+Only red Regular replacement is allowed in nodes_trace; explicit green/purple references carry relevance, revisions and resolved geometry identity.
+Changing a reference component base invalidates publication even when the reference shallow revision stays unchanged.
+Synthetic Arabic fixture is consumed by executable tests; no claim of real glyph/model quality or automatic relevance assessment.
+D2 bounded assignment: regular_proof_sol to inspect installed local sketch runner and implement an offline-tested, non-installing candidate adapter using scratch output and pinned runtime/model identities.
+No model execution until coordinator selects a calibrated scratch trial; no training, downloads, source installs, or broad provider framework.
+Actual D2 acceptance still requires a recorded real local result; adapter tests alone cannot complete it.
