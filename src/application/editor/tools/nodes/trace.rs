@@ -628,6 +628,8 @@ fn publish_trace(
                 "temperature": candidate.temperature,
                 "seed": candidate.seed,
                 "script_score_not_visual_approval": candidate.script_score,
+                "model_input_sha256": candidate.model_input_sha256,
+                "model_input_tracer": candidate.model_input_tracer,
                 "contours": candidate.contours,
             });
             (
@@ -847,6 +849,8 @@ mod tests {
                 script_home: "/tmp/fake-home".into(),
                 img2bez_path: "/tmp/fake-home/.cargo/bin/img2bez".into(),
                 img2bez_sha256: "sha256:tracer".into(),
+                launcher_sha256: "sha256:launcher".into(),
+                tracer_cargo_lock_sha256: "sha256:lockfile".into(),
             },
             image_sha256: trace.image_sha256,
             image_size_px: [trace.image_width_px, trace.image_height_px],
@@ -859,6 +863,8 @@ mod tests {
             temperature: 0.0,
             seed: 7,
             script_score: -17.0,
+            model_input_sha256: "sha256:pretrace".into(),
+            model_input_tracer: "img2bez-crate/clean/grid2/full-image-v1".into(),
             contours: trace.contours,
         }
     }
@@ -882,6 +888,8 @@ mod tests {
         let node = graph.graph.node(intent.node).unwrap();
         let model = &node.values["parameters"]["local_sketch"];
         assert_eq!(model["runtime"]["checkpoint_sha256"], "sha256:weights");
+        assert_eq!(model["runtime"]["launcher_sha256"], "sha256:launcher");
+        assert_eq!(model["model_input_sha256"], "sha256:pretrace");
         assert_eq!(model["script_score_not_visual_approval"], -17.0);
         assert_eq!(model["target"]["glyph"], "A");
         assert_eq!(model["grading"]["references"][0]["layer"]["grade"], "green");

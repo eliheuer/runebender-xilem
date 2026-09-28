@@ -65,8 +65,9 @@ Confirmed X2 defect: installed img2bez defaults to canvas fitting and ignores --
 Saved source bounds [-80,0,808,768] become traced bounds [64,168,728,742] before inference; tokenizer retains two contours and these bounds, with only small grid rounding.
 The 174-token prefix is within the 1848-token input guard; neither unknown name nor excessive prefix length explains this trial.
 The prior model result remains rejected, but it is not a correctly calibrated model-quality test.
-S1-S2 assigned to regular_proof_sol: native sketch module and narrow tool/canvas/panel wiring, ownership map before edits; no Cargo, commits, source fonts or model runs.
-Coordinator owns S3 and checklist; further general framework work remains deferred.
+S1-S2 brush patch is delivered and under coordinator integration/visual review.
+S3 is assigned to regular_proof_sol: local_sketch.rs, private calibrated launcher/fixtures, and narrow nodes/trace.rs provenance/test updates only.
+Coordinator owns UI corrections, serialized validation and checklist; further general framework work remains deferred.
 
 ### Experiment gates, in priority order
 
@@ -540,3 +541,31 @@ The existing local adapter retains captured advance independently; the corrected
 S3 remains open: explicit placement has not yet been integrated into the pinned model runner or tested with model inference.
 Active Sol brush-port ownership approved: sketch module, narrow workspace Tool/canvas/panel/commands bridge and trace entry invocation; local_sketch.rs remains coordinator-owned.
 Do not expose the local Draft action until calibrated preprocessing is verified; deterministic sketch tracing may proceed.
+
+### Hands-on handoff priority and first brush validation
+Eli requests wrapping up existing work toward an application testing session, then pausing scheduled development for immediate UI and visual feedback.
+Required handoff: reviewed brush/trace port, corrected and verified local preprocessing before model drafting, scratch font and reproducible launch, sketch/preview/Apply/Undo checks.
+Cloud comparison and general autonomous optical refinement are deferred rather than prerequisites for the first hands-on session.
+Brush first validation: `cargo test --locked --bin runebender application::editor::tools::sketch -- --test-threads=1` passed 2; `cargo test --locked --bin runebender application::view::canvas::editor::tests -- --test-threads=1` passed 33.
+Shared Cargo target, two jobs and configured fixture source directory were used; no other Cargo jobs overlapped.
+All-target Clippy failed only two unnecessary Mutex qualifications in editor.rs; Sol owns corrections.
+Coordinator additionally requested preserving selected brush/erase controls across glyph mask initialization, rejecting clipped border ink, and a SketchChanged dispatch regression proving canonical state remains unchanged.
+S1/S2 remain unchecked; native visual and browser checks are pending, and no foreground application has been launched.
+
+### Brush regression results and current integration boundary
+Brush tests now pass 4 cases, including clipped-edge rejection and retained brush settings across glyph initialization.
+Canvas editor tests pass 34 cases, including SketchChanged leaving canonical document revision, geometry, modified state and undo history unchanged.
+All-target Clippy with warnings denied, formatting and native build passed before the inspector alignment correction.
+Gray and Light headless captures exposed vertically centered overflow hiding the brush controls; coordinator changed the inspector to top alignment.
+The follow-up build encountered the active S3 worker midway through calibrated_model_input implementation; this is an incomplete working patch, not a validated regression result.
+No Cargo job remains active; wait for the worker's compile-ready handoff before rebuilding.
+S3 uses calibrated Rust img2bez Clean/grid2 pen operations and a pinned private launcher overriding only sketch2glyph.trace, bypassing the miscalibrated installed tracer.
+No new inference or original font mutation occurred.
+
+### Calibrated local input patch accepted offline
+Sol delivered the private calibrated launcher and exact model-input provenance; coordinator reviewed the full-image transform and installed trace-call signature.
+`cargo test --locked --lib workflows::local_sketch -- --test-threads=1` passed 5 tests, including a real Python stub proving the legacy trace slot is bypassed.
+`cargo test --locked --bin runebender application::editor::tools::nodes::trace -- --test-threads=1` passed 5 tests, preserving staged publication, current-document guards and cancellation.
+Coordinator corrected one doc-markdown lint; all-target Clippy with warnings denied, cargo fmt check and git diff check then passed.
+The adapter preserves the requested advance and rejects model vocabulary overflow instead of silent coordinate clamping.
+S3 remains unchecked until a real known-sketch control is tested; offline placement correctness does not establish generated drawing quality.
