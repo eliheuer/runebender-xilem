@@ -100,6 +100,31 @@ pub struct TextSort {
     pub absorbed: bool,
 }
 
+/// Exact shaped occurrence and text settings captured from the editor's selected sort.
+///
+/// Glyph IDs are deliberately absent: they belong to one compiled font snapshot.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextProofSelection {
+    /// Complete logical text shaped for the proof.
+    pub text: String,
+    /// Variation coordinates in the compiled font's normalized axis order.
+    pub normalized_location: Vec<f64>,
+    /// Direction used for this single supported shaping run.
+    pub right_to_left: bool,
+    /// OpenType feature overrides.
+    pub features: Vec<(String, bool)>,
+    /// Optional script override.
+    pub script: Option<String>,
+    /// Optional language override.
+    pub language: Option<String>,
+    /// Actual compiled-font name of the selected shaped glyph.
+    pub glyph_name: String,
+    /// UTF-8 byte offset of its shaping cluster.
+    pub cluster: u32,
+    /// Paint-order occurrence among glyphs with this name.
+    pub occurrence: u32,
+}
+
 /// Result of `TextBuffer::layout`: every drawn sort placed in font units, plus the caret position.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextLayout {
@@ -682,6 +707,105 @@ impl TextBuffer {
     /// The sort at `index`, or `None` when the index is out of range.
     pub fn sort(&self, index: usize) -> Option<&TextSort> {
         self.sorts.get(index)
+    }
+
+    /// Capture one selected, compiled-font-shaped occurrence for a single-run proof.
+    ///
+    /// Multiple selections, line breaks, manual-name sorts, mixed bidi text and absorbed
+    /// characters cannot be represented by the current proof shaper's one-run recipe.
+    pub fn proof_selection(&self) -> Result<TextProofSelection, String> {
+        if self.compiled_font.is_none() {
+            return Err("selected text has no compiled preview font".into());
+        }
+        if self.sorts.len() > 1024 {
+            return Err("selected proof contains too many text sorts".into());
+        }
+        let selected = match self.selection_range() {
+            Some(range) if range.len() == 1 => range.start,
+            Some(_) => return Err("select exactly one shaped text sort for proof".into()),
+            None => self.active_sort.ok_or("no shaped text sort is active")?,
+        };
+        let Some(sort) = self.sorts.get(selected) else {
+            return Err("selected text sort is unavailable".into());
+        };
+        if sort.absorbed {
+            return Err("selected character is absorbed into another shaped glyph".into());
+        }
+        let Some(expected_name) = sort.glyph_name() else {
+            return Err("selected sort has no glyph name".into());
+        };
+        let mut text = String::new();
+        let mut selected_cluster = None;
+        let direction = self.resolved_line_direction(self.line_number_for_sort(selected));
+        let mut strong_direction_seen = None;
+        for (index, sort) in self.sorts.iter().enumerate() {
+            let TextSortKind::Glyph {
+                codepoint: Some(character),
+                ..
+            } = sort.kind
+            else {
+                return Err("proof text contains a line break or manual-name-only sort".into());
+            };
+            match strong_direction(character) {
+                Some(strong)
+                    if strong_direction_seen.is_some_and(|previous| previous != strong) =>
+                {
+                    return Err("mixed-direction text cannot be captured as one proof run".into());
+                }
+                Some(strong) => strong_direction_seen = Some(strong),
+                None => {}
+            }
+            if index == selected {
+                selected_cluster = Some(
+                    u32::try_from(text.len())
+                        .map_err(|_| "selected proof cluster exceeds the supported byte range")?,
+                );
+            }
+            text.push(character);
+            if text.len() > 4096 {
+                return Err("selected proof exceeds 4096 UTF-8 bytes".into());
+            }
+        }
+        let selected_cluster = selected_cluster.ok_or("selected text sort is unavailable")?;
+        let font = self
+            .shaping_font()
+            .ok_or("selected text could not load its compiled shaping font")?;
+        let shaped = font.shape_with_options(
+            &text,
+            direction == TextDirection::RightToLeft,
+            &self.feature_overrides,
+            self.script_override.as_deref(),
+            self.language_override.as_deref(),
+        )?;
+        let mut named_occurrences = 0_u32;
+        let mut match_occurrence = None;
+        for glyph in shaped {
+            if font.glyph_name(glyph.glyph_id) != Some(expected_name) {
+                continue;
+            }
+            if glyph.cluster == selected_cluster {
+                if match_occurrence.is_some() {
+                    return Err(
+                        "selected cluster has multiple indistinguishable shaped glyphs".into(),
+                    );
+                }
+                match_occurrence = Some(named_occurrences);
+            }
+            named_occurrences += 1;
+        }
+        let occurrence = match_occurrence
+            .ok_or("selected sort does not match one glyph in the compiled proof run")?;
+        Ok(TextProofSelection {
+            text,
+            normalized_location: self.normalized.clone(),
+            right_to_left: direction == TextDirection::RightToLeft,
+            features: self.feature_overrides.clone(),
+            script: self.script_override.clone(),
+            language: self.language_override.clone(),
+            glyph_name: expected_name.to_owned(),
+            cluster: selected_cluster,
+            occurrence,
+        })
     }
 
     /// The SVG path data stored for a glyph, or `None` when the inventory has no outline for it.

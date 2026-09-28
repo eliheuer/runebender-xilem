@@ -307,6 +307,7 @@ impl Workspace {
             cell_size: 96.0,
             rail_cell_size: design::RAIL_CELL_SIZE,
             axis_values,
+            text_proof_selection: None,
             theme_id,
             coord_quadrant: runebender::outline::path::Quadrant::Center,
             coord_x_buf: String::new(),

@@ -12,6 +12,7 @@ use runebender::automation::agent_nodes::results::{
     NodesCancelResult, NodesDiscoverResult, NodesImageResult, NodesMutateResult,
     NodesReleaseResult, NodesRunResult, NodesSnapshotResult, NodesStatusResult,
 };
+use runebender::font::compiler::proof::CompiledProofRecipe;
 use runebender::font::variable::SourceId;
 use runebender::workflows::nodes::Registry;
 use runebender::workflows::nodes_live;
@@ -104,12 +105,68 @@ impl Workspace {
             .map(|axis| source_location.get(&axis.name).copied().unwrap_or(0.0))
             .collect();
         let mut graph = nodes_live::comparison_starter(source);
+        let selected_recipe = if self.has_text_session {
+            let captured = self
+                .text_proof_selection
+                .as_ref()
+                .ok_or("select a shaped text sort before opening a proof comparison")?;
+            if captured.context != self.text_context_id() {
+                return Err("text proof selection belongs to another tab".into());
+            }
+            if captured.source != Some(source) {
+                return Err("text proof selection belongs to another source".into());
+            }
+            if captured.document_revision != self.font.project.document_revision() {
+                return Err("text proof selection belongs to an older document revision".into());
+            }
+            if captured.axis_values != self.axis_values {
+                return Err("text proof location changed after the selection was captured".into());
+            }
+            let selection = captured.selection.clone()?;
+            if selection.text != self.initial_text {
+                return Err("text proof selection changed after it was captured".into());
+            }
+            if selection.normalized_location.len() != self.font.project.axes.len() {
+                return Err("text proof location no longer matches the document axes".into());
+            }
+            let disabled: std::collections::HashSet<_> = selection
+                .features
+                .iter()
+                .filter_map(|(tag, enabled)| (!enabled).then_some(tag.as_str()))
+                .collect();
+            if disabled.len() != selection.features.len()
+                || disabled
+                    != self
+                        .text_features_disabled
+                        .iter()
+                        .map(String::as_str)
+                        .collect()
+                || selection.script != self.text_script
+                || selection.language != self.text_language
+                || self.text_dir.is_some_and(|direction| {
+                    (direction == runebender::text::buffer::TextDirection::RightToLeft)
+                        != selection.right_to_left
+                })
+            {
+                return Err("text proof settings changed after the selection was captured".into());
+            }
+            Some(CompiledProofRecipe::from_text_selection(selection)?)
+        } else {
+            None
+        };
+        let selected_recipe = selected_recipe
+            .map(|recipe| serde_json::to_value(recipe).map_err(|error| error.to_string()))
+            .transpose()?;
         for node in &mut graph.nodes {
             if node.type_name == "live.proof" {
-                node.values
-                    .get_mut("recipe")
-                    .expect("starter proof has recipe")["normalized_location"] =
-                    serde_json::json!(normalized_location);
+                if let Some(recipe) = &selected_recipe {
+                    node.values.insert("recipe".into(), recipe.clone());
+                } else {
+                    node.values
+                        .get_mut("recipe")
+                        .expect("starter proof has recipe")["normalized_location"] =
+                        serde_json::json!(normalized_location);
+                }
             }
         }
         self.live_nodes = Some(fresh_live_nodes(self.document_id, epoch, graph, None)?);
@@ -816,6 +873,71 @@ mod tests {
             name: name.into(),
             arguments,
         })
+    }
+
+    #[test]
+    fn starter_uses_one_captured_text_recipe_for_both_proofs() {
+        let project = Project::new_font(std::env::temp_dir().join("live-text-proof.ufo"));
+        let source = project.source_id(0).unwrap();
+        let mut app = Workspace::from_model(FontModel::from_project(project)).unwrap();
+        app.has_text_session = true;
+        app.initial_text = "AA".into();
+        assert!(
+            app.ensure_live_graph()
+                .unwrap_err()
+                .contains("select a shaped text sort")
+        );
+        let selection = runebender::text::buffer::TextProofSelection {
+            text: "AA".into(),
+            normalized_location: Vec::new(),
+            right_to_left: false,
+            features: Vec::new(),
+            script: None,
+            language: None,
+            glyph_name: "A".into(),
+            cluster: 1,
+            occurrence: 1,
+        };
+        app.text_proof_selection = Some(crate::application::workspace::TextProofCapture {
+            context: (0, 0),
+            source: Some(source),
+            document_revision: app.font.project.document_revision(),
+            axis_values: app.axis_values.clone(),
+            selection: Ok(selection),
+        });
+        assert!(app.ensure_live_graph().unwrap_err().contains("another tab"));
+        let context = app.text_context_id();
+        app.text_proof_selection.as_mut().unwrap().context = context;
+        app.initial_text = "AB".into();
+        assert!(
+            app.ensure_live_graph()
+                .unwrap_err()
+                .contains("selection changed")
+        );
+        app.initial_text = "AA".into();
+        app.text_proof_selection.as_mut().unwrap().document_revision += 1;
+        assert!(
+            app.ensure_live_graph()
+                .unwrap_err()
+                .contains("older document revision")
+        );
+        app.text_proof_selection.as_mut().unwrap().document_revision -= 1;
+        app.ensure_live_graph().unwrap();
+        let recipes: Vec<_> = app
+            .live_graph_session()
+            .unwrap()
+            .snapshot()
+            .graph
+            .nodes
+            .iter()
+            .filter(|node| node.type_name == "live.proof")
+            .map(|node| node.values["recipe"].clone())
+            .collect();
+        assert_eq!(recipes.len(), 2);
+        assert_eq!(recipes[0], recipes[1]);
+        assert_eq!(recipes[0]["text"], "AA");
+        assert_eq!(recipes[0]["target"]["cluster"], 1);
+        assert_eq!(recipes[0]["target"]["occurrence"], 1);
     }
 
     #[test]

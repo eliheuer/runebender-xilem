@@ -18,6 +18,7 @@ use sha2::{Digest as _, Sha256};
 
 use super::super::project::{CanonicalDocumentEditTransaction, Project};
 use super::CompiledFont;
+use crate::text::buffer::TextProofSelection;
 use crate::text::shape::ShapingFont;
 
 const MAX_TEXT_BYTES: usize = 4 * 1024;
@@ -34,6 +35,7 @@ const PROOF_LINE_HEIGHT: f64 = 180.0;
 /// Coordinates in a Designbot scene are y-up. The first baseline is measured
 /// from the bottom edge; subsequent wrapped lines move upward by `line_height_px`.
 /// Wrapping is a bounded advance-based preview, not paragraph layout or line breaking.
+/// RTL runs must fit one line; wrapping them would require cluster-aware layout.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct CompiledProofRendering {
@@ -300,9 +302,47 @@ pub struct CompiledProofRecipe {
     /// Absent settings retain the original 1024-pixel, 160-pixel-per-em scene.
     #[serde(default, skip_serializing_if = "CompiledProofRendering::is_default")]
     pub rendering: CompiledProofRendering,
+    /// Selected glyph form and occurrence captured from editor text, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<CompiledProofTarget>,
+}
+
+/// A selected shaped occurrence that must survive compilation of both proof branches.
+///
+/// Name, cluster and paint-order occurrence identify a form without reusing a snapshot-specific
+/// numeric glyph ID. A changed substitution fails explicitly instead of selecting another glyph.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CompiledProofTarget {
+    /// Compiler glyph name of the selected contextual form.
+    pub glyph_name: String,
+    /// UTF-8 byte offset of the selected source cluster.
+    pub cluster: u32,
+    /// Paint-order occurrence among glyphs with this name.
+    pub occurrence: u32,
 }
 
 impl CompiledProofRecipe {
+    /// Preserve a widget-owned text selection as an exact proof recipe.
+    pub fn from_text_selection(selection: TextProofSelection) -> Result<Self, String> {
+        let recipe = Self {
+            text: selection.text,
+            normalized_location: selection.normalized_location,
+            right_to_left: selection.right_to_left,
+            features: selection.features,
+            script: selection.script,
+            language: selection.language,
+            rendering: CompiledProofRendering::default(),
+            target: Some(CompiledProofTarget {
+                glyph_name: selection.glyph_name,
+                cluster: selection.cluster,
+                occurrence: selection.occurrence,
+            }),
+        };
+        recipe.validate()?;
+        Ok(recipe)
+    }
+
     /// Validate bounded, finite inputs before expensive outline extraction.
     pub fn validate(&self) -> Result<(), String> {
         self.rendering.validate()?;
@@ -349,6 +389,18 @@ impl CompiledProofRecipe {
             return Err(format!(
                 "proof language must be 1 to {MAX_LANGUAGE_BYTES} ASCII BCP 47 bytes"
             ));
+        }
+        if self.target.as_ref().is_some_and(|target| {
+            let cluster = usize::try_from(target.cluster).ok();
+            let occurrence = usize::try_from(target.occurrence).ok();
+            target.glyph_name.is_empty()
+                || target.glyph_name.len() > 255
+                || cluster.is_none_or(|cluster| {
+                    cluster >= self.text.len() || !self.text.is_char_boundary(cluster)
+                })
+                || occurrence.is_none_or(|occurrence| occurrence >= MAX_SHAPED_GLYPHS)
+        }) {
+            return Err("proof target has an invalid glyph name, cluster or occurrence".into());
         }
         Ok(())
     }
@@ -434,6 +486,22 @@ pub fn prove(
             y_offset: glyph.y_offset,
         })
         .collect::<Vec<_>>();
+    if let Some(target) = &recipe.target {
+        let mut occurrence = 0_u32;
+        let mut found = false;
+        for glyph in &glyphs {
+            if glyph.glyph_name.as_deref() == Some(target.glyph_name.as_str()) {
+                if occurrence == target.occurrence {
+                    found = glyph.cluster == target.cluster;
+                    break;
+                }
+                occurrence += 1;
+            }
+        }
+        if !found {
+            return Err("selected shaped occurrence changed in the compiled proof".into());
+        }
+    }
     let outlines = snapshot
         .font
         .outlines(&recipe.normalized_location)?
@@ -547,6 +615,9 @@ fn scene(
     }
     rendering.validate()?;
     let scale = rendering.pixels_per_em / units_per_em;
+    if !scale.is_finite() {
+        return Err("proof scale is non-finite".into());
+    }
     let mut paths = Vec::with_capacity(glyphs.len());
     if rendering.background_rgb != [255; 3] {
         paths.push(json!({
@@ -554,11 +625,28 @@ fn scene(
             "color": rendering.background_rgb,
         }));
     }
-    let mut x = if right_to_left {
-        f64::from(rendering.width_px) - rendering.margin_px
-    } else {
-        rendering.margin_px
-    };
+    // HarfRust returns RTL glyphs in visual order with positive advances. Start their pen at
+    // the left edge of the right-anchored run, then move forward through that exact order.
+    // A zero-advance mark can precede its base and still use its original GPOS offset.
+    let mut x = rendering.margin_px;
+    if right_to_left {
+        let total_advance = glyphs.iter().try_fold(0.0, |total, glyph| {
+            if !glyph.x_advance.is_finite() {
+                return Err("compiled glyph positioning contains a non-finite value".to_owned());
+            }
+            let next = total + glyph.x_advance * scale;
+            if !next.is_finite() {
+                return Err("RTL proof has a non-finite total advance".to_owned());
+            }
+            Ok(next)
+        })?;
+        if total_advance < 0.0
+            || total_advance > f64::from(rendering.width_px) - 2.0 * rendering.margin_px
+        {
+            return Err("RTL proof exceeds the bounded line width; wrapping is unsupported".into());
+        }
+        x = f64::from(rendering.width_px) - rendering.margin_px - total_advance;
+    }
     let mut baseline = rendering.first_baseline_px;
     for glyph in glyphs {
         let path = outlines
@@ -570,28 +658,20 @@ fn scene(
         {
             return Err("compiled glyph positioning contains a non-finite value".into());
         }
-        let advance = glyph.x_advance.max(0.0) * scale;
-        if advance > f64::from(rendering.width_px) - 2.0 * rendering.margin_px {
+        let advance = if right_to_left {
+            glyph.x_advance * scale
+        } else {
+            glyph.x_advance.max(0.0) * scale
+        };
+        if !right_to_left && advance > f64::from(rendering.width_px) - 2.0 * rendering.margin_px {
             return Err("one shaped glyph exceeds the bounded proof width".into());
         }
-        let overflow = if right_to_left {
-            x - advance < rendering.margin_px
-        } else {
-            x + advance > f64::from(rendering.width_px) - rendering.margin_px
-        };
-        if overflow {
-            x = if right_to_left {
-                f64::from(rendering.width_px) - rendering.margin_px
-            } else {
-                rendering.margin_px
-            };
+        if !right_to_left && x + advance > f64::from(rendering.width_px) - rendering.margin_px {
+            x = rendering.margin_px;
             baseline += rendering.line_height_px;
         }
         if baseline + rendering.line_height_px > f64::from(rendering.height_px) {
             return Err("proof exceeds the bounded image height".into());
-        }
-        if right_to_left {
-            x -= advance;
         }
         let translated = Affine::translate((
             x + glyph.x_offset * scale,
@@ -612,9 +692,7 @@ fn scene(
         } else {
             paths.push(json!({"d": translated.to_svg(), "color": rendering.ink_rgb}));
         }
-        if !right_to_left {
-            x += advance;
-        }
+        x += advance;
     }
     Ok(json!({
         "version": 1,
@@ -663,6 +741,7 @@ mod tests {
             script: script.map(str::to_owned),
             language: None,
             rendering: CompiledProofRendering::default(),
+            target: None,
         }
     }
 
@@ -780,6 +859,66 @@ mod tests {
         assert_eq!(wrapped_second.x0, 8.0);
         assert_eq!(wrapped_second.y0, 220.0);
         assert_eq!(wrapped_second.width(), 20.0);
+    }
+
+    #[test]
+    fn rtl_scene_keeps_harfrust_order_and_mark_offset_on_one_right_anchored_run() {
+        use kurbo::{BezPath, Rect, Shape as _};
+
+        let rendering = CompiledProofRendering {
+            width_px: 128,
+            height_px: 512,
+            pixels_per_em: 100.0,
+            margin_px: 8.0,
+            first_baseline_px: 100.0,
+            line_height_px: 120.0,
+            ..CompiledProofRendering::default()
+        };
+        let outlines = [
+            Arc::new(Rect::new(0.0, 0.0, 100.0, 100.0).to_path(0.1)),
+            Arc::new(Rect::new(0.0, 0.0, 20.0, 20.0).to_path(0.1)),
+        ];
+        let mark = CompiledProofGlyph {
+            glyph_id: 1,
+            glyph_name: Some("kasra".into()),
+            cluster: 2,
+            x_advance: 0.0,
+            x_offset: 40.0,
+            y_offset: 60.0,
+        };
+        let base = CompiledProofGlyph {
+            glyph_id: 0,
+            glyph_name: Some("beh".into()),
+            cluster: 0,
+            x_advance: 500.0,
+            x_offset: 0.0,
+            y_offset: 0.0,
+        };
+        let image = scene(&[mark, base.clone()], &outlines, 1000.0, true, &rendering).unwrap();
+        assert_eq!(image["paths"].as_array().unwrap().len(), 2);
+        let mark_bounds = BezPath::from_svg(image["paths"][0]["d"].as_str().unwrap())
+            .unwrap()
+            .bounding_box();
+        let base_bounds = BezPath::from_svg(image["paths"][1]["d"].as_str().unwrap())
+            .unwrap()
+            .bounding_box();
+        assert_eq!((mark_bounds.x0, mark_bounds.y0), (74.0, 106.0));
+        assert_eq!((base_bounds.x0, base_bounds.y0), (70.0, 100.0));
+
+        let mut too_wide = base.clone();
+        too_wide.x_advance = 2000.0;
+        assert!(
+            scene(&[too_wide], &outlines, 1000.0, true, &rendering)
+                .unwrap_err()
+                .contains("wrapping is unsupported")
+        );
+        let mut huge = base;
+        huge.x_advance = f64::MAX;
+        assert!(
+            scene(&vec![huge; 11], &outlines, 1000.0, true, &rendering)
+                .unwrap_err()
+                .contains("non-finite total advance")
+        );
     }
 
     #[test]
@@ -937,6 +1076,63 @@ mod tests {
                 .iter()
                 .all(|glyph| glyph.glyph_name.as_deref() != Some(".notdef"))
         );
+    }
+
+    #[test]
+    fn selected_arabic_occurrence_survives_real_compiled_proof_and_rejects_drift() {
+        use crate::text::buffer::{TextBuffer, TextDirection, TextGlyphInventory};
+
+        let project = project();
+        let source = project.document_sources().next().unwrap().id();
+        let snapshot = compile(capture(&project).unwrap()).unwrap();
+        let mut buffer = TextBuffer::new();
+        buffer.set_glyph_inventory(TextGlyphInventory::from_project(&project, source).unwrap());
+        buffer.set_compiled_font(Some(snapshot.font.bytes.clone()), vec![0.0]);
+        buffer.set_direction(TextDirection::RightToLeft);
+        for character in "سلامسلام".chars() {
+            assert!(buffer.insert_character(character));
+        }
+        buffer.shape_arabic_if_rtl();
+        assert!(buffer.sort(6).unwrap().is_absorbed());
+        buffer.select_range(6, 7);
+        assert!(buffer.proof_selection().is_err());
+        buffer.select_range(5, 6);
+        let selection = buffer.proof_selection().unwrap();
+        assert!(
+            selection.cluster > 0,
+            "second word has its own byte cluster"
+        );
+        let recipe = CompiledProofRecipe::from_text_selection(selection.clone()).unwrap();
+        let proof = prove(&snapshot, recipe.clone()).unwrap();
+        let target = recipe.target.as_ref().unwrap();
+        assert!(proof.glyphs.iter().any(|glyph| {
+            glyph.glyph_name.as_deref() == Some(target.glyph_name.as_str())
+                && glyph.cluster == target.cluster
+        }));
+        let mut drifted = recipe;
+        drifted.target.as_mut().unwrap().cluster = 0;
+        assert!(prove(&snapshot, drifted).is_err());
+
+        buffer.select_range(5, 7);
+        assert!(buffer.proof_selection().is_err());
+        buffer.select_range(5, 6);
+        buffer.insert_glyph("manual-only", None, 500.0);
+        assert!(buffer.proof_selection().is_err());
+
+        buffer.clear();
+        for character in "بِ".chars() {
+            assert!(buffer.insert_character(character));
+        }
+        buffer.shape_arabic_if_rtl();
+        buffer.select_range(1, 2);
+        let mark = buffer.proof_selection().unwrap();
+        assert!(
+            mark.right_to_left,
+            "auto direction follows the Arabic line after clear"
+        );
+        assert!(mark.glyph_name.contains("kasra"));
+        let mark_recipe = CompiledProofRecipe::from_text_selection(mark).unwrap();
+        prove(&snapshot, mark_recipe).expect("selected Arabic mark proof");
     }
 
     #[test]

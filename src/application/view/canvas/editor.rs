@@ -371,6 +371,8 @@ pub(crate) enum EditorEvent {
     EditGlyph { name: String, tool: Tool },
     /// The committed logical text changed; park it with the active tab.
     TextChanged(String),
+    /// Widget-owned selected shaped occurrence and its proof settings.
+    TextProofSelection(Result<runebender::text::buffer::TextProofSelection, String>),
     /// Cmd+Z: the app undoes on the master's pile.
     Undo,
     /// Cmd+Shift+Z or Cmd+Y.
@@ -916,6 +918,15 @@ impl EditorWidget {
     fn emit_text_changed(&self, ctx: &mut EventCtx<'_>) {
         if let Some(text) = &self.text {
             ctx.submit_action::<EditorEvent>(EditorEvent::TextChanged(text.buffer.text()));
+            self.emit_text_proof_selection(ctx);
+        }
+    }
+
+    fn emit_text_proof_selection(&self, ctx: &mut EventCtx<'_>) {
+        if let Some(text) = &self.text {
+            ctx.submit_action::<EditorEvent>(EditorEvent::TextProofSelection(
+                text.buffer.proof_selection(),
+            ));
         }
     }
 }
@@ -1852,6 +1863,7 @@ impl Widget for EditorWidget {
                             name: glyph,
                             tool: self.tool,
                         });
+                        self.emit_text_proof_selection(ctx);
                         self.drag = Drag::None;
                         ctx.request_render();
                         ctx.set_handled();
@@ -1876,6 +1888,7 @@ impl Widget for EditorWidget {
                             tool: Tool::Text,
                         });
                     }
+                    self.emit_text_proof_selection(ctx);
                     ctx.request_render();
                     ctx.set_handled();
                     return;
@@ -2436,6 +2449,7 @@ impl Widget for EditorWidget {
             }
             if character.eq_ignore_ascii_case("a") {
                 text.buffer.select_range(0, text.buffer.len());
+                self.emit_text_proof_selection(ctx);
                 ctx.request_render();
                 ctx.set_handled();
                 return;
@@ -2604,6 +2618,8 @@ impl Widget for EditorWidget {
                 }
                 if changed_text {
                     self.emit_text_changed(ctx);
+                } else {
+                    self.emit_text_proof_selection(ctx);
                 }
                 ctx.request_render();
                 ctx.set_handled();
@@ -3368,15 +3384,24 @@ mod tests {
             matches!(event, EditorEvent::TextChanged(text) if text == "AB"),
             "logical character keys type directly, as Masonry, GPUI, and Web do"
         );
+        let (event, _) = harness
+            .pop_action::<EditorEvent>()
+            .expect("typing reports the selected proof context separately");
+        assert!(matches!(event, EditorEvent::TextProofSelection(Err(_))));
         assert_eq!(
             harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().buffer.len()),
             2,
             "ordinary keyboard input does not depend on an IME commit"
         );
         harness.process_text_event(named(NamedKey::Backspace));
-        let _ = harness
+        let (event, _) = harness
             .pop_action::<EditorEvent>()
             .expect("deleting the direct-key test glyph reports the restored buffer");
+        assert!(matches!(event, EditorEvent::TextChanged(text) if text == "A"));
+        let (event, _) = harness
+            .pop_action::<EditorEvent>()
+            .expect("deleting refreshes the selected proof context");
+        assert!(matches!(event, EditorEvent::TextProofSelection(Err(_))));
         harness.process_text_event(TextEvent::Ime(Ime::Preedit("B".into(), Some((0, 1)))));
         assert_eq!(
             harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().buffer.len()),
@@ -3398,6 +3423,10 @@ mod tests {
             matches!(event, EditorEvent::TextChanged(text) if text == "AB"),
             "the view receives the complete committed buffer"
         );
+        let (event, _) = harness
+            .pop_action::<EditorEvent>()
+            .expect("IME commit refreshes the selected proof context");
+        assert!(matches!(event, EditorEvent::TextProofSelection(Err(_))));
         assert_eq!(
             harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().buffer.len()),
             2
@@ -3511,6 +3540,10 @@ mod tests {
             .pop_action::<EditorEvent>()
             .expect("the Text tool consumes Space and reports the buffer");
         assert!(matches!(event, EditorEvent::TextChanged(text) if text == "A "));
+        let (event, _) = harness
+            .pop_action::<EditorEvent>()
+            .expect("space refreshes the selected proof context");
+        assert!(matches!(event, EditorEvent::TextProofSelection(Err(_))));
     }
 
     #[test]
@@ -3551,6 +3584,10 @@ mod tests {
                 tool: Tool::Select
             } if name == "B"
         ));
+        let (event, _) = harness
+            .pop_action::<EditorEvent>()
+            .expect("double-click reports the shaped proof context after activating the glyph");
+        assert!(matches!(event, EditorEvent::TextProofSelection(Err(_))));
         assert_eq!(
             harness.edit_root_widget(|root| root
                 .widget

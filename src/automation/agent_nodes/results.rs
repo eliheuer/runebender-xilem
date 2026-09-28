@@ -293,6 +293,7 @@ mod tests {
                 script: None,
                 language: None,
                 rendering: crate::font::compiler::proof::CompiledProofRendering::default(),
+                target: None,
             },
             glyphs: vec![CompiledProofGlyph {
                 glyph_id: 1,

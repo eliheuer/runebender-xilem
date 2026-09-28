@@ -229,6 +229,8 @@ pub(crate) struct Workspace {
     pub(crate) component_base_buf: String,
     /// Current axis location in user units, one per designspace axis.
     pub(crate) axis_values: Vec<f64>,
+    /// Last widget-owned text proof selection, bound to its tab and source.
+    pub(crate) text_proof_selection: Option<TextProofCapture>,
     /// Active built-in or installed theme ID.
     pub(crate) theme_id: &'static str,
     /// Reference corner for the Coordinates fields (the 9-point picker).
@@ -561,6 +563,15 @@ pub(crate) struct TextContext {
     pub(crate) features_disabled: std::collections::HashSet<String>,
     pub(crate) script: Option<String>,
     pub(crate) language: Option<String>,
+}
+
+/// Widget-owned selected text context, tied to the tab, source and slider position that emitted it.
+pub(crate) struct TextProofCapture {
+    pub(crate) context: (u64, u64),
+    pub(crate) source: Option<runebender::font::variable::SourceId>,
+    pub(crate) document_revision: u64,
+    pub(crate) axis_values: Vec<f64>,
+    pub(crate) selection: Result<runebender::text::buffer::TextProofSelection, String>,
 }
 
 #[cfg(test)]

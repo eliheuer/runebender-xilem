@@ -92,6 +92,15 @@ pub(crate) fn editor_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<>
             canvas::editor::EditorEvent::Undo => app.undo_open_glyph(false),
             canvas::editor::EditorEvent::Redo => app.undo_open_glyph(true),
             canvas::editor::EditorEvent::TextChanged(text) => app.set_editor_text(text),
+            canvas::editor::EditorEvent::TextProofSelection(selection) => {
+                app.text_proof_selection = Some(crate::application::workspace::TextProofCapture {
+                    context: app.text_context_id(),
+                    source: app.font.project.source_id(app.font.active()),
+                    document_revision: app.font.project.document_revision(),
+                    axis_values: app.axis_values.clone(),
+                    selection,
+                });
+            }
             canvas::editor::EditorEvent::EditGlyph { name, tool } => {
                 if let Some(index) = app.font.index_of(&name) {
                     app.edit_text_sort_glyph(index, tool);

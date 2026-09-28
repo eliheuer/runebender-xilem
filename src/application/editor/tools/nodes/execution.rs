@@ -1323,7 +1323,7 @@ fn validate_submit_capture(
         }
         recipes.push(recipe);
     }
-    if request.execution_version == 1 && recipes[0] != recipes[1] {
+    if plan.comparison().is_some() && recipes[0] != recipes[1] {
         return Err(err(
             LiveGraphExecutionErrorCode::Proof,
             "comparison proofs must use the same recipe",
@@ -1572,6 +1572,46 @@ mod tests {
             canonical_input_sha256: request.input.canonical_input_sha256().to_owned(),
             font_sha256: sha256(b"font"),
         }
+    }
+
+    #[test]
+    fn version_two_pair_requires_one_recipe_but_distinct_dag_proofs_are_allowed() {
+        let project = project();
+        let mut graph = nodes_live::comparison_starter(project.source_id(0).unwrap());
+        let changed = graph
+            .nodes
+            .iter_mut()
+            .filter(|node| node.type_name == "live.proof")
+            .nth(1)
+            .unwrap();
+        changed.values.get_mut("recipe").unwrap()["text"] = serde_json::json!("different");
+        let (session, request) = setup(&project, 2, graph.clone());
+        let mismatch = validate_submit_capture(&session, &project, &request).unwrap_err();
+        assert!(
+            mismatch
+                .to_string()
+                .contains("comparison proofs must use the same recipe")
+        );
+
+        let source_node = graph
+            .nodes
+            .iter()
+            .find(|node| node.type_name == "live.font")
+            .unwrap()
+            .id;
+        let extra = graph.add("live.proof", [640.0, 720.0]);
+        graph
+            .node_mut(extra)
+            .unwrap()
+            .values
+            .insert("recipe".into(), nodes_live::default_proof_recipe());
+        graph.connect(source_node, "font", extra, "font");
+        let (session, request) = setup(&project, 2, graph);
+        let result = validate_submit_capture(&session, &project, &request);
+        assert!(
+            result.is_ok(),
+            "distinct DAG proof recipes should be valid: {result:?}"
+        );
     }
 
     fn finish(

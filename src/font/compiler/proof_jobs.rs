@@ -610,6 +610,7 @@ mod tests {
                 script: None,
                 language: None,
                 rendering: crate::font::compiler::proof::CompiledProofRendering::default(),
+                target: None,
             },
         }
     }
@@ -859,6 +860,7 @@ mod tests {
                     script: Some("latn".into()),
                     language: None,
                     rendering: crate::font::compiler::proof::CompiledProofRendering::default(),
+                    target: None,
                 },
             })
             .unwrap();
