@@ -67,16 +67,18 @@ Trusted local Python is not an OS sandbox; do not imply otherwise.
 
 - [x] B1. Inventory current command, proposal, live-edit, recipe, and node capabilities; choose one typed owner per operation.
   Coordinator source review and the ownership map below establish the implementation routing; no registry implementation is claimed.
-- [ ] B2. Centralize transport-facing schemas, result contracts, and effect metadata while preserving strongly typed engine APIs.
+- [x] B2. Centralize transport-facing schemas, result contracts, and effect metadata while preserving strongly typed engine APIs.
   Initial consumed descriptor slice integrated as 0380293: per-surface effects, shared host input schemas, and concrete result schemas for project_info, editor_connect, editor_sessions, and export_proof.
   CLI discovery exposes the same descriptors through opt-in agent tools --contracts; default assistant tool payloads remain compatible.
   Proof-job result contracts are integrated as 7a8e80e with typed lifecycle payloads, shared generated schemas, and real MCP decoding checks.
-  Keep this gate open until guarded edit/receipt and graph result contracts have typed ownership and comprehensive schema coverage.
+  Guarded apply/receipt/history/cancellation and all nine live graph tools now have typed result ownership and shared generated schemas in 199042d; disk nodes_run has its own typed result contract.
+  Verified real MCP editing, rejected receipts, graph execution, exact proof-image transport, explicit apply, ordinary undo, exact retries, stale status and release.
+  Output schemas describe serialization, including required nullable fields and operational failures that retain receipts instead of a top-level error.
   Unverified output schemas remain absent rather than advertising a generic object as a complete contract.
 - [x] B3. Return structured MCP results and truthful schemas/annotations, preserving text and proof images for compatibility.
   Integrated as 0380293 with negotiated protocol feature gates and one shared metadata value for text and structuredContent.
   Verified CLI/MCP success/error parity, four supported protocol versions plus fallback, proof image separation, existing retry/cancellation regressions, and real application proof/edit fixtures.
-  Output schemas cover the verified discovery/export and proof-job subsets tracked in B2; this is not certification of every MCP feature.
+  Output schemas cover the verified discovery/export, proof-job, guarded-edit and graph families tracked in B2; this is not certification of every MCP feature or every legacy proposal/experiment result.
 - [ ] B4. Extend recipe captures to useful outline operations and provide guarded structural editing for shape generators.
   Verify exact retries, stale reads, full-batch rejection, dependent glyph invalidation, and one-step undo.
 - [x] B5. Remove identified reverse dependencies: engine mark metadata must not depend on loading a UI theme; live workflows must call typed engine operations rather than a transport dispatcher.
@@ -162,7 +164,8 @@ Keep small typed Rust APIs at these boundaries; transport schemas and registries
 | Assistant and model providers | `application/editor/tools/chat.rs`, `application/editor/tools/local_ai.rs` | Keep assistant conversations separate from model-worker jobs; host adapters own credentials, process/network calls and sendable context; results share validated artifact/proposal routes. |
 
 The initial shared-operation slices remove the live workflow's call into the JSON transport dispatcher and provide result/effect descriptors consumed by CLI discovery and MCP.
-B2 still requires complete typed contracts for guarded edits, receipts and graph operations; proof-job contracts now have typed ownership.
+B2 now supplies consumed typed result contracts for guarded edits, receipts, proof jobs and live/disk graph operations.
+Unverified legacy result schemas remain absent; typed transport metadata does not replace document guards or host-owned authority.
 The structural-edit slice must prove generated contours can preview, reject stale input, apply atomically and undo before expanding provider integration.
 The cache fix hashes full UFO inputs conservatively; precise dependency-aware caching is a later performance improvement, not a prerequisite for correctness.
 Compiler timestamp normalization covers repeated builds of the same captured Babelfont input.
@@ -196,9 +199,12 @@ Verification logs:
 - /tmp/runebender-ai-foundation-headless.log: no-default-features library check passed.
 
 
-Next dependency-ready work: finish B2 typed result contracts for guarded edits/receipts and graph operations, then extend structural editing in B4.
-B3, B5 and B6 are complete; the proof-job portion of B2 is integrated.
-Keep edit/receipt and graph assignments disjoint, with the coordinator owning shared descriptor integration and real transport fixture changes.
+Next dependency-ready work: extend guarded structural editing and bounded outline recipe captures in B4.
+B2, B3, B5 and B6 are complete for their recorded acceptance scope.
+Keep engine transaction and recipe/transport work in disjoint assignments with an agreed typed boundary; the coordinator owns integration, shared result-schema changes and real application fixtures.
+Use Project-owned contour/point identities and existing atomic commit/history paths; do not introduce caller-created canonical identities or mutable font wrappers.
+Verify useful point edits and generated contours through staged preview, full-batch rejection, dependency invalidation, exact retries and one ordinary undo step.
+C1/C2 should subsequently consume shared process supervision in existing disk workflow, Local AI and Chat callers instead of adding an unused scheduler.
 Receipt-bearing rejected or cancelled edits may return ok=false with an error inside receipt.outcome; preserve those shapes explicitly rather than assuming every failure uses the generic top-level error envelope.
 Use at most two disjoint implementation workers.
 The recurring coordinator is active every 30 minutes and should remain quiet unless there is a verified milestone, actionable failure, completion, or user decision.
@@ -286,3 +292,37 @@ The four ignored real-model/larger font tests and existing block 0.1.6 dependenc
 No new dependency was added, no account or model provider was connected, and nothing was pushed or merged into the original checkout.
 All 21 original dirty baseline files were rehashed and remain unchanged.
 The 30-minute coordinator remains active because the broader architecture checklist is not yet complete.
+
+
+2026-09-28: The third continuation completed B2 in 199042d39b2d4a8f3e7ea25dbd7cac6f70317051.
+The coordinator verified the integration branch and idle workers, then used two GPT-6 Sol assignments with disjoint edit-result and graph-result ownership.
+The coordinator reviewed both diffs, integrated the shared descriptors and disk CLI producer, and added real MCP regressions.
+All assignments are complete; no worker is left writing into the integration branch.
+Generated schemas now use serialization mode, preserving required nullable fields such as history_state, report and stderr.
+Operational false results retain their typed receipt or cancellation body; generic admission/transport errors remain a separate alternative.
+Graph session capture types gained output schemas without adding unchecked deserialization to constructor-validated domain captures.
+The schema checks cover required and state-specific fields, root-relative references, typed decoding where supported, actual serialized graph payloads, and MCP publication parity.
+They do not use an external JSON Schema validation engine.
+The live graph fixture executes a deterministic local Python recipe, keeps its candidate detached until Apply, verifies exact retained PNG transport and metric differences, then proves ordinary undo, exact retry behavior, stale lineage and release.
+This is offline workflow coverage, not local-model or cloud-provider coverage.
+
+Verification for 199042d:
+
+- /tmp/runebender-ai-foundation-operation-results-unit.log: cargo test --locked --lib automation:: passed 58 focused tests.
+- /tmp/runebender-ai-foundation-operation-results-integration.log: focused CLI, live_agent and live_fixture targets passed 19, 6 and 5 tests respectively.
+- /tmp/runebender-ai-foundation-operation-results-tests.log: cargo test --workspace --locked -- --test-threads=1 passed 1002 tests with 0 failures and 4 ignored across 23 suites.
+- /tmp/runebender-ai-foundation-operation-results-clippy.log: cargo clippy --workspace --all-targets --locked -- -D warnings passed after adding the required assertion diagnostic.
+- /tmp/runebender-ai-foundation-operation-results-doc.log: cargo doc --workspace --no-deps --locked passed.
+- /tmp/runebender-ai-foundation-operation-results-headless.log: cargo check --lib --no-default-features --locked passed.
+- cargo fmt --all --check, bash .github/scripts/copyright.sh and staged git diff --check passed, including the new tracked result modules.
+- /tmp/runebender-ai-foundation-operation-results-web.log: ./web/build.sh passed using the separate browser workspace/cache.
+- /tmp/runebender-ai-foundation-operation-results-browser-smoke.log: web/smoke.cjs passed at 1x density against a temporary loopback server; the server was stopped afterward.
+
+All native Cargo checks were serialized using CARGO_TARGET_DIR=/Users/eli/GH/repos/runebender-xilem/target.
+Native tests used RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources.
+No view behavior changed; the earlier B5 full density matrix and Gray/Light native captures were not repeated.
+Native release and advisory checks remain part of H acceptance and were not rerun in this continuation.
+The four ignored model/larger font tests and the existing block 0.1.6 dependency warning remain outside the passing runtime claims.
+No dependency, account connection, paid API call, model download, push or merge was introduced.
+All 21 original dirty baseline paths were rehashed and remain unchanged.
+The coordinator remains ACTIVE every 30 minutes; the remaining B4 and C-H implementation work prevents final acceptance or disabling the schedule.
