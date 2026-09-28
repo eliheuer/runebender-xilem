@@ -16,6 +16,7 @@ use runebender::automation::agent_session::{
     AgentReceiptDisposition, AgentSession, AgentSessionError, AgentSessionMetadata,
 };
 use runebender::font::history::HistoryDirection;
+use runebender::font::project::CanonicalDocumentEditTransaction;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -113,6 +114,24 @@ impl Workspace {
     }
 
     fn apply_agent_edit(&mut self, request: AgentEditRequest) -> Value {
+        self.apply_agent_edit_candidate(request, None)
+    }
+
+    /// Commit a host-retained preview through the same authorization, cancellation and history path.
+    /// Only the candidate owner supplies this pair; it is not a transport entry point.
+    pub(crate) fn apply_retained_agent_edit(
+        &mut self,
+        request: AgentEditRequest,
+        candidate: CanonicalDocumentEditTransaction,
+    ) -> Value {
+        self.apply_agent_edit_candidate(request, Some(candidate))
+    }
+
+    fn apply_agent_edit_candidate(
+        &mut self,
+        request: AgentEditRequest,
+        candidate: Option<CanonicalDocumentEditTransaction>,
+    ) -> Value {
         if let Err(error) = self.validate_agent_epoch(&request.expected_document_epoch) {
             return error;
         }
@@ -186,7 +205,13 @@ impl Workspace {
                         "finish the canvas gesture before a new edit".into(),
                     ));
                 }
-                request.stage(project)
+                match candidate {
+                    Some(candidate) => {
+                        project.preview_document_edit_transaction(&candidate)?;
+                        Ok(candidate)
+                    }
+                    None => request.stage(project),
+                }
             },
             || match cancellations.claim_commit(&cancellation_identity) {
                 Ok(AgentCommitClaim::Claimed) => Ok(true),

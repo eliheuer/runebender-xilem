@@ -288,6 +288,9 @@ pub struct CanonicalDocumentEditTransaction {
     history_name: String,
     reads: Vec<CanonicalLayerSnapshot>,
     writes: Vec<SnapshotEdit>,
+    operation_count: usize,
+    generated_contours: usize,
+    generated_points: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -500,12 +503,6 @@ impl Project {
                 "transaction may append at most {MAX_GENERATED_CONTOURS} contours and {MAX_GENERATED_POINTS} points"
             )));
         }
-        if reads.len().saturating_add(edits.len()) > MAX_EDIT_LAYERS {
-            return Err(DocumentEditTransactionError::Invalid(format!(
-                "transaction may guard at most {MAX_EDIT_LAYERS} layer entries"
-            )));
-        }
-
         let mut guarded = BTreeMap::new();
         for snapshot in &reads {
             validate_source(source, snapshot.address())?;
@@ -560,12 +557,142 @@ impl Project {
             }
         }
 
+        if guarded.len() > MAX_EDIT_LAYERS {
+            return Err(DocumentEditTransactionError::Invalid(format!(
+                "transaction may guard at most {MAX_EDIT_LAYERS} unique layers"
+            )));
+        }
         Ok(CanonicalDocumentEditTransaction {
             source,
             history_name,
             reads: guarded.into_values().collect(),
             writes,
+            operation_count,
+            generated_contours,
+            generated_points,
         })
+    }
+
+    /// Capture a layer from a staged transaction after validating its complete root read set.
+    ///
+    /// Edited layers use the staged after-state; untouched layers use their current root state.
+    pub fn capture_document_edit_layer(
+        &self,
+        transaction: &CanonicalDocumentEditTransaction,
+        address: &GlyphLayerAddress,
+    ) -> Result<CanonicalLayerSnapshot, DocumentEditTransactionError> {
+        validate_source(transaction.source, address)?;
+        self.validate_transaction_reads(transaction)?;
+        if let Some(edit) = transaction
+            .writes
+            .iter()
+            .find(|edit| edit.after.address() == address)
+        {
+            return Ok(edit.after.clone());
+        }
+        self.capture_document_layer(address)
+            .ok_or_else(|| DocumentEditTransactionError::MissingLayer(address.clone()))
+    }
+
+    /// Extend a staged edit from its immutable root guards and current proposed layer states.
+    ///
+    /// Every new dependency and edit target must match the parent's overlay exactly.
+    /// The returned transaction commits the complete lineage as one history group.
+    /// The parent can independently produce other branches.
+    pub fn extend_document_edit_transaction(
+        &self,
+        parent: &CanonicalDocumentEditTransaction,
+        history_name: impl Into<String>,
+        reads: Vec<CanonicalLayerSnapshot>,
+        edits: Vec<DocumentLayerEdit>,
+    ) -> Result<CanonicalDocumentEditTransaction, DocumentEditTransactionError> {
+        self.validate_transaction_reads(parent)?;
+        let mut root_guards = parent
+            .reads
+            .iter()
+            .map(|read| (read.address().clone(), read.clone()))
+            .collect::<BTreeMap<_, _>>();
+        for snapshot in reads.iter().chain(edits.iter().map(|edit| &edit.expected)) {
+            validate_source(parent.source, snapshot.address())?;
+            let address = snapshot.address();
+            let overlay = parent
+                .writes
+                .iter()
+                .find(|write| write.after.address() == address)
+                .map(|write| &write.after);
+            if let Some(expected) = overlay.or_else(|| root_guards.get(address)) {
+                if snapshot != expected {
+                    return Err(DocumentEditTransactionError::StaleLayer(address.clone()));
+                }
+            } else {
+                self.validate_edit_snapshot(snapshot)?;
+                insert_guard(&mut root_guards, snapshot)?;
+            }
+        }
+        if root_guards.len() > MAX_EDIT_LAYERS {
+            return Err(DocumentEditTransactionError::Invalid(format!(
+                "transaction may guard at most {MAX_EDIT_LAYERS} unique layers"
+            )));
+        }
+
+        // The ordinary staging engine applies the same typed operations to the overlay drafts.
+        let child =
+            self.begin_document_edit_transaction(parent.source, history_name, reads, edits)?;
+        let operation_count = parent.operation_count.saturating_add(child.operation_count);
+        let generated_contours = parent
+            .generated_contours
+            .saturating_add(child.generated_contours);
+        let generated_points = parent
+            .generated_points
+            .saturating_add(child.generated_points);
+        if operation_count > MAX_EDIT_OPERATIONS
+            || generated_contours > MAX_GENERATED_CONTOURS
+            || generated_points > MAX_GENERATED_POINTS
+        {
+            return Err(DocumentEditTransactionError::Invalid(format!(
+                "transaction lineage may contain at most {MAX_EDIT_OPERATIONS} operations, {MAX_GENERATED_CONTOURS} generated contours, and {MAX_GENERATED_POINTS} generated points"
+            )));
+        }
+
+        let mut writes = parent
+            .writes
+            .iter()
+            .map(|write| (write.before.address().clone(), write.clone()))
+            .collect::<BTreeMap<_, _>>();
+        for child_write in child.writes {
+            let address = child_write.before.address().clone();
+            if let Some(previous) = writes.get_mut(&address) {
+                let mut candidates = previous.changed_objects.clone();
+                candidates.extend(child_write.changed_objects);
+                previous.after = child_write.after;
+                previous.changed_objects =
+                    retain_changed_objects(&previous.before, &previous.after, candidates);
+                if previous.before == previous.after {
+                    writes.remove(&address);
+                }
+            } else {
+                writes.insert(address, child_write);
+            }
+        }
+        Ok(CanonicalDocumentEditTransaction {
+            source: parent.source,
+            history_name: child.history_name,
+            reads: root_guards.into_values().collect(),
+            writes: writes.into_values().collect(),
+            operation_count,
+            generated_contours,
+            generated_points,
+        })
+    }
+
+    fn validate_transaction_reads(
+        &self,
+        transaction: &CanonicalDocumentEditTransaction,
+    ) -> Result<(), DocumentEditTransactionError> {
+        for expected in &transaction.reads {
+            self.validate_edit_snapshot(expected)?;
+        }
+        Ok(())
     }
 
     /// Read the proposed canonical layers after rechecking every transaction dependency.
@@ -576,9 +703,7 @@ impl Project {
         &self,
         transaction: &CanonicalDocumentEditTransaction,
     ) -> Result<Vec<CanonicalLayerSnapshot>, DocumentEditTransactionError> {
-        for expected in &transaction.reads {
-            self.validate_edit_snapshot(expected)?;
-        }
+        self.validate_transaction_reads(transaction)?;
         Ok(transaction
             .writes
             .iter()
@@ -591,9 +716,7 @@ impl Project {
         &mut self,
         transaction: CanonicalDocumentEditTransaction,
     ) -> Result<DocumentEditTransactionOutcome, DocumentEditTransactionError> {
-        for expected in &transaction.reads {
-            self.validate_edit_snapshot(expected)?;
-        }
+        self.validate_transaction_reads(&transaction)?;
         if transaction.writes.is_empty() {
             return Ok(DocumentEditTransactionOutcome::Unchanged {
                 revision: self.variable.revision,
@@ -820,6 +943,32 @@ fn insert_guard(
     Ok(())
 }
 
+fn retain_changed_objects(
+    before: &CanonicalLayerSnapshot,
+    after: &CanonicalLayerSnapshot,
+    candidates: Vec<DocumentEditChangedObject>,
+) -> Vec<DocumentEditChangedObject> {
+    let (before_contours, _) = before.contour_and_point_ids();
+    let before_contours = before_contours.into_iter().collect::<BTreeSet<_>>();
+    let mut retained = Vec::new();
+    for candidate in candidates {
+        let changed = match candidate.object {
+            DocumentEditObjectKind::Width => before.width() != after.width(),
+            DocumentEditObjectKind::Point(id) => {
+                before.point_position(id) != after.point_position(id)
+            }
+            DocumentEditObjectKind::Contour(id) => !before_contours.contains(&id),
+            DocumentEditObjectKind::Anchor(id) => {
+                before.anchor_position(id) != after.anchor_position(id)
+            }
+        };
+        if changed && !retained.contains(&candidate) {
+            retained.push(candidate);
+        }
+    }
+    retained
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -846,6 +995,22 @@ mod tests {
                 smooth: false,
             })
             .collect(),
+        }
+    }
+
+    fn generated_line_contour(point_count: usize) -> GeneratedContour {
+        GeneratedContour {
+            points: (0..point_count)
+                .map(|index| GeneratedPoint {
+                    position: Point::new(index as f64, 0.0),
+                    point_type: if index == 0 {
+                        LayerPointType::Move
+                    } else {
+                        LayerPointType::Line
+                    },
+                    smooth: false,
+                })
+                .collect(),
         }
     }
 
@@ -907,6 +1072,450 @@ mod tests {
             .document_layer(&address.glyph, &address.layer)
             .unwrap()
             .width()
+    }
+
+    #[test]
+    fn chained_generated_point_keeps_identity_and_replays_exactly() {
+        let mut project = project();
+        let source = project.source_id(0).unwrap();
+        let a = address(&project, "A");
+        let before = project.capture_document_layer(&a).unwrap();
+        let parent = project
+            .begin_document_edit_transaction(
+                source,
+                "append",
+                Vec::new(),
+                vec![DocumentLayerEdit::new(
+                    before.clone(),
+                    vec![DocumentEditOperation::AppendContours(vec![
+                        generated_contour(),
+                    ])],
+                )],
+            )
+            .unwrap();
+        let parent_after = project.capture_document_edit_layer(&parent, &a).unwrap();
+        let generated = *parent_after.contour_and_point_ids().1.last().unwrap();
+        let moved = Point::new(110.0, 10.0);
+        let child = project
+            .extend_document_edit_transaction(
+                &parent,
+                "append and move",
+                Vec::new(),
+                vec![DocumentLayerEdit::new(
+                    parent_after.clone(),
+                    vec![DocumentEditOperation::SetPoint {
+                        point: generated,
+                        position: moved,
+                    }],
+                )],
+            )
+            .unwrap();
+        assert_eq!(
+            project
+                .capture_document_edit_layer(&parent, &a)
+                .unwrap()
+                .point_position(generated),
+            parent_after.point_position(generated)
+        );
+        assert_eq!(
+            project
+                .capture_document_edit_layer(&child, &a)
+                .unwrap()
+                .point_position(generated),
+            Some(moved)
+        );
+        let sibling = project
+            .extend_document_edit_transaction(
+                &parent,
+                "other branch",
+                Vec::new(),
+                vec![DocumentLayerEdit::new(
+                    parent_after,
+                    vec![DocumentEditOperation::SetWidth(620.0)],
+                )],
+            )
+            .unwrap();
+        assert_ne!(
+            project.capture_document_edit_layer(&sibling, &a).unwrap(),
+            project.capture_document_edit_layer(&child, &a).unwrap()
+        );
+        let DocumentEditTransactionOutcome::Changed {
+            changed_objects,
+            history_group,
+            ..
+        } = project.commit_document_edit_transaction(child).unwrap()
+        else {
+            panic!("chained edit must change the document");
+        };
+        assert!(
+            changed_objects
+                .iter()
+                .any(|item| { item.object == DocumentEditObjectKind::Point(generated) })
+        );
+        let after = project.capture_document_layer(&a).unwrap();
+        assert_eq!(after.point_position(generated), Some(moved));
+        project
+            .replay_document_edit_history_group(history_group, HistoryDirection::Undo)
+            .unwrap();
+        assert_eq!(project.capture_document_layer(&a).unwrap(), before);
+        project
+            .replay_document_edit_history_group(history_group, HistoryDirection::Redo)
+            .unwrap();
+        assert_eq!(project.capture_document_layer(&a).unwrap(), after);
+        assert_eq!(
+            project
+                .capture_document_layer(&a)
+                .unwrap()
+                .point_position(generated),
+            Some(moved)
+        );
+    }
+
+    #[test]
+    fn chained_reads_guard_root_and_reject_old_overlay_targets() {
+        let mut project = project();
+        let source = project.source_id(0).unwrap();
+        let a = address(&project, "A");
+        let b = address(&project, "B");
+        let root_a = project.capture_document_layer(&a).unwrap();
+        let root_b = project.capture_document_layer(&b).unwrap();
+        let parent = project
+            .begin_document_edit_transaction(
+                source,
+                "first",
+                vec![root_b.clone()],
+                vec![DocumentLayerEdit::new(
+                    root_a.clone(),
+                    vec![DocumentEditOperation::SetWidth(610.0)],
+                )],
+            )
+            .unwrap();
+        assert_eq!(
+            project.capture_document_edit_layer(&parent, &b).unwrap(),
+            root_b
+        );
+        assert_eq!(
+            project
+                .extend_document_edit_transaction(
+                    &parent,
+                    "old target",
+                    Vec::new(),
+                    vec![DocumentLayerEdit::new(
+                        root_a,
+                        vec![DocumentEditOperation::SetWidth(630.0)],
+                    )],
+                )
+                .err(),
+            Some(DocumentEditTransactionError::StaleLayer(a.clone()))
+        );
+        let staged_a = project.capture_document_edit_layer(&parent, &a).unwrap();
+        let child = project
+            .extend_document_edit_transaction(
+                &parent,
+                "second",
+                vec![root_b],
+                vec![DocumentLayerEdit::new(
+                    staged_a,
+                    vec![DocumentEditOperation::SetWidth(630.0)],
+                )],
+            )
+            .unwrap();
+        project
+            .edit_document_layer("B", &b.layer, |draft| {
+                draft.set_width(700.0)?;
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(
+            project.capture_document_edit_layer(&child, &a).err(),
+            Some(DocumentEditTransactionError::StaleLayer(b.clone()))
+        );
+        assert_eq!(
+            project
+                .extend_document_edit_transaction(
+                    &parent,
+                    "stale root",
+                    Vec::new(),
+                    vec![DocumentLayerEdit::new(
+                        project.capture_document_layer(&a).unwrap(),
+                        vec![DocumentEditOperation::SetWidth(640.0)],
+                    )],
+                )
+                .err(),
+            Some(DocumentEditTransactionError::StaleLayer(b.clone()))
+        );
+        assert_eq!(
+            project.commit_document_edit_transaction(child),
+            Err(DocumentEditTransactionError::StaleLayer(b))
+        );
+        assert_eq!(width(&project, &a), 500.0);
+    }
+
+    #[test]
+    fn chained_reversion_has_no_changed_object_or_history() {
+        let mut project = project();
+        let source = project.source_id(0).unwrap();
+        let a = address(&project, "A");
+        let root = project.capture_document_layer(&a).unwrap();
+        let parent = project
+            .begin_document_edit_transaction(
+                source,
+                "forward",
+                Vec::new(),
+                vec![DocumentLayerEdit::new(
+                    root.clone(),
+                    vec![DocumentEditOperation::SetWidth(600.0)],
+                )],
+            )
+            .unwrap();
+        let child = project
+            .extend_document_edit_transaction(
+                &parent,
+                "revert",
+                Vec::new(),
+                vec![DocumentLayerEdit::new(
+                    project.capture_document_edit_layer(&parent, &a).unwrap(),
+                    vec![DocumentEditOperation::SetWidth(root.width())],
+                )],
+            )
+            .unwrap();
+        assert!(
+            project
+                .preview_document_edit_transaction(&child)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(matches!(
+            project.commit_document_edit_transaction(child).unwrap(),
+            DocumentEditTransactionOutcome::Unchanged { .. }
+        ));
+        assert_eq!(
+            project.document_layer_history_depth(&a, HistoryDirection::Undo),
+            0
+        );
+        assert_eq!(project.capture_document_layer(&a).unwrap(), root);
+    }
+
+    #[test]
+    fn chained_limits_and_invalid_late_operation_leave_parent_usable() {
+        let project = project();
+        let source = project.source_id(0).unwrap();
+        let a = address(&project, "A");
+        let root = project.capture_document_layer(&a).unwrap();
+        let revision = project.document_revision();
+        let parent = project
+            .begin_document_edit_transaction(
+                source,
+                "many operations",
+                Vec::new(),
+                vec![DocumentLayerEdit::new(
+                    root.clone(),
+                    vec![DocumentEditOperation::SetWidth(601.0); 200],
+                )],
+            )
+            .unwrap();
+        let staged = project.capture_document_edit_layer(&parent, &a).unwrap();
+        let too_many = project.extend_document_edit_transaction(
+            &parent,
+            "overflow",
+            Vec::new(),
+            vec![DocumentLayerEdit::new(
+                staged.clone(),
+                vec![DocumentEditOperation::SetWidth(602.0); 57],
+            )],
+        );
+        assert!(matches!(
+            too_many,
+            Err(DocumentEditTransactionError::Invalid(_))
+        ));
+
+        let (point, anchor) = point_and_anchor(&project, &a);
+        let invalid = project.extend_document_edit_transaction(
+            &parent,
+            "invalid late operation",
+            Vec::new(),
+            vec![DocumentLayerEdit::new(
+                staged.clone(),
+                vec![
+                    DocumentEditOperation::SetPoint {
+                        point,
+                        position: Point::new(20.0, 30.0),
+                    },
+                    DocumentEditOperation::SetAnchor {
+                        anchor,
+                        position: Point::new(f64::INFINITY, 20.0),
+                    },
+                ],
+            )],
+        );
+        assert!(matches!(
+            invalid,
+            Err(DocumentEditTransactionError::Operation(
+                DocumentEditError::NonFinite
+            ))
+        ));
+        assert_eq!(project.capture_document_layer(&a).unwrap(), root);
+        assert_eq!(
+            project.capture_document_edit_layer(&parent, &a).unwrap(),
+            staged
+        );
+
+        let first_contours = vec![generated_contour(); MAX_GENERATED_CONTOURS / 2];
+        let contour_parent = project
+            .begin_document_edit_transaction(
+                source,
+                "many contours",
+                Vec::new(),
+                vec![DocumentLayerEdit::new(
+                    root,
+                    vec![DocumentEditOperation::AppendContours(first_contours)],
+                )],
+            )
+            .unwrap();
+        let extra_contours = vec![generated_contour(); MAX_GENERATED_CONTOURS / 2 + 1];
+        let too_many_contours = project.extend_document_edit_transaction(
+            &contour_parent,
+            "contour overflow",
+            Vec::new(),
+            vec![DocumentLayerEdit::new(
+                project
+                    .capture_document_edit_layer(&contour_parent, &a)
+                    .unwrap(),
+                vec![DocumentEditOperation::AppendContours(extra_contours)],
+            )],
+        );
+        assert!(matches!(
+            too_many_contours,
+            Err(DocumentEditTransactionError::Invalid(_))
+        ));
+        assert_eq!(project.document_revision(), revision);
+    }
+
+    #[test]
+    fn chained_generated_point_limit_accepts_exact_total_and_rejects_one_more() {
+        let project = project();
+        let source = project.source_id(0).unwrap();
+        let a = address(&project, "A");
+        let root = project.capture_document_layer(&a).unwrap();
+        let parent = project
+            .begin_document_edit_transaction(
+                source,
+                "first half",
+                Vec::new(),
+                vec![DocumentLayerEdit::new(
+                    root.clone(),
+                    vec![DocumentEditOperation::AppendContours(vec![
+                        generated_line_contour(MAX_GENERATED_POINTS / 2),
+                    ])],
+                )],
+            )
+            .unwrap();
+        let staged = project.capture_document_edit_layer(&parent, &a).unwrap();
+        let exact = project
+            .extend_document_edit_transaction(
+                &parent,
+                "exact point limit",
+                Vec::new(),
+                vec![DocumentLayerEdit::new(
+                    staged.clone(),
+                    vec![DocumentEditOperation::AppendContours(vec![
+                        generated_line_contour(MAX_GENERATED_POINTS / 2),
+                    ])],
+                )],
+            )
+            .unwrap();
+        assert_eq!(exact.generated_points, MAX_GENERATED_POINTS);
+        assert_eq!(
+            project
+                .capture_document_edit_layer(&exact, &a)
+                .unwrap()
+                .contour_and_point_ids()
+                .1
+                .len(),
+            root.contour_and_point_ids().1.len() + MAX_GENERATED_POINTS
+        );
+        let overflow = project.extend_document_edit_transaction(
+            &parent,
+            "one point over",
+            Vec::new(),
+            vec![DocumentLayerEdit::new(
+                staged.clone(),
+                vec![DocumentEditOperation::AppendContours(vec![
+                    generated_line_contour(MAX_GENERATED_POINTS / 2 + 1),
+                ])],
+            )],
+        );
+        assert!(matches!(
+            overflow,
+            Err(DocumentEditTransactionError::Invalid(_))
+        ));
+        assert_eq!(
+            project.capture_document_edit_layer(&parent, &a).unwrap(),
+            staged
+        );
+        assert_eq!(project.capture_document_layer(&a).unwrap(), root);
+    }
+
+    #[test]
+    fn chained_unique_layer_limit_accepts_64_and_rejects_65() {
+        let mut font = Font::new();
+        for index in 0..=MAX_EDIT_LAYERS {
+            let name = format!("G{index}");
+            font.default_layer_mut().insert_glyph(Glyph::new(&name));
+        }
+        let project = Project::from_source(SourceInput::from_font(
+            font,
+            PathBuf::from("many-layers.ufo"),
+        ));
+        let source = project.source_id(0).unwrap();
+        let reads = (0..MAX_EDIT_LAYERS - 1)
+            .map(|index| {
+                project
+                    .capture_document_layer(&address(&project, &format!("G{index}")))
+                    .unwrap()
+            })
+            .collect();
+        let target = address(&project, &format!("G{}", MAX_EDIT_LAYERS - 1));
+        let root_target = project.capture_document_layer(&target).unwrap();
+        let parent = project
+            .begin_document_edit_transaction(
+                source,
+                "64 guarded layers",
+                reads,
+                vec![DocumentLayerEdit::new(
+                    root_target.clone(),
+                    vec![DocumentEditOperation::SetWidth(600.0)],
+                )],
+            )
+            .unwrap();
+        assert_eq!(parent.reads.len(), MAX_EDIT_LAYERS);
+        let staged = project
+            .capture_document_edit_layer(&parent, &target)
+            .unwrap();
+        let extra = address(&project, &format!("G{MAX_EDIT_LAYERS}"));
+        let overflow = project.extend_document_edit_transaction(
+            &parent,
+            "65 guarded layers",
+            vec![project.capture_document_layer(&extra).unwrap()],
+            vec![DocumentLayerEdit::new(
+                staged.clone(),
+                vec![DocumentEditOperation::SetWidth(700.0)],
+            )],
+        );
+        assert!(matches!(
+            overflow,
+            Err(DocumentEditTransactionError::Invalid(_))
+        ));
+        assert_eq!(
+            project
+                .capture_document_edit_layer(&parent, &target)
+                .unwrap(),
+            staged
+        );
+        assert_eq!(
+            project.capture_document_layer(&target).unwrap(),
+            root_target
+        );
     }
 
     #[test]

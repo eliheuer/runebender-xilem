@@ -452,6 +452,11 @@ impl CanonicalLayerSnapshot {
         &self.address
     }
 
+    /// Read immutable canonical geometry and stable object identities from this snapshot.
+    pub fn view(&self) -> LayerView<'_> {
+        LayerView::new(&self.layer, &self.preserved)
+    }
+
     /// The exact horizontal advance retained by this snapshot.
     pub(crate) fn width(&self) -> f64 {
         self.preserved.width

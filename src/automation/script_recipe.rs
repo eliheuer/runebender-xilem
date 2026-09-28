@@ -15,7 +15,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use super::agent_edit::{AgentEditOperation, AgentLayerEdits, AgentLayerGuard};
-use crate::font::{edit_batch, project, variable};
+use crate::font::{CanonicalLayerSnapshot, edit_batch, project, variable};
 use crate::outline::drawing::DrawingPointType;
 
 /// The current recipe input and result JSON schema emitted by Runebender.
@@ -164,6 +164,38 @@ pub fn capture(
     job_id: String,
     parameters: BTreeMap<String, Value>,
 ) -> Result<ScriptRecipeInput, String> {
+    capture_with(project, source, glyphs, job_id, parameters, |address| {
+        project
+            .capture_document_layer(address)
+            .ok_or_else(|| format!("glyph {} has no selected-source layer", address.glyph))
+    })
+}
+
+/// Capture the detached state after a staged transaction without publishing it to the document.
+/// Guards and object IDs describe the parent's exact overlay, including generated contours.
+pub fn capture_staged(
+    project: &project::Project,
+    parent: &project::CanonicalDocumentEditTransaction,
+    source: variable::SourceId,
+    glyphs: &[String],
+    job_id: String,
+    parameters: BTreeMap<String, Value>,
+) -> Result<ScriptRecipeInput, String> {
+    capture_with(project, source, glyphs, job_id, parameters, |address| {
+        project
+            .capture_document_edit_layer(parent, address)
+            .map_err(|error| error.to_string())
+    })
+}
+
+fn capture_with(
+    project: &project::Project,
+    source: variable::SourceId,
+    glyphs: &[String],
+    job_id: String,
+    parameters: BTreeMap<String, Value>,
+    mut snapshot_for: impl FnMut(&variable::GlyphLayerAddress) -> Result<CanonicalLayerSnapshot, String>,
+) -> Result<ScriptRecipeInput, String> {
     if glyphs.is_empty() || glyphs.len() > MAX_LAYERS {
         return Err(format!("select between one and {MAX_LAYERS} glyphs"));
     }
@@ -179,9 +211,12 @@ pub fn capture(
         let glyph = project
             .document_glyph(name)
             .ok_or_else(|| format!("glyph {name} is unavailable"))?;
-        let layer = project
-            .document_layer(name, &layer_id)
-            .ok_or_else(|| format!("glyph {name} has no selected-source layer"))?;
+        let address = variable::GlyphLayerAddress {
+            glyph: name.clone(),
+            layer: layer_id.clone(),
+        };
+        let snapshot = snapshot_for(&address)?;
+        let layer = snapshot.view();
         let mut contours = Vec::new();
         for contour in layer.contours() {
             contour_count += 1;

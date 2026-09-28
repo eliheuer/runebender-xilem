@@ -644,12 +644,7 @@ impl Workspace {
                         request.authorization,
                     )
                     .map_err(|error| error.to_string())?;
-                let response = self
-                    .call_agent_edit(&runebender::automation::agent::ToolCall {
-                        name: "agent_apply".into(),
-                        arguments: serde_json::to_value(edit).map_err(|error| error.to_string())?,
-                    })
-                    .ok_or("edit adapter unavailable")?;
+                let response = self.apply_retained_agent_edit(edit.request, edit.candidate);
                 self.live_nodes
                     .as_mut()
                     .expect("Apply does not replace the graph")
@@ -965,6 +960,15 @@ mod tests {
 
     #[test]
     fn node_commands_share_images_retry_receipts_apply_and_ordinary_undo() {
+        check_node_commands(false);
+    }
+
+    #[test]
+    fn generated_node_geometry_applies_the_exact_preview_and_replays_its_ids() {
+        check_node_commands(true);
+    }
+
+    fn check_node_commands(generate_geometry: bool) {
         let mut project = Project::new_font(std::env::temp_dir().join("nodes-command-unsaved.ufo"));
         project
             .add_document_glyph("A", 400.0, Some(u32::from('A')))
@@ -1000,11 +1004,20 @@ mod tests {
         assert_eq!(graph_snapshot["ok"], true, "{graph_snapshot}");
         assert_eq!(graph_snapshot["snapshot"]["identity"], identity);
         assert!(graph_snapshot["snapshot"]["graph"]["nodes"].is_array());
-        let script = r#"import json, sys
+        let script = if generate_geometry {
+            r#"import json, sys
+p=json.load(sys.stdin)
+contours=[{"points":[{"x":420,"y":0,"type":"line","smooth":False},{"x":480,"y":0,"type":"line","smooth":False},{"x":480,"y":600,"type":"line","smooth":False}]}]
+edits=[{"target":layer["guard"],"operations":[{"op":"set_width","width":layer["width"]+100},{"op":"append_contours","contours":contours}]} for layer in p["layers"]]
+json.dump({"schema_version":2,"job_id":p["job_id"],"input_hash":p["input_hash"],"report":"Append geometry and increase widths","reads":[],"edits":edits},sys.stdout)
+"#
+        } else {
+            r#"import json, sys
 p=json.load(sys.stdin)
 edits=[{"target":layer["guard"],"operations":[{"op":"set_width","width":layer["width"]+100}]} for layer in p["layers"]]
 json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],"report":"Increase selected widths by 100","reads":[],"edits":edits},sys.stdout)
-"#;
+"#
+        };
         let session = app.live_graph_session_mut().unwrap();
         let snapshot = session.snapshot();
         let edits = snapshot
@@ -1090,8 +1103,39 @@ json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],
         assert_ne!(original["png_base64"], changed["png_base64"]);
         app = capture_completed_comparison(app);
         let apply = json!({"expected_document_epoch":epoch,"identity":identity,"handle":handle,"actor":"nodes-test","operation_key":"apply-one","authorization":"user-approved"});
+        let address = runebender::font::variable::GlyphLayerAddress {
+            glyph: "A".into(),
+            layer: layer.clone(),
+        };
+        let before = app.font.project.capture_document_layer(&address).unwrap();
+        let state = app.live_nodes.as_ref().unwrap();
+        let retained = state
+            .execution
+            .apply_request(
+                &state.session,
+                &GraphDocumentState {
+                    document_epoch: epoch.clone(),
+                    document_revision: app.font.project.document_revision(),
+                },
+                serde_json::from_value(handle.clone()).unwrap(),
+                "nodes-test",
+                "apply-one",
+                "user-approved",
+            )
+            .unwrap();
+        let preview = app
+            .font
+            .project
+            .preview_document_edit_transaction(&retained.candidate)
+            .unwrap();
+        assert_eq!(preview.len(), 1);
         let applied = call(&mut app, "nodes_apply", apply.clone());
         assert_eq!(applied["ok"], true, "{applied}");
+        assert_eq!(
+            app.font.project.capture_document_layer(&address).unwrap(),
+            preview[0],
+            "Apply must retain the exact preview geometry and stable identities"
+        );
         assert_eq!(
             app.font
                 .project
@@ -1113,8 +1157,16 @@ json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],
                 .width(),
             400.0
         );
+        assert_eq!(
+            app.font.project.capture_document_layer(&address).unwrap(),
+            before
+        );
         assert!(app.can_metadata_history_step(true));
         app.undo_active_edit(true);
+        assert_eq!(
+            app.font.project.capture_document_layer(&address).unwrap(),
+            preview[0]
+        );
         assert_eq!(
             app.font
                 .project

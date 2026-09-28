@@ -114,6 +114,23 @@ impl AgentEditRequest {
         &self,
         project: &Project,
     ) -> Result<CanonicalDocumentEditTransaction, AgentOperationRejection> {
+        self.stage_with_parent(project, None)
+    }
+
+    /// Extend a detached candidate after resolving guards against its exact staged overlay.
+    pub fn stage_after(
+        &self,
+        project: &Project,
+        parent: &CanonicalDocumentEditTransaction,
+    ) -> Result<CanonicalDocumentEditTransaction, AgentOperationRejection> {
+        self.stage_with_parent(project, Some(parent))
+    }
+
+    fn stage_with_parent(
+        &self,
+        project: &Project,
+        parent: Option<&CanonicalDocumentEditTransaction>,
+    ) -> Result<CanonicalDocumentEditTransaction, AgentOperationRejection> {
         let invalid = |message: &str| AgentOperationRejection::InvalidRequest(message.into());
         if self.edits.is_empty() || self.edits.len() + self.reads.len() > 64 {
             return Err(invalid("supply edits and at most 64 guarded layer entries"));
@@ -150,16 +167,14 @@ impl AgentEditRequest {
         let reads = self
             .reads
             .iter()
-            .map(|guard| guard.resolve(project, source))
+            .map(|guard| guard.resolve(project, source, parent))
             .collect::<Result<Vec<_>, _>>()?;
         let edits = self
             .edits
             .iter()
             .map(|edit| {
-                let snapshot = edit.target.resolve(project, source)?;
-                let layer = project
-                    .document_layer(&snapshot.address().glyph, &snapshot.address().layer)
-                    .expect("resolved canonical layer remains present during immutable staging");
+                let snapshot = edit.target.resolve(project, source, parent)?;
+                let layer = snapshot.view();
                 let operations = edit
                     .operations
                     .iter()
@@ -202,9 +217,14 @@ impl AgentEditRequest {
                 Ok(DocumentLayerEdit::new(snapshot, operations))
             })
             .collect::<Result<Vec<_>, AgentOperationRejection>>()?;
-        project
-            .begin_document_edit_transaction(source, &self.history_name, reads, edits)
-            .map_err(Into::into)
+        match parent {
+            Some(parent) => project
+                .extend_document_edit_transaction(parent, &self.history_name, reads, edits)
+                .map_err(Into::into),
+            None => project
+                .begin_document_edit_transaction(source, &self.history_name, reads, edits)
+                .map_err(Into::into),
+        }
     }
 }
 
@@ -213,6 +233,7 @@ impl AgentLayerGuard {
         &self,
         project: &Project,
         source: SourceId,
+        parent: Option<&CanonicalDocumentEditTransaction>,
     ) -> Result<CanonicalLayerSnapshot, AgentOperationRejection> {
         let invalid = |message: &str| AgentOperationRejection::InvalidRequest(message.into());
         if [
@@ -241,19 +262,22 @@ impl AgentLayerGuard {
                 name: self.layer.clone(),
             },
         };
-        let layer = project
-            .document_layer(&address.glyph, &address.layer)
-            .ok_or_else(|| invalid("explicit source/layer does not contain the glyph"))?;
-        let revision =
-            canonical_glyph_revision(layer).map_err(AgentOperationRejection::InvalidRequest)?;
+        let snapshot = match parent {
+            Some(parent) => project
+                .capture_document_edit_layer(parent, &address)
+                .map_err(AgentOperationRejection::from)?,
+            None => project
+                .capture_document_layer(&address)
+                .ok_or_else(|| invalid("explicit source/layer does not contain the glyph"))?,
+        };
+        let revision = canonical_glyph_revision(snapshot.view())
+            .map_err(AgentOperationRejection::InvalidRequest)?;
         if revision != self.expected_revision {
             return Err(invalid(
                 "guarded layer changed; read it again before a new operation",
             ));
         }
-        project
-            .capture_document_layer(&address)
-            .ok_or_else(|| invalid("guarded layer is unavailable"))
+        Ok(snapshot)
     }
 }
 
@@ -336,7 +360,248 @@ pub fn tools() -> Vec<Tool> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+    use std::path::PathBuf;
+
+    use norad::{Contour, ContourPoint, Font, Glyph, PointType};
+
     use super::*;
+    use crate::automation::script_recipe::{capture, capture_staged};
+    use crate::font::project::SourceInput;
+    use crate::outline::drawing::{DrawingContour, DrawingPoint, DrawingPointType};
+
+    fn project() -> Project {
+        let mut font = Font::new();
+        font.default_layer_mut().insert_glyph(Glyph::new("A"));
+        Project::from_source(SourceInput::from_font(
+            font,
+            PathBuf::from("staged-recipe.ufo"),
+        ))
+    }
+
+    fn request(
+        source: SourceId,
+        guard: AgentLayerGuard,
+        operation: AgentEditOperation,
+    ) -> AgentEditRequest {
+        AgentEditRequest {
+            expected_document_epoch: "test-epoch".into(),
+            actor: "test".into(),
+            operation_key: "test-operation".into(),
+            authorization: "user-approved".into(),
+            source: source.0,
+            history_name: "staged recipe".into(),
+            reads: Vec::new(),
+            edits: vec![AgentLayerEdits {
+                target: guard,
+                operations: vec![operation],
+            }],
+        }
+    }
+
+    fn rectangle() -> DrawingContour {
+        DrawingContour {
+            points: [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)]
+                .into_iter()
+                .map(|(x, y)| DrawingPoint {
+                    x,
+                    y,
+                    kind: DrawingPointType::Line,
+                    smooth: false,
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn staged_capture_can_address_generated_point_without_mutating_root() {
+        let mut project = project();
+        let source = project.source_id(0).unwrap();
+        let glyphs = ["A".to_owned()];
+        let root = capture(&project, source, &glyphs, "root".into(), BTreeMap::new()).unwrap();
+        let parent = request(
+            source,
+            root.layers[0].guard.clone(),
+            AgentEditOperation::AppendContours {
+                contours: vec![rectangle()],
+            },
+        )
+        .stage(&project)
+        .unwrap();
+        let staged = capture_staged(
+            &project,
+            &parent,
+            source,
+            &glyphs,
+            "staged".into(),
+            BTreeMap::new(),
+        )
+        .unwrap();
+        let inserted_id = staged.layers[0].contours[0].points[0].id.clone();
+        assert!(root.layers[0].contours.is_empty());
+        assert_eq!(
+            project
+                .document_layer(
+                    "A",
+                    &project.document_source(source).unwrap().default_layer()
+                )
+                .unwrap()
+                .contours()
+                .count(),
+            0
+        );
+
+        let child = request(
+            source,
+            staged.layers[0].guard.clone(),
+            AgentEditOperation::SetPoint {
+                point_id: inserted_id.clone(),
+                x: 25.0,
+                y: 15.0,
+            },
+        )
+        .stage_after(&project, &parent)
+        .unwrap();
+        let child_capture = capture_staged(
+            &project,
+            &child,
+            source,
+            &glyphs,
+            "child".into(),
+            BTreeMap::new(),
+        )
+        .unwrap();
+        let moved = &child_capture.layers[0].contours[0].points[0];
+        assert_eq!(moved.id, inserted_id);
+        assert_eq!((moved.x, moved.y), (25.0, 15.0));
+        assert!(
+            project
+                .document_layer(
+                    "A",
+                    &project.document_source(source).unwrap().default_layer()
+                )
+                .unwrap()
+                .contours()
+                .next()
+                .is_none()
+        );
+
+        project.commit_document_edit_transaction(child).unwrap();
+        let committed = capture(
+            &project,
+            source,
+            &glyphs,
+            "committed".into(),
+            BTreeMap::new(),
+        )
+        .unwrap();
+        assert_eq!(committed.layers[0].contours[0].points[0].id, inserted_id);
+        assert_eq!(committed.layers[0].contours[0].points[0].x, 25.0);
+    }
+
+    #[test]
+    fn siblings_are_detached_and_stale_guards_reject() {
+        let mut project = project();
+        let source = project.source_id(0).unwrap();
+        let glyphs = ["A".to_owned()];
+        let root = capture(&project, source, &glyphs, "root".into(), BTreeMap::new()).unwrap();
+        let first = request(
+            source,
+            root.layers[0].guard.clone(),
+            AgentEditOperation::SetWidth { width: 600.0 },
+        )
+        .stage(&project)
+        .unwrap();
+        let second = request(
+            source,
+            root.layers[0].guard.clone(),
+            AgentEditOperation::SetWidth { width: 700.0 },
+        )
+        .stage(&project)
+        .unwrap();
+        let first_capture = capture_staged(
+            &project,
+            &first,
+            source,
+            &glyphs,
+            "first".into(),
+            BTreeMap::new(),
+        )
+        .unwrap();
+        let second_capture = capture_staged(
+            &project,
+            &second,
+            source,
+            &glyphs,
+            "second".into(),
+            BTreeMap::new(),
+        )
+        .unwrap();
+        assert_eq!(first_capture.layers[0].width, 600.0);
+        assert_eq!(second_capture.layers[0].width, 700.0);
+        assert_eq!(root.layers[0].width, 0.0);
+        assert!(
+            request(
+                source,
+                root.layers[0].guard.clone(),
+                AgentEditOperation::SetWidth { width: 800.0 }
+            )
+            .stage_after(&project, &first)
+            .is_err()
+        );
+        project.commit_document_edit_transaction(first).unwrap();
+        assert!(
+            capture_staged(
+                &project,
+                &second,
+                source,
+                &glyphs,
+                "stale".into(),
+                BTreeMap::new()
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn staged_capture_enforces_whole_input_geometry_budget() {
+        let mut font = Font::new();
+        let mut glyph = Glyph::new("A");
+        glyph.contours.push(Contour::new(
+            vec![
+                ContourPoint::new(0.0, 0.0, PointType::Line, false, None, None),
+                ContourPoint::new(10.0, 10.0, PointType::Line, false, None, None),
+            ],
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(glyph);
+        let project = Project::from_source(SourceInput::from_font(
+            font,
+            PathBuf::from("staged-budget.ufo"),
+        ));
+        let source = project.source_id(0).unwrap();
+        let glyphs = ["A".to_owned()];
+        let root = capture(&project, source, &glyphs, "root".into(), BTreeMap::new()).unwrap();
+        let parent = request(
+            source,
+            root.layers[0].guard.clone(),
+            AgentEditOperation::AppendContours {
+                contours: vec![rectangle(); 256],
+            },
+        )
+        .stage(&project)
+        .unwrap();
+        let error = capture_staged(
+            &project,
+            &parent,
+            source,
+            &glyphs,
+            "oversize".into(),
+            BTreeMap::new(),
+        )
+        .unwrap_err();
+        assert!(error.contains("256 contours"));
+    }
 
     #[test]
     fn generated_input_schema_bounds_geometry_without_accepting_caller_ids() {

@@ -15,7 +15,7 @@ use std::fmt;
 use runebender::automation::agent_edit::AgentEditRequest;
 use runebender::automation::script_recipe::{ScriptRecipeInput, ScriptRecipeResult};
 use runebender::font::compiler::proof::{CompileProofInput, CompiledProofRecipe};
-use runebender::font::project::Project;
+use runebender::font::project::{CanonicalDocumentEditTransaction, Project};
 use runebender::workflows::nodes_session::{
     GraphCancelOutcome, GraphCancelRequest, GraphCancelResponse, GraphDocumentState,
     GraphFontCapture, GraphNodeOutput, GraphNodeOutputValue, GraphProofScope,
@@ -81,6 +81,8 @@ pub(crate) struct LiveGraphProofRequest {
     pub(crate) base_input: CompileProofInput,
     /// Complete derived whole-family compiler input with the staged edit overlaid.
     pub(crate) derived_input: CompileProofInput,
+    /// Exact immutable candidate used by the proof and later explicit Apply.
+    pub(crate) candidate: CanonicalDocumentEditTransaction,
     /// Strict Python result retained for report and later explicit Apply.
     pub(crate) recipe_result: ScriptRecipeResult,
     /// Bounded Python diagnostics.
@@ -89,6 +91,13 @@ pub(crate) struct LiveGraphProofRequest {
     pub(crate) proof_recipe: CompiledProofRecipe,
     /// Derived `FontVersion` output published only after both proofs finish.
     pub(crate) derived_version: GraphNodeOutput,
+}
+
+/// Explicit Apply intent paired with the exact retained canonical candidate.
+#[derive(Debug)]
+pub(crate) struct LiveGraphApplyRequest {
+    pub(crate) request: AgentEditRequest,
+    pub(crate) candidate: CanonicalDocumentEditTransaction,
 }
 
 /// Exact proof artifact identities returned by the existing proof queue.
@@ -636,7 +645,7 @@ impl LiveGraphExecution {
         actor: impl Into<String>,
         operation_key: impl Into<String>,
         authorization: impl Into<String>,
-    ) -> Result<AgentEditRequest, LiveGraphExecutionError> {
+    ) -> Result<LiveGraphApplyRequest, LiveGraphExecutionError> {
         let record = self.records.get(&handle).ok_or_else(|| {
             LiveGraphExecutionError::new(
                 LiveGraphExecutionErrorCode::UnknownRun,
@@ -667,15 +676,18 @@ impl LiveGraphExecution {
                 "completed graph run has no retained staged recipe",
             )
         })?;
-        Ok(AgentEditRequest {
-            expected_document_epoch: record.work.identity.graph.document_epoch.clone(),
-            actor: actor.into(),
-            operation_key: operation_key.into(),
-            authorization: authorization.into(),
-            source: record.work.identity.capture.font.source,
-            history_name: "Apply Nodes Python result".into(),
-            reads: proof.recipe_result.reads.clone(),
-            edits: proof.recipe_result.edits.clone(),
+        Ok(LiveGraphApplyRequest {
+            candidate: proof.candidate.clone(),
+            request: AgentEditRequest {
+                expected_document_epoch: record.work.identity.graph.document_epoch.clone(),
+                actor: actor.into(),
+                operation_key: operation_key.into(),
+                authorization: authorization.into(),
+                source: record.work.identity.capture.font.source,
+                history_name: "Apply Nodes Python result".into(),
+                reads: proof.recipe_result.reads.clone(),
+                edits: proof.recipe_result.edits.clone(),
+            },
         })
     }
 
@@ -864,7 +876,7 @@ fn stage_result(
         operation_key: record.operation_key.clone(),
         authorization: "preview-only".into(),
         source: record.work.identity.capture.font.source,
-        history_name: "Nodes Python preview".into(),
+        history_name: "Apply Nodes Python result".into(),
         reads: result.reads.clone(),
         edits: result.edits.clone(),
     };
@@ -904,6 +916,7 @@ fn stage_result(
         identity: record.work.identity.clone(),
         base_input,
         derived_input,
+        candidate: staged_edit,
         recipe_result: result,
         stderr,
         proof_recipe,
@@ -1499,9 +1512,9 @@ mod tests {
                 "user-approved",
             )
             .unwrap();
-        assert_eq!(apply.expected_document_epoch, "document");
-        assert_eq!(apply.source, project.source_id(0).unwrap().0);
-        assert_eq!(apply.edits.len(), 1);
+        assert_eq!(apply.request.expected_document_epoch, "document");
+        assert_eq!(apply.request.source, project.source_id(0).unwrap().0);
+        assert_eq!(apply.request.edits.len(), 1);
 
         let stale_document = adapter
             .apply_request(
