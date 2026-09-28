@@ -34,7 +34,7 @@ const PROOF_LINE_HEIGHT: f64 = 180.0;
 /// This identifies the pinned compiler sources used to make the bytes.
 /// It is not a hash of an application executable; session adapters add that
 /// stronger process identity when one is available.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct CompilerIdentity {
     /// Stable label for this Cargo build and its resolved `Cargo.lock`.
     pub label: String,
@@ -201,7 +201,7 @@ pub fn compile(input: CompileProofInput) -> Result<CompiledProofSnapshot, String
 }
 
 /// A bounded shaping and rendering recipe for one compiled proof.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CompiledProofRecipe {
     /// UTF-8 text to shape.
@@ -270,7 +270,7 @@ impl CompiledProofRecipe {
 }
 
 /// One shaped glyph in a compiled proof.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct CompiledProofGlyph {
     /// OpenType glyph ID in the compiled snapshot.
     pub glyph_id: u16,

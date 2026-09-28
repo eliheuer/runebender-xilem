@@ -13,7 +13,8 @@ use std::sync::{Mutex, OnceLock};
 use base64::Engine as _;
 use runebender::automation::agent::ToolCall;
 use runebender::automation::agent_proof::{
-    ProofHandleRequest, ProofStartRequest, ProofStatusRequest,
+    CompletedProofResult, ProofCancellation, ProofHandleRequest, ProofOutcomeResult,
+    ProofReleaseResult, ProofStartRequest, ProofStartResult, ProofStatusRequest, ProofStatusResult,
 };
 use runebender::font::compiler::proof as compiled_proof;
 use runebender::font::compiler::proof_jobs::{
@@ -80,6 +81,10 @@ impl Drop for LiveProofSession {
 
 fn failure(code: &str, message: impl ToString) -> Value {
     json!({"ok":false,"error_code":code,"error":message.to_string(),"root_changed":false})
+}
+
+fn success(result: impl serde::Serialize) -> Value {
+    serde_json::to_value(result).expect("typed proof result serializes")
 }
 
 impl Workspace {
@@ -152,9 +157,14 @@ impl Workspace {
                     "retained proof key has a different payload",
                 );
             }
-            return json!({"ok":true,"proof_id":record.handle.get().to_string(),"replayed":true,
-                "captured_document_epoch":request.expected_document_epoch,
-                "captured_document_revision":request.expected_document_revision,"root_changed":false});
+            return success(ProofStartResult {
+                ok: true,
+                proof_id: record.handle.get().to_string(),
+                replayed: true,
+                captured_document_epoch: request.expected_document_epoch,
+                captured_document_revision: request.expected_document_revision,
+                root_changed: false,
+            });
         }
         if request.expected_document_revision != self.font.project.document_revision() {
             return failure(
@@ -199,9 +209,14 @@ impl Workspace {
             Ok(handle) => handle,
             Err(error) => return failure("proof_unavailable", format!("{error:?}")),
         };
-        let result = json!({"ok":true,"proof_id":handle.get().to_string(),"replayed":false,
-            "captured_document_epoch":request.expected_document_epoch,
-            "captured_document_revision":request.expected_document_revision,"root_changed":false});
+        let result = success(ProofStartResult {
+            ok: true,
+            proof_id: handle.get().to_string(),
+            replayed: false,
+            captured_document_epoch: request.expected_document_epoch.clone(),
+            captured_document_revision: request.expected_document_revision,
+            root_changed: false,
+        });
         self.proof_jobs.jobs.insert(
             request.operation_key.clone(),
             RetainedProof { handle, request },
@@ -233,13 +248,20 @@ impl Workspace {
                 );
             }
             self.proof_jobs.jobs.remove(&key);
-            return json!({"ok":true,"proof_id":id,"released":true,"root_changed":false});
+            return success(ProofReleaseResult {
+                ok: true,
+                proof_id: id.into(),
+                released: true,
+                root_changed: false,
+            });
         }
         let cancellation = if action == "proof_cancel" {
             Some(match service.queue.cancel(handle) {
-                ProofJobCancelOutcome::CancelledBeforeStart => "cancelled_before_start",
-                ProofJobCancelOutcome::TooLate => "too_late",
-                ProofJobCancelOutcome::UnknownHandle => "unknown",
+                ProofJobCancelOutcome::CancelledBeforeStart => {
+                    ProofCancellation::CancelledBeforeStart
+                }
+                ProofJobCancelOutcome::TooLate => ProofCancellation::TooLate,
+                ProofJobCancelOutcome::UnknownHandle => ProofCancellation::Unknown,
             })
         } else {
             None
@@ -250,44 +272,49 @@ impl Workspace {
         drop(service);
         let current = inspected.lineage.document_epoch == epoch
             && inspected.lineage.document_revision == self.font.project.document_revision();
-        let mut result = json!({"ok":true,"proof_id":id,"root_changed":false,
-        "captured_document_epoch":inspected.lineage.document_epoch,
-        "captured_document_revision":inspected.lineage.document_revision,
-        "current":current,"stale":!current,
-        "status":match inspected.status {
-            ProofJobStatus::Queued => "queued",
-            ProofJobStatus::Running => "running",
-            ProofJobStatus::Completed => "completed",
-            ProofJobStatus::Failed => "failed",
-            ProofJobStatus::CancelledBeforeStart => "cancelled_before_start",
-        }});
-        if let Some(cancellation) = cancellation {
-            result["cancellation"] = json!(cancellation);
-        }
-        match inspected.outcome {
-            Some(ProofJobOutcome::Completed(proof)) => {
-                result["font_sha256"] = json!(proof.font_sha256);
-                result["canonical_input_sha256"] = json!(proof.canonical_input_sha256);
-                result["compiler"] = json!(proof.compiler);
-                result["recipe"] = json!(proof.recipe);
-                result["glyphs"] = json!(proof.glyphs);
-                if include_image {
+        let outcome = match (inspected.status, inspected.outcome) {
+            (ProofJobStatus::Queued, None) => ProofOutcomeResult::Queued,
+            (ProofJobStatus::Running, None) => ProofOutcomeResult::Running,
+            (ProofJobStatus::CancelledBeforeStart, Some(ProofJobOutcome::CancelledBeforeStart)) => {
+                ProofOutcomeResult::CancelledBeforeStart
+            }
+            (ProofJobStatus::Completed, Some(ProofJobOutcome::Completed(proof))) => {
+                let png_base64 = if include_image {
                     if proof.png.len() > MAX_PNG_BYTES {
                         return failure(
                             "proof_image_too_large",
                             "compiled PNG exceeds the transport image limit",
                         );
                     }
-                    result["png_base64"] =
-                        json!(base64::engine::general_purpose::STANDARD.encode(&proof.png));
-                }
+                    Some(base64::engine::general_purpose::STANDARD.encode(&proof.png))
+                } else {
+                    None
+                };
+                ProofOutcomeResult::Completed(Box::new(CompletedProofResult {
+                    font_sha256: proof.font_sha256.clone(),
+                    canonical_input_sha256: proof.canonical_input_sha256.clone(),
+                    compiler: proof.compiler.clone(),
+                    recipe: proof.recipe.clone(),
+                    glyphs: proof.glyphs.clone(),
+                    png_base64,
+                }))
             }
-            Some(ProofJobOutcome::Failed(error)) => {
-                result["proof_error"] = json!(error);
+            (ProofJobStatus::Failed, Some(ProofJobOutcome::Failed(proof_error))) => {
+                ProofOutcomeResult::Failed { proof_error }
             }
-            _ => {}
-        }
-        result
+            _ => return failure("proof_unavailable", "retained proof has inconsistent state"),
+        };
+        success(ProofStatusResult {
+            ok: true,
+            proof_id: id.into(),
+            root_changed: false,
+            captured_document_epoch: inspected.lineage.document_epoch,
+            captured_document_revision: inspected.lineage.document_revision,
+            current,
+            stale: !current,
+            cancellation,
+            outcome,
+        })
     }
 }
 

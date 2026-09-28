@@ -327,6 +327,11 @@ fn file_backed_host_edits_and_undoes_without_rewriting_source() {
 #[test]
 fn compiled_proof_mcp_delivers_original_png_after_live_edit() {
     use base64::Engine as _;
+    use runebender::automation::agent_proof::{
+        self, ProofCancellation, ProofOutcomeResult, ProofReleaseResult, ProofStartResult,
+        ProofStatusResult,
+    };
+    use runebender::automation::tool_contracts::{self, ToolSurface};
     use std::time::{Duration, Instant};
 
     let mut fixture = Fixture::start();
@@ -339,13 +344,20 @@ fn compiled_proof_mcp_delivers_original_png_after_live_edit() {
     ]));
     mcp.rpc("initialize", json!({"protocolVersion":"2025-11-25"}));
     let listed = mcp.rpc("tools/list", json!({}));
-    assert!(
-        listed["tools"]
+    for tool in agent_proof::tools() {
+        let descriptor = tool_contracts::describe(tool, ToolSurface::Live);
+        let listed_tool = listed["tools"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|tool| tool["name"] == "proof_start")
-    );
+            .find(|tool| tool["name"] == descriptor.tool.name)
+            .unwrap();
+        assert_eq!(
+            listed_tool["outputSchema"],
+            descriptor.output_schema.unwrap(),
+            "MCP must publish the shared proof result contract"
+        );
+    }
     let epoch = &ready["document_epoch"];
     let read = mcp.tool(
         "read_glyph",
@@ -356,7 +368,11 @@ fn compiled_proof_mcp_delivers_original_png_after_live_edit() {
         "operation_key":"before-spacing-proof","recipe":{"text":"A","normalized_location":[],
         "right_to_left":false,"features":[],"script":null,"language":null}});
     let started = mcp.tool("proof_start", request.clone());
-    assert_eq!(started["replayed"], false);
+    let start_receipt: ProofStartResult = serde_json::from_value(started.clone()).unwrap();
+    assert!(start_receipt.ok);
+    assert!(!start_receipt.replayed);
+    assert!(!start_receipt.root_changed);
+    assert_eq!(start_receipt.captured_document_revision, revision);
     let applied = mcp.tool("agent_apply", json!({"expected_document_epoch":epoch,"actor":"proof-test",
         "operation_key":"width-during-proof","authorization":"user-approved","source":0,
         "history_name":"Edit after capture","edits":[{"target":{"glyph":"A","glyph_id":read["glyph_id"],
@@ -377,6 +393,16 @@ fn compiled_proof_mcp_delivers_original_png_after_live_edit() {
         let metadata: Value =
             serde_json::from_str(response["content"][0]["text"].as_str().unwrap()).unwrap();
         assert_eq!(response["structuredContent"], metadata);
+        let status: ProofStatusResult = serde_json::from_value(metadata.clone()).unwrap();
+        assert!(status.ok);
+        assert_eq!(status.proof_id, start_receipt.proof_id);
+        assert!(!status.root_changed);
+        if let ProofOutcomeResult::Completed(ref proof) = status.outcome {
+            assert!(
+                proof.png_base64.is_none(),
+                "MCP extracts images from the typed metadata"
+            );
+        }
         assert_eq!(metadata["captured_document_revision"], revision);
         assert_eq!(metadata["document_revision"], applied["document_revision"]);
         assert_eq!(metadata["current"], false);
@@ -427,6 +453,21 @@ fn compiled_proof_mcp_delivers_original_png_after_live_edit() {
         "MCP forwards the worker PNG without rendering again"
     );
     assert_eq!(wire["font_sha256"], metadata["font_sha256"]);
+    let wire_status: ProofStatusResult = serde_json::from_value(wire).unwrap();
+    let ProofOutcomeResult::Completed(proof) = wire_status.outcome else {
+        panic!("completed proof must decode as a completed result");
+    };
+    assert_eq!(proof.png_base64.as_deref(), Some(png_text.as_str()));
+    let cancelled = mcp.tool(
+        "proof_cancel",
+        json!({"expected_document_epoch":epoch,"proof_id":start_receipt.proof_id}),
+    );
+    let cancelled: ProofStatusResult = serde_json::from_value(cancelled).unwrap();
+    assert_eq!(cancelled.cancellation, Some(ProofCancellation::TooLate));
+    assert!(matches!(
+        cancelled.outcome,
+        ProofOutcomeResult::Completed(_)
+    ));
     let mut changed_recipe = request.clone();
     changed_recipe["recipe"]["text"] = json!("AA");
     let conflict = mcp.rpc(
@@ -442,6 +483,7 @@ fn compiled_proof_mcp_delivers_original_png_after_live_edit() {
     );
     let error: Value = serde_json::from_str(stale["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(error["error_code"], "stale_revision");
+    assert_eq!(stale["structuredContent"], error);
     let mut current_request = request.clone();
     current_request["operation_key"] = json!("after-spacing-proof");
     current_request["expected_document_revision"] = applied["document_revision"].clone();
@@ -461,7 +503,12 @@ fn compiled_proof_mcp_delivers_original_png_after_live_edit() {
         assert!(Instant::now() < deadline);
         std::thread::sleep(Duration::from_millis(20));
     }
-    assert_eq!(mcp.tool("proof_release", current_args)["released"], true);
+    let released: ProofReleaseResult =
+        serde_json::from_value(mcp.tool("proof_release", current_args)).unwrap();
+    assert!(released.ok);
+    assert!(released.released);
+    assert!(!released.root_changed);
+    assert_eq!(released.proof_id, current_start["proof_id"]);
     let handle = json!({"expected_document_epoch":epoch,"proof_id":started["proof_id"]});
     assert_eq!(mcp.tool("proof_release", handle.clone())["released"], true);
     let unknown = mcp.rpc(

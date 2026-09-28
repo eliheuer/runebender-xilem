@@ -151,6 +151,7 @@ pub fn describe(tool: agent::Tool, surface: ToolSurface) -> ToolDescriptor {
         ("project_info", ToolSurface::Disk) => Some(disk_project_info_schema()),
         ("editor_sessions", ToolSurface::Live) => Some(editor_sessions_schema()),
         ("export_proof", ToolSurface::Live) => Some(export_proof_schema()),
+        (name, ToolSurface::Live) => super::agent_proof::success_schema(name).map(result_schema),
         _ => None,
     };
     ToolDescriptor {
@@ -219,8 +220,23 @@ fn error_schema() -> Value {
     })
 }
 
-fn result_schema(success: Value) -> Value {
-    json!({"type":"object","oneOf":[success,error_schema()]})
+fn result_schema(mut success: Value) -> Value {
+    // Generated references are document-relative (#/$defs/...), so definitions must live at
+    // the result schema root rather than inside the success branch.
+    let object = success
+        .as_object_mut()
+        .expect("tool result schemas are objects");
+    let definitions = object.remove("$defs");
+    let dialect = object.remove("$schema");
+    success["properties"]["ok"] = json!({"const":true});
+    let mut result = json!({"type":"object","oneOf":[success,error_schema()]});
+    if let Some(definitions) = definitions {
+        result["$defs"] = definitions;
+    }
+    if let Some(dialect) = dialect {
+        result["$schema"] = dialect;
+    }
+    result
 }
 
 fn disk_project_info_schema() -> Value {
@@ -437,6 +453,46 @@ mod tests {
             assert_eq!(schema["oneOf"][1]["properties"]["error"]["type"], "string");
             assert_eq!(schema["oneOf"][0]["additionalProperties"], true);
         }
+    }
+
+    #[test]
+    fn proof_result_definitions_resolve_after_transport_error_composition() {
+        fn inspect_references(node: &Value, root: &Value, count: &mut usize) {
+            match node {
+                Value::Object(object) => {
+                    if let Some(reference) = object.get("$ref").and_then(Value::as_str) {
+                        let pointer = reference.strip_prefix('#').expect("only local definitions");
+                        assert!(
+                            root.pointer(pointer).is_some(),
+                            "unresolved schema reference {reference}"
+                        );
+                        *count += 1;
+                    }
+                    for value in object.values() {
+                        inspect_references(value, root, count);
+                    }
+                }
+                Value::Array(values) => {
+                    for value in values {
+                        inspect_references(value, root, count);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let mut references = 0;
+        for tool in super::super::agent_proof::tools() {
+            let schema = describe(tool, ToolSurface::Live).output_schema.unwrap();
+            assert_eq!(schema["type"], "object");
+            assert_eq!(schema["oneOf"][0]["properties"]["ok"]["const"], true);
+            assert_eq!(schema["oneOf"][1]["properties"]["ok"]["const"], false);
+            inspect_references(&schema, &schema, &mut references);
+        }
+        assert!(
+            references > 0,
+            "proof recipes and metrics have concrete nested definitions"
+        );
     }
 
     // Check the currently emitted fields rather than accepting a generic object contract.
