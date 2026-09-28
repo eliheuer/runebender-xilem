@@ -80,6 +80,53 @@ fn project() -> Project {
 }
 
 #[test]
+fn compiled_snapshot_keeps_explicit_creation_time_and_stable_bytes() {
+    let mut snapshot = project().babelfont_snapshot().unwrap();
+    snapshot.date = "2000-01-01T00:00:00Z".parse().unwrap();
+    let first = runebender::font::compiler::CompiledFont::build(snapshot.clone()).unwrap();
+    let second = runebender::font::compiler::CompiledFont::build(snapshot).unwrap();
+    let font = skrifa::FontRef::new(&first.bytes).unwrap();
+    let head = font.head().unwrap();
+
+    assert_eq!(head.created().as_secs(), 3_029_529_600);
+    assert_eq!(head.modified(), head.created());
+    assert_eq!(first.bytes, second.bytes);
+    let head_tag = write_fonts::types::Tag::new(b"head");
+    let record = font
+        .table_directory()
+        .table_records()
+        .iter()
+        .find(|record| record.tag() == head_tag)
+        .unwrap();
+    let mut head_bytes = font.table_data(head_tag).unwrap().as_bytes().to_vec();
+    head_bytes[8..12].fill(0);
+    assert_eq!(
+        record.checksum(),
+        skrifa::raw::tables::compute_checksum(&head_bytes),
+        "normalizing the timestamp must repair the head table checksum"
+    );
+    assert_eq!(
+        skrifa::raw::tables::compute_checksum(&first.bytes),
+        0xB1B0_AFBA,
+        "normalizing the timestamp must repair the whole-font checksum"
+    );
+}
+
+#[test]
+fn undated_project_reuses_its_creation_time_across_compiler_snapshots() {
+    let project = project();
+    let first = project.babelfont_snapshot().unwrap();
+    let second = project.babelfont_snapshot().unwrap();
+    assert_eq!(first.date, second.date);
+
+    let first = runebender::font::compiler::CompiledFont::build(first).unwrap();
+    let second = runebender::font::compiler::CompiledFont::build(second).unwrap();
+    assert_eq!(first.bytes, second.bytes);
+    let head = skrifa::FontRef::new(&first.bytes).unwrap().head().unwrap();
+    assert_eq!(head.modified(), head.created());
+}
+
+#[test]
 fn unsaved_variable_document_compiles_outlines_advances_kerning_and_ligatures() {
     let mut project = project();
     let compiled = project.compile().unwrap();

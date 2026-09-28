@@ -204,6 +204,7 @@ impl CompiledFont {
     }
 
     /// Compile the same snapshot used for preview or export.
+    /// `head.modified` uses the captured creation time, not the export wall clock.
     pub fn build(font: babelfont::Font) -> Result<Self, String> {
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -243,6 +244,7 @@ impl CompiledFont {
         let source = BabelfontIrSource::new(font, options);
         let bytes = fontc::generate_font(Box::new(source), fontc::Options::default())
             .map_err(|error| format!("{error:#?}"))?;
+        let bytes = stable_modified_timestamp(bytes)?;
         let shaping = ShapingFont::from_bytes(bytes.clone())?;
         use skrifa::MetadataProvider as _;
         let axis_tags = skrifa::FontRef::new(&bytes)
@@ -257,6 +259,65 @@ impl CompiledFont {
             axis_tags,
         })
     }
+}
+
+/// Keep a compiled snapshot independent of the second when fontc finishes.
+///
+/// fontbe stamps `head.modified` with the wall clock. The creation time comes from the captured
+/// Babelfont source and remains unchanged; using it for `modified` makes preview and export bytes
+/// reproducible for the same snapshot. Repair both OpenType checksums after changing the header.
+fn stable_modified_timestamp(mut bytes: Vec<u8>) -> Result<Vec<u8>, String> {
+    let (head_offset, head_length, record_index) = {
+        let font = skrifa::raw::FontRef::new(&bytes).map_err(|error| error.to_string())?;
+        let (index, record) = font
+            .table_directory()
+            .table_records()
+            .iter()
+            .enumerate()
+            .find(|(_, record)| record.tag() == write_fonts::types::Tag::new(b"head"))
+            .ok_or("compiled font has no head table")?;
+        (
+            usize::try_from(record.offset()).map_err(|_| "head offset exceeds platform size")?,
+            usize::try_from(record.length()).map_err(|_| "head length exceeds platform size")?,
+            index,
+        )
+    };
+    let head_end = head_offset
+        .checked_add(head_length)
+        .ok_or("compiled head table exceeds font data")?;
+    if head_length < 36 || bytes.get(head_offset..head_end).is_none() {
+        return Err("compiled font has a truncated head table".into());
+    }
+    let record_checksum_offset = 12usize
+        .checked_add(
+            record_index
+                .checked_mul(16)
+                .ok_or("compiled table directory is too large")?,
+        )
+        .and_then(|offset| offset.checked_add(4))
+        .ok_or("compiled table directory is too large")?;
+    if bytes
+        .get(record_checksum_offset..record_checksum_offset + 4)
+        .is_none()
+    {
+        return Err("compiled font has a truncated table directory".into());
+    }
+
+    let created: [u8; 8] = bytes[head_offset + 20..head_offset + 28]
+        .try_into()
+        .expect("validated head table contains creation time");
+    if bytes[head_offset + 28..head_offset + 36] == created {
+        return Ok(bytes);
+    }
+    bytes[head_offset + 28..head_offset + 36].copy_from_slice(&created);
+    bytes[head_offset + 8..head_offset + 12].fill(0);
+    let head_checksum = skrifa::raw::tables::compute_checksum(&bytes[head_offset..head_end]);
+    bytes[record_checksum_offset..record_checksum_offset + 4]
+        .copy_from_slice(&head_checksum.to_be_bytes());
+    let font_checksum = skrifa::raw::tables::compute_checksum(&bytes);
+    let adjustment = 0xB1B0_AFBAu32.wrapping_sub(font_checksum);
+    bytes[head_offset + 8..head_offset + 12].copy_from_slice(&adjustment.to_be_bytes());
+    Ok(bytes)
 }
 
 impl Project {
