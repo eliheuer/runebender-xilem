@@ -29,6 +29,85 @@ const PROOF_HEIGHT: u32 = 1024;
 const PROOF_MARGIN: f64 = 32.0;
 const PROOF_LINE_HEIGHT: f64 = 180.0;
 
+/// Pixel dimensions and colors used to paint one compiled proof.
+///
+/// Coordinates in a Designbot scene are y-up. The first baseline is measured
+/// from the bottom edge; subsequent wrapped lines move upward by `line_height_px`.
+/// Wrapping is a bounded advance-based preview, not paragraph layout or line breaking.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(default, deny_unknown_fields)]
+pub struct CompiledProofRendering {
+    /// Raster width in pixels.
+    pub width_px: u32,
+    /// Raster height in pixels.
+    pub height_px: u32,
+    /// Rendered pixels per font em, independent of the font's units per em.
+    pub pixels_per_em: f64,
+    /// Inset from the left and right edges in pixels.
+    pub margin_px: f64,
+    /// First line baseline in pixels from the bottom edge.
+    pub first_baseline_px: f64,
+    /// Distance between wrapped line baselines in pixels.
+    pub line_height_px: f64,
+    /// RGB paper color, painted beneath the glyphs.
+    pub background_rgb: [u8; 3],
+    /// RGB glyph color.
+    pub ink_rgb: [u8; 3],
+}
+
+impl Default for CompiledProofRendering {
+    fn default() -> Self {
+        Self {
+            width_px: PROOF_WIDTH,
+            height_px: PROOF_HEIGHT,
+            pixels_per_em: 160.0,
+            margin_px: PROOF_MARGIN,
+            first_baseline_px: 180.0,
+            line_height_px: PROOF_LINE_HEIGHT,
+            background_rgb: [255; 3],
+            ink_rgb: [0; 3],
+        }
+    }
+}
+
+impl CompiledProofRendering {
+    fn is_default(&self) -> bool {
+        self == &Self::default()
+    }
+
+    /// Reject settings that could overflow the scene or make the layout unusable.
+    pub fn validate(&self) -> Result<(), String> {
+        if !(128..=2048).contains(&self.width_px)
+            || !(128..=2048).contains(&self.height_px)
+            || u64::from(self.width_px) * u64::from(self.height_px) > 2_097_152
+        {
+            return Err(
+                "proof dimensions must be 128 to 2048 pixels with at most 2097152 pixels".into(),
+            );
+        }
+        if !self.pixels_per_em.is_finite() || !(4.0..=512.0).contains(&self.pixels_per_em) {
+            return Err("proof pixels per em must be finite and between 4 and 512".into());
+        }
+        if !self.margin_px.is_finite()
+            || self.margin_px < 0.0
+            || self.margin_px > 256.0
+            || self.margin_px * 2.0 >= f64::from(self.width_px)
+        {
+            return Err("proof margin must be finite and leave positive line width".into());
+        }
+        if !self.first_baseline_px.is_finite()
+            || self.first_baseline_px <= 0.0
+            || self.first_baseline_px >= f64::from(self.height_px)
+        {
+            return Err("proof first baseline must be finite and inside the image".into());
+        }
+        if !self.line_height_px.is_finite() || !(4.0..=1024.0).contains(&self.line_height_px) {
+            return Err("proof line height must be finite and between 4 and 1024 pixels".into());
+        }
+        Ok(())
+    }
+}
+
 /// A compiler identity for a proof snapshot.
 ///
 /// This identifies the pinned compiler sources used to make the bytes.
@@ -216,11 +295,16 @@ pub struct CompiledProofRecipe {
     pub script: Option<String>,
     /// Optional BCP 47 language override such as `ar`.
     pub language: Option<String>,
+    /// Bounded raster scale, wrapping geometry and proof colors.
+    /// Absent settings retain the original 1024-pixel, 160-pixel-per-em scene.
+    #[serde(default, skip_serializing_if = "CompiledProofRendering::is_default")]
+    pub rendering: CompiledProofRendering,
 }
 
 impl CompiledProofRecipe {
     /// Validate bounded, finite inputs before expensive outline extraction.
     pub fn validate(&self) -> Result<(), String> {
+        self.rendering.validate()?;
         if self.text.is_empty() || self.text.len() > MAX_TEXT_BYTES {
             return Err(format!(
                 "proof text must contain 1 to {MAX_TEXT_BYTES} UTF-8 bytes"
@@ -356,7 +440,13 @@ pub fn prove(
         .map(|(_, outline)| outline)
         .collect::<Vec<_>>();
     let units_per_em = units_per_em(&snapshot.font.bytes)?;
-    let scene = scene(&glyphs, &outlines, units_per_em, recipe.right_to_left)?;
+    let scene = scene(
+        &glyphs,
+        &outlines,
+        units_per_em,
+        recipe.right_to_left,
+        &recipe.rendering,
+    )?;
     let png = crate::formats::designbot::render(&scene, false)?;
     if !png.starts_with(b"\x89PNG\r\n\x1a\n") {
         return Err("proof renderer did not return a PNG".into());
@@ -446,6 +536,7 @@ fn scene(
     outlines: &[Arc<kurbo::BezPath>],
     units_per_em: f64,
     right_to_left: bool,
+    rendering: &CompiledProofRendering,
 ) -> Result<serde_json::Value, String> {
     use kurbo::{Affine, Shape as _};
     use serde_json::json;
@@ -453,14 +544,21 @@ fn scene(
     if !units_per_em.is_finite() || units_per_em <= 0.0 {
         return Err("compiled font has an invalid units-per-em value".into());
     }
-    let scale = 160.0 / units_per_em;
+    rendering.validate()?;
+    let scale = rendering.pixels_per_em / units_per_em;
     let mut paths = Vec::with_capacity(glyphs.len());
+    if rendering.background_rgb != [255; 3] {
+        paths.push(json!({
+            "d": format!("M0 0H{}V{}H0Z", rendering.width_px, rendering.height_px),
+            "color": rendering.background_rgb,
+        }));
+    }
     let mut x = if right_to_left {
-        f64::from(PROOF_WIDTH) - PROOF_MARGIN
+        f64::from(rendering.width_px) - rendering.margin_px
     } else {
-        PROOF_MARGIN
+        rendering.margin_px
     };
-    let mut baseline = 180.0;
+    let mut baseline = rendering.first_baseline_px;
     for glyph in glyphs {
         let path = outlines
             .get(usize::from(glyph.glyph_id))
@@ -472,24 +570,24 @@ fn scene(
             return Err("compiled glyph positioning contains a non-finite value".into());
         }
         let advance = glyph.x_advance.max(0.0) * scale;
-        if advance > f64::from(PROOF_WIDTH) - 2.0 * PROOF_MARGIN {
+        if advance > f64::from(rendering.width_px) - 2.0 * rendering.margin_px {
             return Err("one shaped glyph exceeds the bounded proof width".into());
         }
         let overflow = if right_to_left {
-            x - advance < PROOF_MARGIN
+            x - advance < rendering.margin_px
         } else {
-            x + advance > f64::from(PROOF_WIDTH) - PROOF_MARGIN
+            x + advance > f64::from(rendering.width_px) - rendering.margin_px
         };
         if overflow {
             x = if right_to_left {
-                f64::from(PROOF_WIDTH) - PROOF_MARGIN
+                f64::from(rendering.width_px) - rendering.margin_px
             } else {
-                PROOF_MARGIN
+                rendering.margin_px
             };
-            baseline += PROOF_LINE_HEIGHT;
+            baseline += rendering.line_height_px;
         }
-        if baseline + PROOF_LINE_HEIGHT > f64::from(PROOF_HEIGHT) {
-            return Err("proof exceeds the bounded 1024 by 1024 image".into());
+        if baseline + rendering.line_height_px > f64::from(rendering.height_px) {
+            return Err("proof exceeds the bounded image height".into());
         }
         if right_to_left {
             x -= advance;
@@ -503,20 +601,24 @@ fn scene(
         if !translated.is_empty()
             && (bounds.x0 < 0.0
                 || bounds.y0 < 0.0
-                || bounds.x1 > f64::from(PROOF_WIDTH)
-                || bounds.y1 > f64::from(PROOF_HEIGHT))
+                || bounds.x1 > f64::from(rendering.width_px)
+                || bounds.y1 > f64::from(rendering.height_px))
         {
             return Err("proof outline would be clipped by the bounded image".into());
         }
-        paths.push(json!({"d": translated.to_svg()}));
+        if rendering.ink_rgb == [0; 3] {
+            paths.push(json!({"d": translated.to_svg()}));
+        } else {
+            paths.push(json!({"d": translated.to_svg(), "color": rendering.ink_rgb}));
+        }
         if !right_to_left {
             x += advance;
         }
     }
     Ok(json!({
         "version": 1,
-        "width": PROOF_WIDTH,
-        "height": PROOF_HEIGHT,
+        "width": rendering.width_px,
+        "height": rendering.height_px,
         "paths": paths,
         "labels": [],
     }))
@@ -559,6 +661,7 @@ mod tests {
             features: Vec::new(),
             script: script.map(str::to_owned),
             language: None,
+            rendering: CompiledProofRendering::default(),
         }
     }
 
@@ -584,6 +687,101 @@ mod tests {
     }
 
     #[test]
+    fn old_recipe_json_keeps_the_original_rendering_and_serialization() {
+        let old = serde_json::json!({
+            "text": "A",
+            "normalized_location": [0.0],
+            "right_to_left": false,
+            "features": [],
+            "script": "latn",
+            "language": null,
+        });
+        let recipe: CompiledProofRecipe = serde_json::from_value(old.clone()).unwrap();
+        assert_eq!(recipe.rendering, CompiledProofRendering::default());
+        assert_eq!(serde_json::to_value(recipe).unwrap(), old);
+    }
+
+    #[test]
+    fn rendering_rejects_nonfinite_oversized_and_unusable_layout() {
+        let mut recipe = recipe("A", 0.0, false, None);
+        recipe.rendering.pixels_per_em = f64::NAN;
+        assert!(recipe.validate().is_err());
+        recipe.rendering.pixels_per_em = 513.0;
+        assert!(recipe.validate().is_err());
+        recipe.rendering.pixels_per_em = 16.0;
+        recipe.rendering.width_px = 2049;
+        assert!(recipe.validate().is_err());
+        recipe.rendering.width_px = 2048;
+        recipe.rendering.height_px = 2048;
+        assert!(recipe.validate().is_err());
+        recipe.rendering.width_px = 128;
+        recipe.rendering.height_px = 512;
+        recipe.rendering.margin_px = 64.0;
+        assert!(recipe.validate().is_err());
+        recipe.rendering.margin_px = 8.0;
+        recipe.rendering.line_height_px = f64::INFINITY;
+        assert!(recipe.validate().is_err());
+    }
+
+    #[test]
+    fn rendering_scale_and_layout_change_path_placement() {
+        use kurbo::{BezPath, Rect, Shape as _};
+
+        let glyph = CompiledProofGlyph {
+            glyph_id: 0,
+            glyph_name: Some("A".into()),
+            cluster: 0,
+            x_advance: 500.0,
+            x_offset: 0.0,
+            y_offset: 0.0,
+        };
+        let outlines = [Arc::new(Rect::new(0.0, 0.0, 100.0, 100.0).to_path(0.1))];
+        let mut rendering = CompiledProofRendering {
+            width_px: 128,
+            height_px: 512,
+            pixels_per_em: 100.0,
+            margin_px: 8.0,
+            first_baseline_px: 100.0,
+            line_height_px: 120.0,
+            background_rgb: [240, 240, 240],
+            ink_rgb: [20, 20, 20],
+        };
+        let fit = scene(
+            &[glyph.clone(), glyph.clone()],
+            &outlines,
+            1000.0,
+            false,
+            &rendering,
+        )
+        .unwrap();
+        assert_eq!(fit["width"], 128);
+        assert_eq!(fit["height"], 512);
+        assert_eq!(fit["paths"][0]["color"], serde_json::json!([240, 240, 240]));
+        assert_eq!(fit["paths"][1]["color"], serde_json::json!([20, 20, 20]));
+        let fit_second = BezPath::from_svg(fit["paths"][2]["d"].as_str().unwrap())
+            .unwrap()
+            .bounding_box();
+        assert_eq!(fit_second.x0, 58.0);
+        assert_eq!(fit_second.y0, 100.0);
+
+        rendering.pixels_per_em = 200.0;
+        let wrapped = scene(
+            &[glyph.clone(), glyph],
+            &outlines,
+            1000.0,
+            false,
+            &rendering,
+        )
+        .unwrap();
+        let wrapped_second = BezPath::from_svg(wrapped["paths"][2]["d"].as_str().unwrap())
+            .unwrap()
+            .bounding_box();
+        assert_eq!(wrapped_second.x0, 8.0);
+        assert_eq!(wrapped_second.y0, 220.0);
+        assert_eq!(wrapped_second.width(), 20.0);
+    }
+
+    #[test]
     fn scene_rejects_missing_or_clipped_outlines() {
         use kurbo::{Rect, Shape as _};
 
@@ -595,10 +793,11 @@ mod tests {
             x_offset: 0.0,
             y_offset: 0.0,
         };
-        assert!(scene(std::slice::from_ref(&glyph), &[], 1000.0, false).is_err());
+        let rendering = CompiledProofRendering::default();
+        assert!(scene(std::slice::from_ref(&glyph), &[], 1000.0, false, &rendering).is_err());
 
         let too_wide = Arc::new(Rect::new(0.0, 0.0, 10_000.0, 1.0).to_path(0.1));
-        assert!(scene(&[glyph], &[too_wide], 1000.0, false).is_err());
+        assert!(scene(&[glyph], &[too_wide], 1000.0, false, &rendering).is_err());
     }
 
     #[test]

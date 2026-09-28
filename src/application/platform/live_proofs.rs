@@ -343,6 +343,7 @@ mod tests {
                 features: Vec::new(),
                 script: None,
                 language: None,
+                rendering: Default::default(),
             },
         }
     }

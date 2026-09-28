@@ -609,6 +609,7 @@ mod tests {
                 features: Vec::new(),
                 script: None,
                 language: None,
+                rendering: Default::default(),
             },
         }
     }
@@ -857,6 +858,7 @@ mod tests {
                     features: Vec::new(),
                     script: Some("latn".into()),
                     language: None,
+                    rendering: Default::default(),
                 },
             })
             .unwrap();
