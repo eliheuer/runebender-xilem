@@ -320,6 +320,10 @@ pub struct CompiledProofTarget {
     pub cluster: u32,
     /// Paint-order occurrence among glyphs with this name.
     pub occurrence: u32,
+    /// Frozen pen position from the selected text run, used to align detail views across edits.
+    /// Older recipes omit it and continue to render context proofs only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_pen_x: Option<f64>,
 }
 
 impl CompiledProofRecipe {
@@ -332,11 +336,15 @@ impl CompiledProofRecipe {
             features: selection.features,
             script: selection.script,
             language: selection.language,
-            rendering: CompiledProofRendering::default(),
+            rendering: CompiledProofRendering {
+                pixels_per_em: 32.0,
+                ..CompiledProofRendering::default()
+            },
             target: Some(CompiledProofTarget {
                 glyph_name: selection.glyph_name,
                 cluster: selection.cluster,
                 occurrence: selection.occurrence,
+                reference_pen_x: Some(selection.reference_pen_x),
             }),
         };
         recipe.validate()?;
@@ -399,6 +407,9 @@ impl CompiledProofRecipe {
                     cluster >= self.text.len() || !self.text.is_char_boundary(cluster)
                 })
                 || occurrence.is_none_or(|occurrence| occurrence >= MAX_SHAPED_GLYPHS)
+                || target
+                    .reference_pen_x
+                    .is_some_and(|pen| !pen.is_finite() || pen.abs() > 1.0e9)
         }) {
             return Err("proof target has an invalid glyph name, cluster or occurrence".into());
         }
@@ -436,10 +447,101 @@ pub struct CompiledProof {
     pub canonical_input_sha256: String,
     /// Exact recipe used for shaping and painting.
     pub recipe: CompiledProofRecipe,
+    /// SHA-256 of the exact serialized recipe shared by context and detail.
+    pub recipe_sha256: String,
+    /// Measured identity of the Designbot executable used for both rasters.
+    pub renderer: crate::formats::designbot::RendererIdentity,
     /// Positioned glyphs from `HarfRust`, in paint order.
     pub glyphs: Vec<CompiledProofGlyph>,
+    /// Paint-order selected occurrence in the full shaped run, if any.
+    pub target_glyph_index: Option<usize>,
     /// Bounded PNG rasterized from Skrifa outlines of those glyphs.
     pub png: Vec<u8>,
+    /// Enlarged crop around the selected occurrence, when the recipe has a target.
+    pub detail: Option<CompiledProofDetail>,
+}
+
+/// Enlarged selected-target raster from the same shaped glyph sequence.
+#[derive(Clone, Debug)]
+pub struct CompiledProofDetail {
+    /// Bounded raster settings of the detail view.
+    pub rendering: CompiledProofRendering,
+    /// Paint-order index in the full shaped proof, never a re-shaped occurrence.
+    pub target_glyph_index: usize,
+    /// Fixed translation and scale derived from the captured text pen, not candidate ink bounds.
+    pub crop: ProofDetailCrop,
+    /// Detail PNG bytes.
+    pub png: Vec<u8>,
+}
+
+/// Geometry needed to compare context-preserving enlarged views.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ProofDetailCrop {
+    /// Translation of the run's font-unit origin into detail pixels.
+    pub origin_px: [f64; 2],
+    /// Pixel scale per font unit.
+    pub font_units_to_px: f64,
+    /// Immutable selected pen from the editor's original shaped run.
+    pub reference_pen_x: f64,
+}
+
+/// Retained view of one immutable compiled proof.
+#[derive(
+    Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ProofView {
+    /// Full shaped text at the recipe's context scale.
+    #[default]
+    Context,
+    /// Enlarged crop around the exact selected occurrence.
+    Detail,
+}
+
+impl ProofView {
+    /// Whether this selector retains the legacy full-context request encoding.
+    pub fn is_context(&self) -> bool {
+        *self == Self::Context
+    }
+}
+
+/// Borrowed raster and placement metadata from one retained proof view.
+#[derive(Debug)]
+pub struct CompiledProofImage<'a> {
+    /// Already-rendered PNG bytes.
+    pub bytes: &'a [u8],
+    /// Raster size, scale, colors and layout settings.
+    pub rendering: &'a CompiledProofRendering,
+    /// Paint-order index of the selected glyph in the complete shaped run.
+    pub target_glyph_index: Option<usize>,
+    /// Fixed selected-pen crop transform, present only for detail.
+    pub crop: Option<&'a ProofDetailCrop>,
+}
+
+impl CompiledProof {
+    /// Select retained image bytes and rendering settings without rerendering.
+    pub fn image(&self, view: ProofView) -> Result<CompiledProofImage<'_>, String> {
+        match view {
+            ProofView::Context => Ok(CompiledProofImage {
+                bytes: &self.png,
+                rendering: &self.recipe.rendering,
+                target_glyph_index: self.target_glyph_index,
+                crop: None,
+            }),
+            ProofView::Detail => {
+                let detail = self
+                    .detail
+                    .as_ref()
+                    .ok_or("proof has no selected-target detail")?;
+                Ok(CompiledProofImage {
+                    bytes: &detail.png,
+                    rendering: &detail.rendering,
+                    target_glyph_index: Some(detail.target_glyph_index),
+                    crop: Some(&detail.crop),
+                })
+            }
+        }
+    }
 }
 
 /// Shape and render a bounded PNG using only one immutable compiled snapshot.
@@ -486,19 +588,21 @@ pub fn prove(
             y_offset: glyph.y_offset,
         })
         .collect::<Vec<_>>();
+    let mut target_glyph_index = None;
     if let Some(target) = &recipe.target {
         let mut occurrence = 0_u32;
-        let mut found = false;
-        for glyph in &glyphs {
+        for (index, glyph) in glyphs.iter().enumerate() {
             if glyph.glyph_name.as_deref() == Some(target.glyph_name.as_str()) {
                 if occurrence == target.occurrence {
-                    found = glyph.cluster == target.cluster;
+                    if glyph.cluster == target.cluster {
+                        target_glyph_index = Some(index);
+                    }
                     break;
                 }
                 occurrence += 1;
             }
         }
-        if !found {
+        if target_glyph_index.is_none() {
             return Err("selected shaped occurrence changed in the compiled proof".into());
         }
     }
@@ -516,18 +620,70 @@ pub fn prove(
         recipe.right_to_left,
         &recipe.rendering,
     )?;
-    let png = crate::formats::designbot::render(&scene, false)?;
+    let rendered = crate::formats::designbot::render_with_identity(&scene, false)?;
+    let png = rendered.bytes;
     if !png.starts_with(b"\x89PNG\r\n\x1a\n") {
         return Err("proof renderer did not return a PNG".into());
     }
+    let detail = target_glyph_index
+        .zip(
+            recipe
+                .target
+                .as_ref()
+                .and_then(|target| target.reference_pen_x),
+        )
+        .map(
+            |(index, reference_pen_x)| -> Result<CompiledProofDetail, String> {
+                let rendering = CompiledProofRendering {
+                    width_px: 512,
+                    height_px: 512,
+                    pixels_per_em: 320.0,
+                    margin_px: 16.0,
+                    first_baseline_px: 256.0,
+                    line_height_px: 320.0,
+                    background_rgb: recipe.rendering.background_rgb,
+                    ink_rgb: recipe.rendering.ink_rgb,
+                };
+                let (detail_scene, crop) = detail_scene(
+                    &glyphs,
+                    &outlines,
+                    units_per_em,
+                    index,
+                    reference_pen_x,
+                    &rendering,
+                )?;
+                let detail = crate::formats::designbot::render_with_identity(&detail_scene, false)?;
+                if detail.renderer != rendered.renderer {
+                    return Err("Designbot executable changed between proof views".into());
+                }
+                if !detail.bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+                    return Err("detail renderer did not return a PNG".into());
+                }
+                Ok(CompiledProofDetail {
+                    rendering,
+                    target_glyph_index: index,
+                    crop,
+                    png: detail.bytes,
+                })
+            },
+        )
+        .transpose()?;
+    let recipe_sha256 = sha256(
+        &serde_json::to_vec(&recipe)
+            .map_err(|error| format!("could not encode recipe: {error}"))?,
+    );
     Ok(CompiledProof {
         font_sha256: snapshot.font_sha256.clone(),
         document_revision: snapshot.document_revision,
         compiler: snapshot.compiler.clone(),
         canonical_input_sha256: snapshot.canonical_input_sha256.clone(),
         recipe,
+        recipe_sha256,
+        renderer: rendered.renderer,
         glyphs,
+        target_glyph_index,
         png,
+        detail,
     })
 }
 
@@ -701,6 +857,117 @@ fn scene(
         "paths": paths,
         "labels": [],
     }))
+}
+
+/// Crop the unchanged shaped run around a frozen selected pen at a larger scale.
+/// Neighboring glyphs may cross the crop edge; selected ink, when present, must fit completely.
+fn detail_scene(
+    glyphs: &[CompiledProofGlyph],
+    outlines: &[Arc<kurbo::BezPath>],
+    units_per_em: f64,
+    target: usize,
+    reference_pen_x: f64,
+    rendering: &CompiledProofRendering,
+) -> Result<(serde_json::Value, ProofDetailCrop), String> {
+    use kurbo::{Affine, Shape as _};
+    use serde_json::json;
+
+    rendering.validate()?;
+    if !units_per_em.is_finite() || units_per_em <= 0.0 {
+        return Err("compiled font has an invalid units-per-em value".into());
+    }
+    let scale = rendering.pixels_per_em / units_per_em;
+    if !scale.is_finite() {
+        return Err("proof scale is non-finite".into());
+    }
+    let mut pen = 0.0;
+    let mut positions = Vec::with_capacity(glyphs.len());
+    for glyph in glyphs {
+        if !glyph.x_advance.is_finite()
+            || !glyph.x_offset.is_finite()
+            || !glyph.y_offset.is_finite()
+        {
+            return Err("compiled glyph positioning contains a non-finite value".into());
+        }
+        positions.push(pen);
+        pen += glyph.x_advance;
+        if !pen.is_finite() {
+            return Err("detail proof has a non-finite total advance".into());
+        }
+    }
+    let selected = glyphs
+        .get(target)
+        .ok_or("selected proof occurrence is unavailable")?;
+    outlines
+        .get(usize::from(selected.glyph_id))
+        .ok_or("compiled target outline is missing")?;
+    if !reference_pen_x.is_finite() || reference_pen_x.abs() > 1.0e9 {
+        return Err("detail proof reference pen is invalid".into());
+    }
+    let origin_x = f64::from(rendering.width_px) / 2.0 - reference_pen_x * scale;
+    let origin_y = rendering.first_baseline_px;
+    let crop = ProofDetailCrop {
+        origin_px: [origin_x, origin_y],
+        font_units_to_px: scale,
+        reference_pen_x,
+    };
+    let mut paths = Vec::new();
+    if rendering.background_rgb != [255; 3] {
+        paths.push(json!({
+            "d": format!("M0 0H{}V{}H0Z", rendering.width_px, rendering.height_px),
+            "color": rendering.background_rgb,
+        }));
+    }
+    for (index, glyph) in glyphs.iter().enumerate() {
+        let path = outlines
+            .get(usize::from(glyph.glyph_id))
+            .ok_or("compiled detail outline is missing")?;
+        if path.is_empty() {
+            continue;
+        }
+        let translated = Affine::translate((
+            origin_x + (positions[index] + glyph.x_offset) * scale,
+            origin_y + glyph.y_offset * scale,
+        )) * Affine::scale(scale)
+            * path.as_ref();
+        let bounds = translated.bounding_box();
+        if !bounds.x0.is_finite()
+            || !bounds.y0.is_finite()
+            || !bounds.x1.is_finite()
+            || !bounds.y1.is_finite()
+        {
+            return Err("detail proof has non-finite outline bounds".into());
+        }
+        if index == target
+            && (bounds.x0 < rendering.margin_px
+                || bounds.x1 > f64::from(rendering.width_px) - rendering.margin_px
+                || bounds.y0 < rendering.margin_px
+                || bounds.y1 > f64::from(rendering.height_px) - rendering.margin_px)
+        {
+            return Err("selected proof occurrence exceeds enlarged detail bounds".into());
+        }
+        if bounds.x1 > 0.0
+            && bounds.y1 > 0.0
+            && bounds.x0 < f64::from(rendering.width_px)
+            && bounds.y0 < f64::from(rendering.height_px)
+        {
+            if rendering.ink_rgb == [0; 3] {
+                paths.push(json!({"d": translated.to_svg()}));
+            } else {
+                paths.push(json!({"d": translated.to_svg(), "color": rendering.ink_rgb}));
+            }
+        }
+    }
+    Ok((
+        json!({
+            "version": 1,
+            "width": rendering.width_px,
+            "height": rendering.height_px,
+            "paths": paths,
+            "labels": [],
+        }),
+        crop,
+    ))
 }
 
 fn units_per_em(bytes: &[u8]) -> Result<f64, String> {
@@ -922,6 +1189,97 @@ mod tests {
     }
 
     #[test]
+    fn detail_crop_uses_frozen_pen_and_rejects_selected_ink_clipping() {
+        use kurbo::{BezPath, Rect, Shape as _};
+
+        let rendering = CompiledProofRendering {
+            width_px: 512,
+            height_px: 512,
+            pixels_per_em: 320.0,
+            margin_px: 16.0,
+            first_baseline_px: 256.0,
+            ..CompiledProofRendering::default()
+        };
+        let glyphs = [
+            CompiledProofGlyph {
+                glyph_id: 0,
+                glyph_name: Some("preceding".into()),
+                cluster: 0,
+                x_advance: 500.0,
+                x_offset: 0.0,
+                y_offset: 0.0,
+            },
+            CompiledProofGlyph {
+                glyph_id: 1,
+                glyph_name: Some("selected".into()),
+                cluster: 1,
+                x_advance: 500.0,
+                x_offset: 0.0,
+                y_offset: 0.0,
+            },
+        ];
+        let preceding = Arc::new(Rect::new(0.0, 0.0, 100.0, 100.0).to_path(0.1));
+        let original = Arc::new(Rect::new(0.0, 0.0, 100.0, 100.0).to_path(0.1));
+        let changed = Arc::new(Rect::new(100.0, 0.0, 200.0, 100.0).to_path(0.1));
+        let (before, before_crop) = detail_scene(
+            &glyphs,
+            &[preceding.clone(), original],
+            1000.0,
+            1,
+            500.0,
+            &rendering,
+        )
+        .unwrap();
+        let (after, after_crop) = detail_scene(
+            &glyphs,
+            &[preceding.clone(), changed],
+            1000.0,
+            1,
+            500.0,
+            &rendering,
+        )
+        .unwrap();
+        assert_eq!(before_crop, after_crop);
+        assert_eq!(before_crop.origin_px, [96.0, 256.0]);
+        assert_eq!(before_crop.font_units_to_px, 0.32);
+        let before_ink = BezPath::from_svg(before["paths"][1]["d"].as_str().unwrap())
+            .unwrap()
+            .bounding_box();
+        let after_ink = BezPath::from_svg(after["paths"][1]["d"].as_str().unwrap())
+            .unwrap()
+            .bounding_box();
+        assert_eq!(before_ink.x0, 256.0);
+        assert_eq!(after_ink.x0, 288.0);
+
+        let empty = Arc::new(BezPath::new());
+        let (blank, blank_crop) = detail_scene(
+            &glyphs,
+            &[preceding.clone(), empty],
+            1000.0,
+            1,
+            500.0,
+            &rendering,
+        )
+        .unwrap();
+        assert_eq!(blank_crop, before_crop);
+        assert_eq!(blank["paths"].as_array().unwrap().len(), 1);
+
+        let oversized = Arc::new(Rect::new(0.0, 0.0, 1000.0, 100.0).to_path(0.1));
+        assert!(
+            detail_scene(
+                &glyphs,
+                &[preceding, oversized],
+                1000.0,
+                1,
+                500.0,
+                &rendering
+            )
+            .unwrap_err()
+            .contains("selected proof occurrence exceeds")
+        );
+    }
+
+    #[test]
     fn scene_rejects_missing_or_clipped_outlines() {
         use kurbo::{Rect, Shape as _};
 
@@ -1104,6 +1462,21 @@ mod tests {
         );
         let recipe = CompiledProofRecipe::from_text_selection(selection.clone()).unwrap();
         let proof = prove(&snapshot, recipe.clone()).unwrap();
+        assert_eq!(recipe.rendering.pixels_per_em, 32.0);
+        let detail = proof.detail.as_ref().expect("selected detail was retained");
+        assert_eq!(detail.rendering.pixels_per_em, 320.0);
+        assert_eq!(detail.crop.reference_pen_x, selection.reference_pen_x);
+        assert_eq!(proof.image(ProofView::Context).unwrap().bytes, proof.png);
+        assert_eq!(proof.image(ProofView::Detail).unwrap().bytes, detail.png);
+        assert_eq!(
+            proof.image(ProofView::Context).unwrap().target_glyph_index,
+            proof.image(ProofView::Detail).unwrap().target_glyph_index
+        );
+        assert_eq!(proof.font_sha256, snapshot.font_sha256);
+        assert_eq!(
+            proof.recipe_sha256,
+            sha256(&serde_json::to_vec(&recipe).unwrap())
+        );
         let target = recipe.target.as_ref().unwrap();
         assert!(proof.glyphs.iter().any(|glyph| {
             glyph.glyph_name.as_deref() == Some(target.glyph_name.as_str())

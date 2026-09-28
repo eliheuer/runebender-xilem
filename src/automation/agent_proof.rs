@@ -10,7 +10,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::agent::Tool;
-use crate::font::compiler::proof::{CompiledProofGlyph, CompiledProofRecipe, CompilerIdentity};
+use crate::font::compiler::proof::{
+    CompiledProofGlyph, CompiledProofRecipe, CompiledProofRendering, CompilerIdentity,
+    ProofDetailCrop, ProofView,
+};
+use crate::formats::designbot::RendererIdentity;
 
 /// Capture and enqueue one proof from an exact live document revision.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -37,6 +41,9 @@ pub struct ProofStatusRequest {
     /// Include the worker's PNG when completed; defaults to metadata only.
     #[serde(default)]
     pub include_image: bool,
+    /// Retained context or enlarged detail image; defaults to context.
+    #[serde(default)]
+    pub view: ProofView,
 }
 
 /// Cancel queued work or release a terminal proof artifact.
@@ -124,6 +131,19 @@ pub struct CompletedProofResult {
     pub compiler: CompilerIdentity,
     /// Exact shaping and rendering recipe used by the completed job.
     pub recipe: CompiledProofRecipe,
+    /// SHA-256 of the exact recipe shared by the retained views.
+    pub recipe_sha256: String,
+    /// Measured Designbot entrypoint used for this image.
+    pub renderer: RendererIdentity,
+    /// Which retained view was selected.
+    pub view: ProofView,
+    /// Raster settings of the selected view.
+    pub rendering: CompiledProofRendering,
+    /// Paint-order target index in the unchanged shaping result, when selected.
+    pub target_glyph_index: Option<usize>,
+    /// Fixed crop transform for a selected detail view.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub crop: Option<ProofDetailCrop>,
     /// Positioned glyph metrics in paint order.
     pub glyphs: Vec<CompiledProofGlyph>,
     /// Optional PNG transport payload, omitted by MCP after image extraction.
@@ -197,14 +217,31 @@ pub fn tools() -> Vec<Tool> {
                         "right_to_left":{"type":"boolean"},
                         "features":{"type":"array","maxItems":64,"items":{"type":"array","minItems":2,"maxItems":2,"prefixItems":[{"type":"string","minLength":4,"maxLength":4},{"type":"boolean"}]}},
                         "script":{"type":["string","null"],"minLength":4,"maxLength":4},
-                        "language":{"type":["string","null"],"minLength":1,"maxLength":35}
+                        "language":{"type":["string","null"],"minLength":1,"maxLength":35},
+                        "rendering":{"type":"object","additionalProperties":false,"properties":{
+                            "width_px":{"type":"integer","minimum":128,"maximum":2048},
+                            "height_px":{"type":"integer","minimum":128,"maximum":2048},
+                            "pixels_per_em":{"type":"number","minimum":4,"maximum":512},
+                            "margin_px":{"type":"number","minimum":0,"maximum":256},
+                            "first_baseline_px":{"type":"number"},
+                            "line_height_px":{"type":"number","minimum":4,"maximum":1024},
+                            "background_rgb":{"type":"array","minItems":3,"maxItems":3,"items":{"type":"integer","minimum":0,"maximum":255}},
+                            "ink_rgb":{"type":"array","minItems":3,"maxItems":3,"items":{"type":"integer","minimum":0,"maximum":255}}
+                        }},
+                        "target":{"type":["object","null"],"additionalProperties":false,
+                            "required":["glyph_name","cluster","occurrence"],"properties":{
+                                "glyph_name":{"type":"string","minLength":1,"maxLength":255},
+                                "cluster":{"type":"integer","minimum":0},
+                                "occurrence":{"type":"integer","minimum":0,"maximum":1023},
+                                "reference_pen_x":{"type":"number"}
+                            }}
                     }}
             }}),
     }];
     for (name, description, image) in [
         (
             "proof_status",
-            "Read one proof's captured lineage and status. include_image returns its compiled PNG directly when completed, even if stale; current compares captured epoch/revision with the live document. Does not recapture or render.",
+            "Read one proof's captured lineage and status. view selects retained context or selected-target detail; include_image returns its PNG when completed, even if stale. Current compares captured epoch/revision with the live document. Does not recapture or render.",
             true,
         ),
         (
@@ -223,6 +260,8 @@ pub fn tools() -> Vec<Tool> {
             "properties":{"expected_document_epoch":epoch,"proof_id":handle}});
         if image {
             parameters["properties"]["include_image"] = json!({"type":"boolean","default":false});
+            parameters["properties"]["view"] =
+                json!({"enum":["context","detail"],"default":"context"});
         }
         result.push(Tool {
             name: name.into(),
@@ -305,9 +344,19 @@ mod tests {
                     features: vec![],
                     script: None,
                     language: None,
-                    rendering: crate::font::compiler::proof::CompiledProofRendering::default(),
+                    rendering: CompiledProofRendering::default(),
                     target: None,
                 },
+                recipe_sha256: "recipe-hash".into(),
+                renderer: RendererIdentity {
+                    executable_path: "/tmp/designbot".into(),
+                    executable_sha256: "renderer-hash".into(),
+                    command: "render-scene --png".into(),
+                },
+                view: ProofView::Context,
+                rendering: CompiledProofRendering::default(),
+                target_glyph_index: None,
+                crop: None,
                 glyphs: vec![CompiledProofGlyph {
                     glyph_id: 1,
                     glyph_name: Some("A".into()),

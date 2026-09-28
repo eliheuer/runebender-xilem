@@ -787,7 +787,8 @@ impl Workspace {
                 else {
                     return Err("proof image is not available".into());
                 };
-                if proof.png.len() > 5 * 1024 * 1024 {
+                let image = proof.image(request.view)?;
+                if image.bytes.len() > 5 * 1024 * 1024 {
                     return Err("specimen exceeds the transport image limit".into());
                 }
                 Ok(success(NodesImageResult {
@@ -800,8 +801,14 @@ impl Workspace {
                     font_sha256: proof.font_sha256.clone(),
                     canonical_input_sha256: proof.canonical_input_sha256.clone(),
                     recipe: proof.recipe.clone(),
+                    recipe_sha256: proof.recipe_sha256.clone(),
+                    renderer: proof.renderer.clone(),
+                    view: request.view,
+                    rendering: image.rendering.clone(),
+                    target_glyph_index: image.target_glyph_index,
+                    crop: image.crop.cloned(),
                     glyphs: proof.glyphs.clone(),
-                    png_base64: Some(base64::engine::general_purpose::STANDARD.encode(&proof.png)),
+                    png_base64: Some(base64::engine::general_purpose::STANDARD.encode(image.bytes)),
                     root_changed: false,
                 }))
             }
@@ -897,6 +904,7 @@ mod tests {
             glyph_name: "A".into(),
             cluster: 1,
             occurrence: 1,
+            reference_pen_x: 500.0,
         };
         app.text_proof_selection = Some(crate::application::workspace::TextProofCapture {
             context: (0, 0),

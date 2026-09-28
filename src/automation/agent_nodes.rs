@@ -155,6 +155,12 @@ pub struct NodesImageRequest {
     /// Explicit proof node, mutually exclusive with the legacy branch selector.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub node: Option<u32>,
+    /// Retained context or enlarged detail image; defaults to context.
+    #[serde(
+        default,
+        skip_serializing_if = "crate::font::compiler::proof::ProofView::is_context"
+    )]
+    pub view: crate::font::compiler::proof::ProofView,
 }
 
 const fn legacy_execution_version() -> u32 {
@@ -436,7 +442,7 @@ pub fn tools() -> Vec<Tool> {
         object(properties, required)
     };
     let mut image_parameters = session(
-        json!({"handle":handle.clone(),"branch":{"enum":["original","changed"]},"node":{"type":"integer","minimum":0}}),
+        json!({"handle":handle.clone(),"branch":{"enum":["original","changed"]},"node":{"type":"integer","minimum":0},"view":{"enum":["context","detail"],"default":"context"}}),
         &["expected_document_epoch", "identity", "handle"],
     );
     image_parameters["oneOf"] = json!([{"required":["branch"],"not":{"required":["node"]}}, {"required":["node"],"not":{"required":["branch"]}}]);
@@ -529,7 +535,7 @@ pub fn tools() -> Vec<Tool> {
         },
         Tool {
             name: "nodes_image".into(),
-            description: "Return an exact already-rendered PNG by proof node. Legacy original/changed aliases require a unique matching proof. Successful proofs in partially failed runs remain available. The generic MCP response carries image/png separately from metadata; this never rerenders.".into(),
+            description: "Return an exact already-rendered context or selected-target detail PNG by proof node. Legacy original/changed aliases require a unique matching proof. Successful proofs in partially failed runs remain available. The generic MCP response carries image/png separately from metadata; this never rerenders.".into(),
             parameters: image_parameters,
         },
     ]
@@ -618,6 +624,9 @@ mod tests {
         let mut image: NodesImageRequest = serde_json::from_value(legacy_image.clone()).unwrap();
         assert!(image.validate().is_ok());
         assert_eq!(serde_json::to_value(&image).unwrap(), legacy_image);
+        image.view = crate::font::compiler::proof::ProofView::Detail;
+        assert_eq!(serde_json::to_value(&image).unwrap()["view"], "detail");
+        image.view = crate::font::compiler::proof::ProofView::Context;
         image.node = Some(4);
         assert!(image.validate().is_err());
         image.branch = None;

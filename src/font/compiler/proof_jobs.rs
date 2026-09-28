@@ -622,8 +622,16 @@ mod tests {
             compiler: request.input.compiler().clone(),
             canonical_input_sha256: request.input.canonical_input_sha256().into(),
             recipe: request.recipe.clone(),
+            recipe_sha256: "sha256:test-recipe".into(),
+            renderer: crate::formats::designbot::RendererIdentity {
+                executable_path: "/tmp/designbot".into(),
+                executable_sha256: "sha256:test-renderer".into(),
+                command: "render-scene --png".into(),
+            },
             glyphs: Vec::new(),
+            target_glyph_index: None,
             png: b"\x89PNG\r\n\x1a\n".to_vec(),
+            detail: None,
         }
     }
 

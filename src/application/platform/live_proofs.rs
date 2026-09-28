@@ -101,6 +101,7 @@ impl Workspace {
                         &request.proof_id,
                         "status",
                         request.include_image,
+                        request.view,
                     ),
                     Err(error) => failure("invalid_arguments", error),
                 }
@@ -112,6 +113,7 @@ impl Workspace {
                         &request.proof_id,
                         &call.name,
                         false,
+                        compiled_proof::ProofView::Context,
                     ),
                     Err(error) => failure("invalid_arguments", error),
                 }
@@ -224,7 +226,14 @@ impl Workspace {
         result
     }
 
-    fn proof_action(&mut self, epoch: &str, id: &str, action: &str, include_image: bool) -> Value {
+    fn proof_action(
+        &mut self,
+        epoch: &str,
+        id: &str,
+        action: &str,
+        include_image: bool,
+        view: compiled_proof::ProofView,
+    ) -> Value {
         if let Err(error) = self.check_proof_epoch(epoch) {
             return error;
         }
@@ -279,14 +288,18 @@ impl Workspace {
                 ProofOutcomeResult::CancelledBeforeStart
             }
             (ProofJobStatus::Completed, Some(ProofJobOutcome::Completed(proof))) => {
+                let image = match proof.image(view) {
+                    Ok(image) => image,
+                    Err(error) => return failure("proof_view_unavailable", error),
+                };
                 let png_base64 = if include_image {
-                    if proof.png.len() > MAX_PNG_BYTES {
+                    if image.bytes.len() > MAX_PNG_BYTES {
                         return failure(
                             "proof_image_too_large",
                             "compiled PNG exceeds the transport image limit",
                         );
                     }
-                    Some(base64::engine::general_purpose::STANDARD.encode(&proof.png))
+                    Some(base64::engine::general_purpose::STANDARD.encode(image.bytes))
                 } else {
                     None
                 };
@@ -295,6 +308,12 @@ impl Workspace {
                     canonical_input_sha256: proof.canonical_input_sha256.clone(),
                     compiler: proof.compiler.clone(),
                     recipe: proof.recipe.clone(),
+                    recipe_sha256: proof.recipe_sha256.clone(),
+                    renderer: proof.renderer.clone(),
+                    view,
+                    rendering: image.rendering.clone(),
+                    target_glyph_index: image.target_glyph_index,
+                    crop: image.crop.cloned(),
                     glyphs: proof.glyphs.clone(),
                     png_base64,
                 }))
@@ -395,17 +414,35 @@ mod tests {
         let epoch = second.live.as_ref().unwrap().document_epoch().to_owned();
         assert_ne!(epoch, old_request.expected_document_epoch);
         assert_eq!(
-            second.proof_action(&old_request.expected_document_epoch, handle, "status", true)["error_code"],
+            second.proof_action(
+                &old_request.expected_document_epoch,
+                handle,
+                "status",
+                true,
+                compiled_proof::ProofView::Context
+            )["error_code"],
             "stale_document"
         );
         assert_eq!(
-            second.proof_action(&epoch, handle, "status", true)["error_code"],
+            second.proof_action(
+                &epoch,
+                handle,
+                "status",
+                true,
+                compiled_proof::ProofView::Context
+            )["error_code"],
             "unknown_proof"
         );
         drop(first);
         assert_eq!(std::ptr::from_ref(service()), service_before);
         assert_eq!(
-            second.proof_action(&epoch, handle, "status", true)["error_code"],
+            second.proof_action(
+                &epoch,
+                handle,
+                "status",
+                true,
+                compiled_proof::ProofView::Context
+            )["error_code"],
             "unknown_proof"
         );
     }

@@ -123,6 +123,8 @@ pub struct TextProofSelection {
     pub cluster: u32,
     /// Paint-order occurrence among glyphs with this name.
     pub occurrence: u32,
+    /// Pen position before this occurrence in the captured shaped run, in font units.
+    pub reference_pen_x: f64,
 }
 
 /// Result of `TextBuffer::layout`: every drawn sort placed in font units, plus the caret position.
@@ -779,22 +781,29 @@ impl TextBuffer {
         )?;
         let mut named_occurrences = 0_u32;
         let mut match_occurrence = None;
+        let mut pen: f64 = 0.0;
+        let mut reference_pen_x = None;
         for glyph in shaped {
-            if font.glyph_name(glyph.glyph_id) != Some(expected_name) {
-                continue;
+            if !glyph.x_advance.is_finite() || !pen.is_finite() {
+                return Err("selected proof has non-finite glyph positioning".into());
             }
-            if glyph.cluster == selected_cluster {
-                if match_occurrence.is_some() {
-                    return Err(
-                        "selected cluster has multiple indistinguishable shaped glyphs".into(),
-                    );
+            if font.glyph_name(glyph.glyph_id) == Some(expected_name) {
+                if glyph.cluster == selected_cluster {
+                    if match_occurrence.is_some() {
+                        return Err(
+                            "selected cluster has multiple indistinguishable shaped glyphs".into(),
+                        );
+                    }
+                    match_occurrence = Some(named_occurrences);
+                    reference_pen_x = Some(pen);
                 }
-                match_occurrence = Some(named_occurrences);
+                named_occurrences += 1;
             }
-            named_occurrences += 1;
+            pen += glyph.x_advance;
         }
         let occurrence = match_occurrence
             .ok_or("selected sort does not match one glyph in the compiled proof run")?;
+        let reference_pen_x = reference_pen_x.ok_or("selected proof pen is unavailable")?;
         Ok(TextProofSelection {
             text,
             normalized_location: self.normalized.clone(),
@@ -805,6 +814,7 @@ impl TextBuffer {
             glyph_name: expected_name.to_owned(),
             cluster: selected_cluster,
             occurrence,
+            reference_pen_x,
         })
     }
 

@@ -3,7 +3,9 @@
 
 //! Data-only Designbot scenes and bounded rendering through its installed CLI.
 
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest as _, Sha256};
 
 use crate::font::LayerView;
 use crate::font::canonical_metadata::CanonicalFontMetadata;
@@ -165,10 +167,40 @@ fn scene_canonical(
     )
 }
 
-/// Render a version-1 scene as raw PNG or PDF. Runs off the UI thread.
+/// Measured identity of the invoked Designbot entrypoint.
+///
+/// The file hash is checked before and after rendering. A wrapper's transitive tools are not
+/// attested; this records the resolved path actually passed to the operating system.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct RendererIdentity {
+    /// Resolved absolute path passed to process spawn; it may itself be a symlink.
+    pub executable_path: String,
+    /// SHA-256 of that file, measured before and after the invocation.
+    pub executable_sha256: String,
+    /// Exact command arguments used for this artifact.
+    pub command: String,
+}
+
+/// Rendered bytes and the measured identity of the invoked entrypoint.
+#[derive(Debug)]
+pub struct RenderedScene {
+    /// PNG or PDF bytes.
+    pub bytes: Vec<u8>,
+    /// Entrypoint file identity for this invocation.
+    pub renderer: RendererIdentity,
+}
+
+/// Render a version-1 scene as raw PNG or PDF, preserving the older bytes-only API.
+/// Runs off the UI thread.
+pub fn render(scene: &Value, pdf: bool) -> Result<Vec<u8>, String> {
+    Ok(render_with_identity(scene, pdf)?.bytes)
+}
+
+/// Render and return the measured executable identity with the output.
+///
 /// Uses `DESIGNBOT_BIN` or `designbot` on PATH. Times out after 30 seconds;
 /// temporary inputs and output are removed on success or failure.
-pub fn render(scene: &Value, pdf: bool) -> Result<Vec<u8>, String> {
+pub fn render_with_identity(scene: &Value, pdf: bool) -> Result<RenderedScene, String> {
     use std::io::{Read as _, Write as _};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::{
@@ -200,17 +232,18 @@ pub fn render(scene: &Value, pdf: bool) -> Result<Vec<u8>, String> {
     fs::File::create(&input)
         .and_then(|mut f| f.write_all(&data))
         .map_err(|e| e.to_string())?;
-    let mut child =
-        Command::new(std::env::var_os("DESIGNBOT_BIN").unwrap_or_else(|| "designbot".into()))
-            .args(["render-scene", if pdf { "--pdf" } else { "--png" }])
-            .arg(&output)
-            .stdin(fs::File::open(input).map_err(|e| e.to_string())?)
-            .stdout(Stdio::null())
-            .stderr(fs::File::create(&errors).map_err(|e| e.to_string())?)
-            .spawn()
-            .map_err(|e| {
-                format!("Designbot unavailable: {e}; install a version supporting render-scene")
-            })?;
+    let executable = resolve_executable()?;
+    let executable_sha256 = hash_executable(&executable)?;
+    let mut child = Command::new(&executable)
+        .args(["render-scene", if pdf { "--pdf" } else { "--png" }])
+        .arg(&output)
+        .stdin(fs::File::open(input).map_err(|e| e.to_string())?)
+        .stdout(Stdio::null())
+        .stderr(fs::File::create(&errors).map_err(|e| e.to_string())?)
+        .spawn()
+        .map_err(|e| {
+            format!("Designbot unavailable: {e}; install a version supporting render-scene")
+        })?;
     let start = Instant::now();
     loop {
         match child.try_wait().map_err(|e| e.to_string())? {
@@ -234,7 +267,77 @@ pub fn render(scene: &Value, pdf: bool) -> Result<Vec<u8>, String> {
     if fs::metadata(&output).map_err(|e| e.to_string())?.len() > 32 * 1024 * 1024 {
         return Err("proof exceeds 32 MiB".into());
     }
-    fs::read(output).map_err(|e| e.to_string())
+    let bytes = fs::read(output).map_err(|e| e.to_string())?;
+    if hash_executable(&executable)? != executable_sha256 {
+        return Err("Designbot executable changed during rendering".into());
+    }
+    Ok(RenderedScene {
+        bytes,
+        renderer: RendererIdentity {
+            executable_path: executable.to_string_lossy().into_owned(),
+            executable_sha256,
+            command: if pdf {
+                "render-scene --pdf"
+            } else {
+                "render-scene --png"
+            }
+            .into(),
+        },
+    })
+}
+
+fn resolve_executable() -> Result<std::path::PathBuf, String> {
+    let requested = std::env::var_os("DESIGNBOT_BIN").unwrap_or_else(|| "designbot".into());
+    let requested_path = std::path::PathBuf::from(&requested);
+    let candidate = if requested_path.is_absolute() || requested_path.components().count() > 1 {
+        requested_path
+    } else {
+        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+            .map(|directory| directory.join(&requested))
+            .find(|path| is_executable_file(path))
+            .ok_or("Designbot unavailable: executable not found on PATH")?
+    };
+    if candidate.is_absolute() {
+        Ok(candidate)
+    } else {
+        Ok(std::env::current_dir()
+            .map_err(|error| format!("Designbot unavailable: {error}"))?
+            .join(candidate))
+    }
+}
+
+fn is_executable_file(path: &std::path::Path) -> bool {
+    let Ok(metadata) = path.metadata() else {
+        return false;
+    };
+    if !metadata.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        metadata.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+fn hash_executable(path: &std::path::Path) -> Result<String, String> {
+    use std::io::Read as _;
+
+    let mut file = std::fs::File::open(path).map_err(|error| error.to_string())?;
+    let mut digest = Sha256::new();
+    let mut chunk = [0_u8; 8 * 1024];
+    loop {
+        let count = file.read(&mut chunk).map_err(|error| error.to_string())?;
+        if count == 0 {
+            break;
+        }
+        digest.update(&chunk[..count]);
+    }
+    Ok(format!("sha256:{:x}", digest.finalize()))
 }
 
 /// A one-page Latin kerning specimen from live outlines, shaped with harfrust.

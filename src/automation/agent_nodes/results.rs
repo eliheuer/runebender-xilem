@@ -12,7 +12,10 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::font::compiler::proof::{CompiledProofGlyph, CompiledProofRecipe};
+use crate::font::compiler::proof::{
+    CompiledProofGlyph, CompiledProofRecipe, CompiledProofRendering, ProofDetailCrop, ProofView,
+};
+use crate::formats::designbot::RendererIdentity;
 use crate::workflows::nodes_run::NodeResult;
 use crate::workflows::nodes_session::{
     GraphCancelResponse, GraphDiscovery, GraphIdentity, GraphMutationResponse, GraphRunInspection,
@@ -135,6 +138,19 @@ pub struct NodesImageResult {
     pub canonical_input_sha256: String,
     /// Exact recipe used for shaping and rendering.
     pub recipe: CompiledProofRecipe,
+    /// SHA-256 of the exact recipe shared by the retained views.
+    pub recipe_sha256: String,
+    /// Measured Designbot entrypoint used for this image.
+    pub renderer: RendererIdentity,
+    /// Which retained view was selected.
+    pub view: ProofView,
+    /// Raster settings of the selected view.
+    pub rendering: CompiledProofRendering,
+    /// Paint-order target index in the unchanged shaping result, when selected.
+    pub target_glyph_index: Option<usize>,
+    /// Fixed crop transform for a selected detail view.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub crop: Option<ProofDetailCrop>,
     /// Positioned glyph metrics in paint order.
     pub glyphs: Vec<CompiledProofGlyph>,
     /// Base64 PNG, omitted from structured MCP data after image extraction.
@@ -292,9 +308,19 @@ mod tests {
                 features: vec![],
                 script: None,
                 language: None,
-                rendering: crate::font::compiler::proof::CompiledProofRendering::default(),
+                rendering: CompiledProofRendering::default(),
                 target: None,
             },
+            recipe_sha256: "recipe-hash".into(),
+            renderer: RendererIdentity {
+                executable_path: "/tmp/designbot".into(),
+                executable_sha256: "renderer-hash".into(),
+                command: "render-scene --png".into(),
+            },
+            view: ProofView::Context,
+            rendering: CompiledProofRendering::default(),
+            target_glyph_index: None,
+            crop: None,
             glyphs: vec![CompiledProofGlyph {
                 glyph_id: 1,
                 glyph_name: Some("A".into()),
