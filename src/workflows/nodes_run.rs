@@ -8,7 +8,7 @@
 //! way `runebender propose` does, so the model runtime never enters
 //! this crate. A node's inputs are hashed before it runs: the values
 //! typed into it, the hashes of the nodes it reads from, and for a
-//! font or a layer the glyph files themselves. The hash and the
+//! font or a layer the source files themselves. The hash and the
 //! outputs are kept in a cache file beside the graph, and a node
 //! whose hash has not moved is skipped. That is `ComfyUI`'s rule, with
 //! the cache on disk instead of in a server.
@@ -19,7 +19,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::io::BufRead as _;
+use std::io::{BufRead as _, Read as _};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -119,50 +119,70 @@ impl RunValue {
         }
     }
 
-    /// Something to hash that stands for the value. A font or a layer
-    /// hashes its glyph files, so an edit upstream re-runs what read
-    /// it. A model hashes its manifest's weight digest when it has
-    /// one.
-    fn fingerprint(&self, hasher: &mut impl Hasher, glyphs: &[String]) {
+    /// Something to hash that stands for the value. A font or layer
+    /// hashes its whole UFO so metadata, layer mappings, and component
+    /// dependencies are covered as well as selected glyphs.
+    fn fingerprint(&self, hasher: &mut impl Hasher) -> bool {
         match self {
             Self::Source { path } => {
                 path.hash(hasher);
-                hash_layer_files(&path.join("glyphs"), glyphs, hasher);
+                hash_tree(path, hasher)
             }
             Self::Layer { source, name } => {
                 source.hash(hasher);
                 name.hash(hasher);
-                if let Some(dir) = layer_dir(source, name) {
-                    hash_layer_files(&dir, glyphs, hasher);
-                }
+                hash_tree(source, hasher)
             }
             Self::Model { path, adapters } => {
                 path.hash(hasher);
+                let mut complete = hash_optional_file(&path.join("config.json"), hasher);
+                complete &= hash_optional_file(&path.join("manifest.json"), hasher);
                 let manifest = std::fs::read_to_string(path.join("manifest.json"))
                     .ok()
                     .and_then(|t| serde_json::from_str::<Value>(&t).ok());
                 match manifest.and_then(|m| m.get("weights_sha256")?.as_str().map(String::from)) {
                     Some(digest) => digest.hash(hasher),
-                    None => hash_file(&path.join("weights.safetensors"), hasher),
+                    None => complete &= hash_file(&path.join("weights.safetensors"), hasher),
                 }
                 for (dir, strength) in adapters {
                     dir.hash(hasher);
                     strength.to_bits().hash(hasher);
-                    hash_file(&dir.join("adapter.safetensors"), hasher);
+                    complete &= hash_optional_file(&dir.join("adapter.json"), hasher);
+                    complete &= hash_file(&dir.join("adapter.safetensors"), hasher);
                 }
+                complete
             }
             Self::Adapter { path } => {
                 path.hash(hasher);
-                hash_file(&path.join("adapter.safetensors"), hasher);
+                let mut complete = hash_optional_file(&path.join("adapter.json"), hasher);
+                complete &= hash_file(&path.join("adapter.safetensors"), hasher);
+                complete
             }
-            Self::Glyphs { names } => names.hash(hasher),
-            Self::Number { value } => value.to_bits().hash(hasher),
-            Self::Flag { value } => value.hash(hasher),
-            Self::Text { value } => value.hash(hasher),
-            Self::Rows { rows } => rows.len().hash(hasher),
+            Self::Glyphs { names } => {
+                names.hash(hasher);
+                true
+            }
+            Self::Number { value } => {
+                value.to_bits().hash(hasher);
+                true
+            }
+            Self::Flag { value } => {
+                value.hash(hasher);
+                true
+            }
+            Self::Text { value } => {
+                value.hash(hasher);
+                true
+            }
+            Self::Rows { rows } => {
+                serde_json::to_vec(rows)
+                    .expect("JSON rows can always be serialized")
+                    .hash(hasher);
+                true
+            }
             Self::Path { path } => {
                 path.hash(hasher);
-                hash_file(path, hasher);
+                hash_file(path, hasher)
             }
         }
     }
@@ -182,52 +202,111 @@ fn layer_dir(source: &Path, layer: &str) -> Option<PathBuf> {
     None
 }
 
-/// Hashes the glif files in a layer directory: the named glyphs, or
-/// every file when the list is empty. Names and lengths go in, then
-/// the bytes.
-fn hash_layer_files(dir: &Path, glyphs: &[String], hasher: &mut impl Hasher) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
+/// Hash every file under a source with its relative name and entry type.
+/// A symlink or unreadable entry prevents reuse: following a directory
+/// symlink could escape the UFO or form a cycle.
+fn hash_tree(path: &Path, hasher: &mut impl Hasher) -> bool {
+    let kind = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata.file_type(),
+        Err(error) => {
+            error.kind().hash(hasher);
+            return false;
+        }
     };
-    let mut files: Vec<PathBuf> = entries
-        .filter_map(Result::ok)
-        .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|x| x == "glif"))
+    if kind.is_symlink() {
+        2u8.hash(hasher);
+        match std::fs::read_link(path) {
+            Ok(target) => target.hash(hasher),
+            Err(error) => error.kind().hash(hasher),
+        }
+        return false;
+    }
+    if kind.is_file() {
+        0u8.hash(hasher);
+        return hash_file(path, hasher);
+    }
+    if !kind.is_dir() {
+        3u8.hash(hasher);
+        return false;
+    }
+    1u8.hash(hasher);
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return false;
+    };
+    let mut entries: Vec<_> = entries
+        .map(|entry| entry.map(|entry| entry.path()))
         .collect();
-    files.sort();
-    let contents = std::fs::read_to_string(dir.join("contents.plist")).unwrap_or_default();
-    let wanted: Vec<String> = glyphs
-        .iter()
-        .filter_map(|g| {
-            // contents.plist maps names to file names; find the file
-            // for each wanted glyph the cheap way.
-            let key = format!("<key>{g}</key>");
-            let at = contents.find(&key)?;
-            let rest = &contents[at + key.len()..];
-            let start = rest.find("<string>")? + "<string>".len();
-            let end = rest[start..].find("</string>")? + start;
-            Some(rest[start..end].to_string())
-        })
-        .collect();
-    for file in files {
-        if !glyphs.is_empty() {
-            let name = file
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or_default();
-            if !wanted.iter().any(|w| w == name) {
-                continue;
+    entries.sort_by(|a, b| a.as_ref().ok().cmp(&b.as_ref().ok()));
+    entries.len().hash(hasher);
+    let mut complete = true;
+    for entry in entries {
+        match entry {
+            Ok(path) => {
+                path.file_name().hash(hasher);
+                complete &= hash_tree(&path, hasher);
+            }
+            Err(error) => {
+                error.kind().hash(hasher);
+                complete = false;
             }
         }
-        file.file_name().hash(hasher);
-        hash_file(&file, hasher);
     }
+    4u8.hash(hasher);
+    complete
 }
 
-fn hash_file(path: &Path, hasher: &mut impl Hasher) {
-    if let Ok(bytes) = std::fs::read(path) {
-        bytes.len().hash(hasher);
-        bytes.hash(hasher);
+/// Stream large model and executable files without holding them in memory.
+fn hash_file(path: &Path, hasher: &mut impl Hasher) -> bool {
+    match std::fs::metadata(path) {
+        Ok(metadata) if metadata.is_file() => {}
+        Ok(_) => {
+            "not a regular file".hash(hasher);
+            return false;
+        }
+        Err(error) => {
+            error.kind().hash(hasher);
+            return false;
+        }
+    }
+    let mut file = match std::fs::File::open(path) {
+        Ok(file) => file,
+        Err(error) => {
+            error.kind().hash(hasher);
+            return false;
+        }
+    };
+    let mut buf = [0u8; 64 * 1024];
+    let mut len = 0u64;
+    loop {
+        match file.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                hasher.write(&buf[..n]);
+                len += n as u64;
+            }
+            Err(error) => {
+                error.kind().hash(hasher);
+                return false;
+            }
+        }
+    }
+    len.hash(hasher);
+    true
+}
+
+/// Absence of optional model metadata is a stable input; an unreadable
+/// metadata file is not.
+fn hash_optional_file(path: &Path, hasher: &mut impl Hasher) -> bool {
+    match std::fs::metadata(path) {
+        Ok(_) => hash_file(path, hasher),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            "missing optional file".hash(hasher);
+            true
+        }
+        Err(error) => {
+            error.kind().hash(hasher);
+            false
+        }
     }
 }
 
@@ -606,6 +685,17 @@ pub fn run(graph: &NodeGraph, registry: &Registry, ctx: &mut RunContext<'_>) -> 
         .unwrap_or_default();
     let order = graph.order().unwrap_or_default();
     let total = order.len();
+    // Cache files survive rebuilds. Hash the running implementation once
+    // so a rebuilt command cannot reuse results from old core behavior.
+    let mut runtime_hasher = std::hash::DefaultHasher::new();
+    let runtime_cacheable = match std::env::current_exe() {
+        Ok(path) => hash_file(&path, &mut runtime_hasher),
+        Err(error) => {
+            error.kind().hash(&mut runtime_hasher);
+            false
+        }
+    };
+    let runtime_hash = runtime_hasher.finish();
     let mut results: BTreeMap<u32, NodeResult> = BTreeMap::new();
     let mut ok = true;
     for (index, id) in order.iter().copied().enumerate() {
@@ -636,7 +726,27 @@ pub fn run(graph: &NodeGraph, registry: &Registry, ctx: &mut RunContext<'_>) -> 
         let mut values = BTreeMap::new();
         let mut blocked = false;
         let mut hasher = std::hash::DefaultHasher::new();
+        let mut cacheable_inputs = runtime_cacheable;
+        runtime_hash.hash(&mut hasher);
         node.type_name.hash(&mut hasher);
+        let external = node_type.tool() != "core";
+        if external {
+            let binary = ctx
+                .tools
+                .get(node_type.tool())
+                .cloned()
+                .or_else(|| find_on_path(node_type.tool()));
+            match binary {
+                Some(path) => {
+                    path.hash(&mut hasher);
+                    cacheable_inputs &= hash_file(&path, &mut hasher);
+                }
+                None => {
+                    "missing tool".hash(&mut hasher);
+                    cacheable_inputs = false;
+                }
+            }
+        }
         if node.type_name.starts_with("font-ml.") {
             ctx.device.hash(&mut hasher);
         }
@@ -661,19 +771,29 @@ pub fn run(graph: &NodeGraph, registry: &Registry, ctx: &mut RunContext<'_>) -> 
             };
             if let Some(v) = value {
                 port.name.hash(&mut hasher);
-                v.fingerprint(&mut hasher, &ctx.glyphs);
+                cacheable_inputs &= v.fingerprint(&mut hasher);
                 values.insert(port.name.clone(), v);
             }
         }
-        if node.type_name == "core.source" {
+        if matches!(node.type_name.as_str(), "core.source" | "core.master") {
             ctx.font.hash(&mut hasher);
-            ctx.master.hash(&mut hasher);
-            ctx.glyphs.hash(&mut hasher);
-            hash_layer_files(
-                &source_master(ctx).unwrap_or_default().join("glyphs"),
-                &ctx.glyphs,
-                &mut hasher,
-            );
+            if ctx.font.is_file() {
+                cacheable_inputs &= hash_file(ctx.font, &mut hasher);
+            }
+            if node.type_name == "core.source" {
+                ctx.master.hash(&mut hasher);
+                ctx.glyphs.hash(&mut hasher);
+                match source_master(ctx) {
+                    Ok(path) => {
+                        path.hash(&mut hasher);
+                        cacheable_inputs &= hash_tree(&path, &mut hasher);
+                    }
+                    Err(error) => {
+                        error.hash(&mut hasher);
+                        cacheable_inputs = false;
+                    }
+                }
+            }
         }
         if blocked {
             let result = NodeResult {
@@ -702,6 +822,7 @@ pub fn run(graph: &NodeGraph, registry: &Registry, ctx: &mut RunContext<'_>) -> 
         // what the designer did to the foreground since.
         let cached = cache.nodes.get(&id);
         if !ctx.force
+            && cacheable_inputs
             && node.type_name != "core.install"
             && let Some(c) = cached
             && c.hash == hash
@@ -805,11 +926,12 @@ pub fn validate_proposal_workflow(graph: &NodeGraph) -> Result<(), String> {
 /// designer discarded is not handed on as if it were there.
 fn outputs_still_there(outputs: &BTreeMap<String, RunValue>) -> bool {
     outputs.values().all(|v| match v {
-        RunValue::Layer { source, name } => layer_dir(source, name).is_some_and(|d| d.is_dir()),
-        RunValue::Source { path }
-        | RunValue::Model { path, .. }
-        | RunValue::Adapter { path }
-        | RunValue::Path { path } => path.exists(),
+        RunValue::Layer { source, name } => {
+            layer_dir(source, name).is_some_and(|d| d.join("contents.plist").is_file())
+        }
+        RunValue::Source { path } => path.exists(),
+        RunValue::Model { path, .. } | RunValue::Adapter { path } => path.is_dir(),
+        RunValue::Path { path } => path.is_file(),
         _ => true,
     })
 }
@@ -1667,6 +1789,32 @@ mod tests {
         let p = cache_path(Path::new("/x/bolden.nodes.json"));
         assert_eq!(p, Path::new("/x/.bolden.nodes.json.cache"));
     }
+
+    #[test]
+    fn row_fingerprint_changes_when_a_report_value_changes() {
+        let fingerprint = |rows| {
+            let mut hasher = std::hash::DefaultHasher::new();
+            RunValue::Rows { rows }.fingerprint(&mut hasher);
+            hasher.finish()
+        };
+        assert_ne!(
+            fingerprint(vec![json!({ "glyph": "H", "score": 1 })]),
+            fingerprint(vec![json!({ "glyph": "H", "score": 2 })]),
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn source_fingerprint_refuses_a_directory_symlink_loop() {
+        let scratch = Scratch::new();
+        let source = scratch.0.join("Loop.ufo");
+        std::fs::create_dir(&source).unwrap();
+        std::fs::write(source.join("fontinfo.plist"), b"info").unwrap();
+        std::os::unix::fs::symlink(".", source.join("loop")).unwrap();
+        let mut hasher = std::hash::DefaultHasher::new();
+        assert!(!RunValue::Source { path: source }.fingerprint(&mut hasher));
+    }
+
     #[test]
     fn master_selection_uses_canonical_source_views() {
         let project = source_selection_project();

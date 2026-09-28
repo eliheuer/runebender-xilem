@@ -436,6 +436,30 @@ fn nodes_run_runs_core_nodes_and_skips_them_the_second_time() {
     let proof = nodes.iter().find(|n| n["id"] == 2).expect("proof node");
     assert_eq!(proof["status"], "skipped", "{out}");
 
+    // Font metrics affect the SVG even when no glif changes.
+    let fontinfo = ufo.join("fontinfo.plist");
+    let info = std::fs::read_to_string(&fontinfo).expect("font info");
+    let changed = info.replacen(
+        "<key>unitsPerEm</key>\n\t<integer>1024</integer>",
+        "<key>unitsPerEm</key>\n\t<integer>1100</integer>",
+        1,
+    );
+    assert_ne!(info, changed, "fixture has a unitsPerEm value to edit");
+    std::fs::write(&fontinfo, changed).expect("write font info");
+    let (code, out) = run(&args);
+    assert_eq!(code, 0, "{out}");
+    let nodes = out["nodes"].as_array().expect("nodes");
+    let proof = nodes.iter().find(|n| n["id"] == 2).expect("proof node");
+    assert_eq!(proof["status"], "ran", "{out}");
+    let changed_svg = std::fs::read_to_string(&svg).expect("updated svg");
+    assert_ne!(text, changed_svg, "proof uses the changed unitsPerEm");
+
+    let (code, out) = run(&args);
+    assert_eq!(code, 0, "{out}");
+    let nodes = out["nodes"].as_array().expect("nodes");
+    let proof = nodes.iter().find(|n| n["id"] == 2).expect("proof node");
+    assert_eq!(proof["status"], "skipped", "{out}");
+
     // Edit a glyph in the font: the proof runs again.
     let glif = ufo.join("glyphs").join("H_.glif");
     let mut text = std::fs::read_to_string(&glif).expect("glif");
@@ -446,6 +470,63 @@ fn nodes_run_runs_core_nodes_and_skips_them_the_second_time() {
     let nodes = out["nodes"].as_array().expect("nodes");
     let proof = nodes.iter().find(|n| n["id"] == 2).expect("proof node");
     assert_eq!(proof["status"], "ran", "{out}");
+
+    // A missing output must be recreated from unchanged inputs.
+    std::fs::remove_file(&svg).expect("remove proof");
+    let (code, out) = run(&args);
+    assert_eq!(code, 0, "{out}");
+    let nodes = out["nodes"].as_array().expect("nodes");
+    let proof = nodes.iter().find(|n| n["id"] == 2).expect("proof node");
+    assert_eq!(proof["status"], "ran", "{out}");
+    assert!(svg.is_file());
+}
+
+#[cfg(unix)]
+#[test]
+fn nodes_run_invalidates_cache_when_worker_is_replaced_at_the_same_path() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let (dir, ufo) = scratch_ufo();
+    let graph = dir.path().join("worker.nodes.json");
+    let worker = dir.path().join("font-ml");
+    std::fs::write(
+        &graph,
+        r#"{"version":1,"nodes":[{"id":1,"type":"font-ml.report"}],"links":[]}"#,
+    )
+    .unwrap();
+    let replace_worker = |version: u32| {
+        let tasks = serde_json::json!({"tasks":[{
+            "name":"report", "implemented":true, "inputs":[], "outputs":[]
+        }]});
+        let report = serde_json::json!({"ok":true,"version":version});
+        std::fs::write(
+            &worker,
+            format!(
+                "#!/bin/sh\ncase \"$1\" in\n tasks) printf '%s\\n' '{tasks}' ;;\n run) printf '%s\\n' '{report}' ;;\n *) exit 1 ;;\nesac\n"
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&worker, std::fs::Permissions::from_mode(0o700)).unwrap();
+    };
+    let args = [
+        "nodes",
+        "run",
+        graph.to_str().unwrap(),
+        "--font",
+        ufo.to_str().unwrap(),
+        "--tool",
+        worker.to_str().unwrap(),
+    ];
+    replace_worker(1);
+    for (status, version) in [("ran", 1), ("skipped", 1), ("ran", 2), ("skipped", 2)] {
+        if status == "ran" && version == 2 {
+            replace_worker(2);
+        }
+        let (code, result) = run(&args);
+        assert_eq!(code, 0, "{result}");
+        assert_eq!(result["nodes"][0]["status"], status, "{result}");
+        assert_eq!(result["nodes"][0]["report"]["version"], version, "{result}");
+    }
 }
 
 /// Drives the MCP server over its stdio: one JSON-RPC message per
