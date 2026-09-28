@@ -10,7 +10,8 @@ This file is temporary working state; retire it after the final acceptance revie
 The user requested that the current patch be finished and recurring work stopped on 2026-09-28.
 The current patch is committed as 273562b; the heartbeat is PAUSED and must not resume without a new user request.
 Unchecked items are deferred work, not an instruction to continue automatically.
-The integration branch is local and has not been pushed or merged into the original checkout.
+The user subsequently authorized promotion to main, commit and push.
+Main now includes the completed implementation history; the pre-existing checkout edits were verified byte-for-byte against the preserved baseline and included without loss.
 This closes the scheduled pass, not the entire AI product roadmap or the final H release gates.
 
 ## Working context
