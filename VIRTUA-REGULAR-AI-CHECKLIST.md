@@ -1,6 +1,6 @@
 # Virtua Regular AI workflow checklist
 
-Status: B1-B3, C1 and C2 validated; C3 assigned next; trial preflight complete, target preference requested.
+Status: B1-B3 and C1-C3 validated; D1 assigned next; trial preflight complete, target preference requested.
 Created: 2026-09-28.
 Coordinator: this Codex task, with Astra owning architecture and integration review.
 Worktree: /Users/eli/.codex/worktrees/virtua-regular-ai/runebender-xilem.
@@ -69,10 +69,12 @@ Do not revive AI-ARCHITECTURE-CHECKLIST.md's deferred roadmap.
 ## Design and grading contract
 
 - Green: approved style/weight/geometry references; never edit.
-Purple: protected, never edit.
-Yellow/orange: explicitly selected refinement targets.
+Purple: approved composite, frozen reference; never edit or remove.
+Yellow/orange: explicitly selected refinement targets; preserve the drawing, never overwrite, not references.
 Red: explicitly selected empty/junk/unfinished targets eligible for replacement.
-Blue: AI candidate awaiting Eli's grading.
+Blue: composite needing diagnosis and repair, not an approved reference.
+Pink: composite needing smaller edits, not an approved reference.
+Only red authorizes overwriting; preserve frozen component glyphs when editing composites.
 Unknown/uncolored values are not automatic targets.
 Read actual color values, not guesses from screenshots.
 Never automatically mark a glyph green.
@@ -159,7 +161,7 @@ Actual headless proof inspection is required before visual claims.
 ### C. Safe missing-outline candidates (Sol; follows B1 to avoid proof.rs ownership conflict)
 - [x] C1. Add bounded complete-outline replacement through canonical guarded transactions, agent operations and private candidate compilation.
 - [x] C2. Add calibrated image/model-outline import into a detached candidate; preserve unrelated width/anchors/components/metadata unless explicitly addressed.
-- [ ] C3. Make the same candidate inspectable/selectable through existing UI and MCP, with one Apply/Undo and no automatic save.
+- [x] C3. Make the same candidate inspectable/selectable through existing UI and MCP, with one Apply/Undo and no automatic save.
 Acceptance: empty-to-drawn and junk-to-replaced, no root mutation before apply, stale rejection, unrelated/green preservation, proof of replacement, undo/redo restoration.
 Do not repair or synthesize Bold to make the trial pass.
 Regular-only drafts must not be mislabeled variable-font release artifacts.
@@ -326,3 +328,61 @@ An initial standalone Cargo driver build was stopped because its separate manife
 Browser checks remain F4; no font sources were changed.
 C3 assigned to regular_proof_sol: connect calibrated detached replacement candidates to existing UI/MCP inspection, selection and guarded Apply/Undo; own existing agent edit/node and native node adapters as narrowly required.
 Workers still do not run Cargo, commit or edit this checklist.
+
+### C3 first validation, pending
+Three-file nodes_trace patch compiled; both focused calibrated_trace integration tests failed at the post-Apply width assertion (actual 600, expected 400).
+Command: `cargo test --bin runebender --locked application::editor::tools::nodes::workspace::tests::calibrated_trace -- --test-threads=1`, with established test-font/target/jobs environment.
+The chained agent_nodes tests and Clippy did not run after this failure.
+Sol must distinguish fixture width initialization from any real mutation and compare against captured-before metadata without masking a mutation.
+Coordinator also flagged synchronous img2bez tracing in the Workspace request path; review the smallest existing-worker integration to avoid blocking editing.
+C3 remains uncommitted and unchecked; no original font changes and no Cargo job remains active.
+
+### C3 asynchronous tracing decision
+Worker diagnosis: the 400-unit test expectation was wrong; compare applied width against the captured original width.
+Coordinator approves a bounded asynchronous trace job, not a second candidate store.
+Submission captures document lifetime, source/layer and graph guards and returns a handle without mutating font or graph.
+Decode and img2bez execute off the editor thread; keep one outstanding trace per session and a global bounded worker capacity, rejecting excess work.
+Status/pump may install the resulting recipe only after rechecking document, layer and graph guards; stale or cancelled completions never mutate the graph.
+Cancellation suppresses publication even if img2bez cannot be interrupted; do not claim immediate compute cancellation or free worker capacity early.
+Reuse the existing graph mutation receipt for exact retry and keep terminal retention bounded with release; graph installation is exactly once.
+Keep job logic in a cohesive adjacent module; Workspace only adapts requests and owns session lifecycle.
+Sol owns this narrow expansion into the nodes trace helper, agent request/result types and associated lifecycle tests; no Cargo, commits or checklist edits.
+C3 remains pending runtime validation; no broader job framework or CLI subsystem is authorized by this decision.
+
+### Active grading hold
+Eli is grading /Users/eli/GH/repos/virtua-grotesk and will explicitly report when finished.
+Do not edit that repository, select a target, capture green references or run a real-font trial during this pass.
+After grading-done, read labels fresh; earlier inventory is not authoritative for eligibility.
+Implementation and synthetic fixture tests may continue in this isolated worktree.
+The active Sol worker has received this constraint; asynchronous C3 handoff is still pending, so no duplicate assignment or Cargo job was started.
+
+### C3 async validation, pending
+`cargo test --locked --bin runebender calibrated_trace -- --test-threads=1` passed both empty/junk end-to-end synthetic candidate tests, including proofs, Apply and Undo/Redo.
+`cargo test --locked --bin runebender application::editor::tools::nodes::trace:: -- --test-threads=1` passed cancellation but failed stale-document publication at trace.rs620: add_document_glyph in the fixture did not change the revision expected by the test.
+Sol must establish an actual revision-changing edit and assert the fixture revision changed, preserving the stale guard.
+Unused GraphIdentity import and TraceSession field visibility warnings remain; chained agent_nodes and Clippy checks were not reached.
+Coordinator also requested released-retry correctness when another handle is retained, with a regression.
+No Cargo jobs remain; C3 stays unchecked/uncommitted and the grading hold remains active.
+
+### Grading complete and canonical color semantics
+Eli reports the grading pass committed and pushed; the active grading hold is lifted.
+Read current labels fresh before target/reference selection; do not reuse the earlier eligibility inventory.
+Canonical definitions now live in /Users/eli/GH/repos/virtua-grotesk/README.md#semantic-colors and its AGENTS.md links there.
+Blue means a composite needing attention, not AI output; purple is an approved frozen composite reference; pink is a composite needing smaller edits.
+Orange/yellow drawings may be edited but not overwritten or used as references; only red permits replacement.
+Green and purple remain frozen; models may not assign approval colors.
+
+### C3 acceptance and D1 assignment
+Implementation commit: 2567736.
+Serialized synthetic tests: calibrated_trace (2 passed, preceding run), nodes::trace (3 passed), automation::agent_nodes (7 passed).
+Final commands: `cargo test --locked --bin runebender application::editor::tools::nodes::trace:: -- --test-threads=1`, `cargo test --locked --lib automation::agent_nodes:: -- --test-threads=1`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo fmt --all --check`, `git diff --check`.
+Clippy passed; formatting was corrected and rechecked after the coordinator fixture change.
+The stale-document fixture previously attempted to add existing starter glyph B; it now asserts a unique name absent and commits its addition, verifying revision change.
+Cancellation and released-retry behavior pass; both empty/junk candidates preserve width and unrelated glyph geometry through Apply/Undo/Redo.
+C3 proves generic candidate transport and history; semantic grading enforcement is D1, and native interactive/browser validation remains F4.
+No real font was edited or selected in this validation.
+D1 ownership: regular_proof_sol, a cohesive reusable glyph grading/reference helper plus narrow nodes_trace policy integration and synthetic fixtures/tests as needed.
+Implement current seven-color semantics from Virtua README; only red replacement, green/purple frozen references, orange/yellow non-overwriting refinement, blue/pink composite repair without frozen-base edits.
+Do not infer reference relevance from alphabetical order; require explicit related reference selection and record current grade/source/revision/geometry.
+No actual glyph target chosen automatically; fresh source inventory can be read only after generic policy implementation.
+Workers do not run Cargo, commit or edit this checklist.
