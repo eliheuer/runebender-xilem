@@ -605,7 +605,6 @@ fn canonical_glyph_entries_match_the_ufo_codec_projection() {
     let (_scratch, project) = fixture();
     let entries = project.document_source_glyph_entries(SourceId(0)).unwrap();
     let projected = project.encode_ufo_source(SourceId(0)).unwrap();
-    let theme = runebender::ui::theme::load_theme("gray").unwrap();
     assert_eq!(entries.len(), projected.default_layer().iter().count());
     for entry in &entries {
         let glyph = projected.get_glyph(entry.name()).unwrap();
@@ -621,22 +620,17 @@ fn canonical_glyph_entries_match_the_ufo_codec_projection() {
                 path.bounding_box()
             }
         );
-        assert_eq!(
-            entry.mark(),
-            runebender::ui::theme::mark_label_for_layer(
-                project
-                    .document_layer(
-                        entry.name(),
-                        &project
-                            .document_source(SourceId(0))
-                            .unwrap()
-                            .default_layer()
-                    )
-                    .unwrap(),
-                &theme,
+        let layer = project
+            .document_layer(
+                entry.name(),
+                &project
+                    .document_source(SourceId(0))
+                    .unwrap()
+                    .default_layer(),
             )
-            .as_deref()
-        );
+            .unwrap();
+        assert_eq!(entry.mark_label(), layer.mark_label().unwrap());
+        assert_eq!(entry.mark_color(), layer.mark_color().unwrap());
     }
     assert!(
         project
@@ -669,7 +663,42 @@ fn canonical_glyph_entries_keep_intrinsic_paint_when_components_do_not_resolve()
         .unwrap();
     assert_eq!(entry.outline().as_ref(), &projected);
     assert_eq!(entry.ink(), projected.bounding_box());
-    assert_eq!(entry.mark(), Some("orange"));
+    assert_eq!(entry.mark_label(), None);
+    assert_eq!(
+        entry.mark_color(),
+        runebender::font::model::glyph_metadata::MarkColor::parse("0.93,0.45,0.2,1")
+    );
+}
+
+#[test]
+fn canonical_glyph_entries_preserve_custom_marks_without_a_palette() {
+    let scratch = Scratch::new();
+    let mut font = Font::new();
+    let mut custom = glyph("custom", 0.0);
+    custom.lib.insert(
+        "com.runebender.markLabel".into(),
+        plist::Value::String("review-later".into()),
+    );
+    custom.lib.insert(
+        "public.markColor".into(),
+        plist::Value::String("0.93,0.45,0.2,1".into()),
+    );
+    font.default_layer_mut().insert_glyph(custom);
+    let project = Project::from_source(SourceInput::from_font(font, scratch.0.join("Marks.ufo")));
+
+    let entry = project
+        .document_source_glyph_entry(SourceId(0), "custom")
+        .unwrap()
+        .unwrap();
+    assert_eq!(entry.mark_label(), Some("review-later"));
+    assert_eq!(
+        entry.mark_color(),
+        runebender::font::model::glyph_metadata::MarkColor::parse("0.93,0.45,0.2,1")
+    );
+    let entries = project.document_source_glyph_entries(SourceId(0)).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].mark_label(), entry.mark_label());
+    assert_eq!(entries[0].mark_color(), entry.mark_color());
 }
 
 #[test]

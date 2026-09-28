@@ -22,6 +22,7 @@ use super::variable::{
     LayerId, SourceId, SourceMetadataEditDraft, SourceMetadataRestoreError, VariableData,
     VariableGlyph,
 };
+use crate::font::model::glyph_metadata::MarkColor;
 use crate::font::var_model::{Location, VariationModel};
 use crate::formats::binary_import::import_binary_font;
 use crate::formats::metadata::lib_keys::hoi_quad_at;
@@ -102,7 +103,8 @@ impl<'a> SourceView<'a> {
     }
 }
 
-/// Paint-ready canonical data for one default-layer glyph.
+/// Canonical geometry and mark metadata for one default-layer glyph.
+/// Display palettes are resolved by the consumer rather than the document.
 #[derive(Clone, Debug)]
 pub struct CanonicalGlyphEntry {
     name: Arc<str>,
@@ -110,7 +112,8 @@ pub struct CanonicalGlyphEntry {
     advance: f64,
     outline: Arc<BezPath>,
     ink: Rect,
-    mark: Option<Arc<str>>,
+    mark_label: Option<Arc<str>>,
+    mark_color: Option<MarkColor>,
 }
 
 impl CanonicalGlyphEntry {
@@ -139,9 +142,14 @@ impl CanonicalGlyphEntry {
         self.ink
     }
 
-    /// Semantic mark label stored on the glyph layer.
-    pub fn mark(&self) -> Option<&str> {
-        self.mark.as_deref()
+    /// Exact semantic mark label stored on the glyph layer, including custom labels.
+    pub fn mark_label(&self) -> Option<&str> {
+        self.mark_label.as_deref()
+    }
+
+    /// Typed mark color stored on the glyph layer, independent of any display palette.
+    pub fn mark_color(&self) -> Option<MarkColor> {
+        self.mark_color
     }
 }
 
@@ -1484,7 +1492,7 @@ impl Project {
         )
     }
 
-    /// Build the active-grid data for one source from canonical default layers.
+    /// Build canonical default-layer geometry and metadata for one source.
     pub fn document_source_glyph_entries(
         &self,
         source: SourceId,
@@ -1493,10 +1501,9 @@ impl Project {
             .document_source(source)
             .ok_or_else(|| "source does not exist".to_owned())?
             .default_layer();
-        let mark_theme = crate::ui::theme::load_theme("gray");
         let mut entries = self
             .glyph_names()
-            .filter_map(|name| self.build_document_glyph_entry(name, &layer, mark_theme.as_ref()))
+            .filter_map(|name| self.build_document_glyph_entry(name, &layer))
             .collect::<Vec<_>>();
         entries.sort_by(|left, right| match (left.codepoint, right.codepoint) {
             (Some(left_codepoint), Some(right_codepoint)) => left_codepoint
@@ -1509,7 +1516,7 @@ impl Project {
         Ok(entries)
     }
 
-    /// Build one paint-ready default-layer glyph without consulting a Master cache.
+    /// Build canonical geometry and metadata for one default-layer glyph.
     pub fn document_source_glyph_entry(
         &self,
         source: SourceId,
@@ -1519,15 +1526,13 @@ impl Project {
             .document_source(source)
             .ok_or_else(|| "source does not exist".to_owned())?
             .default_layer();
-        let mark_theme = crate::ui::theme::load_theme("gray");
-        Ok(self.build_document_glyph_entry(name, &layer, mark_theme.as_ref()))
+        Ok(self.build_document_glyph_entry(name, &layer))
     }
 
     fn build_document_glyph_entry(
         &self,
         name: &str,
         layer: &LayerId,
-        mark_theme: Option<&crate::ui::theme::Theme>,
     ) -> Option<CanonicalGlyphEntry> {
         let view = self.document_layer(name, layer)?;
         let address = GlyphLayerAddress {
@@ -1542,30 +1547,16 @@ impl Project {
         } else {
             outline.bounding_box()
         };
-        let mark = mark_theme.and_then(|theme| {
-            view.mark_label()
-                .ok()
-                .flatten()
-                .filter(|label| theme.mark(label).is_some())
-                .map(str::to_owned)
-                .or_else(|| {
-                    let color = view.mark_color().ok().flatten()?;
-                    crate::ui::theme::label_for_rgba(
-                        &format!(
-                            "{},{},{},{}",
-                            color.red, color.green, color.blue, color.alpha
-                        ),
-                        theme,
-                    )
-                })
-        });
+        let mark_label = view.mark_label().ok().flatten().map(Arc::from);
+        let mark_color = view.mark_color().ok().flatten();
         Some(CanonicalGlyphEntry {
             name: Arc::from(name),
             codepoint: view.codepoints().next(),
             advance: view.width(),
             outline,
             ink,
-            mark: mark.map(Arc::from),
+            mark_label,
+            mark_color,
         })
     }
 

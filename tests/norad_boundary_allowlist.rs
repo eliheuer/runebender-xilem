@@ -1,7 +1,7 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Architecture gate for production Norad dependencies.
+//! Architecture gates for canonical font and workflow dependencies.
 //!
 //! This parses Rust items so `#[cfg(test)]` fixtures are ignored wherever they occur; production
 //! code after a test module is still inspected. Every permitted file is an explicit import,
@@ -436,4 +436,107 @@ fn retired_mutable_compatibility_entrypoints_cannot_return() {
         "retired mutable compatibility API returned:\n{}",
         violations.join("\n")
     );
+}
+
+/// Detect direct crate paths and imports, including grouped and renamed imports.
+/// This is a source dependency check, not a complete Rust name resolver.
+struct DomainReference<'a> {
+    prefix: &'a [&'a str],
+    found: bool,
+}
+
+impl<'ast> syn::visit::Visit<'ast> for DomainReference<'_> {
+    fn visit_path(&mut self, path: &'ast syn::Path) {
+        if path.segments.len() >= self.prefix.len()
+            && path
+                .segments
+                .iter()
+                .zip(self.prefix)
+                .all(|(segment, expected)| segment.ident == *expected)
+        {
+            self.found = true;
+        }
+        syn::visit::visit_path(self, path);
+    }
+
+    fn visit_item_use(&mut self, item: &'ast syn::ItemUse) {
+        self.found |= import_enters(&item.tree, self.prefix);
+        syn::visit::visit_item_use(self, item);
+    }
+}
+
+fn import_enters(tree: &syn::UseTree, prefix: &[&str]) -> bool {
+    let Some((first, rest)) = prefix.split_first() else {
+        return true;
+    };
+    match tree {
+        syn::UseTree::Path(path) => path.ident == *first && import_enters(&path.tree, rest),
+        syn::UseTree::Name(name) => rest.is_empty() && name.ident == *first,
+        syn::UseTree::Rename(rename) => rest.is_empty() && rename.ident == *first,
+        syn::UseTree::Group(group) => group.items.iter().any(|tree| import_enters(tree, prefix)),
+        syn::UseTree::Glob(_) => false,
+    }
+}
+
+fn references_domain(source: &str, prefix: &[&str]) -> bool {
+    let syntax = syn::parse_file(source).expect("valid Rust source");
+    let mut reference = DomainReference {
+        prefix,
+        found: false,
+    };
+    reference.visit_file(&syntax);
+    reference.found
+}
+
+#[test]
+fn font_and_workflows_keep_their_dependency_direction() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let rules: &[(&str, &[&str])] = &[
+        ("font", &["crate", "ui"]),
+        ("font", &["crate", "application"]),
+        ("workflows", &["crate", "automation", "live"]),
+    ];
+    let mut violations = Vec::new();
+    for (directory, prefix) in rules {
+        let mut files = Vec::new();
+        rust_files(&root.join(directory), &mut files);
+        files.sort();
+        for path in files {
+            let source = std::fs::read_to_string(&path).expect("Rust source");
+            if references_domain(&source, prefix) {
+                violations.push(format!(
+                    "{} references {}",
+                    path.strip_prefix(&root).unwrap().display(),
+                    prefix.join("::")
+                ));
+            }
+        }
+    }
+    assert!(
+        violations.is_empty(),
+        "reversed domain dependencies:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn dependency_gate_detects_grouped_imports_and_ignores_comments() {
+    let prefix = &["crate", "ui"];
+    assert!(references_domain(
+        "use crate::{font, ui::theme as palette};",
+        prefix
+    ));
+    assert!(references_domain("use crate::ui as presentation;", prefix));
+    assert!(references_domain(
+        "fn read() { crate::ui::theme::load_theme(\"gray\"); }",
+        prefix
+    ));
+    assert!(!references_domain(
+        "// crate::ui::theme\nuse crate::font::project;",
+        prefix
+    ));
+    assert!(!references_domain(
+        "use crate::automation::live_socket;",
+        &["crate", "automation", "live"]
+    ));
 }

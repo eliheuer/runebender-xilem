@@ -11,6 +11,7 @@
 
 use std::collections::HashMap;
 
+use crate::font::model::glyph_metadata::MarkColor;
 #[cfg(test)]
 use crate::font::model::glyph_metadata::{MARK_COLOR_KEY, MARK_LABEL_KEY};
 use crate::ui::color::ColorRgba;
@@ -704,15 +705,30 @@ pub fn mark_label_for_glyph(glyph: &norad::Glyph, theme: &Theme) -> Option<Strin
     label_for_rgba(rgba, theme)
 }
 
+/// Resolve canonical mark values against a display palette.
+///
+/// Unknown labels fall back to a recognized legacy color, if present.
+pub fn mark_label_for_values(
+    label: Option<&str>,
+    color: Option<MarkColor>,
+    theme: &Theme,
+) -> Option<String> {
+    label
+        .filter(|label| theme.mark(label).is_some())
+        .map(str::to_owned)
+        .or_else(|| {
+            let color = color?;
+            label_for_channels(color.red, color.green, color.blue, theme)
+        })
+}
+
 /// Resolve the display mark for one canonical glyph layer.
 pub fn mark_label_for_layer(layer: crate::font::LayerView<'_>, theme: &Theme) -> Option<String> {
-    if let Ok(Some(label)) = layer.mark_label()
-        && theme.mark(label).is_some()
-    {
-        return Some(label.to_owned());
-    }
-    let color = layer.mark_color().ok().flatten()?;
-    label_for_channels(color.red, color.green, color.blue, theme)
+    mark_label_for_values(
+        layer.mark_label().ok().flatten(),
+        layer.mark_color().ok().flatten(),
+        theme,
+    )
 }
 
 /// Snap a UFO "r,g,b,a" colour (0–1 floats) to the nearest saved mark

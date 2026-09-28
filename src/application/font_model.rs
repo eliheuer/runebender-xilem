@@ -16,6 +16,7 @@ use runebender::font::model::font_info::CanonicalFontInfo;
 use runebender::font::project::{CanonicalGlyphEntry, DocumentEditOutcome, Project};
 use runebender::font::proposal;
 use runebender::outline::glyph_paths;
+use runebender::ui::theme::{self, Theme};
 
 pub(crate) use runebender::font::axis::Axis;
 
@@ -34,14 +35,16 @@ pub(crate) struct GlyphEntry {
 }
 
 impl GlyphEntry {
-    fn from_core(entry: &CanonicalGlyphEntry) -> Self {
+    fn from_core(entry: &CanonicalGlyphEntry, mark_theme: Option<&Theme>) -> Self {
         Self {
             name: entry.name().to_owned(),
             codepoint: entry.codepoint(),
             advance: entry.advance(),
             outline: entry.outline().clone(),
             ink: entry.ink(),
-            mark: entry.mark().map(str::to_owned),
+            mark: mark_theme.and_then(|theme| {
+                theme::mark_label_for_values(entry.mark_label(), entry.mark_color(), theme)
+            }),
             category: entry
                 .codepoint()
                 .map(GlyphCategory::from_codepoint)
@@ -177,12 +180,13 @@ impl FontModel {
             .project
             .source_id(self.active())
             .expect("the active source has a stable identity");
+        let mark_theme = theme::load_theme("gray");
         self.glyphs = self
             .project
             .document_source_glyph_entries(source)
             .expect("the active source remains canonical")
             .iter()
-            .map(GlyphEntry::from_core)
+            .map(|entry| GlyphEntry::from_core(entry, mark_theme.as_ref()))
             .collect();
         self.name_map = self
             .glyphs
@@ -208,7 +212,8 @@ impl FontModel {
         else {
             return;
         };
-        self.glyphs[index] = GlyphEntry::from_core(&entry);
+        let mark_theme = theme::load_theme("gray");
+        self.glyphs[index] = GlyphEntry::from_core(&entry, mark_theme.as_ref());
     }
 
     /// Materialize the active source only for assertions at the UFO boundary.
@@ -788,6 +793,61 @@ mod tests {
         .expect("the designspace saves");
         let model = FontModel::open(&designspace).expect("the designspace opens");
         (dir, model)
+    }
+
+    #[test]
+    fn glyph_cache_resolves_canonical_marks_against_the_gray_palette() {
+        let mut font = norad::Font::new();
+        for (name, label, color) in [
+            ("legacy", None, Some("0.93,0.45,0.2,1")),
+            ("custom", Some("review-later"), Some("0.93,0.45,0.2,1")),
+            ("unknown", Some("review-later"), None),
+            ("known", Some("blue"), Some("0.93,0.45,0.2,1")),
+        ] {
+            let mut glyph = norad::Glyph::new(name);
+            if let Some(label) = label {
+                glyph.lib.insert(
+                    "com.runebender.markLabel".into(),
+                    plist::Value::String(label.into()),
+                );
+            }
+            if let Some(color) = color {
+                glyph.lib.insert(
+                    "public.markColor".into(),
+                    plist::Value::String(color.into()),
+                );
+            }
+            font.default_layer_mut().insert_glyph(glyph);
+        }
+        let project =
+            Project::from_source(SourceInput::from_font(font, PathBuf::from("Marks.ufo")));
+        let custom = project
+            .document_source_glyph_entry(runebender::font::variable::SourceId(0), "custom")
+            .expect("the source exists")
+            .expect("the glyph exists");
+        assert_eq!(custom.mark_label(), Some("review-later"));
+        assert!(custom.mark_color().is_some());
+        assert!(GlyphEntry::from_core(&custom, None).mark.is_none());
+
+        let model = FontModel::from_project(project);
+        for (name, expected) in [
+            ("legacy", Some("orange")),
+            ("custom", Some("orange")),
+            ("unknown", None),
+            ("known", Some("blue")),
+        ] {
+            assert_eq!(
+                model
+                    .glyphs
+                    .iter()
+                    .find(|entry| entry.name == name)
+                    .unwrap()
+                    .mark
+                    .as_deref(),
+                expected,
+                "{name} display mark"
+            );
+        }
     }
 
     #[test]

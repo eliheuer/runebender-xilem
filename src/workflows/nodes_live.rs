@@ -4,7 +4,6 @@
 //! Resolve live graph connections to isolated font versions without saving the root.
 
 use super::nodes::{Kind, NodeGraph, NodeType, Port};
-use crate::automation::live;
 use crate::font::{experiments, project::Project, variable::SourceId};
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -114,6 +113,15 @@ pub struct Version {
     pub source: SourceId,
     /// None denotes the live root.
     pub branch: Option<String>,
+}
+
+/// Canonical root changes made by an explicitly applied live version.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplyOutcome {
+    /// Stable source receiving the changes.
+    pub source: SourceId,
+    /// Glyphs installed in the root; kerning may also have changed.
+    pub installed: Vec<String>,
 }
 
 /// Create a connected starter graph with two independent version directions.
@@ -287,20 +295,20 @@ pub fn create_version(
     })
 }
 
-/// Apply the connected version with the same conflict and undo rules as MCP.
-/// Returns the live-command result. Does not save the source files.
-pub fn apply(graph: &NodeGraph, project: &mut Project, id: u32) -> Result<Value, String> {
+/// Apply the connected version with the font engine's conflict and undo rules.
+/// Does not save the source files.
+pub fn apply(graph: &NodeGraph, project: &mut Project, id: u32) -> Result<ApplyOutcome, String> {
     let v = resolve(graph, project, id)?;
     let name = v
         .branch
         .ok_or("Connect an experimental version, not the root")?;
     let version = &project.experiments.versions[&name];
     let names = version.changed_glyphs();
-    Ok(live::call(
-        project,
-        "experiment_apply",
-        &json!({"source":v.source.0,"branch":name,"glyphs":names,"kerning":true,"keep_structure":false,"authorization":"user-approved"}),
-    ))
+    let installed = experiments::apply(project, &name, &names, true, false)?;
+    Ok(ApplyOutcome {
+        source: v.source,
+        installed,
+    })
 }
 
 /// Discard a leaf version. Children must be discarded first; the root is untouched.
@@ -380,6 +388,7 @@ pub fn import_versions(graph: &mut NodeGraph, project: &Project) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::font::history::HistoryDirection;
     use crate::font::persistence::memory::designspace_from_str;
     use crate::font::project::SourceInput;
 
@@ -404,6 +413,130 @@ mod tests {
             Ok(SourceInput::from_font(font.clone(), path.into()))
         })
         .unwrap()
+    }
+
+    #[test]
+    fn apply_installs_and_undoes_a_version_without_saving() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-live-apply-{}-{}.ufo",
+            std::process::id(),
+            line!()
+        ));
+        assert!(!path.exists());
+        let mut project = Project::new_font(path.clone());
+        let source = project.source_id(0).unwrap();
+        let mut graph = starter(source);
+        let version = create_version(&mut graph, &mut project, 2).unwrap();
+        let branch = version.branch.unwrap();
+        let address = project.experiments.versions[&branch].default_address("A");
+        let original = project.document_layer("A", &address.layer).unwrap().width();
+        experiments::edit_layer(&mut project, &branch, &address, |draft| {
+            draft.set_width(original + 100.0)?;
+            Ok(())
+        })
+        .unwrap();
+        let sink = graph.add("live.apply", [640.0, 32.0]);
+        graph.connect(2, "font", sink, "font");
+
+        let outcome = apply(&graph, &mut project, sink).unwrap();
+        assert_eq!(outcome.source, source);
+        assert_eq!(outcome.installed, ["A"]);
+        assert_eq!(
+            project.document_layer("A", &address.layer).unwrap().width(),
+            original + 100.0
+        );
+        assert!(project.can_replay_document_layer_history(&address, HistoryDirection::Undo));
+        assert!(!path.exists());
+
+        assert_eq!(
+            experiments::undo_apply(&mut project).unwrap(),
+            (source, vec!["A".into()])
+        );
+        assert_eq!(
+            project.document_layer("A", &address.layer).unwrap().width(),
+            original
+        );
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn apply_rejects_root_conflicts_before_changing_any_glyph() {
+        let mut project = Project::new_font("synthetic.ufo".into());
+        let source = project.source_id(0).unwrap();
+        let mut graph = starter(source);
+        let branch = create_version(&mut graph, &mut project, 2)
+            .unwrap()
+            .branch
+            .unwrap();
+        for (glyph, width) in [("A", 700.0), ("B", 710.0)] {
+            let address = project.experiments.versions[&branch].default_address(glyph);
+            experiments::edit_layer(&mut project, &branch, &address, |draft| {
+                draft.set_width(width)?;
+                Ok(())
+            })
+            .unwrap();
+        }
+        let address_a = project.experiments.versions[&branch].default_address("A");
+        let address_b = project.experiments.versions[&branch].default_address("B");
+        project
+            .edit_document_layer("B", &address_b.layer, |draft| {
+                draft.set_width(999.0)?;
+                Ok(())
+            })
+            .unwrap();
+        let before_a = project.capture_document_layer(&address_a).unwrap();
+        let revision = project.document_revision();
+        let sink = graph.add("live.apply", [640.0, 32.0]);
+        graph.connect(2, "font", sink, "font");
+
+        assert!(
+            apply(&graph, &mut project, sink)
+                .unwrap_err()
+                .contains("conflict")
+        );
+        assert_eq!(project.document_revision(), revision);
+        assert_eq!(project.capture_document_layer(&address_a), Some(before_a));
+        assert_eq!(
+            project.document_layer_history_depth(&address_a, HistoryDirection::Undo),
+            0
+        );
+        assert!(experiments::undo_apply(&mut project).is_err());
+    }
+
+    #[test]
+    fn apply_requires_a_connected_available_version() {
+        let mut project = Project::new_font("synthetic.ufo".into());
+        let source = project.source_id(0).unwrap();
+        let mut graph = starter(source);
+        let sink = graph.add("live.apply", [640.0, 32.0]);
+        assert!(
+            apply(&graph, &mut project, sink)
+                .unwrap_err()
+                .contains("Connect")
+        );
+        graph.connect(1, "font", sink, "font");
+        assert!(
+            apply(&graph, &mut project, sink)
+                .unwrap_err()
+                .contains("not the root")
+        );
+        graph.connect(2, "font", sink, "font");
+        assert!(
+            apply(&graph, &mut project, sink)
+                .unwrap_err()
+                .contains("Create")
+        );
+        graph
+            .node_mut(2)
+            .unwrap()
+            .values
+            .insert("branch".into(), json!("expired"));
+        assert!(
+            apply(&graph, &mut project, sink)
+                .unwrap_err()
+                .contains("unavailable")
+        );
+        assert!(experiments::undo_apply(&mut project).is_err());
     }
     #[test]
     fn agent_versions_import_once_with_their_parent_connections() {
