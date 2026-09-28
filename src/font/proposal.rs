@@ -36,6 +36,10 @@ use crate::font::project::{DocumentChange, DocumentEditOutcome, Project};
 use crate::font::variable::{GlyphLayerAddress, LayerId, SourceId};
 use crate::font::{CanonicalLayerSnapshot, LayerEditDraft, LayerView};
 
+mod detached;
+
+pub use detached::{DetachedProposalCandidate, DetachedProposalCapture};
+
 /// Every proposal layer starts with this.
 pub const LAYER_PREFIX: &str = "com.runebender.proposal.";
 

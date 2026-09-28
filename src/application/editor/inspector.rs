@@ -133,7 +133,7 @@ impl Workspace {
             .ai
             .preview_task
             .as_deref()
-            .and_then(|task| self.font.proposal_outline(task, &self.session.glyph_name))
+            .and_then(|task| self.model_proposal_outline(task, &self.session.glyph_name))
             .map(Arc::new);
         let mark_cloud = if self.show_mark_cloud {
             mark_cloud(&self.font, &self.session.named_anchors())

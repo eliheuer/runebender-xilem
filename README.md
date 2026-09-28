@@ -62,4 +62,10 @@ Font-writing builtins and live document nodes are never reused from the disk cac
 External declarations of `write_font` or `live_document` likewise force `cache: "never"` while retaining the `trusted_process` classification.
 
 These are offline worker contracts, not a claim of cloud-provider or model compatibility.
-Detached live model-worker capture and import remain separate work; the current native Local AI action still requires a saved UFO source.
+The native Local AI action exports current in-memory data to an owned temporary directory and retains validated output separately until explicit Install.
+Install commits the complete candidate as one undo group; Discard leaves the root document unchanged.
+This initial adapter accepts ordinary contour point moves, existing anchor moves, and advance changes, with at most 64 captured glyphs and 256 changed values per candidate.
+Changed topology, components, hyperbeziers, unsupported metadata, stale results, or out-of-scope glyphs are rejected.
+At most 16 candidates are retained, keyed by source and task, for this document session.
+An existing saved proposal for the same task must be reviewed or discarded before another model run.
+Live DAG model nodes and migration of the older disk-oriented Nodes action remain unfinished; the latter still uses its save-first path.

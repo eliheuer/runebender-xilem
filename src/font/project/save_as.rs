@@ -49,7 +49,7 @@ impl Project {
     /// publication. Existing or aliased destinations are refused, and a failure leaves both the
     /// live Project paths and original source tree unchanged.
     pub fn save_as(&mut self, directory: &Path) -> Result<(), String> {
-        let plan = SaveAsPlan::new(self, directory)?;
+        let plan = SaveAsPlan::new(self, directory, None)?;
         let SaveAsPlan {
             export,
             source_targets,
@@ -74,10 +74,42 @@ impl Project {
         self.variable.revision = self.variable.revision.wrapping_add(1);
         Ok(())
     }
+
+    /// Export the current canonical sources to a detached worker directory without saving.
+    ///
+    /// The capture includes the Designspace, relative feature dependencies, and preserved UFO
+    /// payloads. The named proposal layer is removed only from the exported copies, so a worker
+    /// must produce a fresh result for this task. Destinations must be new and the caller owns
+    /// their lifetime. Source paths, dirty flags, revision, and undo history remain untouched.
+    pub fn export_worker_capture(
+        &self,
+        directory: &Path,
+        task: &str,
+    ) -> Result<BTreeMap<SourceId, PathBuf>, String> {
+        if task.is_empty()
+            || !task
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || "-_".contains(character))
+        {
+            return Err(
+                "task must contain only ASCII letters, digits, hyphens, or underscores".into(),
+            );
+        }
+        let plan = SaveAsPlan::new(self, directory, Some(task))?;
+        let targets = self
+            .variable
+            .source_ids
+            .iter()
+            .copied()
+            .zip(plan.source_targets.iter().cloned())
+            .collect();
+        plan.export.execute()?;
+        Ok(targets)
+    }
 }
 
 impl SaveAsPlan {
-    fn new(project: &Project, directory: &Path) -> Result<Self, String> {
+    fn new(project: &Project, directory: &Path, strip_task: Option<&str>) -> Result<Self, String> {
         if !directory.is_dir() {
             return Err(format!(
                 "Save As destination is not a directory: {}",
@@ -105,11 +137,16 @@ impl SaveAsPlan {
             .enumerate()
             .map(|(index, (source, destination))| {
                 let id = project.source_id(index).expect("source identity");
+                let mut font = project
+                    .encode_ufo_source(id)
+                    .ok_or("missing canonical source data")?;
+                if let Some(task) = strip_task {
+                    font.layers
+                        .remove(&super::super::proposal::layer_name(task));
+                }
                 Ok(super::super::persistence::SourceExport {
                     destination: destination.clone(),
-                    font: project
-                        .encode_ufo_source(id)
-                        .ok_or("missing canonical source data")?,
+                    font,
                     preserved: source.preserved_files.clone(),
                 })
             })
@@ -329,6 +366,172 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    fn tree_bytes(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
+        fn walk(root: &Path, at: &Path, files: &mut BTreeMap<PathBuf, Vec<u8>>) {
+            for entry in std::fs::read_dir(at).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    walk(root, &path, files);
+                } else {
+                    files.insert(
+                        path.strip_prefix(root).unwrap().to_path_buf(),
+                        std::fs::read(path).unwrap(),
+                    );
+                }
+            }
+        }
+        let mut files = BTreeMap::new();
+        walk(root, root, &mut files);
+        files
+    }
+
+    #[test]
+    fn worker_capture_uses_dirty_canonical_data_without_changing_the_open_project() {
+        let scratch = Scratch::new("worker-capture");
+        let source = scratch.0.join("Source.ufo");
+        write_font(&source, "Regular", 500.0, "");
+        let mut disk_font = norad::Font::load(&source).unwrap();
+        let mut proposed = norad::Glyph::new("A");
+        proposed.width = 620.0;
+        crate::formats::proposal_ufo::write_proposal_layer(
+            &mut disk_font,
+            "bolden",
+            vec![proposed],
+        )
+        .unwrap();
+        disk_font.save(&source).unwrap();
+        let original_bytes = tree_bytes(&source);
+        let mut project = Project::load(&source).unwrap();
+        let id = project.source_id(0).unwrap();
+        let original_revision = project.document_revision();
+        let history = project.begin_document_source_metadata_history();
+        assert!(project.set_feature_text("feature kern { pos A A -42; } kern;".into()));
+        assert!(project.record_document_source_metadata_history(history));
+        let revision = project.document_revision();
+        let undo_depth = project.document_source_metadata_history_depth(
+            super::super::super::history::HistoryDirection::Undo,
+        );
+        assert!(revision > original_revision);
+        assert!(project.is_modified());
+
+        let copy = scratch.0.join("capture");
+        std::fs::create_dir(&copy).unwrap();
+        let targets = project.export_worker_capture(&copy, "bolden").unwrap();
+        let captured = targets.get(&id).unwrap();
+        let detached = norad::Font::load(captured).unwrap();
+        assert_eq!(detached.features, "feature kern { pos A A -42; } kern;");
+        assert!(
+            detached
+                .layers
+                .get(&crate::font::proposal::layer_name("bolden"))
+                .is_none()
+        );
+        assert!(detached.default_layer().get_glyph("A").is_some());
+
+        assert_eq!(project.document_source_path(id), Some(source.as_path()));
+        assert_eq!(project.export_source.as_deref(), Some(source.as_path()));
+        assert_eq!(project.document_revision(), revision);
+        assert_eq!(
+            project.document_source_metadata_history_depth(
+                super::super::super::history::HistoryDirection::Undo,
+            ),
+            undo_depth
+        );
+        assert_eq!(project.document_source_is_modified(id), Some(true));
+        assert!(
+            project
+                .document_source_layer_names(id)
+                .unwrap()
+                .contains(&crate::font::proposal::layer_name("bolden").as_str())
+        );
+        assert_eq!(tree_bytes(&source), original_bytes);
+        assert!(
+            norad::Font::load(&source)
+                .unwrap()
+                .layers
+                .get(&crate::font::proposal::layer_name("bolden"))
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn worker_capture_supports_an_unsaved_new_font_and_refuses_existing_destination() {
+        let scratch = Scratch::new("worker-new-font");
+        let source = scratch.0.join("Untitled.ufo");
+        let project = Project::new_font(source.clone());
+        assert!(!source.exists());
+        let copy = scratch.0.join("capture");
+        std::fs::create_dir(&copy).unwrap();
+        assert!(project.export_worker_capture(&copy, "bad/task").is_err());
+        assert!(!copy.join("Untitled.ufo").exists());
+        let targets = project.export_worker_capture(&copy, "bolden").unwrap();
+        let captured = targets.get(&project.source_id(0).unwrap()).unwrap();
+        assert_eq!(captured, &copy.join("Untitled.ufo"));
+        assert!(norad::Font::load(captured).is_ok());
+        assert_eq!(
+            project.document_source_path(project.source_id(0).unwrap()),
+            Some(source.as_path())
+        );
+        assert!(!source.exists());
+        assert!(project.export_worker_capture(&copy, "bolden").is_err());
+    }
+
+    #[test]
+    fn worker_capture_keeps_designspace_sources_and_relative_includes_detached() {
+        let scratch = Scratch::new("worker-designspace");
+        for (filename, style) in [("Regular.ufo", "Regular"), ("Bold.ufo", "Bold")] {
+            write_font(
+                &scratch.0.join(filename),
+                style,
+                500.0,
+                "include(../shared.fea);",
+            );
+        }
+        std::fs::write(
+            scratch.0.join("shared.fea"),
+            "feature kern { pos A A -20; } kern;",
+        )
+        .unwrap();
+        let designspace = scratch.0.join("Family.designspace");
+        let document = crate::font::persistence::memory::designspace_from_str(
+            r#"<designspace format="5.0">
+  <axes><axis tag="wght" name="Weight" minimum="0" default="0" maximum="1"/></axes>
+  <sources>
+    <source filename="Regular.ufo" stylename="Regular"><location><dimension name="Weight" xvalue="0"/></location></source>
+    <source filename="Bold.ufo" stylename="Bold"><location><dimension name="Weight" xvalue="1"/></location></source>
+  </sources>
+</designspace>"#,
+        )
+        .unwrap();
+        document.save(&designspace).unwrap();
+        let project = Project::load(&designspace).unwrap();
+        let original_revision = project.document_revision();
+        let copy = scratch.0.join("capture");
+        std::fs::create_dir(&copy).unwrap();
+
+        let targets = project.export_worker_capture(&copy, "bolden").unwrap();
+        assert_eq!(targets.len(), 2);
+        assert_eq!(targets.values().filter(|path| path.is_dir()).count(), 2);
+        assert_eq!(
+            std::fs::read_to_string(copy.join("shared.fea")).unwrap(),
+            "feature kern { pos A A -20; } kern;"
+        );
+        let reopened = Project::load(&copy.join("Family.designspace")).unwrap();
+        assert_eq!(reopened.document_sources().count(), 2);
+        assert_eq!(
+            project.export_source.as_deref(),
+            Some(designspace.as_path())
+        );
+        assert_eq!(project.document_revision(), original_revision);
+        assert_eq!(
+            project
+                .document_sources()
+                .map(|source| source.path().to_owned())
+                .collect::<Vec<_>>(),
+            [scratch.0.join("Regular.ufo"), scratch.0.join("Bold.ufo")]
+        );
     }
 
     #[test]

@@ -3,24 +3,23 @@
 
 //! The local models panel: finding models on disk and running one.
 //!
-//! The model runtime is `font-ml`, a separate program. This application never links
-//! it: it finds the binary, runs it over the UFO on disk, and reads
-//! the proposal layer it leaves behind. What the shell owns is the
-//! seam: save first, run on a thread, pull the proposal layer into the
-//! open font, and hand it to the font engine to install or discard.
-//!
-//! Proposal review and installation operate on the canonical Project.
-//! Each changed foreground layer records one Project-owned history step,
-//! and "Undo install" replays the most recent exact layer address.
+//! Model workers receive a detached export of the current canonical document.
+//! Successful output becomes an immutable, guarded review candidate; only explicit Install
+//! commits it to the root with one ordinary undo group. Legacy on-disk proposals keep their
+//! existing review and per-glyph installation path.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use runebender::font::history::HistoryDirection;
-use runebender::font::project::DocumentHistoryReplayOutcome;
+#[cfg(not(target_arch = "wasm32"))]
+use runebender::font::project::DocumentEditTransactionOutcome;
+use runebender::font::project::{DocumentHistoryReplayOutcome, EditHistoryGroupId};
 use runebender::font::proposal::{self, ProposalSummary};
+use runebender::font::proposal::{DetachedProposalCandidate, DetachedProposalCapture};
 use runebender::font::variable::GlyphLayerAddress;
+use runebender::font::variable::SourceId;
 use runebender::workflows::process::{
     OutputStream, ProcessCancellation, ProcessLimits, ProcessOutcome,
 };
@@ -119,6 +118,10 @@ pub(crate) struct AiJob {
     pub(crate) active_glyph: String,
     pub(crate) foreground_revisions: BTreeMap<String, String>,
     pub(crate) all_glyphs: bool,
+    /// Immutable in-memory guards paired with the exported worker input.
+    capture: Option<Arc<DetachedProposalCapture>>,
+    /// Shared ownership keeps worker files alive through cancellation and result import.
+    _temporary: Option<Arc<ModelCaptureDirectory>>,
 }
 
 /// Everything the panel holds.
@@ -145,6 +148,8 @@ pub(crate) struct LocalAiState {
     /// Canonical foreground edits installed, most recent last, so Undo install can verify and
     /// replay the exact Project history step.
     pub(crate) installed_order: Vec<InstalledProposalEdit>,
+    /// Session-only model output; never serialized into the root before Install.
+    pending: BTreeMap<(SourceId, String), PendingModelProposal>,
 }
 
 impl Drop for LocalAiState {
@@ -160,6 +165,54 @@ impl Drop for LocalAiState {
 pub(crate) struct InstalledProposalEdit {
     pub(crate) address: GlyphLayerAddress,
     pub(crate) layer_history_depth: usize,
+    pub(crate) group: Option<EditHistoryGroupId>,
+}
+
+#[derive(Debug)]
+struct PendingModelProposal {
+    document_id: u64,
+    source: SourceId,
+    candidate: DetachedProposalCandidate,
+}
+
+#[derive(Debug)]
+struct ModelCaptureDirectory(PathBuf);
+
+impl ModelCaptureDirectory {
+    fn new() -> std::io::Result<Self> {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        for _ in 0..32 {
+            let sequence = NEXT.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "runebender-model-capture-{}-{sequence}",
+                std::process::id()
+            ));
+            #[cfg(unix)]
+            let result = {
+                use std::os::unix::fs::DirBuilderExt as _;
+                let mut builder = std::fs::DirBuilder::new();
+                builder.mode(0o700).create(&path)
+            };
+            #[cfg(not(unix))]
+            let result = std::fs::create_dir(&path);
+            match result {
+                Ok(()) => return Ok(Self(path)),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => return Err(error),
+            }
+        }
+        Err(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "cannot allocate model capture",
+        ))
+    }
+}
+
+impl Drop for ModelCaptureDirectory {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 /// The pump's message: something arrived from the run thread.
@@ -405,6 +458,22 @@ impl Workspace {
             .into_iter()
             .filter(|proposal| !proposal.glyphs.is_empty())
             .collect();
+        let source = self.font.project.source_id(self.font.active());
+        self.ai
+            .pending
+            .retain(|_, pending| pending.document_id == self.document_id);
+        for pending in self
+            .ai
+            .pending
+            .values()
+            .filter(|pending| Some(pending.source) == source)
+        {
+            let summary = pending.candidate.summary();
+            self.ai
+                .proposals
+                .retain(|existing| existing.task != summary.task);
+            self.ai.proposals.push(summary.clone());
+        }
         if self
             .ai
             .preview_task
@@ -412,6 +481,98 @@ impl Workspace {
             .is_some_and(|task| !self.ai.proposals.iter().any(|p| p.task == *task))
         {
             self.ai.preview_task = None;
+        }
+    }
+
+    /// Resolve a session candidate without exposing it as a root proposal layer.
+    pub(crate) fn model_proposal_outline(&self, task: &str, glyph: &str) -> Option<kurbo::BezPath> {
+        let source = self.font.project.source_id(self.font.active())?;
+        let Some(pending) = self.ai.pending.get(&(source, task.to_owned())) else {
+            return self.font.proposal_outline(task, glyph);
+        };
+        if pending.document_id != self.document_id
+            || Some(pending.source) != self.font.project.source_id(self.font.active())
+            || self
+                .font
+                .project
+                .preview_document_edit_transaction(pending.candidate.transaction())
+                .is_err()
+        {
+            return None;
+        }
+        pending
+            .candidate
+            .snapshots()
+            .iter()
+            .find(|snapshot| snapshot.address().glyph == glyph)
+            .map(|snapshot| {
+                runebender::outline::glyph_paths::ordinary_layer_contours_to_bezpath(
+                    snapshot.view(),
+                )
+            })
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn install_model_candidate(&mut self, _task: &str, _only: Option<&[String]>) {
+        self.note = "Model candidate installation is available in the desktop application.".into();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn install_model_candidate(&mut self, task: &str, only: Option<&[String]>) {
+        if self.session.gesture_in_progress() {
+            self.note = "Finish the canvas gesture before installing".into();
+            return;
+        }
+        let Some(source) = self.font.project.source_id(self.font.active()) else {
+            self.note = "The active source is unavailable".into();
+            return;
+        };
+        let key = (source, task.to_owned());
+        let pending = self.ai.pending.get(&key).expect("selected model candidate");
+        if pending.document_id != self.document_id
+            || Some(pending.source) != self.font.project.source_id(self.font.active())
+        {
+            self.note = "Model candidate belongs to another document or master".into();
+            return;
+        }
+        if only.is_some_and(|names| {
+            let expected: std::collections::BTreeSet<_> =
+                pending.candidate.summary().glyphs.iter().collect();
+            names.iter().collect::<std::collections::BTreeSet<_>>() != expected
+        }) {
+            self.note = "Install the complete model candidate as one edit".into();
+            return;
+        }
+        let transaction = pending.candidate.transaction().clone();
+        match self
+            .font
+            .project
+            .commit_document_edit_transaction(transaction)
+        {
+            Ok(DocumentEditTransactionOutcome::Changed {
+                change,
+                history_group,
+                ..
+            }) => {
+                let address = change.affected_layers()[0].clone();
+                self.record_agent_group(history_group, &change);
+                self.ai.installed_order.push(InstalledProposalEdit {
+                    layer_history_depth: 0,
+                    address,
+                    group: Some(history_group),
+                });
+                self.ai.pending.remove(&key);
+                self.ai.preview_task = None;
+                self.refresh_proposals();
+                self.note =
+                    format!("Installed {task} as one edit. Undo restores the complete candidate.");
+            }
+            Ok(DocumentEditTransactionOutcome::Unchanged { .. }) => {
+                self.ai.pending.remove(&key);
+                self.refresh_proposals();
+                self.note = "Model candidate has no changes".into();
+            }
+            Err(error) => self.note = format!("Cannot install model candidate: {error}"),
         }
     }
 
@@ -463,6 +624,15 @@ impl Workspace {
 
     /// Install a waiting proposal with one canonical history step per changed glyph.
     pub(crate) fn install_proposal(&mut self, task: &str, only: Option<Vec<String>>) {
+        if self
+            .font
+            .project
+            .source_id(self.font.active())
+            .is_some_and(|source| self.ai.pending.contains_key(&(source, task.to_owned())))
+        {
+            self.install_model_candidate(task, only.as_deref());
+            return;
+        }
         let Some(source) = self.font.project.source_id(self.font.active()) else {
             self.note = "The active source is unavailable".into();
             return;
@@ -476,6 +646,7 @@ impl Workspace {
                     .installed_order
                     .extend(result.affected.into_iter().map(|address| {
                         InstalledProposalEdit {
+                            group: None,
                             layer_history_depth: self
                                 .font
                                 .project
@@ -509,6 +680,22 @@ impl Workspace {
             self.note = "Nothing installed to undo".into();
             return;
         };
+        #[cfg(target_arch = "wasm32")]
+        if edit.group.is_some() {
+            self.ai.installed_order.push(edit);
+            self.note = "Model candidate history is available in the desktop application.".into();
+            return;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(group) = edit.group {
+            if let Err(error) = self.replay_agent_group(group, HistoryDirection::Undo) {
+                self.ai.installed_order.push(edit);
+                self.note = format!("Cannot undo model install: {error}");
+            } else {
+                self.note = "Undid model install".into();
+            }
+            return;
+        }
         if self
             .font
             .project
@@ -540,6 +727,27 @@ impl Workspace {
 
     /// Drop a waiting proposal without installing it.
     pub(crate) fn discard_proposal(&mut self, task: &str) {
+        let key = self
+            .font
+            .project
+            .source_id(self.font.active())
+            .map(|source| (source, task.to_owned()));
+        if key
+            .as_ref()
+            .and_then(|key| self.ai.pending.get(key))
+            .is_some_and(|pending| {
+                pending.document_id == self.document_id
+                    && Some(pending.source) == self.font.project.source_id(self.font.active())
+            })
+        {
+            self.ai
+                .pending
+                .remove(key.as_ref().expect("selected active candidate"));
+            self.ai.preview_task = None;
+            self.refresh_proposals();
+            self.note = "Discarded model candidate".into();
+            return;
+        }
         let Some(source) = self.font.project.source_id(self.font.active()) else {
             self.note = "The active source is unavailable".into();
             return;
@@ -588,6 +796,10 @@ impl Workspace {
             self.note = "Local AI and workflow execution are available in the desktop app.".into();
             return;
         }
+        if self.session.gesture_in_progress() {
+            self.note = "Finish the canvas gesture before running a model".into();
+            return;
+        }
         let Some(model) = self.ai.dir.clone() else {
             self.note = "Choose a model first".into();
             return;
@@ -601,16 +813,6 @@ impl Workspace {
         };
         if self.ai.job.is_some() {
             self.note = "A model is already running".into();
-            return;
-        }
-        // font-ml reads the UFO on disk, so what is on disk has to be
-        // what is on screen.
-        if self.modified && !self.save() {
-            return;
-        }
-        let source = self.font.source().to_path_buf();
-        if !source.is_dir() {
-            self.note = "Save the font before running a model".into();
             return;
         }
         let glyph_name = glyph.and_then(|i| self.font.glyphs.get(i).map(|g| g.name.clone()));
@@ -630,6 +832,49 @@ impl Workspace {
                 return;
             }
         };
+        let captured = (|| {
+            let source_id = self
+                .font
+                .project
+                .source_id(self.font.active())
+                .ok_or("missing active source")?;
+            if self.ai.pending.len() >= 16
+                && !self.ai.pending.contains_key(&(source_id, task.to_owned()))
+            {
+                return Err(
+                    "discard a pending model candidate before retaining another (limit 16)".into(),
+                );
+            }
+            if proposal::find_project(&self.font.project, source_id, task).is_ok() {
+                return Err(
+                    "review or discard the existing saved proposal for this task first".into(),
+                );
+            }
+            let capture = DetachedProposalCapture::capture(
+                &self.font.project,
+                source_id,
+                task,
+                &target_names,
+            )?;
+            let temporary =
+                Arc::new(ModelCaptureDirectory::new().map_err(|error| error.to_string())?);
+            let exports = self
+                .font
+                .project
+                .export_worker_capture(&temporary.0, task)?;
+            let source = exports
+                .get(&source_id)
+                .ok_or("missing detached active source")?
+                .clone();
+            Ok::<_, String>((Arc::new(capture), temporary, source))
+        })();
+        let (capture, temporary, source) = match captured {
+            Ok(captured) => captured,
+            Err(error) => {
+                self.note = format!("Cannot capture model input: {error}");
+                return;
+            }
+        };
         self.ai.busy = Some(match &glyph_name {
             Some(name) => format!("Running {task} on {name}…"),
             None => format!("Running {task} on every glyph…"),
@@ -643,6 +888,8 @@ impl Workspace {
             active_glyph: self.session.glyph_name.clone(),
             foreground_revisions,
             all_glyphs: glyph_name.is_none(),
+            capture: Some(capture),
+            _temporary: Some(temporary),
             ..AiJob::default()
         };
         self.ai.job = Some(job.clone());
@@ -663,8 +910,8 @@ impl Workspace {
         });
     }
 
-    /// Request that the running task stop. A worker can have already written
-    /// partial disk effects; cancellation only stops its direct child process.
+    /// Stop the direct worker child and discard its detached result.
+    /// Trusted programs may still have side effects outside their supplied capture.
     pub(crate) fn cancel_task(&mut self) {
         let Some(job) = self.ai.job.as_ref() else {
             return;
@@ -708,8 +955,7 @@ impl Workspace {
         }
     }
 
-    /// What happens when font-ml comes back: adopt its proposal layer
-    /// from disk and leave it pending for explicit review.
+    /// Validate the detached result and retain it outside the document until Install.
     fn task_finished(&mut self, job: &AiJob, report: &serde_json::Value) {
         if job.cancellation.is_cancelled() {
             self.note = "font-ml: cancelled".into();
@@ -717,7 +963,6 @@ impl Workspace {
         }
         if self.document_id != job.document_id
             || self.font.source() != job.master_path
-            || self.font.source() != job.source
             || self.session.glyph_name != job.active_glyph
             || !foreground_is_current(&self.font, &job.foreground_revisions, job.all_glyphs)
         {
@@ -732,13 +977,40 @@ impl Workspace {
             self.note = "font-ml result target no longer exists".into();
             return;
         }
-        let summary = match self.adopt_proposal_from_disk(&job.task, &job.source) {
-            Ok(s) => s,
-            Err(e) => {
-                self.note = format!("font-ml: {e}");
+        let staged = (|| {
+            let capture = job
+                .capture
+                .as_ref()
+                .ok_or("model job has no immutable capture")?;
+            let external = runebender::font::project::Project::load(&job.source)?;
+            let external_source = external
+                .document_sources()
+                .next()
+                .ok_or("missing worker source")?
+                .id();
+            capture.stage(&self.font.project, &external, external_source)
+        })();
+        let candidate = match staged {
+            Ok(candidate) => candidate,
+            Err(error) => {
+                self.note = format!("font-ml: {error}");
                 return;
             }
         };
+        let summary = candidate.summary().clone();
+        let source = self
+            .font
+            .project
+            .source_id(self.font.active())
+            .expect("validated active source");
+        self.ai.pending.insert(
+            (source, job.task.clone()),
+            PendingModelProposal {
+                document_id: job.document_id,
+                source,
+                candidate,
+            },
+        );
         match &job.glyph {
             Some(name) => {
                 let moved = report.get("moved").and_then(|v| v.as_u64()).unwrap_or(0);
@@ -794,6 +1066,295 @@ mod tests {
                 std::fs::copy(&from, &to).expect("the source file is copied");
             }
         }
+    }
+
+    #[cfg(unix)]
+    fn offline_model_worker(root: &Path) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt as _;
+        let path = root.join("font-ml");
+        std::fs::write(&path, r#"#!/usr/bin/env python3
+import json, pathlib, plistlib, sys, xml.etree.ElementTree as ET
+args = sys.argv
+source = pathlib.Path(args[args.index('--source') + 1])
+model = pathlib.Path(args[args.index('--model') + 1]).name
+if model == 'noop':
+    print(json.dumps({'ok': True}))
+    sys.exit(0)
+with (source / 'layercontents.plist').open('rb') as f:
+    layers = plistlib.load(f)
+default = next(folder for name, folder in layers if name == 'public.default')
+with (source / default / 'contents.plist').open('rb') as f:
+    contents = plistlib.load(f)
+name = 'B' if model == 'outside' else 'A'
+glyph_file = source / default / contents[name]
+glyph = ET.parse(glyph_file)
+advance = glyph.getroot().find('advance')
+width = float(advance.attrib.get('width', '0'))
+if model == 'mutate':
+    advance.set('width', '999')
+    glyph.write(glyph_file, encoding='utf-8', xml_declaration=True)
+advance.set('width', str(width + 80))
+proposal = source / 'glyphs.detached'
+proposal.mkdir()
+glyph.write(proposal / 'result.glif', encoding='utf-8', xml_declaration=True)
+with (proposal / 'contents.plist').open('wb') as f:
+    plistlib.dump({name: 'result.glif'}, f)
+layers.append(['com.runebender.proposal.bolden', 'glyphs.detached'])
+with (source / 'layercontents.plist').open('wb') as f:
+    plistlib.dump(layers, f)
+print(json.dumps({'ok': True, 'input_width': width, 'capture_source': str(source), 'moved': 0, 'points': 4, 'advance_delta': 80}))
+"#).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        path
+    }
+
+    #[cfg(unix)]
+    fn wait_model(workspace: &mut Workspace) -> serde_json::Value {
+        let started = std::time::Instant::now();
+        loop {
+            let job = workspace
+                .ai
+                .job
+                .as_ref()
+                .expect("model worker was launched");
+            let finished = job.finished.lock().unwrap().clone();
+            if let Some(result) = finished {
+                let report = result.expect("offline worker succeeds");
+                workspace.ai_pump();
+                return report;
+            }
+            assert!(started.elapsed().as_secs() < 10, "worker did not finish");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn offline_model_reads_unsaved_capture_and_waits_for_atomic_install() {
+        let root = ModelCaptureDirectory::new().unwrap();
+        let source = root.0.join("Original.ufo");
+        let mut font = norad::Font::new();
+        let mut glyph = norad::Glyph::new("A");
+        glyph.width = 500.0;
+        font.default_layer_mut().insert_glyph(glyph);
+        font.save(&source).unwrap();
+        let original = norad::Font::load(&source).unwrap();
+        let mut workspace = Workspace::open(&source).unwrap();
+        let index = workspace.font.index_of("A").unwrap();
+        workspace.open_glyph(index);
+        let address = workspace.font.active_layer_address("A").unwrap();
+        let mut edit = workspace
+            .font
+            .project
+            .begin_document_layer_transaction(&address)
+            .unwrap();
+        edit.draft_mut().set_width(540.0).unwrap();
+        workspace
+            .font
+            .project
+            .commit_document_layer_transaction(edit)
+            .unwrap();
+        workspace.modified = true;
+        workspace.open_glyph(index);
+        let before = workspace
+            .font
+            .project
+            .capture_document_layer(&address)
+            .unwrap();
+        let revision = workspace.font.project.document_revision();
+        let history = workspace.metadata_undo.len();
+        workspace.ai.dir = Some(root.0.join("valid"));
+        workspace.nodes.font_ml = Some(offline_model_worker(&root.0));
+        workspace.run_task("bolden", Some(index));
+        assert!(workspace.ai.job.is_some(), "{}", workspace.note);
+        let report = wait_model(&mut workspace);
+        assert_eq!(report["input_width"], 540.0);
+        let capture_source = PathBuf::from(report["capture_source"].as_str().unwrap());
+        assert_ne!(capture_source, source);
+        assert!(
+            !capture_source.exists(),
+            "capture released after candidate import"
+        );
+        assert_eq!(
+            workspace
+                .font
+                .project
+                .capture_document_layer(&address)
+                .unwrap(),
+            before
+        );
+        assert_eq!(workspace.font.project.document_revision(), revision);
+        assert_eq!(workspace.metadata_undo.len(), history);
+        assert!(workspace.modified);
+        assert_eq!(workspace.font.source(), source);
+        assert!(
+            proposal::find_project(&workspace.font.project, address.layer.source, "bolden")
+                .is_err()
+        );
+        assert_eq!(workspace.ai.proposals.len(), 1, "{}", workspace.note);
+        assert_eq!(norad::Font::load(&source).unwrap(), original);
+        workspace.install_proposal("bolden", None);
+        assert_eq!(
+            workspace
+                .font
+                .project
+                .document_layer("A", &address.layer)
+                .unwrap()
+                .width(),
+            620.0
+        );
+        assert_eq!(workspace.metadata_undo.len(), history + 1);
+        assert_eq!(norad::Font::load(&source).unwrap(), original);
+        workspace.undo_open_glyph(false);
+        assert_eq!(
+            workspace
+                .font
+                .project
+                .capture_document_layer(&address)
+                .unwrap(),
+            before
+        );
+        workspace.undo_open_glyph(true);
+        assert_eq!(
+            workspace
+                .font
+                .project
+                .document_layer("A", &address.layer)
+                .unwrap()
+                .width(),
+            620.0
+        );
+        workspace.undo_install();
+        assert_eq!(
+            workspace
+                .font
+                .project
+                .capture_document_layer(&address)
+                .unwrap(),
+            before
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn offline_model_rejects_missing_out_of_scope_and_rewritten_foreground_results() {
+        let root = ModelCaptureDirectory::new().unwrap();
+        let source = root.0.join("Original.ufo");
+        let mut font = norad::Font::new();
+        for name in ["A", "B"] {
+            let mut glyph = norad::Glyph::new(name);
+            glyph.width = 500.0;
+            font.default_layer_mut().insert_glyph(glyph);
+        }
+        font.save(&source).unwrap();
+        let worker = offline_model_worker(&root.0);
+        for (mode, diagnostic) in [
+            ("noop", "no proposal"),
+            ("outside", "outside captured scope"),
+            ("mutate", "external foreground"),
+        ] {
+            let mut workspace = Workspace::open(&source).unwrap();
+            let index = workspace.font.index_of("A").unwrap();
+            workspace.open_glyph(index);
+            let before = workspace.font.project.document_snapshot();
+            workspace.ai.dir = Some(root.0.join(mode));
+            workspace.nodes.font_ml = Some(worker.clone());
+            workspace.run_task("bolden", Some(index));
+            wait_model(&mut workspace);
+            assert!(workspace.note.contains(diagnostic), "{}", workspace.note);
+            assert_eq!(workspace.font.project.document_snapshot(), before);
+            assert!(workspace.ai.pending.is_empty());
+            assert!(!workspace.modified);
+            assert!(workspace.metadata_undo.is_empty());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn detached_candidates_with_the_same_task_remain_independent_across_masters() {
+        let root = ModelCaptureDirectory::new().unwrap();
+        for (filename, width) in [("Regular.ufo", 500.0), ("Bold.ufo", 700.0)] {
+            let mut font = norad::Font::new();
+            let mut glyph = norad::Glyph::new("A");
+            glyph.width = width;
+            font.default_layer_mut().insert_glyph(glyph);
+            font.save(root.0.join(filename)).unwrap();
+        }
+        let path = root.0.join("Family.designspace");
+        std::fs::write(&path, r#"<designspace format="5.0">
+<axes><axis tag="wght" name="Weight" minimum="0" default="0" maximum="1"/></axes>
+<sources>
+<source filename="Regular.ufo" stylename="Regular"><location><dimension name="Weight" xvalue="0"/></location></source>
+<source filename="Bold.ufo" stylename="Bold"><location><dimension name="Weight" xvalue="1"/></location></source>
+</sources></designspace>"#).unwrap();
+        let mut workspace = Workspace::open(&path).unwrap();
+        workspace.nodes.font_ml = Some(offline_model_worker(&root.0));
+        workspace.ai.dir = Some(root.0.join("valid"));
+        for source in [0, 1] {
+            workspace.font.set_active(source);
+            let index = workspace.font.index_of("A").unwrap();
+            workspace.open_glyph(index);
+            workspace.run_task("bolden", Some(index));
+            wait_model(&mut workspace);
+            assert_eq!(workspace.ai.proposals.len(), 1, "{}", workspace.note);
+        }
+        assert_eq!(workspace.ai.pending.len(), 2);
+        workspace.install_proposal("bolden", None);
+        assert_eq!(
+            workspace.font.font_snapshot().get_glyph("A").unwrap().width,
+            780.0
+        );
+        assert_eq!(workspace.ai.pending.len(), 1);
+        workspace.font.set_active(0);
+        workspace.refresh_proposals();
+        assert_eq!(workspace.ai.proposals.len(), 1);
+        workspace.install_proposal("bolden", None);
+        assert_eq!(
+            workspace.font.font_snapshot().get_glyph("A").unwrap().width,
+            580.0
+        );
+        assert!(workspace.ai.pending.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cancelling_a_finished_detached_worker_discards_its_files_and_candidate() {
+        let root = ModelCaptureDirectory::new().unwrap();
+        let source = root.0.join("Original.ufo");
+        let mut font = norad::Font::new();
+        let mut glyph = norad::Glyph::new("A");
+        glyph.width = 500.0;
+        font.default_layer_mut().insert_glyph(glyph);
+        font.save(&source).unwrap();
+        let mut workspace = Workspace::open(&source).unwrap();
+        workspace.nodes.font_ml = Some(offline_model_worker(&root.0));
+        workspace.ai.dir = Some(root.0.join("valid"));
+        let index = workspace.font.index_of("A").unwrap();
+        workspace.open_glyph(index);
+        let before = workspace.font.project.document_snapshot();
+        workspace.run_task("bolden", Some(index));
+        let capture_path = workspace.ai.job.as_ref().unwrap().source.clone();
+        let started = std::time::Instant::now();
+        while workspace
+            .ai
+            .job
+            .as_ref()
+            .unwrap()
+            .finished
+            .lock()
+            .unwrap()
+            .is_none()
+        {
+            assert!(started.elapsed().as_secs() < 10);
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        workspace.cancel_task();
+        workspace.ai_pump();
+        assert!(!capture_path.exists());
+        assert!(workspace.ai.pending.is_empty());
+        assert!(workspace.ai.job.is_none());
+        assert_eq!(workspace.font.project.document_snapshot(), before);
+        assert!(!workspace.modified);
     }
 
     #[test]
@@ -890,7 +1451,19 @@ mod tests {
 
         let mut workspace = Workspace::open(&path).expect("the fixture opens");
         let target_names = vec!["A".to_string()];
+        let capture = DetachedProposalCapture::capture(
+            &workspace.font.project,
+            workspace
+                .font
+                .project
+                .source_id(workspace.font.active())
+                .unwrap(),
+            "bolden",
+            &target_names,
+        )
+        .unwrap();
         let job = AiJob {
+            capture: Some(Arc::new(capture)),
             task: "bolden".into(),
             source: path.clone(),
             master_path: path.clone(),
@@ -929,23 +1502,15 @@ mod tests {
         assert!(workspace.underlay().proposal.is_some());
 
         workspace.install_proposal("bolden", Some(vec!["A".into()]));
-        let mut installed = proposed.clone();
-        installed
-            .lib
-            .remove(runebender::formats::metadata::lib_keys::PROPOSAL_BASE_KEY);
+        let mut installed = original.clone();
+        installed.width = proposed.width;
+        installed.contours[0].points[1].x = proposed.contours[0].points[1].x;
         assert_eq!(
             workspace.font.font_snapshot().get_glyph("A"),
             Some(&installed)
         );
         assert!(workspace.ai.preview_task.is_none());
-        let address = workspace.font.active_layer_address("A").unwrap();
-        assert_eq!(
-            workspace
-                .font
-                .project
-                .document_layer_history_depth(&address, HistoryDirection::Undo),
-            1
-        );
+        assert!(workspace.ai.installed_order[0].group.is_some());
         workspace.undo_open_glyph(false);
         assert_eq!(
             workspace.font.font_snapshot().get_glyph("A"),
@@ -1476,23 +2041,32 @@ mod tests {
             &original,
             "inference must not auto-install into the foreground"
         );
-        let layer_name = proposal::layer_name("bolden");
-        let proposed = on_disk
-            .layers
-            .get(&layer_name)
-            .and_then(|layer| layer.get_glyph("R"))
-            .expect("the proposal layer contains R")
+        assert!(
+            on_disk
+                .layers
+                .get(&proposal::layer_name("bolden"))
+                .is_none()
+        );
+        let source_id = workspace
+            .font
+            .project
+            .source_id(workspace.font.active())
+            .unwrap();
+        let proposed = workspace.ai.pending[&(source_id, "bolden".into())]
+            .candidate
+            .snapshots()
+            .iter()
+            .find(|snapshot| snapshot.address().glyph == "R")
+            .unwrap()
             .clone();
-        assert_ne!(proposed, original);
-
         workspace.install_proposal("bolden", Some(vec!["R".into()]));
         assert_eq!(
             workspace
                 .font
-                .font_snapshot()
-                .get_glyph("R")
-                .expect("installed R"),
-            &proposed
+                .project
+                .capture_document_layer(proposed.address())
+                .unwrap(),
+            proposed
         );
         assert_eq!(workspace.ai.installed_order.len(), 1);
         assert_eq!(workspace.ai.installed_order[0].address.glyph, "R");

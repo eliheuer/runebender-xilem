@@ -125,6 +125,7 @@ impl Workspace {
                 .iter()
                 .filter_map(|name| self.font.active_layer_address(name))
                 .map(|address| InstalledProposalEdit {
+                    group: None,
                     layer_history_depth: self.font.project.document_layer_history_depth(
                         &address,
                         runebender::font::history::HistoryDirection::Undo,
