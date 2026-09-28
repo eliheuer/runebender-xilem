@@ -1,6 +1,6 @@
 # Virtua Regular AI workflow checklist
 
-Status: B1, C1 and C2 validated; Sol is correcting B2 validation failures; trial preflight complete, target preference requested.
+Status: B1, B2, C1 and C2 validated; B3 assigned next; trial preflight complete, target preference requested.
 Created: 2026-09-28.
 Coordinator: this Codex task, with Astra owning architecture and integration review.
 Worktree: /Users/eli/.codex/worktrees/virtua-regular-ai/runebender-xilem.
@@ -151,7 +151,7 @@ Acceptance: coordinator reviews sources and semantics; JSON parses; later B/D co
 
 ### B. Reproducible proof context (Sol; independent of C)
 - [x] B1. Add bounded, backward-compatible viewing-size/layout settings to compiled proof recipes and render from them; freeze defaults for older recipes.
-- [ ] B2. Capture editor text settings and exact shaped target occurrence; send the same recipe to baseline and candidate proofs; reject comparison recipe mismatch.
+- [x] B2. Capture editor text settings and exact shaped target occurrence; send the same recipe to baseline and candidate proofs; reject comparison recipe mismatch.
 - [ ] B3. Supply reading-size and enlarged-detail proof artifacts with document/font/recipe/renderer identity.
 Acceptance: meaningful geometry/size tests, invalid/oversized input rejection, old fixture compatibility, Arabic contextual/ligature/mark occurrence identity and matched baseline/candidate recipes.
 Actual headless proof inspection is required before visual claims.
@@ -196,11 +196,14 @@ If only F5 or another external prerequisite remains, report "ready for review" a
 | B1 | regular_proof_sol (GPT-6 Sol) | src/font/compiler/proof.rs and five recipe constructor call sites | Validated; d6f50f7 |
 | C1 | regular_proof_sol (GPT-6 Sol), reused | src/font/project/edit_transactions.rs, src/font/babelfont/edit_contours.rs, src/automation/agent_edit.rs, src/automation/agent_edit/results.rs, src/font/compiler/proof.rs; narrowly necessary exhaustive-match sites | Validated; c57edc3 |
 | C2 | regular_proof_sol (GPT-6 Sol), reused | src/formats/image_trace.rs, src/automation/agent_edit.rs; narrowly necessary canonical contour conversion helper only | Validated; a67dfe4 |
-| B2 | regular_proof_sol (GPT-6 Sol), reused | src/text/buffer/**, src/font/compiler/proof.rs, existing editor/proof request call sites as needed | Correction running: /root/regular_proof_sol; validation gates remain open |
+| B2 | regular_proof_sol (GPT-6 Sol), reused | src/text/buffer/**, src/font/compiler/proof.rs, existing editor/proof request call sites as needed | Validated; 621bf11 |
 
 B2 correction dispatch initially hit capacity; after Terra completed, one retry successfully resumed Sol.
 Terra regular_trial_inventory completed tests/fixtures/glyph_workflow/local-trial-inventory.md; coordinator reviewed it.
-Do not start B3/C3 before the B2 review is resolved.
+B2 review is resolved; B3 is the next bounded assignment.
+B3 ownership: regular_proof_sol, src/font/compiler/proof.rs (or adjacent proof artifact module), src/formats/designbot.rs, and existing proof result adapters only as needed.
+B3 must deliver callable paired reading/detail artifacts and honest renderer provenance; no UI redesign or model inference.
+Coordinator retains all Cargo validation and checklist ownership.
 Terra has completed the reviewed fixture preparation.
 The earlier capacity limit cleared after Sol completed; the queued Terra assignment was dispatched once.
 Worker completion means a patch is ready for review, not that its acceptance gates passed.
@@ -260,6 +263,16 @@ Installed checkpoint/runtime paths are recorded in tests/fixtures/glyph_workflow
 Asked Eli for a preferred first glyph/form while implementation continues.
 Arabic signs are already in scope; absence of a same-construction green reference does not introduce a new authorization gate.
 F1 remains pending an actual selected scratch trial, not accepted by this inventory.
+- B2 accepted at 621bf11 after coordinator review and serialized validation with the established test-font/target/jobs environment.
+`cargo test --lib --locked font::compiler::proof::tests -- --test-threads=1`: 16 passed.
+`cargo test --lib --locked text::buffer:: -- --test-threads=1`: 90 passed.
+`cargo test --bin runebender --locked application::view::canvas::editor::tests -- --test-threads=1`: 33 passed.
+`cargo test --bin runebender --locked application::editor::tools::nodes:: -- --test-threads=1`: 22 passed, one existing Bold model test ignored and not counted as coverage.
+`cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo fmt --all --check` and `git diff --check` passed.
+The real Arabic mark test exposed a renderer bug: RTL now right-anchors the complete HarfRust visual-order run and accumulates advances with GPOS offsets intact.
+Numeric mark placement and actual compiled Arabic proof generation pass; this is not human visual approval.
+RTL overflow explicitly rejects unsupported wrapping; mixed-direction and multiline capture remain unsupported rather than silently changed.
+Browser build/smoke and visual artifact inspection remain pending integration gates; no real model trial or font edits occurred.
 - Add exact implementation commits, validation commands/results and human-review status here as each gate completes.
 
 ## Context sources
