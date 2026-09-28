@@ -166,6 +166,25 @@ impl LayerEditDraft {
         Ok(inserted)
     }
 
+    /// Replace only ordinary contours with bounded generated geometry.
+    ///
+    /// All new contours and points receive fresh identities. Components, anchors, advances and
+    /// unrelated layer metadata are retained. An empty slice clears the existing contours.
+    pub fn replace_generated_contours(
+        &mut self,
+        contours: &[GeneratedContour],
+    ) -> Result<bool, DocumentEditError> {
+        if !contours.is_empty() {
+            validate_contours(contours)?;
+        }
+        let removed = self.clear_contours();
+        if contours.is_empty() {
+            return Ok(removed);
+        }
+        self.append_generated_contours(contours)?;
+        Ok(true)
+    }
+
     /// Start a new open contour at `position`.
     ///
     /// Returns the stable contour and initial-point identities.

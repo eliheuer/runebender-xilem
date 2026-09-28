@@ -26,7 +26,7 @@ pub struct ChangedLayer {
     pub layer: String,
 }
 
-/// Stable identity of one changed canonical object.
+/// Stable identity of one changed, inserted or removed canonical object.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ChangedObject {
@@ -65,6 +65,32 @@ pub enum ChangedObject {
         /// Layer name within the source.
         layer: String,
         /// Opaque contour identity.
+        contour_id: String,
+    },
+    /// A point identity removed by contour replacement.
+    RemovedPoint {
+        /// Glyph name at publication.
+        glyph: String,
+        /// Opaque glyph identity.
+        glyph_id: String,
+        /// Stable source index.
+        source: usize,
+        /// Layer name within the source.
+        layer: String,
+        /// Opaque removed point identity.
+        point_id: String,
+    },
+    /// A contour identity removed by contour replacement.
+    RemovedContour {
+        /// Glyph name at publication.
+        glyph: String,
+        /// Opaque glyph identity.
+        glyph_id: String,
+        /// Stable source index.
+        source: usize,
+        /// Layer name within the source.
+        layer: String,
+        /// Opaque removed contour identity.
         contour_id: String,
     },
     /// An existing anchor moved.
@@ -306,6 +332,24 @@ impl AgentReceipt {
                                 layer,
                                 contour_id: contour_id.to_wire(),
                             },
+                            DocumentEditObjectKind::RemovedPoint(point_id) => {
+                                ChangedObject::RemovedPoint {
+                                    glyph,
+                                    glyph_id,
+                                    source,
+                                    layer,
+                                    point_id: point_id.to_wire(),
+                                }
+                            }
+                            DocumentEditObjectKind::RemovedContour(contour_id) => {
+                                ChangedObject::RemovedContour {
+                                    glyph,
+                                    glyph_id,
+                                    source,
+                                    layer,
+                                    contour_id: contour_id.to_wire(),
+                                }
+                            }
                             DocumentEditObjectKind::Anchor(anchor_id) => ChangedObject::Anchor {
                                 glyph,
                                 glyph_id,

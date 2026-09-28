@@ -59,6 +59,11 @@ pub enum AgentEditOperation {
         /// Ordered contours in font coordinates; a leading move starts an open contour.
         contours: Vec<crate::outline::drawing::DrawingContour>,
     },
+    /// Replace every ordinary contour while retaining components, anchors and metadata.
+    ReplaceContours {
+        /// Ordered replacement contours in font coordinates; an empty list clears contours.
+        contours: Vec<crate::outline::drawing::DrawingContour>,
+    },
     /// Move one existing anchor.
     SetAnchor {
         /// Opaque anchor identity from the guarded read.
@@ -149,7 +154,9 @@ impl AgentEditRequest {
         }
         let (mut contour_count, mut point_count) = (0_usize, 0_usize);
         for operation in self.edits.iter().flat_map(|edit| &edit.operations) {
-            if let AgentEditOperation::AppendContours { contours } = operation {
+            if let AgentEditOperation::AppendContours { contours }
+            | AgentEditOperation::ReplaceContours { contours } = operation
+            {
                 contour_count = contour_count.saturating_add(contours.len());
                 for contour in contours {
                     point_count = point_count.saturating_add(contour.points.len());
@@ -184,6 +191,11 @@ impl AgentEditRequest {
                         }
                         AgentEditOperation::AppendContours { contours } => {
                             Ok(DocumentEditOperation::AppendContours(
+                                contours.iter().map(Into::into).collect(),
+                            ))
+                        }
+                        AgentEditOperation::ReplaceContours { contours } => {
+                            Ok(DocumentEditOperation::ReplaceContours(
                                 contours.iter().map(Into::into).collect(),
                             ))
                         }
@@ -307,6 +319,7 @@ pub fn tools() -> Vec<Tool> {
     }
     let operation = json!({"oneOf":[
         {"type":"object","properties":{"op":{"const":"append_contours"},"contours":{"type":"array","minItems":1,"maxItems":crate::font::generated::MAX_GENERATED_CONTOURS,"items":generated_contour}},"required":["op","contours"],"additionalProperties":false},
+        {"type":"object","properties":{"op":{"const":"replace_contours"},"contours":{"type":"array","maxItems":crate::font::generated::MAX_GENERATED_CONTOURS,"items":generated_contour}},"required":["op","contours"],"additionalProperties":false},
         {"type":"object","properties":{"op":{"const":"set_width"},"width":{"type":"number"}},"required":["op","width"],"additionalProperties":false},
         {"type":"object","properties":{"op":{"const":"set_point"},"point_id":string,"x":{"type":"number"},"y":{"type":"number"}},"required":["op","point_id","x","y"],"additionalProperties":false},
         {"type":"object","properties":{"op":{"const":"set_anchor"},"anchor_id":string,"x":{"type":"number"},"y":{"type":"number"}},"required":["op","anchor_id","x","y"],"additionalProperties":false}
@@ -327,7 +340,7 @@ pub fn tools() -> Vec<Tool> {
     let mut result = vec![
         make(
             "agent_apply",
-            "Apply one authorized guarded batch to the unsaved root with one history group. Append contours are bounded to 256 contours and 4096 points across the complete batch, with engine-owned identities. Read explicit glyph/source/layer identities first. Reuse exactly the same actor, operation_key and payload after a lost response; a different payload under that key rejects. In-memory receipts do not survive document closure.",
+            "Apply one authorized guarded batch to the unsaved root with one history group. Generated append and replacement contours share a 256-contour and 4096-point whole-batch limit, with engine-owned identities. Replacement retains components, anchors, advance and metadata. Read explicit glyph/source/layer identities first. Reuse exactly the same actor, operation_key and payload after a lost response; a different payload under that key rejects. In-memory receipts do not survive document closure.",
             apply,
             json!([
                 "expected_document_epoch",
@@ -497,6 +510,63 @@ mod tests {
         .unwrap();
         assert_eq!(committed.layers[0].contours[0].points[0].id, inserted_id);
         assert_eq!(committed.layers[0].contours[0].points[0].x, 25.0);
+    }
+
+    #[test]
+    fn guarded_replacement_draws_an_empty_layer_only_after_commit() {
+        let mut project = project();
+        let source = project.source_id(0).unwrap();
+        let glyphs = ["A".to_owned()];
+        let root = capture(&project, source, &glyphs, "root".into(), BTreeMap::new()).unwrap();
+        let replace = request(
+            source,
+            root.layers[0].guard.clone(),
+            AgentEditOperation::ReplaceContours {
+                contours: vec![rectangle()],
+            },
+        );
+        let transaction = replace.stage(&project).unwrap();
+        let staged = capture_staged(
+            &project,
+            &transaction,
+            source,
+            &glyphs,
+            "candidate".into(),
+            BTreeMap::new(),
+        )
+        .unwrap();
+        assert!(root.layers[0].contours.is_empty());
+        assert_eq!(staged.layers[0].contours.len(), 1);
+        assert!(
+            project
+                .document_layer(
+                    "A",
+                    &project.document_source(source).unwrap().default_layer()
+                )
+                .unwrap()
+                .contours()
+                .next()
+                .is_none()
+        );
+        project
+            .commit_document_edit_transaction(transaction)
+            .unwrap();
+        assert!(
+            replace.stage(&project).is_err(),
+            "the old guard must be stale"
+        );
+        let committed = capture(
+            &project,
+            source,
+            &glyphs,
+            "committed".into(),
+            BTreeMap::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            committed.layers[0].contours[0].id,
+            staged.layers[0].contours[0].id
+        );
     }
 
     #[test]

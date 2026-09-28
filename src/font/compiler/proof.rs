@@ -166,7 +166,8 @@ impl CompileProofInput {
     ///
     /// The original input remains the baseline for both branches.
     /// All sources, axes, features and compiler metadata remain captured; only the transaction's
-    /// existing widths, points and anchors change in this private compilation projection.
+    /// widths, anchors and contours change in this private compilation projection.
+    /// Replacement topology must remain compatible with the captured sources for compilation.
     /// The application must also bind this operation to the captured document epoch.
     /// A fresh capture is used only to reject changed inputs, including external feature includes;
     /// it never replaces the retained baseline or supplies the derived proof's compiler source.
@@ -1033,6 +1034,70 @@ mod tests {
         );
         assert_ne!(before_proof.png, after_proof.png);
         assert_eq!(project.document_revision(), revision);
+    }
+
+    #[test]
+    fn single_source_candidate_compiles_replaced_contours_without_publishing() {
+        use kurbo::Shape as _;
+
+        use super::super::super::generated::{GeneratedContour, GeneratedPoint};
+        use super::super::super::project::{DocumentEditOperation, DocumentLayerEdit};
+        use super::super::super::variable::GlyphLayerAddress;
+        use crate::font::LayerPointType;
+
+        let project = Project::load(&crate::testing::fonts::regular_ufo()).unwrap();
+        let source = project.document_sources().next().unwrap();
+        let address = GlyphLayerAddress {
+            glyph: "n".into(),
+            layer: source.default_layer(),
+        };
+        let before = project.capture_document_layer(&address).unwrap();
+        let baseline = capture(&project).unwrap();
+        let rectangle = GeneratedContour {
+            points: [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)]
+                .into_iter()
+                .map(|(x, y)| GeneratedPoint {
+                    position: kurbo::Point::new(x, y),
+                    point_type: LayerPointType::Line,
+                    smooth: false,
+                })
+                .collect(),
+        };
+        let transaction = project
+            .begin_document_edit_transaction(
+                source.id(),
+                "preview n replacement",
+                Vec::new(),
+                vec![DocumentLayerEdit::new(
+                    before.clone(),
+                    vec![DocumentEditOperation::ReplaceContours(vec![rectangle])],
+                )],
+            )
+            .unwrap();
+        let candidate = baseline.with_staged_edit(&project, &transaction).unwrap();
+        assert_eq!(project.capture_document_layer(&address).unwrap(), before);
+        let old = compile(baseline).unwrap();
+        let changed = compile(candidate).unwrap();
+        let old_n = old
+            .font
+            .outlines(&[])
+            .unwrap()
+            .into_iter()
+            .find(|item| item.0 == "n")
+            .unwrap()
+            .1;
+        let changed_n = changed
+            .font
+            .outlines(&[])
+            .unwrap()
+            .into_iter()
+            .find(|item| item.0 == "n")
+            .unwrap()
+            .1;
+        assert_ne!(old_n.bounding_box(), changed_n.bounding_box());
+        assert_eq!(changed_n.bounding_box().width(), 100.0);
+        assert_eq!(changed_n.bounding_box().height(), 100.0);
+        assert_eq!(project.capture_document_layer(&address).unwrap(), before);
     }
 
     #[test]

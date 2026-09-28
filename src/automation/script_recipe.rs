@@ -38,10 +38,13 @@ Use edits=[] for reports; include consulted non-edited layers in reads. Supporte
 include {op: set_width, width: number}, {op: set_anchor, anchor_id: anchor.id, x: number, y: number} \
 and {op: set_point, point_id: point.id, x: number, y: number} for captured contour points. \
 Use {op: append_contours, contours: [{points: [{x: number, y: number, type: string, smooth: bool}]}]} \
-for new ordinary contours; do not supply IDs. Point types are move, line, curve, qcurve and offcurve. \
+for new ordinary contours; use replace_contours with the same contour payload to replace all \
+ordinary contours, or an empty list to clear them. Do not supply IDs. \
+Point types are move, line, curve, qcurve and offcurve. \
 A leading move starts an open contour; closed contours contain no moves. Cubics need two controls; \
-quadratics need one or more. Appends allow 256 contours and 4096 points in the whole result, with \
-coordinates within one million font units. Existing contours and components remain intact. \
+quadratics need one or more. Generated edits share 256 contours and 4096 points in the whole result, with \
+coordinates within one million font units. Append retains existing contours; replacement retains \
+components, anchors, advance and metadata while minting fresh contour and point IDs. \
 Old scripts emitting schema_version 1 remain accepted for width and anchor edits only; \
 point or structural edits require version 2. \
 JSON keys and string values must be quoted. Do not invent IDs, open font source files, or import \
@@ -602,11 +605,12 @@ impl ScriptRecipeResult {
                             ));
                         }
                     }
-                    AgentEditOperation::AppendContours { contours } => {
+                    AgentEditOperation::AppendContours { contours }
+                    | AgentEditOperation::ReplaceContours { contours } => {
                         use crate::font::generated;
                         if self.schema_version != SCRIPT_RECIPE_SCHEMA_VERSION {
                             return Err(ScriptRecipeValidationError::new(
-                                "contour appends require recipe result schema_version 2",
+                                "generated contour edits require recipe result schema_version 2",
                             ));
                         }
                         generated_contours = generated_contours.saturating_add(contours.len());
@@ -622,8 +626,18 @@ impl ScriptRecipeResult {
                             ));
                         }
                         let contours = contours.iter().map(Into::into).collect::<Vec<_>>();
-                        generated::validate_contours(&contours)
-                            .map_err(|error| ScriptRecipeValidationError::new(error.to_string()))?;
+                        if contours.is_empty()
+                            && matches!(operation, AgentEditOperation::AppendContours { .. })
+                        {
+                            return Err(ScriptRecipeValidationError::new(
+                                "contour append needs at least one contour",
+                            ));
+                        }
+                        if !contours.is_empty() {
+                            generated::validate_contours(&contours).map_err(|error| {
+                                ScriptRecipeValidationError::new(error.to_string())
+                            })?;
+                        }
                     }
                 }
             }

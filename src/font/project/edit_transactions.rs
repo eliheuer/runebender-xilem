@@ -39,17 +39,23 @@ pub enum DocumentEditOperation {
     },
     /// Append bounded ordinary contours with engine-minted stable identities.
     AppendContours(Vec<GeneratedContour>),
+    /// Replace all ordinary contours with bounded generated contours and fresh identities.
+    ReplaceContours(Vec<GeneratedContour>),
 }
 
-/// One object changed or inserted by a committed canonical edit transaction.
+/// One object changed, inserted or removed by a committed canonical edit transaction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DocumentEditObjectKind {
     /// The exact horizontal advance changed.
     Width,
     /// One existing point moved or a generated point inserted.
     Point(PointId),
-    /// One generated contour was appended.
+    /// One generated contour was inserted.
     Contour(ContourId),
+    /// One existing point was removed by contour replacement.
+    RemovedPoint(PointId),
+    /// One existing contour was removed by contour replacement.
+    RemovedContour(ContourId),
     /// One existing anchor moved.
     Anchor(AnchorId),
 }
@@ -63,7 +69,7 @@ pub struct DocumentEditChangedObject {
     pub glyph_id: GlyphId,
     /// Stable source and layer identity at the committed canonical address.
     pub layer: LayerId,
-    /// Existing object changed or new object inserted.
+    /// Object changed, inserted or removed.
     pub object: DocumentEditObjectKind,
 }
 
@@ -81,6 +87,9 @@ impl DocumentEditOperation {
             }
             Self::AppendContours(contours) => {
                 draft.append_generated_contours(contours)?;
+            }
+            Self::ReplaceContours(contours) => {
+                draft.replace_generated_contours(contours)?;
             }
         }
         Ok(())
@@ -112,7 +121,9 @@ fn changed_objects(
                 push(DocumentEditObjectKind::Width);
             }
             DocumentEditOperation::SetPoint { point, .. }
-                if before.point_position(*point) != after.point_position(*point) =>
+                if before.point_position(*point).is_some()
+                    && after.point_position(*point).is_some()
+                    && before.point_position(*point) != after.point_position(*point) =>
             {
                 push(DocumentEditObjectKind::Point(*point));
             }
@@ -121,20 +132,35 @@ fn changed_objects(
             {
                 push(DocumentEditObjectKind::Anchor(*anchor));
             }
-            DocumentEditOperation::AppendContours(_) => {}
+            DocumentEditOperation::AppendContours(_)
+            | DocumentEditOperation::ReplaceContours(_) => {}
             DocumentEditOperation::SetWidth(_)
             | DocumentEditOperation::SetPoint { .. }
             | DocumentEditOperation::SetAnchor { .. } => {}
         }
     }
-    if operations
-        .iter()
-        .any(|operation| matches!(operation, DocumentEditOperation::AppendContours(_)))
-    {
+    if operations.iter().any(|operation| {
+        matches!(
+            operation,
+            DocumentEditOperation::AppendContours(_) | DocumentEditOperation::ReplaceContours(_)
+        )
+    }) {
         let (before_contours, before_points) = before.contour_and_point_ids();
         let before_contours = before_contours.into_iter().collect::<BTreeSet<_>>();
         let before_points = before_points.into_iter().collect::<BTreeSet<_>>();
         let (after_contours, after_points) = after.contour_and_point_ids();
+        let after_contours = after_contours.into_iter().collect::<BTreeSet<_>>();
+        let after_points = after_points.into_iter().collect::<BTreeSet<_>>();
+        for contour in &before_contours {
+            if !after_contours.contains(contour) {
+                push(DocumentEditObjectKind::RemovedContour(*contour));
+            }
+        }
+        for point in &before_points {
+            if !after_points.contains(point) {
+                push(DocumentEditObjectKind::RemovedPoint(*point));
+            }
+        }
         for contour in after_contours {
             if !before_contours.contains(&contour) {
                 push(DocumentEditObjectKind::Contour(contour));
@@ -484,7 +510,8 @@ impl Project {
             .iter()
             .flat_map(|edit| &edit.operations)
             .filter_map(|operation| match operation {
-                DocumentEditOperation::AppendContours(contours) => Some(contours),
+                DocumentEditOperation::AppendContours(contours)
+                | DocumentEditOperation::ReplaceContours(contours) => Some(contours),
                 _ => None,
             })
             .fold(
@@ -500,7 +527,7 @@ impl Project {
             );
         if generated_contours > MAX_GENERATED_CONTOURS || generated_points > MAX_GENERATED_POINTS {
             return Err(DocumentEditTransactionError::Invalid(format!(
-                "transaction may append at most {MAX_GENERATED_CONTOURS} contours and {MAX_GENERATED_POINTS} points"
+                "transaction may generate at most {MAX_GENERATED_CONTOURS} contours and {MAX_GENERATED_POINTS} points"
             )));
         }
         let mut guarded = BTreeMap::new();
@@ -950,14 +977,25 @@ fn retain_changed_objects(
 ) -> Vec<DocumentEditChangedObject> {
     let (before_contours, _) = before.contour_and_point_ids();
     let before_contours = before_contours.into_iter().collect::<BTreeSet<_>>();
+    let (after_contours, _) = after.contour_and_point_ids();
+    let after_contours = after_contours.into_iter().collect::<BTreeSet<_>>();
     let mut retained = Vec::new();
     for candidate in candidates {
         let changed = match candidate.object {
             DocumentEditObjectKind::Width => before.width() != after.width(),
             DocumentEditObjectKind::Point(id) => {
-                before.point_position(id) != after.point_position(id)
+                after.point_position(id).is_some()
+                    && before.point_position(id) != after.point_position(id)
             }
-            DocumentEditObjectKind::Contour(id) => !before_contours.contains(&id),
+            DocumentEditObjectKind::Contour(id) => {
+                !before_contours.contains(&id) && after_contours.contains(&id)
+            }
+            DocumentEditObjectKind::RemovedPoint(id) => {
+                before.point_position(id).is_some() && after.point_position(id).is_none()
+            }
+            DocumentEditObjectKind::RemovedContour(id) => {
+                before_contours.contains(&id) && !after_contours.contains(&id)
+            }
             DocumentEditObjectKind::Anchor(id) => {
                 before.anchor_position(id) != after.anchor_position(id)
             }
@@ -1613,6 +1651,204 @@ mod tests {
                 .contour_and_point_ids(),
             after_ids
         );
+    }
+
+    #[test]
+    fn replacement_preserves_other_layer_values_and_replays_exact_identities() {
+        let mut font = Font::new();
+        font.default_layer_mut().insert_glyph(Glyph::new("B"));
+        let mut glyph = Glyph::new("A");
+        glyph.width = 610.0;
+        glyph.note = Some("keep this note".into());
+        glyph.contours.push(Contour::new(
+            vec![
+                ContourPoint::new(0.0, 0.0, PointType::Line, false, None, None),
+                ContourPoint::new(20.0, 20.0, PointType::Line, false, None, None),
+            ],
+            None,
+        ));
+        glyph.anchors.push(Anchor::new(
+            30.0,
+            50.0,
+            Some(Name::new("top").unwrap()),
+            None,
+            None,
+        ));
+        glyph.components.push(norad::Component::new(
+            Name::new("B").unwrap(),
+            norad::AffineTransform::default(),
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(glyph);
+        let mut project = Project::from_source(SourceInput::from_font(
+            font,
+            PathBuf::from("replace-fixture.ufo"),
+        ));
+        let source = project.source_id(0).unwrap();
+        let a = address(&project, "A");
+        let b = address(&project, "B");
+        let before = project.capture_document_layer(&a).unwrap();
+        let before_b = project.capture_document_layer(&b).unwrap();
+        let (old_contours, old_points) = before.contour_and_point_ids();
+        let transaction = project
+            .begin_document_edit_transaction(
+                source,
+                "replace A contours",
+                Vec::new(),
+                vec![DocumentLayerEdit::new(
+                    before.clone(),
+                    vec![DocumentEditOperation::ReplaceContours(vec![
+                        generated_contour(),
+                    ])],
+                )],
+            )
+            .unwrap();
+        let preview = project
+            .preview_document_edit_transaction(&transaction)
+            .unwrap();
+        assert_eq!(project.capture_document_layer(&a).unwrap(), before);
+        assert_eq!(project.capture_document_layer(&b).unwrap(), before_b);
+        let after = &preview[0];
+        let (new_contours, new_points) = after.contour_and_point_ids();
+        assert_eq!(new_contours.len(), 1);
+        assert_eq!(new_points.len(), 4);
+        assert_ne!(old_contours, new_contours);
+        assert!(old_points.iter().all(|id| !new_points.contains(id)));
+        assert_eq!(after.view().width(), before.view().width());
+        assert_eq!(after.view().note(), before.view().note());
+        assert_eq!(
+            after
+                .view()
+                .components()
+                .map(|item| item.id())
+                .collect::<Vec<_>>(),
+            before
+                .view()
+                .components()
+                .map(|item| item.id())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            after
+                .view()
+                .anchors()
+                .map(|item| item.id())
+                .collect::<Vec<_>>(),
+            before
+                .view()
+                .anchors()
+                .map(|item| item.id())
+                .collect::<Vec<_>>()
+        );
+
+        let DocumentEditTransactionOutcome::Changed {
+            changed_objects,
+            history_group,
+            ..
+        } = project
+            .commit_document_edit_transaction(transaction)
+            .unwrap()
+        else {
+            panic!("replacement must change A");
+        };
+        for id in old_contours {
+            assert!(
+                changed_objects
+                    .iter()
+                    .any(|item| { item.object == DocumentEditObjectKind::RemovedContour(id) })
+            );
+        }
+        for id in old_points {
+            assert!(
+                changed_objects
+                    .iter()
+                    .any(|item| { item.object == DocumentEditObjectKind::RemovedPoint(id) })
+            );
+        }
+        for id in new_contours {
+            assert!(
+                changed_objects
+                    .iter()
+                    .any(|item| { item.object == DocumentEditObjectKind::Contour(id) })
+            );
+        }
+        for id in new_points {
+            assert!(
+                changed_objects
+                    .iter()
+                    .any(|item| { item.object == DocumentEditObjectKind::Point(id) })
+            );
+        }
+        assert_eq!(project.capture_document_layer(&b).unwrap(), before_b);
+        project
+            .replay_document_edit_history_group(history_group, HistoryDirection::Undo)
+            .unwrap();
+        assert_eq!(project.capture_document_layer(&a).unwrap(), before);
+        project
+            .replay_document_edit_history_group(history_group, HistoryDirection::Redo)
+            .unwrap();
+        assert_eq!(project.capture_document_layer(&a).unwrap(), *after);
+    }
+
+    #[test]
+    fn replacement_rejects_bad_geometry_and_aggregates_mixed_operations() {
+        let project = project();
+        let source = project.source_id(0).unwrap();
+        let a = address(&project, "A");
+        let before = project.capture_document_layer(&a).unwrap();
+        let old_point = before.contour_and_point_ids().1[0];
+        let mut invalid = generated_contour();
+        invalid.points[0].position.x = f64::NAN;
+        assert!(
+            project
+                .begin_document_edit_transaction(
+                    source,
+                    "invalid replacement",
+                    Vec::new(),
+                    vec![DocumentLayerEdit::new(
+                        before.clone(),
+                        vec![DocumentEditOperation::ReplaceContours(vec![invalid])],
+                    )],
+                )
+                .is_err()
+        );
+        assert!(
+            project
+                .begin_document_edit_transaction(
+                    source,
+                    "stale point after replacement",
+                    Vec::new(),
+                    vec![DocumentLayerEdit::new(
+                        before.clone(),
+                        vec![
+                            DocumentEditOperation::ReplaceContours(vec![generated_contour()]),
+                            DocumentEditOperation::SetPoint {
+                                point: old_point,
+                                position: Point::new(5.0, 5.0),
+                            },
+                        ],
+                    )],
+                )
+                .is_err()
+        );
+        let too_many = vec![generated_contour(); MAX_GENERATED_CONTOURS];
+        assert!(
+            project
+                .begin_document_edit_transaction(
+                    source,
+                    "mixed geometry over limit",
+                    Vec::new(),
+                    vec![DocumentLayerEdit::new(
+                        before.clone(),
+                        vec![
+                            DocumentEditOperation::ReplaceContours(too_many),
+                            DocumentEditOperation::AppendContours(vec![generated_contour()]),
+                        ],
+                    )],
+                )
+                .is_err()
+        );
+        assert_eq!(project.capture_document_layer(&a).unwrap(), before);
     }
 
     #[test]
