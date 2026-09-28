@@ -79,8 +79,12 @@ Trusted local Python is not an OS sandbox; do not imply otherwise.
   Integrated as 0380293 with negotiated protocol feature gates and one shared metadata value for text and structuredContent.
   Verified CLI/MCP success/error parity, four supported protocol versions plus fallback, proof image separation, existing retry/cancellation regressions, and real application proof/edit fixtures.
   Output schemas cover the verified discovery/export, proof-job, guarded-edit and graph families tracked in B2; this is not certification of every MCP feature or every legacy proposal/experiment result.
-- [ ] B4. Extend recipe captures to useful outline operations and provide guarded structural editing for shape generators.
-  Verify exact retries, stale reads, full-batch rejection, dependent glyph invalidation, and one-step undo.
+- [x] B4. Extend recipe captures to useful outline operations and provide guarded structural editing for shape generators.
+  Integrated as 36ac4dd with version-two immutable outline/component captures, captured-point moves, and bounded append_contours operations through the canonical transaction owner.
+  Engine-minted contour/point identities survive undo and redo; no replacement/removal operation was added.
+  Verified exact retries, stale/deleted targets, full-batch rejection, dependent glyph invalidation, detached graph preview/proofs, explicit Apply, and one ordinary undo step in engine and real MCP tests.
+  Legacy version-one captures preserve their hash and wire shape; version-one results remain limited to width/anchor operations.
+  Scripts that strictly require version-one inputs or exact old layer keys need parser updates; the bundled anchor recipe supports both versions and was executed through the real runner.
 - [x] B5. Remove identified reverse dependencies: engine mark metadata must not depend on loading a UI theme; live workflows must call typed engine operations rather than a transport dispatcher.
   Integrated as 0ca60b6 with raw canonical mark values, application palette resolution, typed workflow application, and dependency-direction regression checks.
   Verified: 979 native tests, strict Clippy, browser release build and quality matrix, plus inspected Gray/Light headless captures.
@@ -199,12 +203,14 @@ Verification logs:
 - /tmp/runebender-ai-foundation-headless.log: no-default-features library check passed.
 
 
-Next dependency-ready work: extend guarded structural editing and bounded outline recipe captures in B4.
-B2, B3, B5 and B6 are complete for their recorded acceptance scope.
-Keep engine transaction and recipe/transport work in disjoint assignments with an agreed typed boundary; the coordinator owns integration, shared result-schema changes and real application fixtures.
-Use Project-owned contour/point identities and existing atomic commit/history paths; do not introduce caller-created canonical identities or mutable font wrappers.
-Verify useful point edits and generated contours through staged preview, full-batch rejection, dependency invalidation, exact retries and one ordinary undo step.
-C1/C2 should subsequently consume shared process supervision in existing disk workflow, Local AI and Chat callers instead of adding an unused scheduler.
+Next dependency-ready work: C1/C2 shared subprocess supervision consumed by existing disk workflow, Local AI and Chat callers.
+All B items are complete for their recorded acceptance scope; provider execution, general DAGs and extension registries remain separate implementation work.
+Start from the existing script_jobs deadline/cancellation/output capture implementation and preserve its browser-unavailable behavior.
+The current Local AI, Chat and disk workflow subprocess paths read unbounded output and do not share the recipe runner's deadline contract.
+Agree the reusable native process boundary before assigning at most two Sol workers with disjoint supervisor and caller ownership; keep it outside Project and provider-specific model state.
+Retain bounded progress/results, make cancellation capabilities explicit, and test blocked stdin, hung/noisy workers, descendants retaining standard handles, failed exits, cancellation races and late results.
+A shared unused scheduler is not acceptance; migrate the actual callers and preserve their proposal, conversation and graph semantics.
+Use Project-owned identities and existing atomic commit/history paths; B4 supplies generated outline operations without caller-created canonical identities or mutable font wrappers.
 Receipt-bearing rejected or cancelled edits may return ok=false with an error inside receipt.outcome; preserve those shapes explicitly rather than assuming every failure uses the generic top-level error envelope.
 Use at most two disjoint implementation workers.
 The recurring coordinator is active every 30 minutes and should remain quiet unless there is a verified milestone, actionable failure, completion, or user decision.
@@ -326,3 +332,43 @@ The four ignored model/larger font tests and the existing block 0.1.6 dependency
 No dependency, account connection, paid API call, model download, push or merge was introduced.
 All 21 original dirty baseline paths were rehashed and remain unchanged.
 The coordinator remains ACTIVE every 30 minutes; the remaining B4 and C-H implementation work prevents final acceptance or disabling the schedule.
+
+
+2026-09-28: The fourth continuation completed B4 in 36ac4dd50d6f4ef4b9cc33136ee759703f32d081.
+The coordinator verified the branch and inactive workers, then used two GPT-6 Sol assignments for engine transactions and recipe captures, plus GPT-6 Luna for the bundled Python example and documentation checks.
+All worker diffs were reviewed; no worker remains active or owns an unfinished assignment.
+The coordinator integrated the existing DrawingContour wire format, shared input/output schemas, real MCP fixtures, and the recipe result validator.
+The font engine owns generated geometry validation, transaction-wide limits, canonical IDs, atomic publication, dependency invalidation and history.
+Captures include direct contours and separate component references/transforms; they do not flatten component outlines or claim automatic read dependencies on uncaptured base glyphs.
+New shape batches are limited to 256 contours and 4096 points, reject nonfinite or out-of-range coordinates and malformed topology, and cannot supply canonical IDs.
+Recipes can move captured points and append ordinary contours, including cubic and quadratic geometry; replacing/removing existing contours is outside this slice.
+Real graph execution retains detached candidates and exact proof-image transport until explicit Apply.
+Actual MCP apply/undo/redo tests verify newly created identities, full-batch rejection, stale guards and receipt reconciliation without saving source files.
+Final review also found and repaired a panic when staging an old capture after its glyph was deleted; the engine now returns a typed MissingLayer error.
+
+Verification for 36ac4dd:
+
+- /tmp/runebender-ai-foundation-structural-lib.log: cargo test --locked --lib passed 566 tests before the final deleted-target regression was added.
+- /tmp/runebender-ai-foundation-structural-live.log: live_fixture and live_agent targets passed 6 tests each, including real graph outline capture/preview/apply/undo and direct generated-contour MCP coverage.
+- /tmp/runebender-ai-foundation-structural-tests.log: cargo test --workspace --locked -- --test-threads=1 passed 1016 tests, 0 failed, 4 ignored across 23 suites before the final deleted-target fix and expanded example runtime test.
+- /tmp/runebender-ai-foundation-structural-guards.log: after the final deleted-target fix, all 10 font::project::edit_transactions::tests passed, including the new regression; the entire native suite was not repeated after this focused fix.
+- /tmp/runebender-ai-foundation-structural-example.log: the expanded corrected_anchor_example_deserializes_and_validates_against_real_hash runtime test passed for both v1 and newly hashed v2 inputs through the real Rust queue and Python process.
+- /tmp/runebender-ai-foundation-structural-python.log: all 14 Python recipe tests and the pure-recipe acceptance harness passed.
+- /tmp/runebender-ai-foundation-structural-clippy-final.log: strict all-target Clippy passed on the final source state; three integer literal style errors found in the first Clippy pass were corrected without lint allowances.
+- /tmp/runebender-ai-foundation-structural-doc.log: workspace documentation passed.
+- /tmp/runebender-ai-foundation-structural-headless.log: no-default-features library check passed.
+- cargo fmt --all --check, bash .github/scripts/copyright.sh and staged git diff --check passed, including the new generated geometry module.
+- /tmp/runebender-ai-foundation-structural-web-final.log: ./web/build.sh passed on the final source state with the separate browser workspace/cache.
+- /tmp/runebender-ai-foundation-structural-browser-smoke.log: web/smoke.cjs passed at 1x density; the temporary loopback server was stopped afterward.
+
+All Cargo commands were serialized; native checks used CARGO_TARGET_DIR=/Users/eli/GH/repos/runebender-xilem/target.
+Native integration tests used RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources.
+The Python harness correctly reports its own application/model evidence as not_run; the separate Rust/MCP fixtures supply application evidence, and no actual model trial was performed.
+No view behavior changed, so the earlier B5 density matrix and Gray/Light native captures were not repeated.
+Native release and advisory checks remain part of H acceptance and were not rerun in this continuation.
+The four ignored model/larger font tests and existing block 0.1.6 dependency warning remain outside passing runtime claims.
+The existing v1 JSON fixture remains byte/hash compatible, but copied scripts that strictly enforce v1 inputs must update their parser for v2 captures; no automatic fallback execution is attempted.
+The bundled anchor worker supports both versions and ignores outline/component context for its anchor-only calculation.
+Website guidance was audited read-only; H4 should document v2 captures and guarded generated geometry in the scripting and MCP guides.
+All 21 original dirty baseline files were rehashed and remain unchanged; nothing was pushed, merged, published, connected to an account or downloaded as a model.
+The 30-minute coordinator remains ACTIVE for C-H; no C implementation assignment has been launched yet.
