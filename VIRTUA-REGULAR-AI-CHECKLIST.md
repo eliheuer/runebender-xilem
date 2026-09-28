@@ -28,6 +28,55 @@ MCP, CLI and the native interface adapt the same document/workflow operations.
 Agents may author a validated workflow from English; creation, execution, and application are separate actions.
 Cloud reasoning/vision and local specialized inference have separate roles and must not be conflated with MCP transport.
 
+## Revised session goal: prove the drawing workflow first
+
+Updated by Eli's explicit direction on 2026-09-28 after the failed kaf-ar.medi trial.
+This section supersedes the earlier implementation-first ordering, not the source-protection or human-approval rules.
+The next deliverable is a side-by-side experiment on one Regular Arabic form, with useful and rejected outputs, diagnosis, and remaining manual correction work.
+Do not equate infrastructure completion with progress toward a usable drawing.
+Finish reviewing the already-delivered bounded local transport patch; defer additional framework and optical-loop implementation until the experiment identifies a useful drawing path.
+D/E software gates remain open where unproven and are not prerequisites for scratch experiments using existing tools.
+
+### Fresh reading and implications
+
+- [Eli: Virtua Grotesk](https://elih.net/blog/virtua-grotesk/), reread 2026-09-28: consistent source data and reversible representations are central; structural 8-unit defaults coexist with 2-unit optical corrections.
+Grid compliance is measurable but does not establish design quality.
+The post's weight-transfer evidence must not be treated as evidence of missing Regular Arabic generation or capability of the separate sketchpre checkpoint.
+Measurement popcount colors describe measurements; they are not glyph approval grades.
+- [Simon Cozens: The State of AI Font Generation](https://simoncozens.github.io/state-of-ai-font-generation/), reread 2026-09-28: type-designer evaluation, vector sequence difficulty, raster-to-vector quality, and cross-script transfer are central concerns.
+Use this survey to identify hypotheses and primary research, not as proof that a listed model supports Arabic or produces release-ready outlines.
+His reported tokenizer collapse motivates intermediate representation checks; it does not diagnose our different model's failure.
+- Coordinator hypothesis: reasoning over copied approved geometry plus bounded local edits may require less invention than generating every coordinate.
+Reference-conditioned imagery plus calibrated img2bez is a separate credible route to test.
+Neither hypothesis is an accepted result yet.
+
+### Experiment gates, in priority order
+
+- [ ] X1. Freeze one shared experiment packet for red Regular kaf-ar.medi: source/reference identities, initial/final kaf and medial lam relevance, baseline geometry, intended joining form, calibrated sketch, and identical word/detail proof recipes.
+Use at least two shaped word contexts; include paragraph proof only through a renderer that actually supports the layout.
+Do not claim current single-line proof capture supports paragraph layout.
+- [ ] X2. Diagnose the local pipeline before repeating inference: retain raster, img2bez input outline, tokenizer round-trip, raw generated outline, and post-conformance outline.
+Check vocabulary/form conditioning, token limits, contour boundaries, coordinate range, and whether grid conformance damages geometry.
+A base U+0643 codepoint alone does not specify a medial form.
+Use a frozen approved glyph copy as a reconstruction control without changing or regrading the original; distinguish reconstruction from novel generation.
+No new training or downloads.
+- [ ] X3. Produce a detached geometry-reuse candidate: copy appropriate approved strokes into the target, preserve reference sources, and record the construction hypothesis and constrained adjustments.
+- [ ] X4. Produce a reference-guided image candidate with the authorized image tool, using the same sketch and labeled green references, then calibrated img2bez conversion.
+Retain prompt, actual inputs/output, calibration, outline, and available model metadata; do not invent unavailable provider identities.
+No separately billed API loop without an established budget.
+- [ ] X5. Compare at most three initial alternatives, counting the existing failed local result unless a specific diagnosed correction justifies replacing that arm.
+Compare Arabic form/joins, weight/counters/terminals, reading-size appearance, editable outline quality, elapsed time and remaining manual corrections.
+Metrics and model critique supplement visual review; neither assigns approval grades.
+- [ ] X6. Try one targeted optical correction on the best usable candidate, retain the previous best, and render identical proofs.
+Use the existing maximum three-round/two-alternative limits; stop earlier on uncertainty or no improvement.
+If none is usable, report the failure and next specific hypothesis rather than implementing an autonomous refinement framework around bad outputs.
+- [ ] X7. Deliver the comparison packet and recommend the next implementation based on evidence and Eli's verdict.
+Pause at a human-review or external-prerequisite boundary rather than spend repeated heartbeats on unchanged work.
+
+Success means less manual work to obtain a usable Regular Arabic drawing, with intact editability and font behavior.
+A model process returning successfully, a high overlap score, or an on-grid outline is insufficient.
+The longer-term Regular release goal is unchanged; Bold, whole-font generation, and broad research/model-training campaigns remain out of scope.
+
 ## Isolation and execution rules
 
 - Preserve /Users/eli/GH/repos/runebender-xilem and all concurrent icon/font work.
@@ -442,3 +491,8 @@ No Apply, source save, color change, training, download or second inference occu
 D2 stays unchecked: execution is demonstrated, useful output and connected candidate workflow are not yet demonstrated.
 Sol owns the bounded local-sketch-to-existing-node-candidate integration and offline lifecycle tests; no Cargo, inference, commits or checklist edits.
 Next design trial should use a better sketch or reference-conditioned alternative, rather than blindly rerunning this checkpoint.
+
+### Revised experiment priority and worker handoff
+Eli authorized the experiment-first goals above and requested a fresh reading of both linked essays.
+Sol delivered the four-file local-sketch transport patch; it is awaiting coordinator Cargo validation and integration review, not accepted or committed.
+No new implementation worker assignment is active; next work follows X1-X7 rather than automatically expanding E.
