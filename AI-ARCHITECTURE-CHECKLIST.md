@@ -118,15 +118,22 @@ Trusted local Python is not an OS sandbox; do not imply otherwise.
 
 ### D. Generalize live graphs
 
-- [ ] D1. Replace the fixed four-node comparison planner with a validated directed-acyclic-graph execution plan.
-  Acceptance: chained transforms, branching, multiple proofs, and partial failure.
-- [ ] D2. Preserve immutable version lineage, semantic hashes independent of layout, bounded retention, and guarded result application.
-  Canonical lineage groundwork and exact preview-to-Apply identity are integrated as caf92b0.
-  The engine now composes immutable staged transactions with cumulative bounds, and native Nodes applies its retained candidate through the existing receipt/history owner.
-  D2 remains open until the general graph scheduler consumes per-node candidates and verifies branch/result lineage end to end.
+- [x] D1. Replace the fixed four-node comparison planner with a validated directed-acyclic-graph execution plan.
+  Integrated as acf8a36 with deterministic topological planning and consumed native/MCP execution.
+  Verified real Python chains, independent branches, four compiled proofs, per-node failures and dependent-node suppression through the application MCP fixture.
+  Version 2 supports one captured live.font, zero to sixteen live.python transforms and one to eight live.proof nodes.
+- [x] D2. Preserve immutable version lineage, semantic hashes independent of layout, bounded retention, and guarded result application.
+  Canonical lineage groundwork is caf92b0; acf8a36 consumes per-node candidates and verifies parent hashes through execution, proof and Apply.
+  A selected result commits its complete retained ancestry through the existing receipt/history owner, preserving generated identities and ordinary Undo/Redo.
+  Verified unchanged root before Apply, sibling isolation, layout independence, explicit selection, exact retry, changed-key-payload rejection, stale suppression, cancellation and release.
+  At most eight heavy application run results are retained alongside bounded receipt tombstones; script/proof queues and cumulative canonical transaction limits remain enforced.
 - [ ] D3. Bridge external workers through detached captures and validated candidate imports; remove implicit root-save requirements from live execution.
 - [ ] D4. Make cache policy and side effects explicit per node implementation; carry structured Rows inputs faithfully.
-- [ ] D5. Version graph/node contracts and preserve existing saved graphs through an explicit compatibility path.
+- [x] D5. Version graph/node contracts and preserve existing saved graphs through an explicit compatibility path.
+  acf8a36 separates execution versions 1 and 2 from unchanged authoring/file schema version 1 for the current live.font/live.python/live.proof family.
+  Omitted execution_version preserves the four-node comparison, its capture encoding, version IDs, successful report text, proof hash form and branch image selectors.
+  Version 2 explicitly opts into DAG results and node selectors; unsupported versions/topologies reject before dispatch.
+  Existing saved graph round trips and legacy MCP fixtures pass; future external node and extension manifest evolution remains part of D3/G1.
 
 ### E. Make tools discoverable and extensible
 
@@ -219,20 +226,20 @@ Verification logs:
 - /tmp/runebender-ai-foundation-headless.log: no-default-features library check passed.
 
 
-Next dependency-ready work: D1/D2, general live DAG planning and consumed execution, with D5 compatibility handled alongside the contract changes.
-A-C are complete for their recorded acceptance scope; provider-neutral cloud/vector contracts, extension registries and restart recovery remain separate work.
-The current fixed plan is GraphExecutionPlan plus execution_plan in src/workflows/nodes_session.rs: exactly one live.font, one live.python and two live.proof nodes.
-The application adapter in src/application/editor/tools/nodes/execution.rs retains one recipe and a fixed proof pair; replacing the planner alone is not acceptance.
-Commit caf92b0 supplies the canonical candidate chain needed by that scheduler without introducing another mutable Project.
-For each child transform, use script_recipe::capture_staged and AgentEditRequest::stage_after against its parent's retained CanonicalDocumentEditTransaction.
-Keep the explicit source and selected glyph scope from the run capture; retain each parent's candidate independently for branching.
-Derive every proof from the captured root CompileProofInput with with_staged_edit and the selected node's complete candidate.
-Explicit Apply must pass that exact candidate through Workspace::apply_retained_agent_edit; rebuilding its operations remints generated IDs.
-The general run's apply/retry identity must bind the chosen node and complete ancestry, not only the last recipe text.
-Agree the bounded DAG execution, per-node lineage/results and compatibility contract before assigning at most two Sol workers with disjoint planner and host ownership.
-Support chained transforms, branching, multiple proofs and partial failure through actual application/MCP runs while keeping root edits behind explicit Apply.
-Preserve layout-independent semantic identities, immutable captures, bounded retention, cancellation and stale-result rejection; never make live execution save the source font implicitly.
-Keep existing schema-version-one saved graphs and clients on an explicit supported path when adding a new contract version.
+Next dependency-ready work: D3/D4, detached external model-worker execution and explicit cache/effect/Rows contracts.
+A-C and D1/D2/D5 are complete for their recorded acceptance scope; provider-neutral cloud/vector contracts, extension registries and restart recovery remain separate work.
+The current live executor supports only live.font, live.python and live.proof, with one active operation per run and independent candidate branches.
+Do not route live model nodes through disk execution that saves the open source font.
+First trace one existing external task's offline input/output contract and connect it to a captured, detached font input with validated candidate import.
+A temporary export owned by the run may be appropriate, but Project and its original source files must remain unchanged until explicit Apply.
+Reuse the shared process lifecycle and canonical proposal/transaction owners; do not add an unused provider registry or placeholder model node.
+Make node effects and cache policy consumed metadata, and serialize Rows values faithfully instead of silently dropping them.
+Preserve the existing explicit execution-version compatibility path when extending accepted live node types.
+For chained candidates, use script_recipe::capture_staged and AgentEditRequest::stage_after, or the corresponding typed import/proposal boundary, without introducing another mutable Project.
+Derive proofs from the captured root CompileProofInput and the selected node's complete candidate.
+Explicit Apply must commit that exact candidate through the shared receipt/history owner; rebuilding operations remints generated identities.
+Bind retries to the selected node and complete ancestry, keep source/glyph scope explicit, and suppress late results after cancellation or semantic/document changes.
+Use at most two implementation workers with disjoint file ownership and keep all Cargo commands serialized through the coordinator.
 The persistent local Chat client is inference-only and externally managed; it is not a completed model-node or cloud-provider integration.
 Do not launch real models, download weights, connect providers or modify the sibling font-ml repository in this pass.
 Use Project-owned identities and existing atomic commit/history paths; B4 supplies generated outline operations without caller-created canonical identities or mutable font wrappers.
@@ -531,3 +538,54 @@ Native release/advisory checks remain in H; the existing block 0.1.6 dependency 
 All 21 original dirty baseline paths were rehashed unchanged.
 No user font was saved, and no push, merge, publication, account connection, paid call or model download occurred.
 The 30-minute coordinator remains ACTIVE for D-H.
+
+
+2026-09-28: Completed D1/D2 and the current D5 compatibility scope in acf8a36835605cf8738dfff79fc45b066ba95e1f.
+Two GPT-6 Sol implementation workers owned the pure session/planner and native runtime respectively; the coordinator integrated proof ownership, native controls, selected-result receipts and transport fixtures.
+A separate GPT-6 Sol read-only review identified proof cleanup and legacy hash-format regressions; both were fixed and the final integration review found no remaining blockers in those paths.
+All workers have finished; no assignment remains active at this checkpoint.
+
+The version 2 plan has one root capture and deterministic topological order.
+Each transform reads its parent's staged overlay and retains an immutable candidate with complete root guards.
+Successful sibling branches continue when a transform or proof fails, and every blocked dependent receives a structured dependency_failed result.
+Each proof uses its own captured recipe and exact parent content hash through the existing shared compiler worker.
+A terminal partially_failed run retains its successful proofs and candidates; Apply requires an explicit transform selector when more than one proven result is eligible.
+Native canvas selection maps a proof to its input transform; native Run requests execution version 2, while omitted MCP versions preserve legacy comparison behavior.
+The host binds selected-result Apply receipts to graph identity, chosen node, request and complete candidate content, then commits the exact retained transaction with one ordinary undo step.
+Completed historical artifacts may be inspected with stale metadata; late stale or cancelled work cannot publish new outputs or apply.
+Cancellation and invalid terminal completion immediately release owned proof jobs, including proofs completed earlier in the same run.
+Version 1 retains fail-fast script behavior; independent failure recovery is explicitly version 2 behavior.
+Authoring/file schema version 1 remains unchanged and no save/reopen migration is required for existing graph files.
+
+Verification for acf8a36:
+
+- /tmp/runebender-ai-foundation-dag-build.log: all native test targets compiled with cargo test --workspace --locked --no-run.
+- /tmp/runebender-ai-dag-contract.log: all 22 session/planner tests passed.
+- /tmp/runebender-ai-dag-full-tests.log: full native suite passed 1071 tests, 0 failed, 4 ignored across 23 suites.
+- The full suite preceded the final v1 fail-fast regression, proof-terminal cleanup refinement and internal ProofReady rename.
+- /tmp/runebender-ai-dag-final-nodes.log: all 20 affected Nodes tests passed on the final implementation; one real-font workflow remained ignored.
+- /tmp/runebender-ai-dag-final-live.log: all 7 real application/MCP fixtures passed on the final implementation, including old comparison clients and the new chained/branching DAG.
+- The DAG fixture checks four actual compiled proof images and their parent hashes, partial failure, stable generated point IDs through selected Apply/Undo/Redo, exact retry, stale status, release and absence of a saved root font.
+- /tmp/runebender-ai-dag-clippy.log: strict workspace/all-target Clippy passed.
+- /tmp/runebender-ai-dag-doc.log: workspace documentation passed.
+- /tmp/runebender-ai-dag-headless.log: no-default-features library check passed.
+- Formatting, copyright and git diff checks passed.
+- /tmp/runebender-ai-dag-web.log: separate browser release build passed in 4m 24s.
+- /tmp/runebender-ai-dag-browser-smoke.log: headless 1x smoke passed with 142 measured frames, 5.1 ms median and 8.7 ms p95 on this host.
+- Browser artifacts are under /tmp/runebender-ai-dag-browser-proofs; the temporary loopback server was stopped.
+- /tmp/runebender-ai-dag-proofs/nodes-gray.png and nodes-light.png: completed native comparison captures inspected in both themes.
+
+The first full run exposed an intermittent existing disk cancellation fixture failure; the isolated reproduction passed and the original cause was not conclusively reproduced.
+Local commit b867c75141382ca16d708a171588da13894af4da strengthens that fixture to verify the actual progress callback, cancellation flag and absence of subsequent worker dispatch, with diagnostic events and a five-second deadline.
+The strengthened fixture passed in the full rerun; this is a test change, not a claimed production cancellation repair.
+
+This milestone executes local Python transforms and compiler proofs, not model/provider nodes.
+External model-worker bridging, structured Rows/effects/cache policy, extension permission manifests, cloud/vector adapters and durable recovery remain open.
+Script nodes currently require guarded edits; report-only transforms and multi-parent merge nodes are not supported by this execution contract.
+Python is trusted local execution, not an OS sandbox, and compiler cancellation abandons results rather than claiming to interrupt a running compiler.
+Four ignored tests remain outside runtime coverage; no real models, cloud providers, native pointer/IME/accessibility/GPU behavior or Linux/Windows runtime were exercised.
+Native release/advisory gates remain in H, and the existing block 0.1.6 future-compatibility warning remains.
+H4 must update maintained workflow/MCP/architecture guidance from the old four-node-only description and explain execution versions, node selectors, partial results and current limits.
+No dependency was added, no user font was saved, and no push, merge, publication, provider/account connection, paid API call or model download occurred.
+All 21 original dirty baseline paths were rehashed unchanged.
+The 30-minute coordinator remains ACTIVE for the remaining checklist work.
