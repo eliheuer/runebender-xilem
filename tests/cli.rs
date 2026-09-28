@@ -619,6 +619,175 @@ fn mcp_lists_the_agent_tools_and_calls_them() {
 }
 
 #[test]
+fn mcp_protocol_versions_keep_disk_results_in_step_with_the_cli() {
+    use serde_json::{Value, json};
+
+    let (dir, ufo) = scratch_ufo();
+    let tool = stand_in_font_ml(dir.path());
+    let font_info = call_agent(&ufo, "font_info", json!({}));
+    let missing_glyph = call_agent(&ufo, "read_glyph", json!({}));
+    assert_eq!(font_info["ok"], true);
+    assert_eq!(missing_glyph["ok"], false);
+    let (default_code, default_tools) = run(&["agent", "tools"]);
+    let (contract_code, contract_tools) = run(&["agent", "tools", "--contracts"]);
+    assert_eq!((default_code, contract_code), (0, 0));
+    assert!(default_tools.get("contracts").is_none());
+    assert_eq!(default_tools["tools"], contract_tools["tools"]);
+    let contracts = contract_tools["contracts"].as_array().unwrap();
+    assert_eq!(
+        contracts.len(),
+        default_tools["tools"].as_array().unwrap().len()
+    );
+    for (contract, tool) in contracts
+        .iter()
+        .zip(default_tools["tools"].as_array().unwrap())
+    {
+        assert_eq!(contract["contract_version"], 1);
+        assert_eq!(contract["surface"], "disk");
+        assert_eq!(contract["tool"], *tool);
+    }
+    let proof_contract = contracts
+        .iter()
+        .find(|item| item["tool"]["name"] == "proof")
+        .unwrap();
+    assert_eq!(proof_contract["effects"]["writes_files"], true);
+    let propose_contract = contracts
+        .iter()
+        .find(|item| item["tool"]["name"] == "propose")
+        .unwrap();
+    assert_eq!(propose_contract["effects"]["runs_local_code"], true);
+
+    for (requested, negotiated) in [
+        ("2024-11-05", "2024-11-05"),
+        ("2025-03-26", "2025-03-26"),
+        ("2025-06-18", "2025-06-18"),
+        ("2025-11-25", "2025-11-25"),
+        ("2099-01-01", "2025-11-25"),
+    ] {
+        let replies = mcp_session(
+            &ufo,
+            &tool,
+            &[
+                json!({"jsonrpc":"2.0","id":1,"method":"initialize",
+                    "params":{"protocolVersion":requested,"capabilities":{},
+                        "clientInfo":{"name":"test","version":"1"}}}),
+                json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
+                json!({"jsonrpc":"2.0","id":3,"method":"tools/call",
+                    "params":{"name":"font_info","arguments":{}}}),
+                json!({"jsonrpc":"2.0","id":4,"method":"tools/call",
+                    "params":{"name":"read_glyph","arguments":{}}}),
+            ],
+        );
+        assert_eq!(replies[0]["result"]["protocolVersion"], negotiated);
+        let tools = replies[1]["result"]["tools"].as_array().unwrap();
+        let info_tool = tools
+            .iter()
+            .find(|tool| tool["name"] == "font_info")
+            .unwrap();
+        let propose_tool = tools.iter().find(|tool| tool["name"] == "propose").unwrap();
+        assert_eq!(info_tool["inputSchema"]["type"], "object");
+        assert_eq!(propose_tool["inputSchema"]["type"], "object");
+        for descriptor in tools {
+            assert_eq!(
+                descriptor.get("annotations").is_some(),
+                negotiated != "2024-11-05"
+            );
+            if negotiated < "2025-06-18" {
+                assert!(descriptor.get("outputSchema").is_none());
+            } else if let Some(schema) = descriptor.get("outputSchema") {
+                assert_eq!(schema["type"], "object");
+                assert!(
+                    schema["oneOf"]
+                        .as_array()
+                        .is_some_and(|cases| cases.len() == 2)
+                );
+            }
+        }
+        if negotiated != "2024-11-05" {
+            assert_eq!(info_tool["annotations"]["readOnlyHint"], true);
+            assert_eq!(propose_tool["annotations"]["readOnlyHint"], false);
+        }
+        if requested == "2025-11-25" {
+            for (descriptor, contract) in tools.iter().zip(contracts) {
+                assert_eq!(descriptor["name"], contract["tool"]["name"]);
+                assert_eq!(descriptor["description"], contract["tool"]["description"]);
+                assert_eq!(descriptor["inputSchema"], contract["tool"]["parameters"]);
+                let effects = &contract["effects"];
+                let read_only = [
+                    "mutates_document",
+                    "mutates_session",
+                    "writes_files",
+                    "runs_local_code",
+                ]
+                .iter()
+                .all(|field| effects[*field] == false);
+                assert_eq!(descriptor["annotations"]["readOnlyHint"], read_only);
+                assert_eq!(
+                    descriptor["annotations"]["destructiveHint"],
+                    effects["destructive"]
+                );
+                assert_eq!(
+                    descriptor["annotations"]["idempotentHint"],
+                    effects["idempotent"]
+                );
+                assert_eq!(
+                    descriptor["annotations"]["openWorldHint"],
+                    effects["open_world"]
+                );
+                if contract["output_schema"].is_null() {
+                    assert!(descriptor.get("outputSchema").is_none());
+                } else {
+                    assert_eq!(descriptor["outputSchema"], contract["output_schema"]);
+                }
+            }
+            let project = tools
+                .iter()
+                .find(|tool| tool["name"] == "project_info")
+                .unwrap();
+            let cases = project["outputSchema"]["oneOf"].as_array().unwrap();
+            assert_eq!(cases.len(), 2);
+            assert_eq!(cases[0]["properties"]["masters"]["type"], "array");
+            assert!(
+                cases[0]["required"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!("masters"))
+            );
+            assert!(
+                cases[1]["required"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!("error"))
+            );
+        }
+        for (reply, cli) in [(&replies[2], &font_info), (&replies[3], &missing_glyph)] {
+            let result = &reply["result"];
+            assert_eq!(result["isError"], !cli["ok"].as_bool().unwrap());
+            let text = result["content"][0]["text"].as_str().unwrap();
+            let parsed: Value = serde_json::from_str(text).unwrap();
+            assert_eq!(parsed, cli["result"]);
+            if negotiated >= "2025-06-18" {
+                assert_eq!(result["structuredContent"], parsed);
+            } else {
+                assert!(result.get("structuredContent").is_none());
+            }
+        }
+    }
+
+    // Older clients in this repository send tools/list before initialize.
+    let replies = mcp_session(
+        &ufo,
+        &tool,
+        &[json!({"jsonrpc":"2.0","id":1,"method":"tools/call",
+            "params":{"name":"font_info","arguments":{}}})],
+    );
+    assert_eq!(
+        replies[0]["result"]["structuredContent"],
+        font_info["result"]
+    );
+}
+
+#[test]
 fn compose_derives_marks_and_the_result_shapes() {
     use runebender::text::shape::{ShapingFont, ShapingGlyph, ShapingSource};
     let (_dir, ufo) = scratch_ufo();

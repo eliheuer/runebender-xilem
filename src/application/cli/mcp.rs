@@ -6,13 +6,14 @@
 use super::agent_commands::dispatch_call;
 use super::font_commands::proof_content;
 use super::*;
+use runebender::automation::tool_contracts::{self, ToolSurface};
 
 /// The MCP server: JSON-RPC 2.0 over stdio, one message per line,
 /// the way the protocol's stdio transport works. Handles what a
 /// client needs to list and call tools; everything else answers
-/// "method not found". The tool list is `agent::tools()` one to one,
-/// so a client sees exactly what the chat pane and the command line
-/// see, and no tool writes the foreground.
+/// "method not found". Operation descriptors are shared with CLI discovery;
+/// the live host adds connection selection and explicit proof export.
+/// Guarded live mutations remain owned by the editor.
 pub(super) fn mcp_serve(
     font: Option<&Path>,
     session: Option<&Path>,
@@ -25,7 +26,11 @@ pub(super) fn mcp_serve(
         return exit::USAGE;
     }
     let live_mode = live || session.is_some();
-    let connected = std::sync::Arc::new(std::sync::Mutex::new(session.map(Path::to_path_buf)));
+    let connected = std::sync::Arc::new(McpSession {
+        #[cfg(unix)]
+        endpoint: std::sync::Mutex::new(session.map(Path::to_path_buf)),
+        protocol: std::sync::Mutex::new(McpProtocol::V20251125),
+    });
     let output = std::sync::Arc::new(std::sync::Mutex::new(std::io::stdout()));
     let inflight = std::sync::Arc::new(std::sync::Mutex::new(std::collections::BTreeMap::<
         String,
@@ -222,6 +227,55 @@ pub(super) fn mcp_serve(
 
 const MAX_MCP_REQUESTS: usize = 32;
 
+/// Negotiated framing features; newer fields are never sent to older clients.
+#[derive(Clone, Copy)]
+enum McpProtocol {
+    V20241105,
+    V20250326,
+    V20250618,
+    V20251125,
+}
+
+impl McpProtocol {
+    fn negotiate(requested: Option<&str>) -> Self {
+        match requested {
+            Some("2024-11-05") => Self::V20241105,
+            Some("2025-03-26") => Self::V20250326,
+            Some("2025-06-18") => Self::V20250618,
+            _ => Self::V20251125,
+        }
+    }
+
+    fn version(self) -> &'static str {
+        match self {
+            Self::V20241105 => "2024-11-05",
+            Self::V20250326 => "2025-03-26",
+            Self::V20250618 => "2025-06-18",
+            Self::V20251125 => "2025-11-25",
+        }
+    }
+
+    fn annotations(self) -> bool {
+        !matches!(self, Self::V20241105)
+    }
+
+    fn structured_results(self) -> bool {
+        matches!(self, Self::V20250618 | Self::V20251125)
+    }
+}
+
+struct McpSession {
+    #[cfg(unix)]
+    endpoint: std::sync::Mutex<Option<PathBuf>>,
+    protocol: std::sync::Mutex<McpProtocol>,
+}
+
+impl McpSession {
+    fn protocol(&self) -> McpProtocol {
+        *self.protocol.lock().expect("MCP protocol mutex poisoned")
+    }
+}
+
 struct McpInFlight {
     cancelled: std::sync::atomic::AtomicBool,
     semantic_cancelled: std::sync::atomic::AtomicBool,
@@ -244,22 +298,21 @@ fn mcp_response(
     font: Option<&Path>,
     live_mode: bool,
     tool: Option<&Path>,
-    connected: &std::sync::Arc<std::sync::Mutex<Option<PathBuf>>>,
+    connected: &std::sync::Arc<McpSession>,
 ) -> serde_json::Value {
     let result = match method {
         "initialize" => {
-            let version = params
-                .get("protocolVersion")
-                .and_then(|v| v.as_str())
-                .filter(|version| {
-                    matches!(
-                        *version,
-                        "2024-11-05" | "2025-03-26" | "2025-06-18" | "2025-11-25"
-                    )
-                })
-                .unwrap_or("2025-11-25");
+            let protocol = McpProtocol::negotiate(
+                params
+                    .get("protocolVersion")
+                    .and_then(serde_json::Value::as_str),
+            );
+            *connected
+                .protocol
+                .lock()
+                .expect("MCP protocol mutex poisoned") = protocol;
             Ok(json!({
-                "protocolVersion": version,
+                "protocolVersion": protocol.version(),
                 "capabilities": { "tools": {} },
                 "serverInfo": {
                     "name": "runebender",
@@ -271,14 +324,35 @@ fn mcp_response(
             }))
         }
         "ping" => Ok(json!({})),
-        "tools/list" => Ok(json!({
-            "tools": mcp_tools(live_mode).iter().map(|t| json!({
-                "name": t.name,
-                "description": t.description,
-                "inputSchema": t.parameters,
-                "annotations": {"readOnlyHint": matches!(t.name.as_str(), "agent_receipt" | "proof_status" | "editor_context" | "project_info" | "font_info" | "read_glyph" | "glyph_inventory" | "design_context" | "experiment_list" | "read_kerning" | "specimen" | "editor_sessions" | "editor_connect" | "proposal_list") || (live_mode && t.name == "proof"), "openWorldHint": !live_mode},
-            })).collect::<Vec<_>>()
-        })),
+        "tools/list" => {
+            let protocol = connected.protocol();
+            let surface = if live_mode {
+                ToolSurface::Live
+            } else {
+                ToolSurface::Disk
+            };
+            let tools = mcp_tools(live_mode)
+                .into_iter()
+                .map(|tool| {
+                    let descriptor = tool_contracts::describe(tool, surface);
+                    let mut result = json!({
+                        "name": descriptor.tool.name,
+                        "description": descriptor.tool.description,
+                        "inputSchema": descriptor.tool.parameters,
+                    });
+                    if protocol.annotations() {
+                        result["annotations"] = descriptor.annotations();
+                    }
+                    if protocol.structured_results()
+                        && let Some(schema) = descriptor.output_schema
+                    {
+                        result["outputSchema"] = schema;
+                    }
+                    result
+                })
+                .collect::<Vec<_>>();
+            Ok(json!({"tools": tools}))
+        }
         "tools/call" => {
             let name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
             let args = params.get("arguments").cloned().unwrap_or(json!({}));
@@ -288,10 +362,15 @@ fn mcp_response(
                 dispatch_call(name, font, None, &args, tool)
             };
             let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(true);
-            Ok(json!({
-                "content": proof_content(value),
+            let proof = proof_content(value);
+            let mut result = json!({
+                "content": proof.content,
                 "isError": !ok,
-            }))
+            });
+            if connected.protocol().structured_results() && proof.metadata.is_object() {
+                result["structuredContent"] = proof.metadata;
+            }
+            Ok(result)
         }
         "resources/list" => Ok(json!({ "resources": [] })),
         "prompts/list" => Ok(json!({ "prompts": [] })),
@@ -346,7 +425,7 @@ fn cancel_mcp_request(
     inflight: &std::sync::Arc<
         std::sync::Mutex<std::collections::BTreeMap<String, std::sync::Arc<McpInFlight>>>,
     >,
-    connected: &std::sync::Arc<std::sync::Mutex<Option<PathBuf>>>,
+    connected: &std::sync::Arc<McpSession>,
 ) {
     let Some(request_id) = params.get("requestId") else {
         return;
@@ -388,9 +467,7 @@ fn mcp_tools(live: bool) -> Vec<agent::Tool> {
     if let Some(proof) = tools.iter_mut().find(|tool| tool.name == "proof") {
         proof.description = "Return a PNG proof image and metrics from the live unsaved source. Supply 1 to 256 explicit glyph names; use layer to view a proposal. Use small groups for legible images. Images are required for visual judgment; report if your client does not deliver them.".into();
     }
-    tools.push(agent::Tool {name:"export_proof".into(),description:"Export an explicit live or branch glyph/text proof using Designbot. Writes a new PNG or PDF file; refuses overwrite. Does not save the font. Supply either glyphs or text, an explicit output path, and format.".into(),parameters:json!({"type":"object","properties":{"source":{"type":"integer","minimum":0},"expected_document_epoch":{"type":"string"},"branch":{"type":"string"},"layer":{"type":"string"},"glyphs":{"type":"array","items":{"type":"string"}},"text":{"type":"string"},"output":{"type":"string"},"format":{"enum":["png","pdf"]}},"required":["output","format"],"additionalProperties":false})});
-    tools.push(agent::Tool { name: "editor_sessions".into(), description: "List local editor endpoint paths. Connect to inspect the project. Never assume a different window is the requested font.".into(), parameters: json!({"type":"object", "properties":{}}) });
-    tools.push(agent::Tool { name: "editor_connect".into(), description: "Connect this agent to a listed editor endpoint and return its live project/source information. Opening another font closes the old connection; reconnect explicitly.".into(), parameters: json!({"type":"object", "properties":{"session":{"type":"string"}}, "required":["session"]}) });
+    tools.extend(tool_contracts::live_host_tools());
     tools
 }
 
@@ -398,7 +475,7 @@ fn mcp_tools(live: bool) -> Vec<agent::Tool> {
 fn live_client_call(
     name: &str,
     args: &serde_json::Value,
-    connected: &std::sync::Arc<std::sync::Mutex<Option<PathBuf>>>,
+    connected: &std::sync::Arc<McpSession>,
 ) -> serde_json::Value {
     #[cfg(not(unix))]
     {
@@ -459,6 +536,7 @@ fn live_client_call(
         }
         if name == "editor_sessions" {
             let selected = connected
+                .endpoint
                 .lock()
                 .expect("MCP connection mutex poisoned")
                 .clone();
@@ -477,11 +555,15 @@ fn live_client_call(
             }
             let value = dispatch_call("project_info", None, Some(&path), &json!({}), None);
             if value["ok"] == true {
-                *connected.lock().expect("MCP connection mutex poisoned") = Some(path);
+                *connected
+                    .endpoint
+                    .lock()
+                    .expect("MCP connection mutex poisoned") = Some(path);
             }
             return value;
         }
         let selected = connected
+            .endpoint
             .lock()
             .expect("MCP connection mutex poisoned")
             .clone();

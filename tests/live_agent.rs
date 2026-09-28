@@ -194,7 +194,13 @@ fn cli_and_mcp_share_one_unsaved_authorized_document() {
 #[test]
 fn mcp_negotiates_known_versions_and_bounds_input() {
     use std::io::BufRead as _;
-    for (requested, expected) in [("2024-11-05", "2024-11-05"), ("2099-01-01", "2025-11-25")] {
+    for (requested, expected) in [
+        ("2024-11-05", "2024-11-05"),
+        ("2025-03-26", "2025-03-26"),
+        ("2025-06-18", "2025-06-18"),
+        ("2025-11-25", "2025-11-25"),
+        ("2099-01-01", "2025-11-25"),
+    ] {
         let mut mcp = Command::new(env!("CARGO_BIN_EXE_runebender"))
             .args(["mcp", "--live"])
             .stdin(Stdio::piped())
@@ -217,6 +223,150 @@ fn mcp_negotiates_known_versions_and_bounds_input() {
         output.read_line(&mut line).unwrap();
         let reply: Value = serde_json::from_str(&line).unwrap();
         assert_eq!(reply["error"]["code"], -32600);
+        assert!(mcp.wait().unwrap().success());
+    }
+}
+
+#[test]
+fn live_proof_image_keeps_cli_metadata_and_mcp_structured_content_in_step() {
+    use base64::Engine as _;
+
+    let server = Server::start().unwrap();
+    let endpoint = server.path().to_path_buf();
+    let epoch = server.document_epoch().to_owned();
+    let png = base64::engine::general_purpose::STANDARD.encode(b"\x89PNG\r\n\x1a\nfixture");
+    let payload = json!({
+        "ok":true,
+        "status":"completed",
+        "font_sha256":format!("sha256:{}", "a".repeat(64)),
+        "glyphs":[{"glyph_name":"A","x_advance":500.0}],
+        "png_base64":png,
+    });
+    let arguments = json!({"expected_document_epoch":epoch,"proof_id":"fixture",
+        "include_image":true});
+    let cli_endpoint = endpoint.clone();
+    let cli_arguments = arguments.clone();
+    let cli = std::thread::spawn(move || {
+        Command::new(env!("CARGO_BIN_EXE_runebender"))
+            .args(["agent", "call", "proof_status", "--session"])
+            .arg(cli_endpoint)
+            .args(["--args", &cli_arguments.to_string()])
+            .output()
+            .unwrap()
+    });
+    let wait_pending = || {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(pending) = server.try_recv() {
+                break pending;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "proof request did not reach the editor"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    };
+    wait_pending().respond(|request| {
+        assert_eq!(request.name, "proof_status");
+        payload.clone()
+    });
+    let cli_output = cli.join().unwrap();
+    assert!(cli_output.status.success());
+    let cli: Value = serde_json::from_slice(&cli_output.stdout).unwrap();
+    assert_eq!(cli["ok"], true);
+    assert_eq!(cli["result"]["png_base64"], payload["png_base64"]);
+
+    for version in ["2024-11-05", "2025-11-25"] {
+        let mut mcp = Command::new(env!("CARGO_BIN_EXE_runebender"))
+            .args(["mcp", "--session"])
+            .arg(&endpoint)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut input = mcp.stdin.take().unwrap();
+        let mut output = std::io::BufReader::new(mcp.stdout.take().unwrap());
+        let mut read = || {
+            let mut line = String::new();
+            assert_ne!(output.read_line(&mut line).unwrap(), 0, "MCP stdout closed");
+            serde_json::from_str::<Value>(&line).unwrap()
+        };
+        writeln!(
+            input,
+            "{}",
+            json!({"jsonrpc":"2.0","id":1,"method":"initialize",
+            "params":{"protocolVersion":version,"capabilities":{},
+                "clientInfo":{"name":"proof-test","version":"1"}}})
+        )
+        .unwrap();
+        input.flush().unwrap();
+        assert_eq!(read()["result"]["protocolVersion"], version);
+        writeln!(
+            input,
+            "{}",
+            json!({"jsonrpc":"2.0","id":2,"method":"tools/list"})
+        )
+        .unwrap();
+        input.flush().unwrap();
+        let tools = read();
+        let tools = tools["result"]["tools"].as_array().unwrap();
+        for (name, field) in [("editor_sessions", "sessions"), ("export_proof", "bytes")] {
+            let descriptor = tools.iter().find(|tool| tool["name"] == name).unwrap();
+            if version == "2024-11-05" {
+                assert!(descriptor.get("annotations").is_none());
+                assert!(descriptor.get("outputSchema").is_none());
+            } else {
+                assert_eq!(descriptor["outputSchema"]["type"], "object");
+                let cases = descriptor["outputSchema"]["oneOf"].as_array().unwrap();
+                assert_eq!(cases.len(), 2);
+                assert!(cases[0]["properties"].get(field).is_some());
+                assert!(
+                    cases[0]["required"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&json!(field))
+                );
+                assert!(
+                    cases[1]["required"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&json!("error"))
+                );
+            }
+        }
+        writeln!(
+            input,
+            "{}",
+            json!({"jsonrpc":"2.0","id":3,"method":"tools/call",
+            "params":{"name":"proof_status","arguments":arguments}})
+        )
+        .unwrap();
+        input.flush().unwrap();
+        wait_pending().respond(|request| {
+            assert_eq!(request.name, "proof_status");
+            payload.clone()
+        });
+        let reply = read();
+        assert_eq!(reply["id"], 3);
+        let result = &reply["result"];
+        assert_eq!(result["isError"], false);
+        let metadata: Value =
+            serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap();
+        let mut expected = cli["result"].clone();
+        expected.as_object_mut().unwrap().remove("png_base64");
+        assert_eq!(metadata, expected);
+        if version == "2024-11-05" {
+            assert!(result.get("structuredContent").is_none());
+        } else {
+            assert_eq!(result["structuredContent"], metadata);
+        }
+        assert!(metadata.get("png_base64").is_none());
+        assert_eq!(result["content"][1]["type"], "image");
+        assert_eq!(result["content"][1]["mimeType"], "image/png");
+        assert_eq!(result["content"][1]["data"], payload["png_base64"]);
+        assert_eq!(result["content"].as_array().unwrap().len(), 2);
+        drop(input);
         assert!(mcp.wait().unwrap().success());
     }
 }

@@ -16,3 +16,4 @@ pub mod live;
 #[cfg(unix)]
 pub mod live_socket;
 pub mod script_recipe;
+pub mod tool_contracts;

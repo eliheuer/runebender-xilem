@@ -202,14 +202,19 @@ pub(in crate::application::cli) fn proof(
     exit::OK
 }
 
+/// Metadata and compatibility content derived from the same proof result.
+/// Image bytes are emitted once, outside the JSON metadata.
+pub(in crate::application::cli) struct ProofContent {
+    pub(in crate::application::cli) metadata: serde_json::Value,
+    pub(in crate::application::cli) content: Vec<serde_json::Value>,
+}
+
 /// Return an actual MCP image alongside proof metadata, without external resources.
 #[allow(
     clippy::cast_possible_truncation,
     reason = "Raster dimensions are rounded and bounded to 2048 pixels"
 )]
-pub(in crate::application::cli) fn proof_content(
-    mut value: serde_json::Value,
-) -> Vec<serde_json::Value> {
+pub(in crate::application::cli) fn proof_content(mut value: serde_json::Value) -> ProofContent {
     use base64::Engine as _;
     let mut content = Vec::new();
     if let Some(png) = value
@@ -233,5 +238,8 @@ pub(in crate::application::cli) fn proof_content(
         0,
         serde_json::json!({"type":"text", "text":value.to_string()}),
     );
-    content
+    ProofContent {
+        metadata: value,
+        content,
+    }
 }

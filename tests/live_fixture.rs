@@ -81,7 +81,13 @@ impl Fixture {
     fn tool(&mut self, name: &str, arguments: Value) -> Value {
         let result = self.rpc("tools/call", json!({"name":name,"arguments":arguments}));
         assert_eq!(result["isError"], false, "{result}");
-        serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap()
+        let metadata: Value =
+            serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(
+            result["structuredContent"], metadata,
+            "structured tool metadata must match the compatibility text"
+        );
+        metadata
     }
 }
 
@@ -370,6 +376,7 @@ fn compiled_proof_mcp_delivers_original_png_after_live_edit() {
         assert_eq!(response["isError"], false, "{response}");
         let metadata: Value =
             serde_json::from_str(response["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(response["structuredContent"], metadata);
         assert_eq!(metadata["captured_document_revision"], revision);
         assert_eq!(metadata["document_revision"], applied["document_revision"]);
         assert_eq!(metadata["current"], false);

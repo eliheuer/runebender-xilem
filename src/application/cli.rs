@@ -294,7 +294,11 @@ enum AgentAction {
         duration_seconds: u64,
     },
     /// The system prompt and every tool, as JSON.
-    Tools,
+    Tools {
+        /// Include versioned result contracts and effect metadata alongside legacy tool schemas.
+        #[arg(long)]
+        contracts: bool,
+    },
     /// Run one tool call and print its result as JSON.
     Call {
         /// The tool name.
@@ -546,7 +550,7 @@ pub(crate) fn run() -> Startup {
                 }
             }
 
-            AgentAction::Tools => {
+            AgentAction::Tools { contracts } => {
                 let live = std::env::var_os("RUNEBENDER_LIVE_SESSION").is_some();
                 let tools = if live {
                     runebender::automation::live::tools()
@@ -558,10 +562,22 @@ pub(crate) fn run() -> Startup {
                 } else {
                     agent::system_prompt(&tools)
                 };
-                println!(
-                    "{}",
-                    json!({ "ok": true, "prompt": prompt, "tools": tools })
-                );
+                let mut result = json!({ "ok": true, "prompt": prompt, "tools": tools });
+                if *contracts {
+                    use runebender::automation::tool_contracts::{self, ToolSurface};
+                    let surface = if live {
+                        ToolSurface::Live
+                    } else {
+                        ToolSurface::Disk
+                    };
+                    result["contracts"] = json!(
+                        tools
+                            .into_iter()
+                            .map(|tool| tool_contracts::describe(tool, surface))
+                            .collect::<Vec<_>>()
+                    );
+                }
+                println!("{result}");
                 exit::OK
             }
             AgentAction::Call {
