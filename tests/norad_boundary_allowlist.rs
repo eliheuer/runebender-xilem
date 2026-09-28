@@ -45,7 +45,6 @@ const ALLOWED_ITEMS: &[(&str, &str)] = &[
     ("font/babelfont.rs", "struct ObjectMetadata"),
     ("font/babelfont.rs", "ObjectMetadata::method new"),
     ("font/babelfont.rs", "struct LayerPreservation"),
-    ("font/babelfont.rs", "PointView::method name"),
     // These are the item-level import/export codecs in the otherwise live canonical module.
     ("font/babelfont.rs", "LayerImage::method from_ufo"),
     ("font/babelfont.rs", "LayerImage::method to_ufo"),
@@ -55,29 +54,36 @@ const ALLOWED_ITEMS: &[(&str, &str)] = &[
     ("font/babelfont.rs", "fn fresh_hyper_identifier"),
     ("font/babelfont.rs", "fn fresh_object_identifier"),
     ("font/babelfont.rs", "fn ufo_contour_is_hyper"),
-    ("font/babelfont.rs", "fn layer_from_ufo"),
-    ("font/babelfont.rs", "fn affine"),
-    ("font/babelfont.rs", "fn project_contours"),
-    ("font/babelfont.rs", "fn project_layer"),
     // Canonical edits may update the private preservation record without exposing Norad.
-    ("font/babelfont.rs", "LayerEditDraft::method paste_contours"),
     (
-        "font/babelfont.rs",
+        "font/babelfont/edit_contours.rs",
+        "LayerEditDraft::method paste_contours",
+    ),
+    (
+        "font/babelfont/edit_replacements.rs",
         "LayerEditDraft::method replace_interpolated_contours",
     ),
     (
-        "font/babelfont.rs",
+        "font/babelfont/edit_components.rs",
         "LayerEditDraft::method set_component_reference",
     ),
     (
-        "font/babelfont.rs",
+        "font/babelfont/edit_components.rs",
         "LayerEditDraft::method set_component_transform",
     ),
-    ("font/babelfont.rs", "LayerEditDraft::method add_component"),
     (
-        "font/babelfont.rs",
+        "font/babelfont/edit_components.rs",
+        "LayerEditDraft::method add_component",
+    ),
+    (
+        "font/babelfont/edit_components.rs",
         "LayerEditDraft::method set_component_alignment_disabled",
     ),
+    ("font/babelfont/ufo_projection.rs", "fn layer_from_ufo"),
+    ("font/babelfont/ufo_projection.rs", "fn affine"),
+    ("font/babelfont/ufo_projection.rs", "fn project_contours"),
+    ("font/babelfont/ufo_projection.rs", "fn project_layer"),
+    ("font/babelfont/views.rs", "PointView::method name"),
     ("font/project.rs", "Project::method from_designspace"),
     (
         "font/project.rs",
@@ -368,6 +374,7 @@ fn production_norad_is_confined_to_reviewed_boundaries() {
 
 #[test]
 fn cfg_filter_only_excludes_exact_test_items() {
+    assert!(production_norad_items("#![cfg(test)] use norad::Glyph;").is_empty());
     assert!(production_norad_items("#[cfg(test)] fn fixture(_: norad::Glyph) {}").is_empty());
     assert_eq!(
         production_norad_items("#[cfg(not(test))] fn production(_: norad::Glyph) {}"),
@@ -385,6 +392,10 @@ fn cfg_filter_only_excludes_exact_test_items() {
              fn production_after(_: norad::Glyph) {}",
         ),
         ["fn production_after"]
+    );
+    assert_eq!(
+        production_norad_items("mod tests { use norad::Glyph; }"),
+        ["use"]
     );
 }
 

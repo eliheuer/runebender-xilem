@@ -1,6 +1,8 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+#![cfg(test)]
+
 //! Canonical layer and UFO preservation tests.
 
 use super::*;
