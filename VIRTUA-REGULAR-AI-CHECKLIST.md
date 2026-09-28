@@ -1,6 +1,6 @@
 # Virtua Regular AI workflow checklist
 
-Status: B1-B3 and C1-C3 validated; D1 validated; D2 adapter assigned next; trial preflight complete, target preference requested.
+Status: B1-B3 and C1-C3 validated; D1 validated; D2 adapter offline-validated; real trial pending; trial preflight complete, target preference requested.
 Created: 2026-09-28.
 Coordinator: this Codex task, with Astra owning architecture and integration review.
 Worktree: /Users/eli/.codex/worktrees/virtua-regular-ai/runebender-xilem.
@@ -399,3 +399,13 @@ Synthetic Arabic fixture is consumed by executable tests; no claim of real glyph
 D2 bounded assignment: regular_proof_sol to inspect installed local sketch runner and implement an offline-tested, non-installing candidate adapter using scratch output and pinned runtime/model identities.
 No model execution until coordinator selects a calibrated scratch trial; no training, downloads, source installs, or broad provider framework.
 Actual D2 acceptance still requires a recorded real local result; adapter tests alone cannot complete it.
+
+### D2 adapter evidence, actual trial pending
+Adapter committed at a8bfa63; D2 remains unchecked until a real installed-model result is recorded.
+`cargo test --locked --lib workflows::local_sketch -- --test-threads=1` passed 4 offline process-fixture tests; all-target Clippy with warnings denied, cargo fmt check and git diff check passed.
+Coordinator corrected a macOS /var versus /private/var fixture path expectation and redundant image module qualifications; virtualenv entrypoint symlink remains preserved.
+Adapter uses scratch input, never --install, returns editable contours and pins executable/checkpoint/local-module/tracer identities.
+Limits: installed runner fits an ink box rather than C2 full-image calibration; generated geometry may move; Python dependency wheels are not attested; cancellation kills the direct child only.
+No actual inference or font edits occurred.
+Next bounded Sol assignment is read-only fresh post-grading trial preparation: eligible red Regular Arabic target shortlist, explicit green/purple related references, and existing suitable sketch input if present.
+Do not choose or edit font sources, run models, or treat model scores as approval; return concrete trial recommendations to coordinator before execution.
