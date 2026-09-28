@@ -68,8 +68,14 @@ Trusted local Python is not an OS sandbox; do not imply otherwise.
 - [x] B1. Inventory current command, proposal, live-edit, recipe, and node capabilities; choose one typed owner per operation.
   Coordinator source review and the ownership map below establish the implementation routing; no registry implementation is claimed.
 - [ ] B2. Centralize transport-facing schemas, result contracts, and effect metadata while preserving strongly typed engine APIs.
-- [ ] B3. Return structured MCP results and truthful schemas/annotations, preserving text and proof images for compatibility.
-  Verify CLI/MCP parity, errors, retries, and cancellation against supported protocol versions.
+  Initial consumed descriptor slice integrated as 0380293: per-surface effects, shared host input schemas, and concrete result schemas for project_info, editor_connect, editor_sessions, and export_proof.
+  CLI discovery exposes the same descriptors through opt-in agent tools --contracts; default assistant tool payloads remain compatible.
+  Keep this gate open until the guarded edit/receipt, proof-job, and graph result contracts have typed ownership and comprehensive schema coverage.
+  Unverified output schemas remain absent rather than advertising a generic object as a complete contract.
+- [x] B3. Return structured MCP results and truthful schemas/annotations, preserving text and proof images for compatibility.
+  Integrated as 0380293 with negotiated protocol feature gates and one shared metadata value for text and structuredContent.
+  Verified CLI/MCP success/error parity, four supported protocol versions plus fallback, proof image separation, existing retry/cancellation regressions, and real application proof/edit fixtures.
+  Output schemas are deliberately limited to the verified discovery/export subset tracked in B2; this is not certification of every MCP feature.
 - [ ] B4. Extend recipe captures to useful outline operations and provide guarded structural editing for shape generators.
   Verify exact retries, stale reads, full-batch rejection, dependent glyph invalidation, and one-step undo.
 - [x] B5. Remove identified reverse dependencies: engine mark metadata must not depend on loading a UI theme; live workflows must call typed engine operations rather than a transport dispatcher.
@@ -152,7 +158,8 @@ Keep small typed Rust APIs at these boundaries; transport schemas and registries
 | Interactive tool lifecycle | `application/workspace.rs`, `application/editor/session.rs`, `application/view/canvas/editor.rs`, `application/widgets/tool_group.rs` | Application owns gestures and preview state; reusable shape construction calls typed engine operations; UI metadata comes from the consumed registry. |
 | Assistant and model providers | `application/editor/tools/chat.rs`, `application/editor/tools/local_ai.rs` | Keep assistant conversations separate from model-worker jobs; host adapters own credentials, process/network calls and sendable context; results share validated artifact/proposal routes. |
 
-The first shared-operation slice should remove the live workflow's call into the JSON transport dispatcher and establish explicit result/effect descriptors with existing consumers.
+The initial shared-operation slices remove the live workflow's call into the JSON transport dispatcher and provide result/effect descriptors consumed by CLI discovery and MCP.
+B2 still requires complete typed contracts for guarded edits, receipts, proof jobs and graph operations.
 The structural-edit slice must prove generated contours can preview, reject stale input, apply atomically and undo before expanding provider integration.
 The cache fix hashes full UFO inputs conservatively; precise dependency-aware caching is a later performance improvement, not a prerequisite for correctness.
 Compiler timestamp normalization covers repeated builds of the same captured Babelfont input.
@@ -185,9 +192,10 @@ Verification logs:
 - /tmp/runebender-ai-foundation-headless.log: no-default-features library check passed.
 
 
-Next dependency-ready work: consumed B2/B3 operation descriptors and structured MCP results.
-B5 is complete; keep B6 source-date work separate from transport changes.
-Use at most two disjoint implementation workers and keep source-date work B6 separate from transport changes.
+Next dependency-ready work: finish B2 typed result contracts for guarded edits/receipts, proof jobs, and graph operations, then extend structural editing in B4.
+B3 and B5 are complete.
+B6 source-date work is independently ready; keep it in a separate assignment and commit from transport changes.
+Use at most two disjoint implementation workers.
 The recurring coordinator is active every 30 minutes and should remain quiet unless there is a verified milestone, actionable failure, completion, or user decision.
 
 
@@ -213,3 +221,35 @@ Its typed refactor removes a dependency and propagates engine errors correctly; 
 The font engine now exposes custom mark labels and typed colors without reading theme files; the application retains the existing Gray-palette display classification.
 No accounts or real model providers were connected, and no native foreground window was opened.
 All 21 original dirty baseline paths remain unchanged.
+
+
+2026-09-28: The first half-hour continuation completed the structured MCP milestone in 038029385409dcaa171b05b300db823bf61b3826.
+The coordinator verified the clean integration branch and completed workers before dispatching two GPT-6 Sol assignments: tool_contracts and mcp_contract_tests.
+The descriptor worker owned only the automation contract module; the test worker owned CLI/live transport regression files.
+The coordinator implemented protocol state and response framing, reviewed both patches, strengthened real Workspace proof checks, and serialized all Cargo commands.
+
+MCP now supplies structuredContent for negotiated 2025-06-18 and 2025-11-25 clients while retaining the same JSON text and separate images.
+2024-11-05 clients receive neither annotations nor structured-result fields; 2025-03-26 clients receive annotations without structured-result fields.
+The existing unknown-version fallback remains 2025-11-25; pre-initialize compatibility behavior uses that same default.
+The supported version set was not expanded.
+Shared effect metadata distinguishes connection/session changes, font mutations, file writes, retained artifact removal, and open-ended local program execution.
+Local Python/model programs are conservatively described as capable of file writes and destructive effects; annotations are descriptive hints and do not enforce grants.
+B2 remains open for the richer typed result contracts, and G remains responsible for actual host-owned authorization.
+
+Verification for 0380293:
+
+- /tmp/runebender-ai-foundation-contracts-unit.log: all five shared descriptor regressions passed.
+- /tmp/runebender-ai-foundation-contracts-integration.log: 19 CLI, 6 live-agent, and 4 real application fixture tests passed.
+- /tmp/runebender-ai-foundation-contracts-tests.log: full native suite, 986 passed, 0 failed, 4 ignored across 23 suites.
+- /tmp/runebender-ai-foundation-contracts-clippy.log: strict all-target Clippy passed after adding a required diagnostic message to a new fixture assertion.
+- /tmp/runebender-ai-foundation-contracts-doc.log: workspace documentation passed.
+- /tmp/runebender-ai-foundation-contracts-headless.log: no-default-features library check passed.
+- Formatting, copyright, and staged diff checks passed.
+- /tmp/runebender-ai-foundation-contracts-web.log: browser release build passed.
+- /tmp/runebender-ai-foundation-contracts-browser-smoke.log: the repository's headless smoke check passed at 1x density; the temporary loopback server was stopped.
+
+This milestone did not change views, so the full density matrix and native Gray/Light visual captures from B5 were not repeated.
+The four ignored real-model/larger font tests remain unexecuted runtime coverage, and the existing block 0.1.6 future-compatibility warning remains.
+No new dependency was added, no provider/account was connected, and no native foreground window was opened.
+The coordinator remains active every 30 minutes.
+All 21 original dirty baseline paths were rehashed and remain unchanged.
