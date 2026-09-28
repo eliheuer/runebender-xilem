@@ -1,6 +1,6 @@
 # Virtua Regular AI workflow checklist
 
-Status: B1 validated and committed; context fixtures reviewed but not yet consumed; C1 running.
+Status: B1 and C1 validated and committed; context fixtures reviewed but not yet consumed; C2 running.
 Created: 2026-09-28.
 Coordinator: this Codex task, with Astra owning architecture and integration review.
 Worktree: /Users/eli/.codex/worktrees/virtua-regular-ai/runebender-xilem.
@@ -117,14 +117,14 @@ Human before/after corrections are potential training examples, not automaticall
 - Root Project is the canonical document owner.
 Babelfont/Norad stay behind font/format adapters.
 - src/font/compiler/proof.rs provides immutable compile inputs, shaped glyph identities and PNG proofs.
-Its original recipe lacks viewing-size/layout parameters and scene rendering fixes scale to 160 px/em.
-The new proof contract must address that before claiming reading-size comparison.
+B1 now provides bounded viewing-size/layout settings with the original 160 px/em default preserved.
+Matched context capture and real reading-size comparison remain B2/B3.
 - src/application/platform/live_proofs.rs binds epochs/revisions.
 src/application/editor/tools/nodes and src/workflows/nodes_session.rs retain branches/proofs/candidates and explicit Apply.
 Version 2 comparison currently does not enforce identical proof recipes.
 - src/font/project/edit_transactions.rs and src/automation/agent_edit.rs support points/anchors/width/append.
-Full replacement exists in a separate edit_batch path, but is not wired through the guarded live recipe path.
-Candidate compile projection must support changed topology without mutating the root.
+C1 now wires contour replacement through guarded live edits and private candidate compilation.
+Image calibration and user-facing candidate integration remain C2/C3.
 - src/formats/image_trace.rs accepts image bytes and returns canonical contours.
 Current UI tracing replaces the glyph and fits the ascender-descender band; draft workflows need calibrated, staged import.
 - /Users/eli/GH/repos/font-garden-lab/glyphlab/sketch2glyph.py has the earlier MLX sketch-to-outline implementation.
@@ -157,7 +157,7 @@ Acceptance: meaningful geometry/size tests, invalid/oversized input rejection, o
 Actual headless proof inspection is required before visual claims.
 
 ### C. Safe missing-outline candidates (Sol; follows B1 to avoid proof.rs ownership conflict)
-- [ ] C1. Add bounded complete-outline replacement through canonical guarded transactions, agent operations and private candidate compilation.
+- [x] C1. Add bounded complete-outline replacement through canonical guarded transactions, agent operations and private candidate compilation.
 - [ ] C2. Add calibrated image/model-outline import into a detached candidate; preserve unrelated width/anchors/components/metadata unless explicitly addressed.
 - [ ] C3. Make the same candidate inspectable/selectable through existing UI and MCP, with one Apply/Undo and no automatic save.
 Acceptance: empty-to-drawn and junk-to-replaced, no root mutation before apply, stale rejection, unrelated/green preservation, proof of replacement, undo/redo restoration.
@@ -194,9 +194,11 @@ If only F5 or another external prerequisite remains, report "ready for review" a
 | --- | --- | --- | --- |
 | A1-A3 | regular_context_terra (GPT-5.6 Terra) | tests/fixtures/glyph_workflow/** only | Reviewed and JSON-validated; fixture consumption remains pending |
 | B1 | regular_proof_sol (GPT-6 Sol) | src/font/compiler/proof.rs and five recipe constructor call sites | Validated; d6f50f7 |
-| C1 | regular_proof_sol (GPT-6 Sol), reused | src/font/project/edit_transactions.rs, src/font/babelfont/edit_contours.rs, src/automation/agent_edit.rs, src/automation/agent_edit/results.rs, src/font/compiler/proof.rs; narrowly necessary exhaustive-match sites | Running: /root/regular_proof_sol |
+| C1 | regular_proof_sol (GPT-6 Sol), reused | src/font/project/edit_transactions.rs, src/font/babelfont/edit_contours.rs, src/automation/agent_edit.rs, src/automation/agent_edit/results.rs, src/font/compiler/proof.rs; narrowly necessary exhaustive-match sites | Validated; c57edc3 |
+| C2 | regular_proof_sol (GPT-6 Sol), reused | src/formats/image_trace.rs, src/automation/agent_edit.rs; narrowly necessary canonical contour conversion helper only | Running: /root/regular_proof_sol |
 
-Sol is active on C1; Terra has completed the reviewed fixture preparation.
+Sol is active on C2 after the validated C1 handoff.
+Terra has completed the reviewed fixture preparation.
 The earlier capacity limit cleared after Sol completed; the queued Terra assignment was dispatched once.
 Worker completion means a patch is ready for review, not that its acceptance gates passed.
 Record worker IDs, handoffs and scope changes here before dispatch.
@@ -219,6 +221,19 @@ Main remains clean and unchanged; no font/icon edits.
 `jq -e 'type == "object"' tests/fixtures/glyph_workflow/*.json` passed for both files; `git diff --check` passed.
 The worker-reported `jq -e empty` parses input but returns exit 4, so the coordinator used the explicit successful object check instead.
 A gates remain unchecked until executable consumers use the fixtures; synthetic labels are not Arabic proof evidence.
+- C1: c57edc3 provides guarded replacement/clearing, distinct removal receipts, preserved non-outline data and detached candidate compilation.
+Tests ran serially with RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources, CARGO_TARGET_DIR=/Users/eli/GH/repos/runebender-xilem/target and CARGO_BUILD_JOBS=2.
+`cargo test --lib --locked font::project::edit_transactions::tests -- --test-threads=1`: 18 passed.
+`cargo test --lib --locked automation::agent_edit:: -- --test-threads=1`: 8 passed.
+`cargo test --lib --locked font::compiler::proof::tests -- --test-threads=1`: 14 passed.
+`cargo test --lib --locked automation::script_recipe::tests -- --test-threads=1`: 10 passed.
+No ignored tests or failures in those four suites.
+`cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo fmt --all --check` and `git diff --check` passed.
+Initial Clippy found six default-trait-access warnings from B1 constructors; f0973b7 corrects them without behavioral changes.
+Cargo still reports a dependency future-incompatibility notice for block 0.1.6.
+Replacement compile coverage is a single-source Regular UFO; multi-master topology may reject and no other master is modified.
+Browser build/smoke, actual Arabic visual proof, protected-grade policy and real-model trials remain pending integration gates.
+Context fixtures are committed at 17e920b; executable consumption remains pending.
 - Add exact implementation commits, validation commands/results and human-review status here as each gate completes.
 
 ## Context sources
