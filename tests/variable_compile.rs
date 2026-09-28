@@ -3,6 +3,10 @@
 
 //! Live variable compilation must agree with shaping and exported font tables.
 
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use norad::{Contour, ContourPoint, Font, Glyph, Name, PointType};
 use runebender::font::DocumentEditError;
 use runebender::font::canonical_metadata::KerningParticipant;
@@ -11,6 +15,54 @@ use runebender::font::project::{DocumentEditOutcome, Project, SourceInput};
 use runebender::font::variable::{LayerId, SourceId};
 use runebender::text::shape::ShapingFont;
 use skrifa::raw::TableProvider as _;
+
+static DATE_FIXTURE_ID: AtomicUsize = AtomicUsize::new(0);
+
+struct SavedSource(PathBuf);
+
+impl SavedSource {
+    fn new(date: Option<&str>) -> Self {
+        let id = DATE_FIXTURE_ID.fetch_add(1, Ordering::Relaxed);
+        let directory = std::env::temp_dir().join(format!(
+            "runebender-source-date-{}-{id}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let mut source = project().encode_ufo_source(SourceId(0)).unwrap();
+        source.font_info.open_type_head_created = date.map(str::to_owned);
+        source.save(directory.join("Source.ufo")).unwrap();
+        Self(directory)
+    }
+
+    fn path(&self) -> PathBuf {
+        self.0.join("Source.ufo")
+    }
+
+    fn bytes(&self) -> BTreeMap<PathBuf, Vec<u8>> {
+        fn collect(root: &Path, directory: &Path, bytes: &mut BTreeMap<PathBuf, Vec<u8>>) {
+            for entry in std::fs::read_dir(directory).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    collect(root, &path, bytes);
+                } else {
+                    bytes.insert(
+                        path.strip_prefix(root).unwrap().to_owned(),
+                        std::fs::read(path).unwrap(),
+                    );
+                }
+            }
+        }
+        let mut bytes = BTreeMap::new();
+        collect(&self.0, &self.0, &mut bytes);
+        bytes
+    }
+}
+
+impl Drop for SavedSource {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
 
 fn edit_width(project: &mut Project, source: SourceId, glyph: &str, width: f64) {
     let layer = project.document_source(source).unwrap().default_layer();
@@ -113,7 +165,7 @@ fn compiled_snapshot_keeps_explicit_creation_time_and_stable_bytes() {
 }
 
 #[test]
-fn undated_project_reuses_its_creation_time_across_compiler_snapshots() {
+fn undated_project_reuses_fixed_date_across_compiler_snapshots() {
     let project = project();
     let first = project.babelfont_snapshot().unwrap();
     let second = project.babelfont_snapshot().unwrap();
@@ -124,6 +176,144 @@ fn undated_project_reuses_its_creation_time_across_compiler_snapshots() {
     assert_eq!(first.bytes, second.bytes);
     let head = skrifa::FontRef::new(&first.bytes).unwrap().head().unwrap();
     assert_eq!(head.modified(), head.created());
+}
+
+#[test]
+fn independent_reopens_preserve_explicit_source_date_and_compile_bytes() {
+    let raw = "1998/04/03 02:01:00";
+    let source = SavedSource::new(Some(raw));
+    let original_bytes = source.bytes();
+    let mut compiled_bytes = Vec::new();
+
+    for _ in 0..2 {
+        let project = Project::load(&source.path()).unwrap();
+        assert_eq!(
+            project
+                .document_font_info(SourceId(0))
+                .unwrap()
+                .open_type_head_created
+                .as_deref(),
+            Some(raw)
+        );
+        assert_eq!(
+            project
+                .encode_ufo_source(SourceId(0))
+                .unwrap()
+                .font_info
+                .open_type_head_created
+                .as_deref(),
+            Some(raw)
+        );
+        assert_eq!(
+            project.babelfont_snapshot().unwrap().date.to_rfc3339(),
+            "1998-04-03T02:01:00+00:00"
+        );
+        let compiled = project.compile().unwrap();
+        let font = skrifa::FontRef::new(&compiled.bytes).unwrap();
+        let head = font.head().unwrap();
+        assert_eq!(head.created().as_secs(), 2_974_413_660);
+        assert_eq!(head.modified(), head.created());
+        compiled_bytes.push(compiled.bytes);
+        assert_eq!(source.bytes(), original_bytes);
+    }
+    assert_eq!(compiled_bytes[0], compiled_bytes[1]);
+}
+
+#[test]
+fn independent_reopens_of_undated_source_use_fixed_creation_date() {
+    let source = SavedSource::new(None);
+    let original_bytes = source.bytes();
+    let mut compiled_bytes = Vec::new();
+
+    for _ in 0..2 {
+        let project = Project::load(&source.path()).unwrap();
+        assert_eq!(
+            project
+                .document_font_info(SourceId(0))
+                .unwrap()
+                .open_type_head_created,
+            None
+        );
+        assert_eq!(
+            project
+                .encode_ufo_source(SourceId(0))
+                .unwrap()
+                .font_info
+                .open_type_head_created,
+            None
+        );
+        assert_eq!(
+            project.babelfont_snapshot().unwrap().date.to_rfc3339(),
+            "2000-01-01T00:00:00+00:00"
+        );
+        compiled_bytes.push(project.compile().unwrap().bytes);
+        assert_eq!(source.bytes(), original_bytes);
+    }
+    assert_eq!(compiled_bytes[0], compiled_bytes[1]);
+}
+
+#[test]
+fn variable_snapshot_uses_default_source_date_without_rewriting_other_sources() {
+    let mut project = project();
+    for (source, raw) in [
+        (SourceId(0), "1998/04/03 02:01:00"),
+        (SourceId(1), "2004/05/06 07:08:09"),
+    ] {
+        project
+            .edit_document_source_metadata(source, |draft| {
+                let mut info = draft.font_info().clone();
+                info.open_type_head_created = Some(raw.into());
+                draft.set_font_info(info);
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(
+            project
+                .encode_ufo_source(source)
+                .unwrap()
+                .font_info
+                .open_type_head_created
+                .as_deref(),
+            Some(raw)
+        );
+    }
+    assert_eq!(
+        project.babelfont_snapshot().unwrap().date.to_rfc3339(),
+        "1998-04-03T02:01:00+00:00"
+    );
+    assert_eq!(
+        project
+            .document_font_info(SourceId(1))
+            .unwrap()
+            .open_type_head_created
+            .as_deref(),
+        Some("2004/05/06 07:08:09")
+    );
+}
+
+#[test]
+fn malformed_explicit_source_date_fails_before_compilation() {
+    for raw in [
+        "1998-04-03T02:01:00",
+        "1998/02/30 02:01:00",
+        "1998/04/03 02:01:60",
+    ] {
+        let mut project = project();
+        project
+            .edit_document_source_metadata(SourceId(0), |draft| {
+                let mut info = draft.font_info().clone();
+                info.open_type_head_created = Some(raw.into());
+                draft.set_font_info(info);
+                Ok(())
+            })
+            .unwrap();
+        assert!(
+            project
+                .babelfont_snapshot()
+                .unwrap_err()
+                .contains("invalid UFO openTypeHeadCreated")
+        );
+    }
 }
 
 #[test]

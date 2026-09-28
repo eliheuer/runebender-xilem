@@ -6,6 +6,23 @@
 use super::super::model::font_info::{CanonicalFontInfo, OpenTypeWidthClass};
 use super::super::model::glyph_metadata::OpenTypeGlyphCategory;
 
+// An imported UFO without openTypeHeadCreated must compile identically after every reopen.
+// File timestamps and the time at which Babelfont's empty font was constructed are not inputs.
+const UNDATED_SOURCE_CREATION_DATE: &str = "2000-01-01T00:00:00Z";
+
+fn valid_ufo_creation_date_shape(raw: &str) -> bool {
+    raw.len() == 19
+        && raw.bytes().enumerate().all(|(index, byte)| match index {
+            4 | 7 => byte == b'/',
+            10 => byte == b' ',
+            13 | 16 => byte == b':',
+            _ => byte.is_ascii_digit(),
+        })
+        && raw[11..13].parse::<u8>().is_ok_and(|hour| hour < 24)
+        && raw[14..16].parse::<u8>().is_ok_and(|minute| minute < 60)
+        && raw[17..19].parse::<u8>().is_ok_and(|second| second < 60)
+}
+
 /// Quantize an exact editable units-per-em value for OpenType compilation.
 pub(super) fn units_per_em(value: f64) -> Result<u16, String> {
     if !value.is_finite() {
@@ -142,6 +159,19 @@ pub(super) fn glyph_category_from_values<'a>(
 }
 
 pub(super) fn apply(font: &mut babelfont::Font, info: &CanonicalFontInfo) -> Result<(), String> {
+    font.date = match &info.open_type_head_created {
+        Some(raw) => {
+            if !valid_ufo_creation_date_shape(raw) {
+                return Err(format!("invalid UFO openTypeHeadCreated {raw:?}"));
+            }
+            let iso = format!("{}Z", raw.replace('/', "-").replace(' ', "T"));
+            iso.parse()
+                .map_err(|_| format!("invalid UFO openTypeHeadCreated {raw:?}"))?
+        }
+        None => UNDATED_SOURCE_CREATION_DATE
+            .parse()
+            .expect("the fixed undated-source creation date is valid"),
+    };
     macro_rules! names {
         ($($target:ident => $source:ident),* $(,)?) => {
             $(font.names.$target = info.names.$source.as_ref().map_or_else(

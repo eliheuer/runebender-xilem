@@ -93,6 +93,7 @@ fn populated_font_info() -> norad::FontInfo {
         open_type_os2_weight_class: Some(450),
         open_type_os2_width_class: Some(norad::fontinfo::Os2WidthClass::SemiCondensed),
         open_type_os2_vendor_id: Some("TEST".into()),
+        open_type_head_created: Some("1998/04/03 02:01:00".into()),
         note: Some(String::new()),
         version_major: Some(1),
         version_minor: Some(234),
@@ -115,6 +116,10 @@ fn canonical_font_info_round_trips_exactly_and_clears_only_owned_fields() {
         Some(OpenTypeWidthClass::SemiCondensed)
     );
     assert_eq!(canonical.note.as_deref(), Some(""));
+    assert_eq!(
+        canonical.open_type_head_created.as_deref(),
+        Some("1998/04/03 02:01:00")
+    );
 
     let mut unchanged = original.clone();
     assert!(!canonical.write_to_ufo(&mut unchanged).unwrap());
@@ -126,6 +131,7 @@ fn canonical_font_info_round_trips_exactly_and_clears_only_owned_fields() {
         CanonicalFontInfo::from_ufo(&template).unwrap(),
         CanonicalFontInfo::default()
     );
+    assert_eq!(template.open_type_head_created, None);
     assert_eq!(
         template.open_type_name_compatible_full_name.as_deref(),
         Some("unowned compatible name")
@@ -172,6 +178,43 @@ fn editor_metric_defaults_are_resolved_without_becoming_stored_values() {
     );
     assert_eq!(metrics.units_per_em, None);
     assert_eq!(metrics.ascender, None);
+}
+
+#[test]
+fn new_font_records_its_creation_date_in_canonical_source_info() {
+    let scratch = Scratch::new();
+    let project = Project::new_canonical_font(
+        scratch.0.join("Created.ufo"),
+        "Created Family",
+        "Regular",
+        400,
+    )
+    .unwrap();
+    let raw = project
+        .document_font_info(SourceId(0))
+        .unwrap()
+        .open_type_head_created
+        .as_deref()
+        .unwrap();
+    assert_eq!(raw.len(), 19);
+    assert_eq!(
+        project
+            .encode_ufo_source(SourceId(0))
+            .unwrap()
+            .font_info
+            .open_type_head_created
+            .as_deref(),
+        Some(raw)
+    );
+    assert_eq!(
+        project
+            .babelfont_snapshot()
+            .unwrap()
+            .date
+            .format("%Y/%m/%d %H:%M:%S")
+            .to_string(),
+        raw
+    );
 }
 
 #[test]

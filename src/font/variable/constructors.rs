@@ -14,7 +14,7 @@ const DEFAULT_LAYER_NAME: &str = "public.default";
 impl VariableData {
     /// Construct a new canonical source before creating its UFO compatibility template.
     pub(in crate::font) fn from_new_font(
-        specification: NewFontSpecification,
+        mut specification: NewFontSpecification,
     ) -> Result<Self, String> {
         specification
             .font_info
@@ -38,6 +38,11 @@ impl VariableData {
             name: DEFAULT_LAYER_NAME.into(),
         };
         let mut data = Self::default();
+        // File > New Font is an intentional creation event.
+        // Store the time already sampled for this canonical font, so saving and reopening do not
+        // invent another creation date.
+        specification.font_info.open_type_head_created =
+            Some(data.font.date.format("%Y/%m/%d %H:%M:%S").to_string());
         data.source_ids.push(source);
         data.next_source = 1;
         data.source_metadata.insert(

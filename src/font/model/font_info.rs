@@ -199,6 +199,8 @@ pub struct CanonicalFontInfo {
     pub open_type_metrics: CanonicalOpenTypeMetrics,
     /// Exact non-metric OpenType values.
     pub open_type: CanonicalOpenTypeInfo,
+    /// Exact UFO `openTypeHeadCreated` value, absent when the source has no creation date.
+    pub open_type_head_created: Option<String>,
     /// Arbitrary source note, preserving absent versus empty.
     pub note: Option<String>,
     /// Major version number.
@@ -299,6 +301,7 @@ impl CanonicalFontInfo {
                 width_class: info.open_type_os2_width_class.map(width_class_from_ufo),
                 vendor_id: info.open_type_os2_vendor_id.clone(),
             },
+            open_type_head_created: info.open_type_head_created.clone(),
             note: info.note.clone(),
             version_major: info.version_major,
             version_minor: info.version_minor,
@@ -413,6 +416,9 @@ impl CanonicalFontInfo {
         output
             .open_type_os2_vendor_id
             .clone_from(&self.open_type.vendor_id);
+        output
+            .open_type_head_created
+            .clone_from(&self.open_type_head_created);
         output.note.clone_from(&self.note);
         output.version_major = self.version_major;
         output.version_minor = self.version_minor;
