@@ -50,6 +50,24 @@ His reported tokenizer collapse motivates intermediate representation checks; it
 Reference-conditioned imagery plus calibrated img2bez is a separate credible route to test.
 Neither hypothesis is an accepted result yet.
 
+### Brush workflow restoration, user-directed priority
+
+Eli identified /Users/eli/GH/repos/runebender-web and explicitly requested finding and porting its earlier sketch workflow.
+Confirmed implementation: src/components/SketchPanel.vue, src/Runebender.vue sketch raster/crop/trace/draft functions, and server/serve.mjs sketch2glyph endpoint.
+Source checkout HEAD a6375df8e82ac38f118baf12eb3aba628c1899e5 has unrelated uncommitted work; inspect only and preserve it.
+Prioritize a font-unit brush sketch layer, erase/clear, and deterministic Trace-to-draft in the native editor, then restored local-model drafting with verified calibration.
+Sketch input expresses Eli's intended construction; Rubik is optional supporting reference, not a skeleton to copy mechanically.
+Do not port old automatic blue grading or direct source installation; use current detached candidate review and explicit Apply/Undo.
+- [ ] S1. Restore separate native brush sketch input with font-unit widths, erase/clear and stable glyph/viewport placement; no outline mutation while drawing.
+- [ ] S2. Connect the actual sketch to deterministic calibrated tracing and existing staged candidate review; verify Apply/Undo and protected grades.
+- [ ] S3. Fix and verify the local runner's placement before enabling Draft with Virtua; reproduce a known sketch control before judging new Arabic generation.
+Confirmed X2 defect: installed img2bez defaults to canvas fitting and ignores --lsb in that mode, but the runner passes ink-box placement arguments without --fit-source ink.
+Saved source bounds [-80,0,808,768] become traced bounds [64,168,728,742] before inference; tokenizer retains two contours and these bounds, with only small grid rounding.
+The 174-token prefix is within the 1848-token input guard; neither unknown name nor excessive prefix length explains this trial.
+The prior model result remains rejected, but it is not a correctly calibrated model-quality test.
+S1-S2 assigned to regular_proof_sol: native sketch module and narrow tool/canvas/panel wiring, ownership map before edits; no Cargo, commits, source fonts or model runs.
+Coordinator owns S3 and checklist; further general framework work remains deferred.
+
 ### Experiment gates, in priority order
 
 - [ ] X1. Freeze one shared experiment packet for red Regular kaf-ar.medi: source/reference identities, initial/final kaf and medial lam relevance, baseline geometry, intended joining form, calibrated sketch, and identical word/detail proof recipes.
@@ -510,3 +528,15 @@ X1 remains open: matching shaped word proofs are still pending.
 Read-only X2 findings: exact target name and U+0643 exist in sketchpre vocabulary; saved image bounds map correctly to source geometry.
 Generated output loses one contour and its upper region; the sampled result was the sole candidate, so scoring did not select among alternatives.
 Sol is retaining scratch trace and tokenizer round-trip intermediates without inference to distinguish preprocessing failure from generation failure; X2 remains open.
+
+### S3 scratch tracing correction experiment
+Coordinator ran installed img2bez only, with no model inference or original source edits.
+Adding --fit-source ink alone fails explicitly because this binary also requires --fit-y.
+Successful command uses saved input.png, --grid 2 --profile clean --target-height 768 --y-offset 0 --lsb -80 --fit-source ink --fit-y 0:768.
+Output /private/tmp/runebender-kaf-trial-sjiv0m10/experiment/diagnosis/ink-fit.ufo retains two contours and 65 points at scale 2.00, with bounds x[-80,806], y[0,764].
+This removes the gross shift/compression; small fitting/grid differences remain relative to source x[-80,808], y[0,768].
+A second scratch trace with --width 808 still reports advance 870 under ink fitting; never import this generated advance into the target.
+The existing local adapter retains captured advance independently; the corrected runner must continue doing so.
+S3 remains open: explicit placement has not yet been integrated into the pinned model runner or tested with model inference.
+Active Sol brush-port ownership approved: sketch module, narrow workspace Tool/canvas/panel/commands bridge and trace entry invocation; local_sketch.rs remains coordinator-owned.
+Do not expose the local Draft action until calibrated preprocessing is verified; deterministic sketch tracing may proceed.
