@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "fixture": "glyph_workflow.too_heavy_in_paragraph",
+  "illustrative_only": true,
+  "workflow": "refine_from_specimen_feedback",
+  "feedback": "too heavy in the paragraph",
+  "document": {
+    "source_revision": "demo-revision-regular-008",
+    "master": "Regular",
+    "target": {
+      "glyph": "demo_looped_join-ar.medi",
+      "glyph_id": "demo-glyph-looped-join-medi",
+      "form": "arabic_medial",
+      "human_grade": "orange"
+    }
+  },
+  "grade_legend": {
+    "green": "human-approved reference; never edit",
+    "purple": "protected; never edit",
+    "blue": "candidate awaiting human grade",
+    "yellow": "selected polish target",
+    "orange": "selected refinement target",
+    "red": "explicitly eligible unfinished target",
+    "unknown": "not an automatic target"
+  },
+  "references": {
+    "green": [
+      {
+        "glyph": "demo_looped_join-ar.init",
+        "glyph_id": "demo-green-initial",
+        "human_grade": "green",
+        "roles": ["stroke_distribution", "joining_entry", "chamfer"]
+      },
+      {
+        "glyph": "demo_small_bowl-ar.medi",
+        "glyph_id": "demo-green-medial-bowl",
+        "human_grade": "green",
+        "roles": ["counter", "medial_exit", "paragraph_color"]
+      }
+    ],
+    "protected": [
+      {
+        "glyph": "demo_looped_join-ar.fina",
+        "glyph_id": "demo-protected-final",
+        "human_grade": "purple",
+        "reason": "final form is a comparison reference, never an optical-edit target"
+      }
+    ],
+    "unknown": [
+      {
+        "glyph": "demo_unclassified_mark-ar",
+        "glyph_id": "demo-unknown-mark",
+        "human_grade": "unknown",
+        "reason": "cannot be selected or changed automatically"
+      }
+    ]
+  },
+  "evidence": {
+    "structural_hard_constraints": [
+      "target revision must equal document.source_revision",
+      "only point and handle edits are permitted by default",
+      "preserve advance, joining placement, anchors, dots, and components",
+      "keep valid contour topology, extrema, deliberate chamfers, and required smooth continuity",
+      "candidate and baseline use the identical proof recipe"
+    ],
+    "measured_reference_data": {
+      "status": "illustrative measurements, not Virtua facts",
+      "demo_stem_units": 96,
+      "demo_counter_width_units": 180,
+      "demo_paragraph_darkness": 0.57
+    },
+    "design_preferences": [
+      "classify the complaint as stem thickness, dark junction, counter, terminal, proportion, or spacing before proposing edits",
+      "prefer narrow local edits over whole-outline shrink",
+      "curve continuity and perceived color outrank coordinate tidiness",
+      "a bounded detached optical proposal may use the finer 2-unit grid after structural constraints hold"
+    ],
+    "grid_policy": {
+      "structural_draft": "use the established machine grid",
+      "optical_refinement": "run the bounded autonomous proposal loop on detached candidates; finer 2-unit adjustments need no per-iteration human approval",
+      "apply_and_grade": "explicit selection is required for Apply; only a human may set green"
+    },
+    "model_assessment": {
+      "round_0": "suspects a dark medial junction; confidence is advisory",
+      "allowed": ["propose hypotheses", "rank equal-condition proofs", "abstain"],
+      "forbidden": ["treat score as aesthetic truth", "apply changes", "grade green"]
+    },
+    "human_grade": {
+      "target_before": "orange",
+      "proposals": "blue",
+      "only_human_may_set": "green"
+    }
+  },
+  "optical_budget": {
+    "rounds_max": 3,
+    "alternatives_per_round_max": 2,
+    "one_glyph_only": true,
+    "retain": ["original", "current_candidate", "best_prior_candidate"],
+    "stop_on": ["no_improvement", "uncertainty", "invalid_geometry", "stale_revision", "cancellation", "budget_exhausted"]
+  },
+  "proof_conditions": {
+    "freeze": ["font_revision", "recipe", "renderer_identity", "direction", "language", "features", "text", "wrapping", "layout", "viewing_size", "colors"],
+    "required_artifacts": ["reading_size_paragraph", "magnified_medial_detail", "second_rtl_word_context"],
+    "arabic_contextual": {
+      "direction": "rtl",
+      "built_font_required": true,
+      "resolve_occurrence": {
+        "glyph": "demo_looped_join-ar.medi",
+        "glyph_id": "demo-glyph-looped-join-medi",
+        "cluster": "demo-cluster-05"
+      },
+      "contexts": ["demo_rtl_paragraph", "demo_rtl_second_word"],
+      "context_labels_only": true,
+      "integration_requirement": "supply actual Unicode text and shaped occurrences; these labels do not establish Arabic shaping",
+      "verify": ["medial_joining", "anchor_and_mark_placement", "paragraph_color", "best_prior_retained"]
+    }
+  },
+  "outcomes": {
+    "accepted": "selected detached blue proposal remains available for one undoable Apply and human grade",
+    "abstain": {
+      "reasons": ["complaint_unclassified", "no_proofed_improvement", "model_uncertainty", "proof_identity_mismatch", "protected_or_unknown_target", "budget_exhausted", "cancelled"],
+      "effect": "preserve the original and best prior candidate; do not mutate the target"
+    }
+  }
+}

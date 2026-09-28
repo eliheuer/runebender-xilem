@@ -1,6 +1,6 @@
 # Virtua Regular AI workflow checklist
 
-Status: implementation started; first assignments below are in progress, not validated.
+Status: B1 validated and committed; context fixtures reviewed but not yet consumed; C1 running.
 Created: 2026-09-28.
 Coordinator: this Codex task, with Astra owning architecture and integration review.
 Worktree: /Users/eli/.codex/worktrees/virtua-regular-ai/runebender-xilem.
@@ -150,7 +150,7 @@ Check provenance/topology/unrelated changes before treating any such difference 
 Acceptance: coordinator reviews sources and semantics; JSON parses; later B/D consume these fixtures rather than leaving decorative schemas.
 
 ### B. Reproducible proof context (Sol; independent of C)
-- [ ] B1. Add bounded, backward-compatible viewing-size/layout settings to compiled proof recipes and render from them; freeze defaults for older recipes.
+- [x] B1. Add bounded, backward-compatible viewing-size/layout settings to compiled proof recipes and render from them; freeze defaults for older recipes.
 - [ ] B2. Capture editor text settings and exact shaped target occurrence; send the same recipe to baseline and candidate proofs; reject comparison recipe mismatch.
 - [ ] B3. Supply reading-size and enlarged-detail proof artifacts with document/font/recipe/renderer identity.
 Acceptance: meaningful geometry/size tests, invalid/oversized input rejection, old fixture compatibility, Arabic contextual/ligature/mark occurrence identity and matched baseline/candidate recipes.
@@ -192,11 +192,13 @@ If only F5 or another external prerequisite remains, report "ready for review" a
 
 | Assignment | Worker | Owned files | State |
 | --- | --- | --- | --- |
-| A1-A3 | Terra (next available worker) | tests/fixtures/glyph_workflow/** only | Queued |
-| B1 | regular_proof_sol (GPT-6 Sol) | src/font/compiler/proof.rs and narrowly required recipe constructor call sites | Running: /root/regular_proof_sol |
+| A1-A3 | regular_context_terra (GPT-5.6 Terra) | tests/fixtures/glyph_workflow/** only | Reviewed and JSON-validated; fixture consumption remains pending |
+| B1 | regular_proof_sol (GPT-6 Sol) | src/font/compiler/proof.rs and five recipe constructor call sites | Validated; d6f50f7 |
+| C1 | regular_proof_sol (GPT-6 Sol), reused | src/font/project/edit_transactions.rs, src/font/babelfont/edit_contours.rs, src/automation/agent_edit.rs, src/automation/agent_edit/results.rs, src/font/compiler/proof.rs; narrowly necessary exhaustive-match sites | Running: /root/regular_proof_sol |
 
-Only B1 is active.
-Terra dispatch hit the agent thread capacity limit; retry once after the Sol worker completes or at the next heartbeat, without duplicating B1.
+Sol is active on C1; Terra has completed the reviewed fixture preparation.
+The earlier capacity limit cleared after Sol completed; the queued Terra assignment was dispatched once.
+Worker completion means a patch is ready for review, not that its acceptance gates passed.
 Record worker IDs, handoffs and scope changes here before dispatch.
 Workers report tests recommended, do not run Cargo or stage changes.
 
@@ -205,7 +207,18 @@ Workers report tests recommended, do not run Cargo or stage changes.
 - 2026-09-28: coordinator read current main, clean at c9cb462, created isolated worktree and codex/virtua-regular-ai.
 No font or icon edits.
 No checklist implementation acceptance is claimed yet.
-- Host memory and process inspection were sandbox-blocked; use two build jobs and coordinator-only Cargo until confirmed.
+- Process inspection was initially sandbox-blocked; a scoped read subsequently confirmed no Cargo/Rust compiler process before testing.
+Use two build jobs and coordinator-only Cargo until host memory is confirmed.
+- B1: d6f50f7 adds explicit proof scale/layout/colors with legacy JSON defaults preserved.
+`RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources CARGO_TARGET_DIR=/Users/eli/GH/repos/runebender-xilem/target CARGO_BUILD_JOBS=2 cargo test --locked font::compiler::proof::tests -- --test-threads=1` passed: 13 tests, zero failures or ignored tests.
+The first attempt without RUNEBENDER_TEST_FONTS had four missing-fixture failures; the configured rerun resolved them.
+`cargo fmt --all --check` and `git diff --check` passed.
+This validates B1 only: advance-based wrapping remains; no paragraph layout or visual-quality claim, no B2/B3 acceptance, and no real-model trial yet.
+Main remains clean and unchanged; no font/icon edits.
+- Context fixtures: coordinator reviewed the three files and requested corrections for source attribution, explicit detached state, illustrative context labels and the authorized fine-grid proposal policy.
+`jq -e 'type == "object"' tests/fixtures/glyph_workflow/*.json` passed for both files; `git diff --check` passed.
+The worker-reported `jq -e empty` parses input but returns exit 4, so the coordinator used the explicit successful object check instead.
+A gates remain unchecked until executable consumers use the fixtures; synthetic labels are not Arabic proof evidence.
 - Add exact implementation commits, validation commands/results and human-review status here as each gate completes.
 
 ## Context sources

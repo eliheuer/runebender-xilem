@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "fixture": "glyph_workflow.missing_arabic_regular_form",
+  "illustrative_only": true,
+  "workflow": "draft_missing_form",
+  "document": {
+    "source_revision": "demo-revision-regular-004",
+    "master": "Regular",
+    "target": {
+      "glyph": "demo_joining_arc-ar.init",
+      "glyph_id": "demo-glyph-joining-arc-init",
+      "form": "arabic_initial",
+      "human_grade": "red"
+    }
+  },
+  "grade_legend": {
+    "green": "human-approved reference; never edit",
+    "purple": "protected; never edit",
+    "blue": "candidate awaiting human grade",
+    "yellow": "selected polish target",
+    "orange": "selected refinement target",
+    "red": "explicitly eligible unfinished target",
+    "unknown": "not an automatic target"
+  },
+  "references": {
+    "green": [
+      {
+        "glyph": "demo_joining_arc-ar.medi",
+        "glyph_id": "demo-green-medial",
+        "human_grade": "green",
+        "roles": ["joining_behavior", "tooth", "baseline"]
+      },
+      {
+        "glyph": "demo_dotless_bowl-ar.init",
+        "glyph_id": "demo-green-dotless-init",
+        "human_grade": "green",
+        "roles": ["initial_entry", "bowl", "anchor_layout"]
+      }
+    ],
+    "protected": [
+      {
+        "glyph": "demo_joining_arc-ar.fina",
+        "glyph_id": "demo-protected-final",
+        "human_grade": "purple",
+        "reason": "related form remains outside this one-glyph draft"
+      }
+    ]
+  },
+  "evidence": {
+    "structural_hard_constraints": [
+      "target revision must equal document.source_revision",
+      "no original font data may mutate before an explicit Apply",
+      "a detached candidate may differ only in the selected Regular target",
+      "candidate preserves target advance, anchors, components, and metadata unless an exception is recorded",
+      "candidate uses valid contours",
+      "protected and unknown glyphs are not mutation targets"
+    ],
+    "measured_reference_data": {
+      "status": "illustrative measurements, not Virtua facts",
+      "entry_overlap_units": -16,
+      "tooth_top_units": 424,
+      "demo_anchor": "topDots at (136, 456)"
+    },
+    "design_preferences": [
+      "reuse a relevant green construction before tracing a reference image",
+      "retain deliberate chamfers and extrema/handle structure",
+      "prefer smooth joins and perceived weight over round-looking coordinates"
+    ],
+    "grid_policy": {
+      "structural_draft": "use the established machine grid",
+      "optical_refinement": "a bounded detached candidate may make finer 2-unit adjustments after structural constraints hold",
+      "apply_and_grade": "explicit selection is required for Apply; only a human may set green"
+    },
+    "model_assessment": {
+      "allowed": ["rank detached candidates", "report uncertainty"],
+      "forbidden": ["apply a candidate", "grade green", "claim Arabic correctness"]
+    },
+    "human_grade": {
+      "target_before": "red",
+      "candidate_after_generation": "blue",
+      "only_human_may_set": "green"
+    }
+  },
+  "candidate_budget": {
+    "initial_candidates_max": 3,
+    "retain": ["direct_trace_if_used", "current_candidate", "best_prior_candidate"],
+    "apply": "one explicitly selected candidate as one undo group"
+  },
+  "proof_conditions": {
+    "freeze": ["font_revision", "recipe", "renderer_identity", "direction", "language", "features", "text", "layout", "viewing_size"],
+    "required_artifacts": ["reading_size_context", "magnified_detail"],
+    "arabic_contextual": {
+      "direction": "rtl",
+      "built_font_required": true,
+      "resolve_occurrence": {
+        "glyph": "demo_joining_arc-ar.init",
+        "glyph_id": "demo-glyph-joining-arc-init",
+        "cluster": "demo-cluster-02"
+      },
+      "contexts": ["demo_rtl_joining_word_one", "demo_rtl_joining_word_two"],
+      "context_labels_only": true,
+      "integration_requirement": "supply actual Unicode text and shaped occurrences; these labels do not establish Arabic shaping",
+      "verify": ["joining", "positional_form", "anchors", "dots_and_marks", "no_clipping"]
+    }
+  },
+  "outcomes": {
+    "accepted": "detached blue candidate is proofed and awaits human review",
+    "abstain": {
+      "reasons": ["stale_revision", "protected_or_unknown_target", "invalid_geometry", "proof_identity_mismatch", "uncertain_ranking", "budget_exhausted", "cancelled"],
+      "effect": "do not apply; retain prior evidence and candidate state"
+    }
+  }
+}
