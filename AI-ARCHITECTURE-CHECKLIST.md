@@ -96,12 +96,20 @@ Trusted local Python is not an OS sandbox; do not imply otherwise.
 
 ### C. Make worker execution consistent
 
-- [ ] C1. Define a common job lifecycle with explicit cancellation capability, deadlines, output bounds, progress, and retained results.
-  Reuse existing queues where they already satisfy this contract.
-- [ ] C2. Migrate disk workflow, Local AI, and Chat subprocess supervision onto the supported lifecycle.
-  Test hung, noisy, failed, cancelled, and late-result workers.
+- [x] C1. Define a common job lifecycle with explicit cancellation capability, deadlines, output bounds, progress, and retained results.
+  Integrated as 718290d with workflows::process terminal outcomes, shared cancellation tokens, configurable per-process limits, bounded line callbacks and captured terminal bytes.
+  Existing recipe queues and host job records retain their ownership; no unused generic scheduler was added.
+  Cancellation kills and reaps the direct child, including callback unwind cleanup; it does not terminate descendants or undo external side effects.
+- [x] C2. Migrate disk workflow, Local AI, and Chat subprocess supervision onto the supported lifecycle.
+  Integrated as 718290d for those callers, Python recipes, interpreter availability and native/CLI task discovery.
+  Verified hung/noisy/failed workers, blocked input, descendant handles, pre-spawn cancellation, late-result suppression, queue publication races, downstream cancellation and uncached failed candidates with offline fixtures.
+  Model calls default to 30 minutes, 1 MiB input, 4 MiB stdout and 256 KiB stderr; recipes retain their shorter existing limits and task discovery uses two seconds.
+  Chat caps accepted events per turn; native disk graphs coalesce progress per node and cancel on owner drop.
+  RunContext exposes disk cancellation to hosts; this phase does not add a disk-workflow Cancel button or interrupt running core font operations.
 - [ ] C3. Support a persistent local-model worker adapter without making model memory or runtime state part of Project.
-- [ ] C4. Keep browser availability explicit and preserve native/browser build boundaries.
+- [x] C4. Keep browser availability explicit and preserve native/browser build boundaries.
+  Verified 718290d with the separate browser release build and headless smoke test; the shared runner returns BrowserUnavailable on wasm and native UI execution guards remain explicit.
+  Re-run the browser gate when C3 or later shared-source changes extend this boundary.
 
 ### D. Generalize live graphs
 
@@ -203,13 +211,16 @@ Verification logs:
 - /tmp/runebender-ai-foundation-headless.log: no-default-features library check passed.
 
 
-Next dependency-ready work: C1/C2 shared subprocess supervision consumed by existing disk workflow, Local AI and Chat callers.
-All B items are complete for their recorded acceptance scope; provider execution, general DAGs and extension registries remain separate implementation work.
-Start from the existing script_jobs deadline/cancellation/output capture implementation and preserve its browser-unavailable behavior.
-The current Local AI, Chat and disk workflow subprocess paths read unbounded output and do not share the recipe runner's deadline contract.
-Agree the reusable native process boundary before assigning at most two Sol workers with disjoint supervisor and caller ownership; keep it outside Project and provider-specific model state.
-Retain bounded progress/results, make cancellation capabilities explicit, and test blocked stdin, hung/noisy workers, descendants retaining standard handles, failed exits, cancellation races and late results.
-A shared unused scheduler is not acceptance; migrate the actual callers and preserve their proposal, conversation and graph semantics.
+Next dependency-ready work: C3, a consumed persistent local-model adapter with offline protocol fixtures.
+C1/C2/C4 are complete for the existing callers; general DAGs, cloud/vector providers and extension grants remain separate work.
+The installed /Users/eli/.cargo/bin/font-ml help advertises serve --model with a loopback OpenAI-compatible endpoint; no server or model was started.
+A read-only source inspection found /Users/eli/GH/repos/font-ml/src/serve.rs implements GET /v1/models and POST /v1/chat/completions with one resident model and sequential requests.
+Verify the exact supported protocol and cancellation behavior before choosing the adapter; the installed binary and sibling source are not assumed to be identical builds.
+Use deterministic offline fixtures to prove repeated requests reuse the worker, failures and cancellation retain truthful status, and no model state enters Project.
+The adapter must be consumed by a current host path, with a supported configuration route; do not add an unused provider wrapper or claim that existing font-ml run task processes are persistent.
+Keep assistant tool orchestration separate from model inference and preserve existing scope/revision guards at result publication.
+Review any new HTTP/runtime dependency explicitly and preserve browser unavailability for native process ownership.
+Do not start real models, download weights, connect providers or modify the sibling font-ml repository in this pass.
 Use Project-owned identities and existing atomic commit/history paths; B4 supplies generated outline operations without caller-created canonical identities or mutable font wrappers.
 Receipt-bearing rejected or cancelled edits may return ok=false with an error inside receipt.outcome; preserve those shapes explicitly rather than assuming every failure uses the generic top-level error envelope.
 Use at most two disjoint implementation workers.
@@ -372,3 +383,48 @@ The bundled anchor worker supports both versions and ignores outline/component c
 Website guidance was audited read-only; H4 should document v2 captures and guarded generated geometry in the scripting and MCP guides.
 All 21 original dirty baseline files were rehashed and remain unchanged; nothing was pushed, merged, published, connected to an account or downloaded as a model.
 The 30-minute coordinator remains ACTIVE for C-H; no C implementation assignment has been launched yet.
+
+
+2026-09-28: The fifth continuation completed C1/C2 and the current C4 boundary in 718290d4fd212606362a865c8ba990dd57a4da4b.
+The coordinator verified a clean integration branch and completed workers before assigning two GPT-6 Sol workers: process_supervision and model_process_callers.
+The supervisor worker owned the shared process module and recipe integration; the adapter worker owned Chat and Local AI.
+GPT-6 Luna audited maintained documentation read-only.
+The coordinator reviewed every worker diff, integrated native/CLI disk workflows and discovery, and serialized all Cargo commands.
+All workers are complete and no next-phase assignment is active.
+
+The shared runner uses private temporary standard streams with bounded retained buffers and line callbacks, avoiding blocked stdin pipes and descendant-held EOF hangs.
+It validates deadlines and byte limits before spawn, checks output after exit, and retains typed terminal outcomes.
+Capture files can grow beyond their retained byte cap between polls; this is not a hard disk quota or an OS sandbox.
+Cancellation and callback unwinding kill and reap only the direct child; processes can already have changed disk sources and those changes are not rolled back.
+Disk graph cancellation prevents later nodes from starting and suppresses candidate publication/cache entries, while running core operations remain non-preemptible.
+Chat, Local AI and Nodes cancel their children on owner drop; late cancellation prevents pending candidate import or final message publication.
+The recipe queue preserves its bounded retention, source isolation and strict result validation, with a final state-locked publication gate.
+A pre-spawn cancellation remains distinct from cancellation of an actual running child.
+Chat limits a turn to 8192 accepted events, and the disk UI retains the most recent progress per node between pumps.
+No model/runtime state or provider-specific client was added to Project.
+
+Verification for 718290d:
+
+- /tmp/runebender-ai-foundation-process-compile.log: cargo test --workspace --no-run --locked compiled every native test target after correcting a new coordinator test's Result assertion.
+- /tmp/runebender-ai-foundation-process-focused.log: cargo test --locked --lib workflows:: -- --test-threads=1 passed all 54 focused tests, including callback unwind cleanup and actual core-node cancellation before disk writes.
+- /tmp/runebender-ai-foundation-process-tests.log: cargo test --workspace --locked -- --test-threads=1 passed 1036 tests, 0 failed, 4 ignored across 23 suites before the final pre-spawn recipe receipt preservation adjustment.
+- /tmp/runebender-ai-foundation-process-recipe-final.log: all 9 recipe queue tests passed on the final receipt logic, including the real v1/v2 Python example and cancellation before publication; the entire native suite was not repeated for this focused adjustment.
+- /tmp/runebender-ai-foundation-process-clippy.log: strict all-target Clippy passed on the final code after two explicit-default style corrections in the CLI adapter.
+- /tmp/runebender-ai-foundation-process-doc.log: workspace documentation passed.
+- /tmp/runebender-ai-foundation-process-headless.log: the no-default-features library check passed.
+- cargo fmt --all --check, bash .github/scripts/copyright.sh and staged git diff --check passed, including the shared process module.
+- /tmp/runebender-ai-foundation-process-web.log: ./web/build.sh passed using the separate browser workspace/cache.
+- /tmp/runebender-ai-foundation-process-browser-smoke.log: web/smoke.cjs passed at 1x density; the temporary loopback server was stopped afterward.
+
+Validation exposed three fixture assumptions that were corrected without weakening the intended behavior checks.
+The normal external-worker fixture now allows two seconds for cold executable startup while the deliberately hung case retains its short deadline.
+The late-proposal fixture now opens the canonical document before the external disk proposal is written, so cancellation actually exercises candidate import suppression.
+The running-child cancellation fixture waits for a child-created readiness marker instead of assuming queue Running means spawn has already completed.
+The ignored real-model workflow test was updated for coalesced UI progress; it was not executed and remains outside runtime coverage.
+No view code changed; the prior B5 density matrix and Gray/Light native captures were not repeated.
+Native release/advisory checks remain part of H acceptance, and no Linux/Windows runtime proof or real model trial is claimed.
+The existing block 0.1.6 dependency warning remains; no dependency was added.
+Website guidance was audited read-only and remains accurate for this migration; H4 will document the new shared boundary and configured limits with the broader final changes.
+Only font-ml help and existing source were inspected for C3 planning; no persistent server or model was launched.
+All 21 original dirty baseline files were rehashed and remain unchanged; no push, merge, account connection, paid API call, model download or publication occurred.
+The coordinator remains ACTIVE every 30 minutes because C3 and D-H are still incomplete.
