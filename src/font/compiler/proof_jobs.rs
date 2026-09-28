@@ -609,7 +609,7 @@ mod tests {
                 features: Vec::new(),
                 script: None,
                 language: None,
-                rendering: Default::default(),
+                rendering: crate::font::compiler::proof::CompiledProofRendering::default(),
             },
         }
     }
@@ -858,7 +858,7 @@ mod tests {
                     features: Vec::new(),
                     script: Some("latn".into()),
                     language: None,
-                    rendering: Default::default(),
+                    rendering: crate::font::compiler::proof::CompiledProofRendering::default(),
                 },
             })
             .unwrap();

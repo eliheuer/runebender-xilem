@@ -343,7 +343,7 @@ mod tests {
                 features: Vec::new(),
                 script: None,
                 language: None,
-                rendering: Default::default(),
+                rendering: runebender::font::compiler::proof::CompiledProofRendering::default(),
             },
         }
     }

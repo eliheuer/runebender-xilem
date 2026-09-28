@@ -238,7 +238,7 @@ mod tests {
             features: Vec::new(),
             script: None,
             language: None,
-            rendering: Default::default(),
+            rendering: runebender::font::compiler::proof::CompiledProofRendering::default(),
         };
         let mut jobs = NodeProofJobs::default();
         jobs.submit_node(7, 1, "node-proof-test".into(), baseline, recipe.clone())

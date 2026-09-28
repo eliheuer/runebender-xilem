@@ -305,7 +305,7 @@ mod tests {
                     features: vec![],
                     script: None,
                     language: None,
-                    rendering: Default::default(),
+                    rendering: crate::font::compiler::proof::CompiledProofRendering::default(),
                 },
                 glyphs: vec![CompiledProofGlyph {
                     glyph_id: 1,
