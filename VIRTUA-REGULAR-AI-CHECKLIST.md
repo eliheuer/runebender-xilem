@@ -1,6 +1,6 @@
 # Virtua Regular AI workflow checklist
 
-Status: B1 and C1 validated and committed; context fixtures reviewed but not yet consumed; C2 running.
+Status: B1, C1 and C2 validated and committed; context fixtures reviewed but not yet consumed; B2 running.
 Created: 2026-09-28.
 Coordinator: this Codex task, with Astra owning architecture and integration review.
 Worktree: /Users/eli/.codex/worktrees/virtua-regular-ai/runebender-xilem.
@@ -158,7 +158,7 @@ Actual headless proof inspection is required before visual claims.
 
 ### C. Safe missing-outline candidates (Sol; follows B1 to avoid proof.rs ownership conflict)
 - [x] C1. Add bounded complete-outline replacement through canonical guarded transactions, agent operations and private candidate compilation.
-- [ ] C2. Add calibrated image/model-outline import into a detached candidate; preserve unrelated width/anchors/components/metadata unless explicitly addressed.
+- [x] C2. Add calibrated image/model-outline import into a detached candidate; preserve unrelated width/anchors/components/metadata unless explicitly addressed.
 - [ ] C3. Make the same candidate inspectable/selectable through existing UI and MCP, with one Apply/Undo and no automatic save.
 Acceptance: empty-to-drawn and junk-to-replaced, no root mutation before apply, stale rejection, unrelated/green preservation, proof of replacement, undo/redo restoration.
 Do not repair or synthesize Bold to make the trial pass.
@@ -195,9 +195,10 @@ If only F5 or another external prerequisite remains, report "ready for review" a
 | A1-A3 | regular_context_terra (GPT-5.6 Terra) | tests/fixtures/glyph_workflow/** only | Reviewed and JSON-validated; fixture consumption remains pending |
 | B1 | regular_proof_sol (GPT-6 Sol) | src/font/compiler/proof.rs and five recipe constructor call sites | Validated; d6f50f7 |
 | C1 | regular_proof_sol (GPT-6 Sol), reused | src/font/project/edit_transactions.rs, src/font/babelfont/edit_contours.rs, src/automation/agent_edit.rs, src/automation/agent_edit/results.rs, src/font/compiler/proof.rs; narrowly necessary exhaustive-match sites | Validated; c57edc3 |
-| C2 | regular_proof_sol (GPT-6 Sol), reused | src/formats/image_trace.rs, src/automation/agent_edit.rs; narrowly necessary canonical contour conversion helper only | Running: /root/regular_proof_sol |
+| C2 | regular_proof_sol (GPT-6 Sol), reused | src/formats/image_trace.rs, src/automation/agent_edit.rs; narrowly necessary canonical contour conversion helper only | Validated; a67dfe4 |
+| B2 | regular_proof_sol (GPT-6 Sol), reused | src/text/buffer/**, src/font/compiler/proof.rs, existing editor/proof request call sites as needed | Running: /root/regular_proof_sol |
 
-Sol is active on C2 after the validated C1 handoff.
+Sol is active on B2 after the validated C2 handoff.
 Terra has completed the reviewed fixture preparation.
 The earlier capacity limit cleared after Sol completed; the queued Terra assignment was dispatched once.
 Worker completion means a patch is ready for review, not that its acceptance gates passed.
@@ -234,6 +235,13 @@ Cargo still reports a dependency future-incompatibility notice for block 0.1.6.
 Replacement compile coverage is a single-source Regular UFO; multi-master topology may reject and no other master is modified.
 Browser build/smoke, actual Arabic visual proof, protected-grade policy and real-model trials remain pending integration gates.
 Context fixtures are committed at 17e920b; executable consumption remains pending.
+- C2: a67dfe4 adds explicit full-image pixel calibration, image/lockfile provenance and guarded replacement adaptation.
+With the established test-font/target/jobs environment, `cargo test --lib --locked formats::image_trace::tests -- --test-threads=1` passed 5 tests and `cargo test --lib --locked automation::agent_edit::tests -- --test-threads=1` passed 6 tests.
+`cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo fmt --all --check` and `git diff --check` passed.
+Coordinator checked pinned img2bez 80bdb2e neutral-em coordinate semantics against the explicit calibration math.
+Legacy tracing is retained; structured outline models can use C1 replacement directly without rasterization.
+Encoded images are capped at 4 MiB, 1024 pixels per edge and 262144 total pixels; larger generator outputs need resizing with adjusted calibration before import.
+Synthetic tests establish placement and detached staging, not Arabic style quality; C3 user-facing retention/provenance integration and real-model trials remain pending.
 - Add exact implementation commits, validation commands/results and human-review status here as each gate completes.
 
 ## Context sources
