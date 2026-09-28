@@ -1,15 +1,17 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Bounded off-editor calibrated tracing for the existing live Nodes graph.
+//! Bounded off-editor image candidates for the existing live Nodes graph.
 //!
-//! A single process-wide worker decodes and traces at most two admitted images.
-//! Workspace retains only one trace receipt per graph session. A finished trace becomes graph
+//! A single process-wide worker handles at most two admitted images or local sketch jobs.
+//! Workspace retains only one candidate receipt per graph session. A finished draft becomes graph
 //! intent only after the captured document, source, layer and graph guards are checked again.
 
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::path::PathBuf;
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError};
-use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 
 use base64::Engine as _;
 use runebender::automation::agent::ToolCall;
@@ -17,18 +19,26 @@ use runebender::automation::agent_edit::{
     AgentEditOperation, AgentEditRequest, AgentLayerEdits, AgentLayerGuard,
 };
 use runebender::automation::agent_nodes::results::{
-    NodesTracePhase, NodesTraceReleaseResult, NodesTraceStartResult, NodesTraceStatusResult,
+    NodesTraceBackend, NodesTracePhase, NodesTraceReleaseResult, NodesTraceStartResult,
+    NodesTraceStatusResult,
 };
-use runebender::automation::agent_nodes::{NodesTraceHandleRequest, NodesTraceRequest};
+use runebender::automation::agent_nodes::{
+    NodesLocalSketchSettings, NodesTraceHandleRequest, NodesTraceRequest,
+};
 use runebender::automation::glyph_grading::{
     GradingContext, GradingReferenceRequest, capture_replacement_context,
 };
 use runebender::font::edit_batch::canonical_glyph_revision;
 use runebender::font::variable::{GlyphLayerAddress, LayerId, SourceId};
 use runebender::formats::image_trace::{CalibratedTrace, TraceCalibration, trace_image_calibrated};
+use runebender::workflows::local_sketch::{
+    SketchCandidate, SketchPlacement, SketchRequest, SketchRuntime, SketchRuntimeIdentity,
+    inspect_runtime, run as run_local_sketch,
+};
 use runebender::workflows::nodes_session::{
     GraphEdit, GraphGuard, GraphMutation, GraphMutationRequest, GraphMutationResponse,
 };
+use runebender::workflows::process::ProcessCancellation;
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
 
@@ -42,14 +52,38 @@ static TRACE_WORKER: OnceLock<SyncSender<TraceWork>> = OnceLock::new();
 struct TraceWork {
     image_base64: String,
     calibration: TraceCalibration,
-    invert: bool,
-    cancelled: Arc<AtomicBool>,
+    backend: TraceWorkBackend,
+    cancelled: ProcessCancellation,
     events: mpsc::Sender<TraceEvent>,
+}
+
+enum TraceWorkBackend {
+    Calibrated {
+        invert: bool,
+    },
+    LocalSketch {
+        runtime: SketchRuntime,
+        settings: NodesLocalSketchSettings,
+        glyph: String,
+        advance: f64,
+    },
+}
+
+enum TraceOutput {
+    Calibrated(CalibratedTrace),
+    LocalSketch(Box<SketchCandidate>),
+}
+
+impl From<CalibratedTrace> for TraceOutput {
+    fn from(trace: CalibratedTrace) -> Self {
+        Self::Calibrated(trace)
+    }
 }
 
 enum TraceEvent {
     Started,
-    Finished(Result<CalibratedTrace, String>),
+    Pinned(SketchRuntimeIdentity),
+    Finished(Result<TraceOutput, String>),
 }
 
 fn worker() -> &'static SyncSender<TraceWork> {
@@ -57,17 +91,49 @@ fn worker() -> &'static SyncSender<TraceWork> {
         let (sender, receiver) = mpsc::sync_channel::<TraceWork>(MAX_GLOBAL_TRACE_JOBS - 1);
         std::thread::spawn(move || {
             while let Ok(work) = receiver.recv() {
-                if !work.cancelled.load(Ordering::Acquire) {
+                if !work.cancelled.is_cancelled() {
                     let _ = work.events.send(TraceEvent::Started);
                 }
-                let result = if work.cancelled.load(Ordering::Acquire) {
+                let result = if work.cancelled.is_cancelled() {
                     Err("trace cancelled before decoding".into())
                 } else {
                     base64::engine::general_purpose::STANDARD
                         .decode(&work.image_base64)
                         .map_err(|error| format!("invalid base64 trace image: {error}"))
-                        .and_then(|image| {
-                            trace_image_calibrated(&image, work.calibration, work.invert)
+                        .and_then(|image| match work.backend {
+                            TraceWorkBackend::Calibrated { invert } => {
+                                trace_image_calibrated(&image, work.calibration, invert)
+                                    .map(TraceOutput::Calibrated)
+                            }
+                            TraceWorkBackend::LocalSketch {
+                                runtime,
+                                settings,
+                                glyph,
+                                advance,
+                            } => {
+                                let pinned = inspect_runtime(&runtime)?;
+                                let _ = work.events.send(TraceEvent::Pinned(pinned.clone()));
+                                run_local_sketch(
+                                    &runtime,
+                                    &pinned,
+                                    &SketchRequest {
+                                        png: image,
+                                        glyph,
+                                        codepoint: settings.codepoint,
+                                        advance,
+                                        placement: SketchPlacement {
+                                            calibration: work.calibration,
+                                            ink_box_px: settings.ink_box_px,
+                                        },
+                                        candidates: settings.candidates,
+                                        temperature: settings.temperature,
+                                        seed: settings.seed,
+                                        timeout: Duration::from_secs(settings.timeout_seconds),
+                                    },
+                                    &work.cancelled,
+                                )
+                                .map(|candidate| TraceOutput::LocalSketch(Box::new(candidate)))
+                            }
                         })
                 };
                 let _ = work.events.send(TraceEvent::Finished(result));
@@ -82,7 +148,7 @@ fn submit_worker(work: TraceWork) -> Result<(), String> {
     let mut current = GLOBAL_TRACE_JOBS.load(Ordering::Acquire);
     loop {
         if current >= MAX_GLOBAL_TRACE_JOBS {
-            return Err("global calibrated trace worker capacity is full".into());
+            return Err("global image candidate worker capacity is full".into());
         }
         match GLOBAL_TRACE_JOBS.compare_exchange_weak(
             current,
@@ -98,7 +164,7 @@ fn submit_worker(work: TraceWork) -> Result<(), String> {
         Ok(()) => Ok(()),
         Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => {
             GLOBAL_TRACE_JOBS.fetch_sub(1, Ordering::AcqRel);
-            Err("global calibrated trace worker queue is unavailable".into())
+            Err("global image candidate worker queue is unavailable".into())
         }
     }
 }
@@ -126,6 +192,27 @@ result = {
 json.dump(result, sys.stdout)
 "#;
 
+const LOCAL_SKETCH_RECIPE: &str = r#"import json
+import sys
+
+data = json.load(sys.stdin)
+candidate = data["parameters"]["local_sketch"]
+layers = data["layers"]
+if len(layers) != 1 or layers[0]["guard"] != candidate["target"]:
+    raise ValueError("local sketch target changed; capture the layer again")
+result = {
+    "schema_version": data["schema_version"],
+    "job_id": data["job_id"],
+    "input_hash": data["input_hash"],
+    "report": "Unreviewed local sketch " + candidate["image_sha256"],
+    "reads": [],
+    "edits": [{"target": candidate["target"], "operations": [{
+        "op": "replace_contours", "contours": candidate["contours"]
+    }]}],
+}
+json.dump(result, sys.stdout)
+"#;
+
 struct TraceIntent {
     epoch: String,
     document_revision: u64,
@@ -146,7 +233,9 @@ pub(super) struct TraceSession {
     operation_key: String,
     payload_sha256: String,
     intent: TraceIntent,
-    cancelled: Arc<AtomicBool>,
+    backend: NodesTraceBackend,
+    local_sketch_runtime: Option<SketchRuntimeIdentity>,
+    cancelled: ProcessCancellation,
     events: Receiver<TraceEvent>,
     phase: NodesTracePhase,
     mutation: Option<GraphMutationResponse>,
@@ -170,12 +259,33 @@ impl TraceSession {
             ok: true,
             handle: self.handle,
             phase: self.phase,
+            backend: self.backend,
+            local_sketch_runtime: self.local_sketch_runtime.clone(),
             grading: self.intent.grading.clone(),
             mutation: self.mutation.clone(),
             error: self.error.clone(),
             root_changed: false,
         }
     }
+}
+
+fn host_sketch_runtime() -> Result<SketchRuntime, String> {
+    let repository = std::env::var_os("RUNEBENDER_SKETCH_REPOSITORY")
+        .filter(|value| !value.is_empty())
+        .ok_or("configure RUNEBENDER_SKETCH_REPOSITORY for local sketch inference")?;
+    let checkpoint = std::env::var_os("RUNEBENDER_SKETCH_CHECKPOINT")
+        .filter(|value| !value.is_empty())
+        .ok_or("configure a concrete RUNEBENDER_SKETCH_CHECKPOINT")?;
+    let script_home = std::env::var_os("HOME")
+        .filter(|value| !value.is_empty())
+        .ok_or("HOME is unavailable for the installed img2bez helper")?;
+    let repository = PathBuf::from(repository);
+    Ok(SketchRuntime {
+        python: repository.join(".venv/bin/python"),
+        repository,
+        checkpoint: PathBuf::from(checkpoint),
+        script_home: PathBuf::from(script_home),
+    })
 }
 
 fn request_digest(request: &NodesTraceRequest) -> Result<String, String> {
@@ -217,6 +327,11 @@ impl Workspace {
                 let request: NodesTraceRequest = serde_json::from_value(call.arguments.clone())
                     .map_err(|error| error.to_string())?;
                 request.validate()?;
+                let backend = if request.local_sketch.is_some() {
+                    NodesTraceBackend::LocalSketch
+                } else {
+                    NodesTraceBackend::CalibratedTrace
+                };
                 let digest = request_digest(&request)?;
                 let state = self
                     .live_nodes
@@ -236,6 +351,7 @@ impl Workspace {
                             ok: true,
                             handle: *handle,
                             phase: NodesTracePhase::Released,
+                            backend,
                             replayed: true,
                             root_changed: false,
                         }));
@@ -254,19 +370,20 @@ impl Workspace {
                             ok: true,
                             handle: existing.handle,
                             phase: existing.phase,
+                            backend: existing.backend,
                             replayed: true,
                             root_changed: false,
                         }));
                     }
                     return Err(
-                        "release the retained calibrated trace before submitting another".into(),
+                        "release the retained image candidate before submitting another".into(),
                     );
                 }
                 let snapshot = state.session.snapshot();
                 if snapshot.identity != request.guard.identity
                     || snapshot.revision != request.guard.revision
                 {
-                    return Err("graph changed after the calibrated trace request".into());
+                    return Err("graph changed after the image candidate request".into());
                 }
                 if !snapshot.graph.nodes.iter().any(|node| {
                     node.type_name == "live.font"
@@ -302,7 +419,7 @@ impl Workspace {
                 };
                 validate_target(&self.font.project, &intent)?;
                 let (sender, events) = mpsc::channel();
-                let cancelled = Arc::new(AtomicBool::new(false));
+                let cancelled = ProcessCancellation::default();
                 let handle = state.next_trace_id;
                 let next_handle = handle
                     .checked_add(1)
@@ -310,10 +427,21 @@ impl Workspace {
                 if state.trace_receipts.len() >= 64 {
                     return Err("trace retry retention is full; open a new graph session".into());
                 }
+                let worker_backend = match request.local_sketch {
+                    Some(settings) => TraceWorkBackend::LocalSketch {
+                        runtime: host_sketch_runtime()?,
+                        settings,
+                        glyph: intent.target.glyph.clone(),
+                        advance: intent.grading.target.advance,
+                    },
+                    None => TraceWorkBackend::Calibrated {
+                        invert: request.invert,
+                    },
+                };
                 submit_worker(TraceWork {
                     image_base64: request.image_base64,
                     calibration: request.calibration,
-                    invert: request.invert,
+                    backend: worker_backend,
                     cancelled: cancelled.clone(),
                     events: sender,
                 })?;
@@ -325,6 +453,8 @@ impl Workspace {
                     operation_key: request.operation_key,
                     payload_sha256: digest,
                     intent,
+                    backend,
+                    local_sketch_runtime: None,
                     cancelled,
                     events,
                     phase: NodesTracePhase::Queued,
@@ -335,6 +465,7 @@ impl Workspace {
                     ok: true,
                     handle,
                     phase: NodesTracePhase::Queued,
+                    backend,
                     replayed: false,
                     root_changed: false,
                 }))
@@ -354,7 +485,7 @@ impl Workspace {
                     return Err("trace handle belongs to another graph session".into());
                 }
                 if call.name == "nodes_trace_cancel" && !trace.terminal() {
-                    trace.cancelled.store(true, Ordering::Release);
+                    trace.cancelled.cancel();
                     trace.phase = NodesTracePhase::Cancelling;
                 }
                 if call.name == "nodes_trace_release" {
@@ -373,7 +504,7 @@ impl Workspace {
                 }
                 Ok(json!(trace.status()))
             }
-            _ => Err("unknown calibrated trace command".into()),
+            _ => Err("unknown image candidate command".into()),
         }
     }
 
@@ -387,12 +518,15 @@ impl Workspace {
         while trace.needs_pump() {
             match trace.events.try_recv() {
                 Ok(TraceEvent::Started) => {
-                    if !trace.cancelled.load(Ordering::Acquire) {
+                    if !trace.cancelled.is_cancelled() {
                         trace.phase = NodesTracePhase::Running;
                     }
                 }
+                Ok(TraceEvent::Pinned(runtime)) => {
+                    trace.local_sketch_runtime = Some(runtime);
+                }
                 Ok(TraceEvent::Finished(result)) => {
-                    if trace.cancelled.load(Ordering::Acquire) {
+                    if trace.cancelled.is_cancelled() {
                         trace.phase = NodesTracePhase::Cancelled;
                     } else {
                         match result {
@@ -418,7 +552,7 @@ impl Workspace {
                             },
                             Err(error) => {
                                 trace.phase = NodesTracePhase::Failed;
-                                trace.error = Some(error);
+                                trace.error = Some(format!("{:?}: {error}", trace.backend));
                             }
                         }
                     }
@@ -426,7 +560,7 @@ impl Workspace {
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
                     trace.phase = NodesTracePhase::Failed;
-                    trace.error = Some("calibrated trace worker disconnected".into());
+                    trace.error = Some("candidate worker disconnected".into());
                 }
             }
         }
@@ -439,19 +573,17 @@ fn publish_trace(
     current_epoch: Option<&str>,
     session: &mut runebender::workflows::nodes_session::GraphSession,
     intent: &TraceIntent,
-    trace: CalibratedTrace,
+    output: impl Into<TraceOutput>,
 ) -> Result<GraphMutationResponse, (bool, String)> {
     let stale = |message: &str| (true, message.to_owned());
     if current_epoch != Some(intent.epoch.as_str())
         || project.document_revision() != intent.document_revision
     {
-        return Err(stale(
-            "document changed before calibrated trace publication",
-        ));
+        return Err(stale("document changed before image candidate publication"));
     }
     let snapshot = session.snapshot();
     if snapshot.identity != intent.graph.identity || snapshot.revision != intent.graph.revision {
-        return Err(stale("graph changed before calibrated trace publication"));
+        return Err(stale("graph changed before image candidate publication"));
     }
     if !snapshot.graph.nodes.iter().any(|node| {
         node.type_name == "live.font"
@@ -475,29 +607,61 @@ fn publish_trace(
     if current_grading != intent.grading {
         return Err(stale("graded target or reference geometry changed"));
     }
+    let (operation, parameter_name, mut candidate_value, code, history_name) = match output.into() {
+        TraceOutput::Calibrated(trace) => (
+            AgentEditOperation::from_calibrated_trace(&trace),
+            "calibrated_trace",
+            serde_json::to_value(&trace).map_err(|error| (false, error.to_string()))?,
+            CALIBRATED_TRACE_RECIPE,
+            "Calibrated trace candidate",
+        ),
+        TraceOutput::LocalSketch(candidate) => {
+            let contours = candidate.contours.clone();
+            let value = json!({
+                "image_sha256": candidate.image_sha256,
+                "image_size_px": candidate.image_size_px,
+                "calibration": candidate.placement.calibration,
+                "ink_box_px": candidate.placement.ink_box_px,
+                "runtime": candidate.runtime,
+                "codepoint": candidate.codepoint,
+                "candidates": candidate.candidates,
+                "temperature": candidate.temperature,
+                "seed": candidate.seed,
+                "script_score_not_visual_approval": candidate.script_score,
+                "contours": candidate.contours,
+            });
+            (
+                AgentEditOperation::ReplaceContours { contours },
+                "local_sketch",
+                value,
+                LOCAL_SKETCH_RECIPE,
+                "Unreviewed local sketch candidate",
+            )
+        }
+    };
     let request = AgentEditRequest {
         expected_document_epoch: intent.epoch.clone(),
         actor: intent.actor.clone(),
         operation_key: intent.operation_key.clone(),
         authorization: "preview-only".into(),
         source: intent.source,
-        history_name: "Calibrated trace candidate".into(),
+        history_name: history_name.into(),
         reads: Vec::new(),
         edits: vec![AgentLayerEdits {
             target: intent.target.clone(),
-            operations: vec![AgentEditOperation::from_calibrated_trace(&trace)],
+            operations: vec![operation],
         }],
     };
     request
         .stage(project)
         .map_err(|error| (true, format!("{error:?}")))?;
-    let mut trace_value =
-        serde_json::to_value(&trace).map_err(|error| (false, error.to_string()))?;
-    trace_value["target"] =
+    candidate_value["target"] =
         serde_json::to_value(&intent.target).map_err(|error| (false, error.to_string()))?;
-    trace_value["grading"] =
+    candidate_value["grading"] =
         serde_json::to_value(&intent.grading).map_err(|error| (false, error.to_string()))?;
-    let parameters = json!({"calibrated_trace":trace_value});
+    let mut parameters = serde_json::Map::new();
+    parameters.insert(parameter_name.into(), candidate_value);
+    let parameters = Value::Object(parameters);
     if serde_json::to_vec(&parameters)
         .map_err(|error| (false, error.to_string()))?
         .len()
@@ -505,7 +669,7 @@ fn publish_trace(
     {
         return Err((
             false,
-            "calibrated trace exceeds live Python parameter bounds".into(),
+            "generated candidate exceeds live Python parameter bounds".into(),
         ));
     }
     session
@@ -518,7 +682,7 @@ fn publish_trace(
                     GraphEdit::SetValue {
                         node: intent.node,
                         field: "code".into(),
-                        value: json!(CALIBRATED_TRACE_RECIPE),
+                        value: json!(code),
                     },
                     GraphEdit::SetValue {
                         node: intent.node,
@@ -668,6 +832,69 @@ mod tests {
             }],
         };
         (project, session, intent, trace)
+    }
+
+    fn sketch_candidate(trace: CalibratedTrace) -> SketchCandidate {
+        SketchCandidate {
+            runtime: SketchRuntimeIdentity {
+                python_path: "/tmp/fake-venv/bin/python".into(),
+                python_resolved_path: "/tmp/fake-python".into(),
+                python_sha256: "sha256:python".into(),
+                repository: "/tmp/fake-model".into(),
+                modules_sha256: "sha256:modules".into(),
+                checkpoint: "/tmp/fake-model/runs/one".into(),
+                checkpoint_sha256: "sha256:weights".into(),
+                script_home: "/tmp/fake-home".into(),
+                img2bez_path: "/tmp/fake-home/.cargo/bin/img2bez".into(),
+                img2bez_sha256: "sha256:tracer".into(),
+            },
+            image_sha256: trace.image_sha256,
+            image_size_px: [trace.image_width_px, trace.image_height_px],
+            placement: SketchPlacement {
+                calibration: trace.calibration,
+                ink_box_px: [2, 2, 12, 12],
+            },
+            codepoint: None,
+            candidates: 1,
+            temperature: 0.0,
+            seed: 7,
+            script_score: -17.0,
+            contours: trace.contours,
+        }
+    }
+
+    #[test]
+    fn unreviewed_local_sketch_publishes_once_with_model_provenance_and_no_font_change() {
+        let (project, mut session, intent, trace) = fixture();
+        let original_revision = project.document_revision();
+        let candidate = sketch_candidate(trace);
+        let result = publish_trace(
+            &project,
+            Some("test-epoch"),
+            &mut session,
+            &intent,
+            TraceOutput::LocalSketch(Box::new(candidate)),
+        )
+        .unwrap();
+        assert!(result.receipt.changed);
+        assert_eq!(project.document_revision(), original_revision);
+        let graph = session.snapshot();
+        let node = graph.graph.node(intent.node).unwrap();
+        let model = &node.values["parameters"]["local_sketch"];
+        assert_eq!(model["runtime"]["checkpoint_sha256"], "sha256:weights");
+        assert_eq!(model["script_score_not_visual_approval"], -17.0);
+        assert_eq!(model["target"]["glyph"], "A");
+        assert_eq!(model["grading"]["references"][0]["layer"]["grade"], "green");
+        assert!(node.values["parameters"].get("calibrated_trace").is_none());
+        let retry = publish_trace(
+            &project,
+            Some("test-epoch"),
+            &mut session,
+            &intent,
+            TraceOutput::LocalSketch(Box::new(sketch_candidate(fixture().3))),
+        );
+        assert!(retry.unwrap_err().0);
+        assert_eq!(session.snapshot(), graph);
     }
 
     #[test]
@@ -843,7 +1070,9 @@ mod tests {
                 operation_key: "one".into(),
                 payload_sha256: "sha256:test".into(),
                 intent,
-                cancelled: Arc::new(AtomicBool::new(false)),
+                backend: NodesTraceBackend::CalibratedTrace,
+                local_sketch_runtime: None,
+                cancelled: ProcessCancellation::default(),
                 events: receiver,
                 phase: initial_phase,
                 mutation: None,
@@ -876,7 +1105,7 @@ mod tests {
                 })
                 .is_err()
             );
-            events.send(TraceEvent::Finished(Ok(trace))).unwrap();
+            events.send(TraceEvent::Finished(Ok(trace.into()))).unwrap();
             app.poll_live_trace();
             assert_eq!(
                 app.live_nodes
@@ -898,6 +1127,75 @@ mod tests {
                 true
             );
         }
+    }
+
+    #[test]
+    fn local_sketch_cancellation_retains_pin_but_never_publishes() {
+        let (project, _, mut intent, trace) = fixture();
+        let mut app = Workspace::from_model(FontModel::from_project(project)).unwrap();
+        app.ensure_live_graph().unwrap();
+        let graph = app.live_graph_session().unwrap().snapshot();
+        intent.epoch = app.live.as_ref().unwrap().document_epoch().into();
+        intent.graph = GraphGuard {
+            identity: graph.identity.clone(),
+            revision: graph.revision,
+        };
+        intent.document_revision = app.font.project.document_revision();
+        intent.node = graph
+            .graph
+            .nodes
+            .iter()
+            .find(|node| node.type_name == "live.python")
+            .unwrap()
+            .id;
+        let candidate = sketch_candidate(trace);
+        let runtime = candidate.runtime.clone();
+        let (events, receiver) = mpsc::channel();
+        app.live_nodes.as_mut().unwrap().trace = Some(TraceSession {
+            handle: 11,
+            actor: "sketch-test".into(),
+            operation_key: "one".into(),
+            payload_sha256: "sha256:test".into(),
+            intent,
+            backend: NodesTraceBackend::LocalSketch,
+            local_sketch_runtime: None,
+            cancelled: ProcessCancellation::default(),
+            events: receiver,
+            phase: NodesTracePhase::Running,
+            mutation: None,
+            error: None,
+        });
+        let arguments = json!({
+            "expected_document_epoch":app.live.as_ref().unwrap().document_epoch(),
+            "identity":graph.identity,"handle":11,
+        });
+        let cancelled = app
+            .handle_trace_call(&ToolCall {
+                name: "nodes_trace_cancel".into(),
+                arguments: arguments.clone(),
+            })
+            .unwrap();
+        assert_eq!(cancelled["phase"], "cancelling");
+        events.send(TraceEvent::Pinned(runtime)).unwrap();
+        events
+            .send(TraceEvent::Finished(Ok(TraceOutput::LocalSketch(
+                Box::new(candidate),
+            ))))
+            .unwrap();
+        app.poll_live_trace();
+        let status = app
+            .handle_trace_call(&ToolCall {
+                name: "nodes_trace_status".into(),
+                arguments,
+            })
+            .unwrap();
+        assert_eq!(status["backend"], "local_sketch");
+        assert_eq!(status["phase"], "cancelled");
+        assert_eq!(
+            status["local_sketch_runtime"]["checkpoint_sha256"],
+            "sha256:weights"
+        );
+        assert_eq!(app.live_graph_session().unwrap().snapshot(), graph);
     }
 
     #[test]
@@ -927,6 +1225,7 @@ mod tests {
                 font_baseline_y: 0.0,
             },
             invert: false,
+            local_sketch: None,
         };
         let digest = request_digest(&request).unwrap();
         let (sender, events) = mpsc::channel();
@@ -943,7 +1242,9 @@ mod tests {
             operation_key: "new".into(),
             payload_sha256: "sha256:new".into(),
             intent,
-            cancelled: Arc::new(AtomicBool::new(false)),
+            backend: NodesTraceBackend::CalibratedTrace,
+            local_sketch_runtime: None,
+            cancelled: ProcessCancellation::default(),
             events,
             phase: NodesTracePhase::Queued,
             mutation: None,

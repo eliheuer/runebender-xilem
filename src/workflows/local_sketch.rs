@@ -51,7 +51,7 @@ pub struct SketchRuntime {
 }
 
 /// Byte identities checked before and after inference.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SketchRuntimeIdentity {
     /// Invoked Python entrypoint, retaining the virtualenv's symlink name.
     pub python_path: PathBuf,
@@ -118,6 +118,14 @@ pub struct SketchCandidate {
     pub image_size_px: [u32; 2],
     /// Supplied placement and checked dark-ink box.
     pub placement: SketchPlacement,
+    /// Unicode scalar supplied for model conditioning, if any.
+    pub codepoint: Option<u32>,
+    /// Number of samples requested from the model.
+    pub candidates: u8,
+    /// Sampling temperature sent to the model.
+    pub temperature: f64,
+    /// Deterministic sampling seed sent to the model.
+    pub seed: u32,
     /// Score reported by the script; not a visual-quality judgment.
     pub script_score: f64,
     /// Editable ordinary contours in font coordinates.
@@ -318,6 +326,10 @@ pub fn run(
         image_sha256: format!("sha256:{:x}", Sha256::digest(&request.png)),
         image_size_px: validated.image_size,
         placement: request.placement,
+        codepoint: request.codepoint,
+        candidates: request.candidates,
+        temperature: request.temperature,
+        seed: request.seed,
         script_score: score,
         contours,
     })

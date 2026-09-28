@@ -62,7 +62,17 @@ pub struct NodesMutateResult {
     pub root_changed: bool,
 }
 
-/// Phase of one retained asynchronous calibrated image trace.
+/// Backend selected for one retained native image-to-outline candidate.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum NodesTraceBackend {
+    /// Deterministic img2bez tracing using full-image calibration.
+    CalibratedTrace,
+    /// Host-configured installed sketch model, with no automatic quality approval.
+    LocalSketch,
+}
+
+/// Phase of one retained asynchronous calibrated image or local sketch candidate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum NodesTracePhase {
@@ -93,6 +103,8 @@ pub struct NodesTraceStartResult {
     pub handle: u64,
     /// Current phase at the time of admission.
     pub phase: NodesTracePhase,
+    /// Exact backend chosen by the request.
+    pub backend: NodesTraceBackend,
     /// Whether this was an exact retry of the retained request.
     pub replayed: bool,
     /// Submission does not mutate the font.
@@ -108,6 +120,11 @@ pub struct NodesTraceStatusResult {
     pub handle: u64,
     /// Current trace phase.
     pub phase: NodesTracePhase,
+    /// Exact backend chosen at submission.
+    pub backend: NodesTraceBackend,
+    /// Pinned installed runtime once a local sketch worker has inspected it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub local_sketch_runtime: Option<crate::workflows::local_sketch::SketchRuntimeIdentity>,
     /// Current canonical target and explicit reference measurements captured at submission.
     pub grading: GradingContext,
     /// Original graph mutation receipt, only after successful guarded publication.

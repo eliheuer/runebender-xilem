@@ -496,3 +496,17 @@ Next design trial should use a better sketch or reference-conditioned alternativ
 Eli authorized the experiment-first goals above and requested a fresh reading of both linked essays.
 Sol delivered the four-file local-sketch transport patch; it is awaiting coordinator Cargo validation and integration review, not accepted or committed.
 No new implementation worker assignment is active; next work follows X1-X7 rather than automatically expanding E.
+
+### Local candidate transport validation and X2 progress
+The four-file local transport patch passed serialized tests: automation::agent_nodes 8, nodes::trace 5, workflows::local_sketch 4, nodes::workspace 7.
+Commands used `cargo test --locked --lib` or `--bin runebender` with those fully qualified filters and `-- --test-threads=1`, shared target, two build jobs and the configured source fixture directory.
+All-target Clippy initially rejected a large TraceOutput enum variant; coordinator boxed the local candidate variant structurally.
+Clippy with warnings denied then passed, followed by all 5 trace tests again; formatting and diff checks pass.
+This validates explicit backend selection, retained provenance, guarded publication and cancellation; it does not establish usable local-model output or native interactive/browser behavior.
+The local runner internally selects one result from up to three samples; it does not expose three alternatives for human comparison, so D4 is not complete.
+No additional framework implementation is assigned.
+Scratch comparison packet started at /private/tmp/runebender-kaf-trial-sjiv0m10/experiment/packet.json with a rendered, coordinator-inspected reference-sheet.png from the copied target and three approved references.
+X1 remains open: matching shaped word proofs are still pending.
+Read-only X2 findings: exact target name and U+0643 exist in sketchpre vocabulary; saved image bounds map correctly to source geometry.
+Generated output loses one contour and its upper region; the sampled result was the sole candidate, so scoring did not select among alternatives.
+Sol is retaining scratch trace and tokenizer round-trip intermediates without inference to distinguish preprocessing failure from generation failure; X2 remains open.

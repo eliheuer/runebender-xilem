@@ -54,7 +54,7 @@ pub struct NodesMutateRequest {
     pub request: GraphMutationRequest,
 }
 
-/// Place one calibrated image trace in an existing live Python candidate node.
+/// Place one calibrated trace or explicitly selected local sketch draft in a candidate node.
 ///
 /// Submission leaves the graph and font unchanged. Guarded publication changes graph intent only.
 /// Nodes Run, proof inspection and Apply retain their existing separate guards and receipts.
@@ -63,7 +63,7 @@ pub struct NodesMutateRequest {
 pub struct NodesTraceRequest {
     /// Exact native endpoint lifetime.
     pub expected_document_epoch: String,
-    /// Exact graph revision displayed before the trace was requested.
+    /// Exact graph revision displayed before the candidate was requested.
     pub guard: GraphGuard,
     /// Actor owning this graph mutation receipt.
     pub actor: String,
@@ -84,6 +84,27 @@ pub struct NodesTraceRequest {
     /// Whether light pixels are ink.
     #[serde(default)]
     pub invert: bool,
+    /// Explicit local model backend; absence preserves deterministic calibrated tracing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_sketch: Option<NodesLocalSketchSettings>,
+}
+
+/// Bounded sampling and measured ink placement for the host-configured local sketch model.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct NodesLocalSketchSettings {
+    /// Half-open dark-ink box in the full source image, including its padding.
+    pub ink_box_px: [u32; 4],
+    /// Unicode scalar conditioning the intended contextual form, if one is known.
+    pub codepoint: Option<u32>,
+    /// Number of grammar-constrained samples, from one through three.
+    pub candidates: u8,
+    /// Finite sampling temperature from zero through two.
+    pub temperature: f64,
+    /// Deterministic sampling seed.
+    pub seed: u32,
+    /// Maximum worker time from one through 120 seconds.
+    pub timeout_seconds: u64,
 }
 
 /// Address one retained asynchronous calibrated trace without resubmitting image bytes.
@@ -294,6 +315,25 @@ impl NodesTraceRequest {
         }
         if self.references.is_empty() || self.references.len() > 8 {
             return Err("choose 1..=8 explicit approved Arabic references".into());
+        }
+        if let Some(sketch) = &self.local_sketch {
+            if self.invert {
+                return Err("local sketch requires dark ink on a light image".into());
+            }
+            let [left, top, right, bottom] = sketch.ink_box_px;
+            if left >= right || top >= bottom || right > 1_024 || bottom > 1_024 {
+                return Err("local sketch ink box is invalid or exceeds 1024 pixels".into());
+            }
+            if sketch
+                .codepoint
+                .is_some_and(|value| char::from_u32(value).is_none())
+                || !(1..=3).contains(&sketch.candidates)
+                || !sketch.temperature.is_finite()
+                || !(0.0..=2.0).contains(&sketch.temperature)
+                || !(1..=120).contains(&sketch.timeout_seconds)
+            {
+                return Err("local sketch sampling, Unicode or deadline is invalid".into());
+            }
         }
         Ok(())
     }
@@ -544,7 +584,7 @@ pub fn tools() -> Vec<Tool> {
         },
         Tool {
             name: "nodes_trace".into(),
-            description: "Submit one bounded calibrated image to the shared trace worker. This returns a session-local handle without changing the font or graph. Poll nodes_trace_status; completion installs a guarded recipe into the selected live.python node only while the document, layer and graph still match. Then Nodes Run, Image and Apply use their existing paths.".into(),
+            description: "Submit a bounded calibrated trace, or explicitly select the host-configured local_sketch model. Both share one worker and retained receipt; submission changes neither font nor graph. Completion installs a guarded recipe in the selected live.python node for manual Run, proof review and Apply. Local model scores are not design approval.".into(),
             parameters: object(
                 json!({
                     "expected_document_epoch":epoch.clone(),
@@ -567,24 +607,35 @@ pub fn tools() -> Vec<Tool> {
                     "calibration":{"type":"object","additionalProperties":false,
                         "required":["font_units_per_pixel","pixel_baseline_y","font_x_at_left","font_baseline_y"],
                         "properties":{"font_units_per_pixel":{"type":"number"},"pixel_baseline_y":{"type":"number"},"font_x_at_left":{"type":"number"},"font_baseline_y":{"type":"number"}}},
-                    "invert":{"type":"boolean","default":false}
+                    "invert":{"type":"boolean","default":false},
+                    "local_sketch":{"type":"object","additionalProperties":false,
+                        "required":["ink_box_px","candidates","temperature","seed","timeout_seconds"],
+                        "properties":{
+                            "ink_box_px":{"type":"array","minItems":4,"maxItems":4,
+                                "items":{"type":"integer","minimum":0,"maximum":1024}},
+                            "codepoint":{"type":["integer","null"],"minimum":0,"maximum":1114111},
+                            "candidates":{"type":"integer","minimum":1,"maximum":3},
+                            "temperature":{"type":"number","minimum":0,"maximum":2},
+                            "seed":{"type":"integer","minimum":0},
+                            "timeout_seconds":{"type":"integer","minimum":1,"maximum":120}
+                        }}
                 }),
                 &["expected_document_epoch","guard","actor","operation_key","node","source","target","references","image_base64","calibration"],
             ),
         },
         Tool {
             name: "nodes_trace_status".into(),
-            description: "Inspect a retained calibrated trace. A completed worker result publishes its guarded graph recipe exactly once; cancelled and stale results never publish. Does not change the font.".into(),
+            description: "Inspect a retained calibrated trace or local sketch draft. A completed worker result publishes its guarded graph recipe exactly once; cancelled and stale results never publish. This never changes the font.".into(),
             parameters: session(json!({"handle":handle.clone()}), &["expected_document_epoch","identity","handle"]),
         },
         Tool {
             name: "nodes_trace_cancel".into(),
-            description: "Suppress publication of a queued or running calibrated trace. Running img2bez work may not stop immediately; its global worker slot remains occupied until it returns.".into(),
+            description: "Cancel one queued or running candidate. Local sketch cancellation stops its supervised direct child; any noninterruptible descendant can outlive it. The global slot stays occupied until the worker settles.".into(),
             parameters: session(json!({"handle":handle.clone()}), &["expected_document_epoch","identity","handle"]),
         },
         Tool {
             name: "nodes_trace_release".into(),
-            description: "Release one terminal trace receipt so this session can submit another image. Running or queued traces must settle first.".into(),
+            description: "Release one terminal candidate receipt so this session can submit another image. Running or queued jobs must settle first.".into(),
             parameters: session(json!({"handle":handle.clone()}), &["expected_document_epoch","identity","handle"]),
         },
         Tool {
@@ -721,6 +772,49 @@ mod tests {
             "result":{"edits":[]}
         });
         assert!(serde_json::from_value::<NodesApplyRequest>(apply).is_err());
+    }
+
+    #[test]
+    fn local_sketch_backend_is_explicit_bounded_and_legacy_trace_stays_default() {
+        let mut request = json!({
+            "expected_document_epoch":"document",
+            "guard":{"identity":{"session_id":"graph","document_epoch":"document"},"revision":0},
+            "actor":"agent","operation_key":"candidate-1","node":2,"source":0,
+            "target":{"glyph":"kaf-ar.medi","glyph_id":"id","layer":"public.default","expected_revision":"revision"},
+            "references":[{"guard":{"glyph":"kaf-ar.init","glyph_id":"ref","layer":"public.default","expected_revision":"ref-revision"},"rationale":"Approved kaf entry and upper arm"}],
+            "image_base64":"AA==",
+            "calibration":{"font_units_per_pixel":2.0,"pixel_baseline_y":400.0,
+                "font_x_at_left":-112.0,"font_baseline_y":0.0}
+        });
+        let legacy: NodesTraceRequest = serde_json::from_value(request.clone()).unwrap();
+        assert!(legacy.local_sketch.is_none());
+        request["invert"] = json!(false);
+        assert_eq!(serde_json::to_value(&legacy).unwrap(), request);
+        request["local_sketch"] = json!({
+            "ink_box_px":[16,16,460,400],"codepoint":1603,
+            "candidates":1,"temperature":0.0,"seed":7,"timeout_seconds":120
+        });
+        let selected: NodesTraceRequest = serde_json::from_value(request.clone()).unwrap();
+        assert!(selected.validate().is_ok());
+        assert!(selected.local_sketch.is_some());
+        let mut invalid = request.clone();
+        invalid["invert"] = json!(true);
+        assert!(
+            serde_json::from_value::<NodesTraceRequest>(invalid)
+                .unwrap()
+                .validate()
+                .is_err()
+        );
+        let mut invalid = request.clone();
+        invalid["local_sketch"]["timeout_seconds"] = json!(121);
+        assert!(
+            serde_json::from_value::<NodesTraceRequest>(invalid)
+                .unwrap()
+                .validate()
+                .is_err()
+        );
+        request["local_sketch"]["temperature"] = json!("unbounded");
+        assert!(serde_json::from_value::<NodesTraceRequest>(request).is_err());
     }
 
     #[test]
