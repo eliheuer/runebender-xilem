@@ -15,10 +15,11 @@
   },
   "grade_legend": {
     "green": "human-approved reference; never edit",
-    "purple": "protected; never edit",
-    "blue": "candidate awaiting human grade",
-    "yellow": "selected polish target",
-    "orange": "selected refinement target",
+    "purple": "approved frozen composite reference; never edit",
+    "blue": "composite needing diagnosis and repair; not a reference or blanket replacement target",
+    "pink": "composite needing smaller edits; not a reference",
+    "yellow": "preserve drawing; local edits only; not a reference",
+    "orange": "preserve useful drawing; local edits only; not a reference",
     "red": "explicitly eligible unfinished target",
     "unknown": "not an automatic target"
   },
@@ -77,7 +78,7 @@
     },
     "human_grade": {
       "target_before": "red",
-      "candidate_after_generation": "blue",
+      "candidate_after_generation": "ungraded_detached_candidate",
       "only_human_may_set": "green"
     }
   },
@@ -104,7 +105,7 @@
     }
   },
   "outcomes": {
-    "accepted": "detached blue candidate is proofed and awaits human review",
+    "accepted": "detached ungraded candidate is proofed and awaits human review",
     "abstain": {
       "reasons": ["stale_revision", "protected_or_unknown_target", "invalid_geometry", "proof_identity_mismatch", "uncertain_ranking", "budget_exhausted", "cancelled"],
       "effect": "do not apply; retain prior evidence and candidate state"

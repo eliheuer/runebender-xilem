@@ -12,6 +12,7 @@ pub mod agent_edit;
 pub mod agent_nodes;
 pub mod agent_proof;
 pub mod agent_session;
+pub mod glyph_grading;
 pub mod live;
 #[cfg(unix)]
 pub mod live_socket;

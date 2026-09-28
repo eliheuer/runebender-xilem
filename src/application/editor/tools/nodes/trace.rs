@@ -20,6 +20,9 @@ use runebender::automation::agent_nodes::results::{
     NodesTracePhase, NodesTraceReleaseResult, NodesTraceStartResult, NodesTraceStatusResult,
 };
 use runebender::automation::agent_nodes::{NodesTraceHandleRequest, NodesTraceRequest};
+use runebender::automation::glyph_grading::{
+    GradingContext, GradingReferenceRequest, capture_replacement_context,
+};
 use runebender::font::edit_batch::canonical_glyph_revision;
 use runebender::font::variable::{GlyphLayerAddress, LayerId, SourceId};
 use runebender::formats::image_trace::{CalibratedTrace, TraceCalibration, trace_image_calibrated};
@@ -129,6 +132,8 @@ struct TraceIntent {
     graph: GraphGuard,
     source: usize,
     target: AgentLayerGuard,
+    references: Vec<GradingReferenceRequest>,
+    grading: GradingContext,
     node: u32,
     actor: String,
     operation_key: String,
@@ -165,6 +170,7 @@ impl TraceSession {
             ok: true,
             handle: self.handle,
             phase: self.phase,
+            grading: self.intent.grading.clone(),
             mutation: self.mutation.clone(),
             error: self.error.clone(),
             root_changed: false,
@@ -276,12 +282,20 @@ impl Workspace {
                 {
                     return Err("select an existing live.python candidate node".into());
                 }
+                let grading = capture_replacement_context(
+                    &self.font.project,
+                    SourceId(request.source),
+                    &request.target,
+                    &request.references,
+                )?;
                 let intent = TraceIntent {
                     epoch: request.expected_document_epoch,
                     document_revision: self.font.project.document_revision(),
                     graph: request.guard,
                     source: request.source,
                     target: request.target,
+                    references: request.references,
+                    grading,
                     node: request.node,
                     actor: request.actor.clone(),
                     operation_key: request.operation_key.clone(),
@@ -451,6 +465,16 @@ fn publish_trace(
         return Err(stale("trace source or candidate node changed"));
     }
     validate_target(project, intent).map_err(|error| (true, error))?;
+    let current_grading = capture_replacement_context(
+        project,
+        SourceId(intent.source),
+        &intent.target,
+        &intent.references,
+    )
+    .map_err(|error| (true, error))?;
+    if current_grading != intent.grading {
+        return Err(stale("graded target or reference geometry changed"));
+    }
     let request = AgentEditRequest {
         expected_document_epoch: intent.epoch.clone(),
         actor: intent.actor.clone(),
@@ -471,6 +495,8 @@ fn publish_trace(
         serde_json::to_value(&trace).map_err(|error| (false, error.to_string()))?;
     trace_value["target"] =
         serde_json::to_value(&intent.target).map_err(|error| (false, error.to_string()))?;
+    trace_value["grading"] =
+        serde_json::to_value(&intent.grading).map_err(|error| (false, error.to_string()))?;
     let parameters = json!({"calibrated_trace":trace_value});
     if serde_json::to_vec(&parameters)
         .map_err(|error| (false, error.to_string()))?
@@ -509,6 +535,7 @@ fn publish_trace(
 mod tests {
     use super::*;
     use crate::application::font_model::FontModel;
+    use runebender::font::model::glyph_metadata::MarkColor;
     use runebender::font::project::Project;
     use runebender::outline::drawing::{DrawingContour, DrawingPoint, DrawingPointType};
     use runebender::workflows::nodes::Registry;
@@ -520,8 +547,38 @@ mod tests {
         project
             .add_document_glyph("A", 400.0, Some(u32::from('A')))
             .unwrap();
+        project
+            .add_document_glyph("G", 400.0, Some(u32::from('G')))
+            .unwrap();
+        project
+            .add_document_glyph("ReferenceBase", 400.0, None)
+            .unwrap();
         let source = project.source_id(0).unwrap();
         let layer = project.document_source(source).unwrap().default_layer();
+        for (glyph, label) in [("A", "red"), ("G", "green")] {
+            let color =
+                MarkColor::parse(&runebender::ui::theme::ufo_rgba_for_label(label).unwrap())
+                    .unwrap();
+            project
+                .edit_document_layer(glyph, &layer, |draft| {
+                    draft.set_mark(Some(label), Some(color))?;
+                    Ok(())
+                })
+                .unwrap();
+        }
+        project
+            .edit_document_layer("G", &layer, |draft| {
+                draft.add_shape_contour(kurbo::Rect::new(20.0, 0.0, 90.0, 110.0), false)?;
+                draft.add_component("ReferenceBase".into(), kurbo::Affine::IDENTITY)?;
+                Ok(())
+            })
+            .unwrap();
+        project
+            .edit_document_layer("ReferenceBase", &layer, |draft| {
+                draft.add_shape_contour(kurbo::Rect::new(10.0, 0.0, 40.0, 50.0), false)?;
+                Ok(())
+            })
+            .unwrap();
         let address = GlyphLayerAddress {
             glyph: "A".into(),
             layer: layer.clone(),
@@ -529,12 +586,32 @@ mod tests {
         let target = AgentLayerGuard {
             glyph: "A".into(),
             glyph_id: project.document_glyph("A").unwrap().id().to_wire(),
-            layer: layer.name,
+            layer: layer.name.clone(),
             expected_revision: canonical_glyph_revision(
                 project.capture_document_layer(&address).unwrap().view(),
             )
             .unwrap(),
         };
+        let reference = AgentLayerGuard {
+            glyph: "G".into(),
+            glyph_id: project.document_glyph("G").unwrap().id().to_wire(),
+            layer: layer.name.clone(),
+            expected_revision: canonical_glyph_revision(
+                project
+                    .capture_document_layer(&GlyphLayerAddress {
+                        glyph: "G".into(),
+                        layer: layer.clone(),
+                    })
+                    .unwrap()
+                    .view(),
+            )
+            .unwrap(),
+        };
+        let references = vec![GradingReferenceRequest {
+            guard: reference,
+            rationale: "Approved stroke weight for this Arabic construction".into(),
+        }];
+        let grading = capture_replacement_context(&project, source, &target, &references).unwrap();
         let session = GraphSession::new(
             "trace-test",
             "test-epoch",
@@ -559,6 +636,8 @@ mod tests {
             },
             source: source.0,
             target,
+            references,
+            grading,
             node,
             actor: "trace-test".into(),
             operation_key: "one".into(),
@@ -654,6 +733,46 @@ mod tests {
                 &mut session,
                 &intent,
                 trace.clone(),
+            )
+            .unwrap_err()
+            .0
+        );
+        assert_eq!(session.snapshot(), original);
+
+        let (mut changed_project, mut session, intent, trace) = fixture();
+        let layer = changed_project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
+        changed_project
+            .edit_document_layer("ReferenceBase", &layer, |draft| {
+                draft.add_shape_contour(kurbo::Rect::new(50.0, 0.0, 70.0, 50.0), false)?;
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(
+            canonical_glyph_revision(changed_project.document_layer("G", &layer).unwrap()).unwrap(),
+            intent.references[0].guard.expected_revision,
+            "the reference layer's shallow guard remains unchanged"
+        );
+        let updated = capture_replacement_context(
+            &changed_project,
+            SourceId(0),
+            &intent.target,
+            &intent.references,
+        )
+        .unwrap();
+        assert_ne!(
+            updated.references[0].layer.resolved_outline_sha256,
+            intent.grading.references[0].layer.resolved_outline_sha256
+        );
+        assert!(
+            publish_trace(
+                &changed_project,
+                Some("test-epoch"),
+                &mut session,
+                &intent,
+                trace,
             )
             .unwrap_err()
             .0
@@ -799,6 +918,7 @@ mod tests {
             node: intent.node,
             source: intent.source,
             target: intent.target.clone(),
+            references: intent.references.clone(),
             image_base64: "AA==".into(),
             calibration: TraceCalibration {
                 font_units_per_pixel: 2.0,

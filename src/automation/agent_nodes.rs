@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 
 use super::agent::Tool;
 use super::agent_edit::AgentLayerGuard;
+use super::glyph_grading::GradingReferenceRequest;
 use crate::font::project::Project;
 use crate::font::variable::SourceId;
 use crate::formats::image_trace::TraceCalibration;
@@ -74,6 +75,8 @@ pub struct NodesTraceRequest {
     pub source: usize,
     /// Exact target layer read from the canonical document.
     pub target: AgentLayerGuard,
+    /// Explicit approved references and their design relevance, all in this source.
+    pub references: Vec<GradingReferenceRequest>,
     /// Bounded encoded raster image, base64 without a data URL prefix.
     pub image_base64: String,
     /// Explicit full-image pixel-to-font placement.
@@ -288,6 +291,9 @@ impl NodesTraceRequest {
         validate_actor_key(&self.actor, &self.operation_key)?;
         if self.image_base64.is_empty() || self.image_base64.len() > 5_592_408 {
             return Err("calibrated trace image exceeds the bounded transport size".into());
+        }
+        if self.references.is_empty() || self.references.len() > 8 {
+            return Err("choose 1..=8 explicit approved Arabic references".into());
         }
         Ok(())
     }
@@ -550,13 +556,20 @@ pub fn tools() -> Vec<Tool> {
                     "target":{"type":"object","additionalProperties":false,
                         "required":["glyph","glyph_id","layer","expected_revision"],
                         "properties":{"glyph":string(256),"glyph_id":string(256),"layer":string(256),"expected_revision":string(256)}},
+                    "references":{"type":"array","minItems":1,"maxItems":8,
+                        "items":{"type":"object","additionalProperties":false,
+                            "required":["guard","rationale"],
+                            "properties":{"guard":{"type":"object","additionalProperties":false,
+                                "required":["glyph","glyph_id","layer","expected_revision"],
+                                "properties":{"glyph":string(256),"glyph_id":string(256),"layer":string(256),"expected_revision":string(256)}},
+                                "rationale":string(512)}}},
                     "image_base64":{"type":"string","minLength":1,"maxLength":5592408},
                     "calibration":{"type":"object","additionalProperties":false,
                         "required":["font_units_per_pixel","pixel_baseline_y","font_x_at_left","font_baseline_y"],
                         "properties":{"font_units_per_pixel":{"type":"number"},"pixel_baseline_y":{"type":"number"},"font_x_at_left":{"type":"number"},"font_baseline_y":{"type":"number"}}},
                     "invert":{"type":"boolean","default":false}
                 }),
-                &["expected_document_epoch","guard","actor","operation_key","node","source","target","image_base64","calibration"],
+                &["expected_document_epoch","guard","actor","operation_key","node","source","target","references","image_base64","calibration"],
             ),
         },
         Tool {

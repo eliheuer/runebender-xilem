@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::automation::glyph_grading::GradingContext;
 use crate::font::compiler::proof::{
     CompiledProofGlyph, CompiledProofRecipe, CompiledProofRendering, ProofDetailCrop, ProofView,
 };
@@ -107,6 +108,8 @@ pub struct NodesTraceStatusResult {
     pub handle: u64,
     /// Current trace phase.
     pub phase: NodesTracePhase,
+    /// Current canonical target and explicit reference measurements captured at submission.
+    pub grading: GradingContext,
     /// Original graph mutation receipt, only after successful guarded publication.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mutation: Option<GraphMutationResponse>,

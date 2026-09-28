@@ -16,10 +16,11 @@
   },
   "grade_legend": {
     "green": "human-approved reference; never edit",
-    "purple": "protected; never edit",
-    "blue": "candidate awaiting human grade",
-    "yellow": "selected polish target",
-    "orange": "selected refinement target",
+    "purple": "approved frozen composite reference; never edit",
+    "blue": "composite needing diagnosis and repair; not a reference or blanket replacement target",
+    "pink": "composite needing smaller edits; not a reference",
+    "yellow": "preserve drawing; local edits only; not a reference",
+    "orange": "preserve useful drawing; local edits only; not a reference",
     "red": "explicitly eligible unfinished target",
     "unknown": "not an automatic target"
   },
@@ -87,7 +88,7 @@
     },
     "human_grade": {
       "target_before": "orange",
-      "proposals": "blue",
+      "proposals": "ungraded_detached_candidates",
       "only_human_may_set": "green"
     }
   },
@@ -116,7 +117,7 @@
     }
   },
   "outcomes": {
-    "accepted": "selected detached blue proposal remains available for one undoable Apply and human grade",
+    "accepted": "selected detached ungraded proposal remains available for one undoable Apply and human grade",
     "abstain": {
       "reasons": ["complaint_unclassified", "no_proofed_improvement", "model_uncertainty", "proof_identity_mismatch", "protected_or_unknown_target", "budget_exhausted", "cancelled"],
       "effect": "preserve the original and best prior candidate; do not mutate the target"

@@ -1314,6 +1314,18 @@ mod tests {
                 Ok(())
             })
             .unwrap();
+        for (glyph, label) in [("A", "red"), ("G", "green")] {
+            let color = runebender::font::model::glyph_metadata::MarkColor::parse(
+                &runebender::ui::theme::ufo_rgba_for_label(label).unwrap(),
+            )
+            .unwrap();
+            project
+                .edit_document_layer(glyph, &layer, |draft| {
+                    draft.set_mark(Some(label), Some(color))?;
+                    Ok(())
+                })
+                .unwrap();
+        }
         let mut app = Workspace::from_model(FontModel::from_project(project)).unwrap();
         app.ensure_live_graph().unwrap();
         let epoch = app.live.as_ref().unwrap().document_epoch().to_owned();
@@ -1369,8 +1381,17 @@ mod tests {
         let target = json!({
             "glyph":"A",
             "glyph_id":app.font.project.document_glyph("A").unwrap().id().to_wire(),
-            "layer":layer.name,
+            "layer":layer.name.clone(),
             "expected_revision":runebender::font::edit_batch::canonical_glyph_revision(before.view()).unwrap(),
+        });
+        let reference = json!({
+            "guard":{
+                "glyph":"G",
+                "glyph_id":app.font.project.document_glyph("G").unwrap().id().to_wire(),
+                "layer":layer.name.clone(),
+                "expected_revision":runebender::font::edit_batch::canonical_glyph_revision(green.view()).unwrap(),
+            },
+            "rationale":"Approved stroke weight and baseline for this Arabic form",
         });
         let raster = image::GrayImage::from_fn(64, 64, |x, y| {
             image::Luma([if (20..44).contains(&x) && (18..46).contains(&y) {
@@ -1388,6 +1409,7 @@ mod tests {
             "guard":{"identity":graph.identity,"revision":graph.revision},
             "actor":"trace-test","operation_key":"draft-one","node":node,"source":0,
             "target":target,
+            "references":[reference],
             "image_base64":base64::engine::general_purpose::STANDARD.encode(bytes.into_inner()),
             "calibration":{"font_units_per_pixel":2.0,"pixel_baseline_y":50.0,
                 "font_x_at_left":0.0,"font_baseline_y":0.0}
@@ -1423,6 +1445,11 @@ mod tests {
             match status["phase"].as_str() {
                 Some("completed") => {
                     assert!(status["mutation"]["receipt"].is_object());
+                    assert_eq!(status["grading"]["target"]["grade"], "red");
+                    assert_eq!(
+                        status["grading"]["references"][0]["layer"]["grade"],
+                        "green"
+                    );
                     break;
                 }
                 Some("queued" | "running") => {
@@ -1435,6 +1462,8 @@ mod tests {
         let graph = app.live_graph_session().unwrap().snapshot();
         let trace = &graph.graph.node(node).unwrap().values["parameters"]["calibrated_trace"];
         assert_eq!(trace["target"], target);
+        assert_eq!(trace["grading"]["target"]["grade"], "red");
+        assert_eq!(trace["grading"]["references"][0]["layer"]["grade"], "green");
         assert_eq!(trace["calibration"]["font_units_per_pixel"], 2.0);
         assert!(
             trace["image_sha256"]
