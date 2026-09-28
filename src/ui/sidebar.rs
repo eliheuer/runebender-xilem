@@ -4,7 +4,7 @@
 //! The glyph-grid sidebar's language and filter data, shared by all
 //! Runebender editors.
 //!
-//! The Google Fonts glyphsets come from `data/gf-glyphsets.json`,
+//! The Google Fonts glyphsets come from `assets/data/gf-glyphsets.json`,
 //! generated from google/fonts glyphsets by the web repo's script. A
 //! port of runebender-web's glyphSidebarData.ts and the matching
 //! functions in Runebender.vue.
@@ -38,7 +38,7 @@ pub struct GfGlyphset {
 pub fn gf_glyphsets() -> &'static [GfGlyphset] {
     static SETS: OnceLock<Vec<GfGlyphset>> = OnceLock::new();
     SETS.get_or_init(|| {
-        serde_json::from_str(include_str!("../../data/gf-glyphsets.json"))
+        serde_json::from_str(include_str!("../../assets/data/gf-glyphsets.json"))
             .expect("gf-glyphsets.json parses")
     })
 }

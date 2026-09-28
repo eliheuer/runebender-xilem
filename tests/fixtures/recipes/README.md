@@ -47,8 +47,8 @@ The list recipe can include unnamed anchors; the move recipe always ignores them
 Run the same self-contained worker the editor runner invokes with `python -I recipe.py`:
 
 ```sh
-python3 -I scripts/recipes/anchor_recipes.py < scripts/recipes/fixture-list-input.json
-python3 -I scripts/recipes/anchor_recipes.py < scripts/recipes/fixture-move-input.json
+python3 -I tests/fixtures/recipes/anchor_recipes.py < tests/fixtures/recipes/fixture-list-input.json
+python3 -I tests/fixtures/recipes/anchor_recipes.py < tests/fixtures/recipes/fixture-move-input.json
 ```
 
 The `move_named_anchors` recipe in `anchor_recipes.py` emits `edits` matching the native `AgentLayerEdits` shape:

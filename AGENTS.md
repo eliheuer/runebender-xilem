@@ -116,7 +116,6 @@ Review dependency additions and upgrades explicitly rather than treating generat
 
 ## Changes and Git
 
-Record user-visible changes under `Unreleased` in `CHANGELOG.md`.
 Preserve unrelated working-tree changes.
 Stage explicit paths, never `git add -A`.
 Commit coherent phases with messages that explain why, and do not add agent co-author trailers.

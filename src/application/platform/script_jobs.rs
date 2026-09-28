@@ -972,7 +972,7 @@ mod native {
             let directory = std::env::var_os("RUNEBENDER_RECIPE_EXAMPLES")
                 .map(PathBuf::from)
                 .unwrap_or_else(|| {
-                    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts/recipes")
+                    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/recipes")
                 });
             directory
                 .join("anchor_recipes.py")

@@ -38,7 +38,7 @@ struct TemplateGlyph {
 fn template_glyphs() -> &'static [TemplateGlyph] {
     static GLYPHS: OnceLock<Vec<TemplateGlyph>> = OnceLock::new();
     GLYPHS.get_or_init(|| {
-        serde_json::from_str(include_str!("../../data/new-font-template.json"))
+        serde_json::from_str(include_str!("../../assets/data/new-font-template.json"))
             .expect("new-font-template.json parses")
     })
 }
