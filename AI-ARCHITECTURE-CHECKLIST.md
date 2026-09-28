@@ -5,6 +5,14 @@ The goal is a reliable foundation for agent editing, reusable tools, and node wo
 Every completed item needs integrated code, focused regression coverage, and recorded verification.
 This file is temporary working state; retire it after the final acceptance review and move enduring guidance into the maintained documentation.
 
+## Current status: stopped at the user's request
+
+The user requested that the current patch be finished and recurring work stopped on 2026-09-28.
+The current patch is committed as 273562b; the heartbeat is PAUSED and must not resume without a new user request.
+Unchecked items are deferred work, not an instruction to continue automatically.
+The integration branch is local and has not been pushed or merged into the original checkout.
+This closes the scheduled pass, not the entire AI product roadmap or the final H release gates.
+
 ## Working context
 
 - Coordinator task: 01a0e667-56d8-79d2-9d56-d78f56424f17.
@@ -128,6 +136,8 @@ Trusted local Python is not an OS sandbox; do not imply otherwise.
   Verified unchanged root before Apply, sibling isolation, layout independence, explicit selection, exact retry, changed-key-payload rejection, stale suppression, cancellation and release.
   At most eight heavy application run results are retained alongside bounded receipt tombstones; script/proof queues and cumulative canonical transaction limits remain enforced.
 - [ ] D3. Bridge external workers through detached captures and validated candidate imports; remove implicit root-save requirements from live execution.
+  Native Local AI foundation is integrated as 273562b: detached current-document export, validated session candidates, explicit grouped Install, ordinary Undo/Redo and cleanup.
+  Live DAG model nodes and the legacy disk-oriented Nodes save-first path remain unfinished; D3 is intentionally not checked off.
 - [x] D4. Make cache policy and side effects explicit per node implementation; carry structured Rows inputs faithfully.
   Integrated as 870cf65 with consumed versioned policies, conservative external defaults, content-verified cache reuse and bounded JSON Rows arguments.
   Real CLI fixtures verify nested/Unicode/empty Rows, cache hits and invalidation; runner regressions verify model/adapter artifacts and pre-spawn failures.
@@ -230,7 +240,7 @@ Verification logs:
 - /tmp/runebender-ai-foundation-headless.log: no-default-features library check passed.
 
 
-Next dependency-ready work: D3, detached external model-worker execution and validated candidate import.
+Deferred next work, only after a new user request: complete D3 live DAG external-worker bridging and validated candidate import.
 A-C and D1/D2/D4/D5 are complete for their recorded acceptance scope; provider-neutral cloud/vector contracts, extension registries and restart recovery remain separate work.
 The current live executor supports only live.font, live.python and live.proof, with one active operation per run and independent candidate branches.
 Do not route live model nodes through disk execution that saves the open source font.
@@ -654,3 +664,42 @@ D4 integrated commit: 870cf65709ee7733574cd32e128eb5b542216e0a.
 - All 21 original dirty baseline paths remain byte-for-byte unchanged.
   No pushes, merges, account connections, model downloads or worktree deletions occurred.
   D3 and E-H remain open, and the coordinator remains active every 30 minutes.
+
+
+2026-09-28: User-requested wrap-up after native detached model-worker checkpoint 273562b3824c70a52825b51002bad205b16912e6.
+Two GPT-6 Sol workers implemented disjoint canonical export and proposal-candidate boundaries; the coordinator connected native review/Install/history, reviewed both patches, and added real offline subprocess fixtures.
+No worker assignment remains active.
+
+Native Local AI now exports current in-memory data, including unsaved changes, into an owned temporary directory without saving or retargeting the source.
+The export preserves sources, designspace and feature dependencies and removes only the expected task's old proposal layer from the copy.
+The worker receives that detached UFO; completion validates source/revision/scope and supported geometry, then retains a candidate outside Project's persistent layers.
+Install commits the exact guarded transaction as one history group; ordinary Undo/Redo and Undo install use the existing history owner.
+Discard and cancellation release session state without changing the root.
+Candidates are keyed by source and task so independent masters cannot hide or overwrite each other's results.
+At most 16 candidates are retained; each captures at most 64 glyphs and 256 changed point/anchor/width values.
+Components, hyperbeziers, topology changes and unsupported metadata are rejected explicitly.
+Existing saved proposals for the same task require explicit review/discard before another native model run.
+These are bounded offline-verified contracts, not claims of successful real model/provider integration.
+
+Verification for 273562b:
+
+- /tmp/runebender-ai-d3-capture.log: 3 capture/export tests passed, including dirty source state, unsaved font, designspace/includes and unchanged original bytes/history.
+- /tmp/runebender-ai-d3-candidate.log: 3 candidate tests passed, including exact staged IDs, all-or-nothing staging, grouped undo, stale/out-of-scope/malformed/unsupported results.
+- /tmp/runebender-ai-d3-local-ai-final.log: 17 Local AI tests passed, 1 real-model test ignored.
+  Real offline subprocesses verified unsaved inputs, unchanged source/root until Install, atomic Undo/Redo, per-master candidates, rejected output and cancelled-result cleanup.
+- /tmp/runebender-ai-d3-boundaries.log: all 6 architecture-boundary tests passed.
+- /tmp/runebender-ai-d3-clippy-final.log: strict workspace/all-target Clippy passed.
+- /tmp/runebender-ai-d3-headless.log: no-default-features library check passed.
+- /tmp/runebender-ai-d3-web-check-final.log: release-profile wasm32 browser compilation check passed.
+  The first browser check found native-only history methods referenced from shared code; explicit browser-unavailable guards fixed it, and native tests/Clippy were rerun afterward.
+- Formatting, copyright and staged diff checks passed.
+
+To keep this requested wrap-up bounded, the complete native suite and browser release rendering/smoke matrix were not repeated for this patch.
+The prior D4 full suite remains 1081 passed with 4 ignored; it is baseline evidence, not a final-patch full-suite claim.
+Native Gray/Light screenshots, real model inference, cloud providers, release/advisory and clean-checkout acceptance are not claimed for this patch.
+The existing block 0.1.6 future-compatibility warning remains.
+All 21 original dirty baseline files remain unchanged.
+
+The user explicitly chose: finish this patch, then stop recurring work.
+The automation update confirmed runebender-ai-architecture-pass is PAUSED.
+D3's remaining graph work, E-H, cloud/QuiverAI adapters, extension registries and durable recovery are deferred rather than silently expanded into more scheduled work.
