@@ -1854,12 +1854,14 @@ mod tests {
     #[test]
     fn cancelled_external_node_does_not_publish_cache_or_run_downstream() {
         let scratch = Scratch::new();
-        let binary = worker(&scratch, "printf 'progress 1/2 A\\n' >&2; exec sleep 10");
+        let binary = worker(&scratch, "printf 'progress 1/2 A\\n' >&2; exec sleep 30");
         let cancellation = ProcessCancellation::default();
+        let events = std::cell::RefCell::new(Vec::new());
         let mut on_event = |event| {
-            if matches!(event, Event::Progress { .. }) {
+            if matches!(event, Event::Progress { id: 1, .. }) {
                 cancellation.cancel();
             }
+            events.borrow_mut().push(event);
         };
         let cache = scratch.0.join("cache.json");
         let mut ctx = RunContext {
@@ -1873,7 +1875,7 @@ mod tests {
             cache: Some(cache.clone()),
             cancellation: cancellation.clone(),
             process_limits: ProcessLimits {
-                deadline: std::time::Duration::from_secs(2),
+                deadline: std::time::Duration::from_secs(5),
                 ..ProcessLimits::default()
             },
             on_event: &mut on_event,
@@ -1887,18 +1889,36 @@ mod tests {
         let report = run(&graph, &registry, &mut ctx);
         assert!(!report.ok);
         assert_eq!(report.nodes.len(), 2);
+        let events = events.borrow();
+        assert!(
+            events.iter().any(|event| matches!(event, Event::Progress { id: 1, done: 1, total: 2, label } if label == "A")),
+            "fixture did not reach the cancellation callback: {events:?}; nodes: {:?}", report.nodes
+        );
+        assert!(
+            cancellation.is_cancelled(),
+            "progress did not cancel the graph: {events:?}"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, Event::Start { id: 2, .. })),
+            "downstream worker started after cancellation: {events:?}; nodes: {:?}",
+            report.nodes
+        );
         assert!(
             report
                 .nodes
                 .iter()
                 .all(|node| node.status == Status::Failed && node.outputs.is_empty()),
-            "cancelled graph retained candidate outputs"
+            "cancelled graph retained candidate outputs: {:?}; events: {events:?}",
+            report.nodes
         );
         assert!(
             report.nodes[1].report["error"]
                 .as_str()
-                .unwrap()
-                .contains("before node start")
+                .is_some_and(|error| error.contains("before node start")),
+            "downstream failure was not a pre-start cancellation: {:?}; events: {events:?}",
+            report.nodes
         );
         let cached: Cache = serde_json::from_slice(&std::fs::read(cache).unwrap()).unwrap();
         assert!(
