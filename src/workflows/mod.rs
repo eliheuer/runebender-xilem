@@ -8,6 +8,8 @@
 
 /// Bounded requests to an externally managed local chat server.
 pub mod local_chat;
+/// Detached invocation of the installed sketch-to-outline model.
+pub mod local_sketch;
 pub mod nodes;
 /// Connected workflows over the editor's isolated font versions.
 pub mod nodes_live;
