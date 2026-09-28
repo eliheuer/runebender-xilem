@@ -13,8 +13,6 @@ use runebender::workflows::nodes_session::GraphGuard;
 #[cfg(unix)]
 use crate::application::platform::dialogs;
 #[cfg(unix)]
-use crate::application::platform::nodes_proofs::NodeProofInspection;
-#[cfg(unix)]
 use runebender::automation::agent::ToolCall;
 #[cfg(unix)]
 use runebender::ui::nodes::ImmutablePng;
@@ -347,6 +345,7 @@ pub(crate) fn run_live_comparison(app: &mut Workspace) {
                     "semantic_revision": snapshot.semantic_revision,
                     "semantic_hash": snapshot.semantic_hash,
                 },
+                "execution_version": 2,
                 "actor": "native-nodes-ui",
                 "operation_key": format!("run-{operation}"),
                 "source": source,
@@ -435,6 +434,7 @@ pub(crate) fn clear_live_results(app: &mut Workspace) {
                     matches!(
                         run.status,
                         GraphRunStatus::Completed
+                            | GraphRunStatus::PartiallyFailed
                             | GraphRunStatus::Failed
                             | GraphRunStatus::Cancelled
                             | GraphRunStatus::Stale
@@ -445,11 +445,12 @@ pub(crate) fn clear_live_results(app: &mut Workspace) {
             .collect();
         let artifact_ids: Vec<String> = handles
             .iter()
-            .flat_map(|handle| match state.proofs.inspect(handle.get()) {
-                Some(NodeProofInspection::Completed { artifact_ids, .. }) => {
-                    artifact_ids.into_iter().collect()
-                }
-                _ => Vec::new(),
+            .flat_map(|handle| {
+                state
+                    .proofs
+                    .completed(handle.get())
+                    .into_iter()
+                    .map(|(_, artifact, _)| artifact)
             })
             .collect();
         let mut released = 0;
@@ -484,6 +485,20 @@ pub(crate) fn clear_live_results(app: &mut Workspace) {
     }
 }
 
+/// Map canvas selection to its transform, including selecting a proof of that transform.
+#[cfg(unix)]
+pub(crate) fn live_result_node(graph: &NodeGraph, selected: Option<u32>) -> Option<u32> {
+    let selected = selected?;
+    let node = graph.node(selected)?;
+    if node.type_name == "live.proof" {
+        graph
+            .link_into(selected, "font")
+            .map(runebender::workflows::nodes::Link::from)
+    } else {
+        Some(selected)
+    }
+}
+
 /// Apply the newest current retained comparison through the shared guarded edit adapter.
 pub(crate) fn apply_live_comparison(app: &mut Workspace) {
     #[cfg(unix)]
@@ -496,19 +511,25 @@ pub(crate) fn apply_live_comparison(app: &mut Workspace) {
             app.note = "Run the comparison before applying it".into();
             return;
         };
-        let identity = state.session.snapshot().identity;
+        let snapshot = state.session.snapshot();
+        let node = live_result_node(&snapshot.graph, app.nodes.selected);
+        let identity = snapshot.identity;
         let epoch = identity.document_epoch.clone();
         let revision = app.font.project.document_revision();
+        let mut arguments = serde_json::json!({
+            "expected_document_epoch": epoch,
+            "identity": identity,
+            "handle": handle,
+            "actor": "native-nodes-ui",
+            "operation_key": format!("apply-{}-{node:?}-{revision}", handle.get()),
+            "authorization": "user-approved",
+        });
+        if let Some(node) = node {
+            arguments["node"] = serde_json::json!(node);
+        }
         let response = app.call_live(&ToolCall {
             name: "nodes_apply".into(),
-            arguments: serde_json::json!({
-                "expected_document_epoch": epoch,
-                "identity": identity,
-                "handle": handle,
-                "actor": "native-nodes-ui",
-                "operation_key": format!("apply-{}-{revision}", handle.get()),
-                "authorization": "user-approved",
-            }),
+            arguments,
         });
         app.note = if response["ok"] == serde_json::Value::Bool(true) {
             "Applied the selected live comparison; use Undo to revert it".into()
@@ -536,24 +557,18 @@ impl Workspace {
         let completed: Vec<_> = state
             .handles
             .iter()
-            .filter_map(|handle| match state.proofs.inspect(handle.get()) {
-                Some(NodeProofInspection::Completed {
-                    artifact_ids,
-                    proofs,
-                }) => Some((artifact_ids, proofs)),
-                _ => None,
-            })
+            .flat_map(|handle| state.proofs.completed(handle.get()))
             .collect();
         let retained: std::collections::BTreeSet<_> = completed
             .iter()
-            .flat_map(|(artifact_ids, _)| artifact_ids.iter().cloned())
+            .map(|(_, artifact, _)| artifact.clone())
             .collect();
         self.nodes
             .proof_images
             .retain(|artifact, _| retained.contains(artifact));
         let images: Vec<_> = completed
             .into_iter()
-            .flat_map(|(artifact_ids, proofs)| artifact_ids.into_iter().zip(proofs))
+            .map(|(_, artifact, proof)| (artifact, proof))
             .filter(|(artifact, _)| !self.nodes.proof_images.contains_key(artifact))
             .filter_map(|(artifact, proof)| {
                 let (width, height) = png_dimensions(&proof.png)?;

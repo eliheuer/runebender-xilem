@@ -21,6 +21,20 @@ use super::nodes::{Link, Node, NodeGraph, NodeType, Problem, Registry};
 /// Schema version for the live graph session API.
 pub const GRAPH_SESSION_SCHEMA_VERSION: u32 = 1;
 
+const fn legacy_execution_version() -> u32 {
+    1
+}
+#[cfg_attr(
+    target_pointer_width = "64",
+    expect(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "Serde skip predicates require a reference to the serialized field"
+    )
+)]
+const fn is_legacy_execution_version(version: &u32) -> bool {
+    *version == 1
+}
+
 const MAX_GRAPH_NODES: usize = 64;
 const MAX_GRAPH_LINKS: usize = 128;
 const MAX_GRAPH_BYTES: usize = 1024 * 1024;
@@ -30,8 +44,10 @@ const MAX_GRAPH_HISTORY: usize = 32;
 const MAX_GRAPH_RECEIPTS: usize = 64;
 const MAX_ACTIVE_RUNS: usize = 16;
 const MAX_RUN_RECEIPTS: usize = 64;
-const MAX_RUN_OUTPUTS: usize = 16;
-const MAX_RUN_ERRORS: usize = 16;
+const MAX_RUN_OUTPUTS: usize = 128;
+const MAX_RUN_ERRORS: usize = 64;
+const MAX_DAG_SCRIPTS: usize = 16;
+const MAX_DAG_PROOFS: usize = 8;
 const MAX_ID_BYTES: usize = 128;
 const MAX_OPERATION_KEY_BYTES: usize = 128;
 const MAX_OUTPUT_TEXT_BYTES: usize = 64 * 1024;
@@ -107,6 +123,12 @@ impl GraphSessionLimits {
 pub struct GraphDiscovery {
     /// [`GRAPH_SESSION_SCHEMA_VERSION`].
     pub schema_version: u32,
+    /// Supported execution contracts; authoring and file schemas remain version 1.
+    pub execution_versions: Vec<u32>,
+    /// Maximum Python jobs in a version 2 execution.
+    pub max_dag_scripts: usize,
+    /// Maximum proof jobs in a version 2 execution.
+    pub max_dag_proofs: usize,
     /// Supported node definitions.
     pub node_types: Vec<NodeType>,
     /// Hard authoring and retention limits.
@@ -597,6 +619,12 @@ pub struct GraphProofCapture {
 /// accepting these hashes as client assertions.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphRunCapture {
+    /// Explicit execution contract. Omitted version 1 preserves legacy wire identity.
+    #[serde(
+        default = "legacy_execution_version",
+        skip_serializing_if = "is_legacy_execution_version"
+    )]
+    pub execution_version: u32,
     /// One shared immutable base.
     pub font: GraphFontCapture,
     /// Exact Python recipe identities.
@@ -641,17 +669,69 @@ impl GraphRunHandle {
     }
 }
 
-/// The only automatically executable topology in schema version 1.
+/// One connected execution input in a live DAG.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
+pub struct GraphInputNode {
+    /// Executable node.
+    pub node: u32,
+    /// Node supplying its font input.
+    pub input: u32,
+}
+
+/// The original comparison topology, when an execution plan has exactly that shape.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
+pub struct GraphComparisonPlan {
+    /// Shared source.
+    pub source_node: u32,
+    /// Direct source proof.
+    pub unchanged_proof: u32,
+    /// One Python transform.
+    pub python_node: u32,
+    /// Derived proof.
+    pub changed_proof: u32,
+}
+
+/// Validated execution topology in deterministic topological order.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct GraphExecutionPlan {
     /// One `live.font` source node.
     pub source_node: u32,
-    /// Proof directly connected to the source.
-    pub unchanged_proof: u32,
-    /// One `live.python` recipe node.
-    pub python_node: u32,
-    /// Proof connected to the Python result.
-    pub changed_proof: u32,
+    /// Connected Python transforms, ordered by node identity.
+    pub scripts: Vec<GraphInputNode>,
+    /// Connected proofs, ordered by node identity.
+    pub proofs: Vec<GraphInputNode>,
+    /// All nodes, including source, in deterministic topological order.
+    pub order: Vec<u32>,
+}
+
+impl GraphExecutionPlan {
+    /// Recognize the original one-script, two-proof comparison.
+    pub fn comparison(&self) -> Option<GraphComparisonPlan> {
+        let [script] = self.scripts.as_slice() else {
+            return None;
+        };
+        let [first, second] = self.proofs.as_slice() else {
+            return None;
+        };
+        if script.input != self.source_node {
+            return None;
+        }
+        let (unchanged_proof, changed_proof) = match (first.input, second.input) {
+            (source, derived) if source == self.source_node && derived == script.node => {
+                (first.node, second.node)
+            }
+            (derived, source) if source == self.source_node && derived == script.node => {
+                (second.node, first.node)
+            }
+            _ => return None,
+        };
+        Some(GraphComparisonPlan {
+            source_node: self.source_node,
+            unchanged_proof,
+            python_node: script.node,
+            changed_proof,
+        })
+    }
 }
 
 /// Complete immutable identity a worker must echo on completion.
@@ -692,6 +772,8 @@ pub enum GraphRunStatus {
     CancellationRequested,
     /// All required outputs completed and remain retained.
     Completed,
+    /// Some independent branches completed while other nodes failed.
+    PartiallyFailed,
     /// A worker failed.
     Failed,
     /// Cancellation won and no outputs are published.
@@ -721,6 +803,17 @@ pub struct GraphNodeOutput {
     pub value: GraphNodeOutputValue,
 }
 
+/// Exact parent and recipe input used to produce an immutable version.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
+pub struct GraphVersionLineage {
+    /// Direct parent node.
+    pub parent_node: u32,
+    /// Exact captured source or parent version content hash.
+    pub parent_content_sha256: String,
+    /// Actual recipe input digest issued to the worker.
+    pub recipe_input_sha256: String,
+}
+
 /// Data references published by existing queue owners.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -735,6 +828,9 @@ pub enum GraphNodeOutputValue {
         version_revision: u64,
         /// SHA-256 of the exact version content used downstream.
         content_sha256: String,
+        /// Version 2 parent and actual recipe input lineage.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        lineage: Option<GraphVersionLineage>,
     },
     /// Exact proof artifact retained by the existing proof queue.
     Proof {
@@ -778,6 +874,13 @@ pub struct GraphRunError {
 pub enum GraphRunOutcome {
     /// Complete typed outputs.
     Completed(Vec<GraphNodeOutput>),
+    /// Publish successful branches and explicit errors for every missing job.
+    Partial {
+        /// Retained successful node outputs.
+        outputs: Vec<GraphNodeOutput>,
+        /// One structured error for each missing script or proof.
+        errors: Vec<GraphRunError>,
+    },
     /// Failure without publishable output.
     Failed(Vec<GraphRunError>),
     /// Cancellation without publishable output.
@@ -963,6 +1066,9 @@ impl GraphSession {
     pub fn discovery(&self) -> GraphDiscovery {
         GraphDiscovery {
             schema_version: GRAPH_SESSION_SCHEMA_VERSION,
+            execution_versions: vec![1, 2],
+            max_dag_scripts: MAX_DAG_SCRIPTS,
+            max_dag_proofs: MAX_DAG_PROOFS,
             node_types: self.registry.types.clone(),
             limits: GraphSessionLimits::current(),
             request_schemas: GraphRequestSchemas {
@@ -994,6 +1100,23 @@ impl GraphSession {
         }
     }
 
+    /// Validate the current graph for a selected execution contract before host capture.
+    pub fn execution_plan(
+        &self,
+        execution_version: u32,
+    ) -> Result<GraphExecutionPlan, GraphSessionError> {
+        let graph_diagnostics = diagnostics(&self.graph, &self.registry);
+        if !graph_diagnostics.is_empty() {
+            let mut error = GraphSessionError::new(
+                GraphSessionErrorCode::InvalidGraph,
+                "graph validation failed; execution plan is unavailable",
+            );
+            error.diagnostics = graph_diagnostics.into_boxed_slice();
+            return Err(error);
+        }
+        execution_plan(&self.graph, execution_version)
+    }
+
     /// Derive script, parameter and proof identities from the canonical graph.
     ///
     /// The application supplies only the font capture and the input hash returned by its typed
@@ -1005,6 +1128,16 @@ impl GraphSession {
         font: GraphFontCapture,
         script_input_sha256: impl Into<String>,
     ) -> Result<GraphRunCapture, GraphSessionError> {
+        self.capture_run_version(font, script_input_sha256, 1)
+    }
+
+    /// Capture exact graph recipes for a selected execution contract.
+    pub fn capture_run_version(
+        &self,
+        font: GraphFontCapture,
+        script_input_sha256: impl Into<String>,
+        execution_version: u32,
+    ) -> Result<GraphRunCapture, GraphSessionError> {
         let graph_diagnostics = diagnostics(&self.graph, &self.registry);
         if !graph_diagnostics.is_empty() {
             let mut error = GraphSessionError::new(
@@ -1014,33 +1147,10 @@ impl GraphSession {
             error.diagnostics = graph_diagnostics.into_boxed_slice();
             return Err(error);
         }
-        let plan = execution_plan(&self.graph)?;
+        let plan = execution_plan(&self.graph, execution_version)?;
         validate_digest("font capture", &font.capture_sha256)?;
         let input_sha256 = script_input_sha256.into();
         validate_digest("recipe input", &input_sha256)?;
-        let python = self.graph.node(plan.python_node).unwrap();
-        let code = python
-            .values
-            .get("code")
-            .and_then(Value::as_str)
-            .filter(|code| !code.is_empty())
-            .ok_or_else(|| {
-                GraphSessionError::new(
-                    GraphSessionErrorCode::CaptureMismatch,
-                    "live.python code must be non-empty before Run",
-                )
-            })?;
-        let parameters = python
-            .values
-            .get("parameters")
-            .cloned()
-            .unwrap_or_else(|| serde_json::json!({}));
-        if !parameters.is_object() {
-            return Err(GraphSessionError::new(
-                GraphSessionErrorCode::CaptureMismatch,
-                "live.python parameters must be a JSON object",
-            ));
-        }
         let proof_capture = |node: u32| -> Result<GraphProofCapture, GraphSessionError> {
             let recipe = self
                 .graph
@@ -1060,17 +1170,48 @@ impl GraphSession {
             })
         };
         let capture = GraphRunCapture {
+            execution_version,
             font,
-            scripts: vec![GraphScriptCapture {
-                node: plan.python_node,
-                script_sha256: sha256(code.as_bytes()),
-                input_sha256,
-                parameters_sha256: digest_json(&parameters)?,
-            }],
-            proofs: vec![
-                proof_capture(plan.unchanged_proof)?,
-                proof_capture(plan.changed_proof)?,
-            ],
+            scripts: plan
+                .scripts
+                .iter()
+                .map(|step| {
+                    let python = self.graph.node(step.node).unwrap();
+                    let code = python
+                        .values
+                        .get("code")
+                        .and_then(Value::as_str)
+                        .filter(|code| !code.is_empty())
+                        .ok_or_else(|| {
+                            GraphSessionError::new(
+                                GraphSessionErrorCode::CaptureMismatch,
+                                "live.python code must be non-empty before Run",
+                            )
+                        })?;
+                    let parameters = python
+                        .values
+                        .get("parameters")
+                        .cloned()
+                        .unwrap_or_else(|| serde_json::json!({}));
+                    if !parameters.is_object() {
+                        return Err(GraphSessionError::new(
+                            GraphSessionErrorCode::CaptureMismatch,
+                            "live.python parameters must be a JSON object",
+                        ));
+                    }
+                    Ok(GraphScriptCapture {
+                        node: step.node,
+                        script_sha256: sha256(code.as_bytes()),
+                        input_sha256: input_sha256.clone(),
+                        parameters_sha256: digest_json(&parameters)?,
+                    })
+                })
+                .collect::<Result<Vec<_>, GraphSessionError>>()?,
+            proofs: plan
+                .proofs
+                .iter()
+                .map(|step| proof_capture(step.node))
+                .collect::<Result<Vec<_>, _>>()?,
         };
         validate_capture(&self.graph, &plan, &capture)?;
         Ok(capture)
@@ -1179,7 +1320,7 @@ impl GraphSession {
                 "active graph run limit reached",
             ));
         }
-        let plan = execution_plan(&self.graph)?;
+        let plan = execution_plan(&self.graph, request.capture.execution_version)?;
         validate_capture(&self.graph, &plan, &request.capture)?;
         let identity = GraphRunIdentity {
             graph: self.identity.clone(),
@@ -1277,6 +1418,7 @@ impl GraphSession {
             }
             GraphRunStatus::CancellationRequested
             | GraphRunStatus::Completed
+            | GraphRunStatus::PartiallyFailed
             | GraphRunStatus::Failed
             | GraphRunStatus::Cancelled
             | GraphRunStatus::Stale
@@ -1347,13 +1489,22 @@ impl GraphSession {
         }
         match completion.outcome {
             GraphRunOutcome::Completed(outputs) => {
-                if let Err(error) = validate_outputs(record, &outputs) {
+                if let Err(error) = validate_outputs(record, &outputs, true) {
                     terminalize_invalid_completion(record, error);
                     return Ok(inspection(completion.handle, record));
                 }
                 record.status = GraphRunStatus::Completed;
                 record.outputs = outputs;
                 record.errors.clear();
+            }
+            GraphRunOutcome::Partial { outputs, errors } => {
+                if let Err(error) = validate_partial(record, &outputs, &errors) {
+                    terminalize_invalid_completion(record, error);
+                    return Ok(inspection(completion.handle, record));
+                }
+                record.status = GraphRunStatus::PartiallyFailed;
+                record.outputs = outputs;
+                record.errors = errors;
             }
             GraphRunOutcome::Failed(errors) => {
                 if let Err(error) = validate_run_errors(&errors) {
@@ -1814,7 +1965,16 @@ fn hex_digest(digest: impl AsRef<[u8]>) -> String {
         .collect()
 }
 
-fn execution_plan(graph: &NodeGraph) -> Result<GraphExecutionPlan, GraphSessionError> {
+fn execution_plan(
+    graph: &NodeGraph,
+    version: u32,
+) -> Result<GraphExecutionPlan, GraphSessionError> {
+    if version != 1 && version != 2 {
+        return Err(GraphSessionError::new(
+            GraphSessionErrorCode::UnsupportedTopology,
+            "unsupported execution contract version",
+        ));
+    }
     if graph.nodes.iter().any(|node| {
         matches!(
             node.type_name.as_str(),
@@ -1837,69 +1997,114 @@ fn execution_plan(graph: &NodeGraph) -> Result<GraphExecutionPlan, GraphSessionE
     let sources = nodes_of_type("live.font");
     let scripts = nodes_of_type("live.python");
     let proofs = nodes_of_type("live.proof");
-    if sources.len() != 1 || scripts.len() != 1 || proofs.len() != 2 {
+    if sources.len() != 1
+        || (version == 1 && (scripts.len() != 1 || proofs.len() != 2))
+        || (version == 2
+            && (scripts.len() > MAX_DAG_SCRIPTS
+                || proofs.is_empty()
+                || proofs.len() > MAX_DAG_PROOFS))
+    {
         return Err(GraphSessionError::new(
             GraphSessionErrorCode::UnsupportedTopology,
-            "schema version 1 runs exactly one live.font, one live.python and two live.proof nodes",
+            "execution contract requires one live.font and a bounded set of live.python/live.proof nodes",
         ));
     }
-    if graph.nodes.len() != 4 || graph.links.len() != 3 {
+    if version == 1 && (graph.nodes.len() != 4 || graph.links.len() != 3) {
         return Err(GraphSessionError::new(
             GraphSessionErrorCode::UnsupportedTopology,
             "schema version 1 runs only the four-node comparison graph",
         ));
     }
-    let source_node = sources[0];
-    let python_node = scripts[0];
-    let direct = graph
-        .link_into(proofs[0], "font")
-        .map(Link::from)
-        .ok_or_else(|| {
-            GraphSessionError::new(
-                GraphSessionErrorCode::UnsupportedTopology,
-                "each proof must have one connected font input",
-            )
-        })?;
-    let second = graph
-        .link_into(proofs[1], "font")
-        .map(Link::from)
-        .ok_or_else(|| {
-            GraphSessionError::new(
-                GraphSessionErrorCode::UnsupportedTopology,
-                "each proof must have one connected font input",
-            )
-        })?;
-    let (unchanged_proof, changed_proof) = match (direct, second) {
-        (from, other) if from == source_node && other == python_node => (proofs[0], proofs[1]),
-        (from, other) if from == python_node && other == source_node => (proofs[1], proofs[0]),
-        _ => {
-            return Err(GraphSessionError::new(
-                GraphSessionErrorCode::UnsupportedTopology,
-                "proofs must compare the shared base with the Python-derived version",
-            ));
-        }
-    };
-    let python_input = graph
-        .link_into(python_node, "font")
-        .map(Link::from)
-        .ok_or_else(|| {
-            GraphSessionError::new(
-                GraphSessionErrorCode::UnsupportedTopology,
-                "Python recipe must read the shared base font",
-            )
-        })?;
-    if python_input != source_node {
+    if version == 2 && graph.nodes.len() != 1 + scripts.len() + proofs.len() {
         return Err(GraphSessionError::new(
             GraphSessionErrorCode::UnsupportedTopology,
-            "Python recipe and unchanged proof must share one base font",
+            "version 2 runs only live.font, live.python and live.proof nodes",
         ));
     }
-    Ok(GraphExecutionPlan {
+    let source_node = sources[0];
+    let allowed: BTreeSet<_> = sources
+        .iter()
+        .chain(&scripts)
+        .chain(&proofs)
+        .copied()
+        .collect();
+    let input = |node: u32| -> Result<u32, GraphSessionError> {
+        let links: Vec<_> = graph
+            .links
+            .iter()
+            .filter(|link| link.to() == node)
+            .collect();
+        if links.len() != 1
+            || links[0].input() != "font"
+            || !allowed.contains(&links[0].from())
+            || !matches!(
+                graph
+                    .node(links[0].from())
+                    .map(|parent| parent.type_name.as_str()),
+                Some("live.font" | "live.python")
+            )
+        {
+            return Err(GraphSessionError::new(
+                GraphSessionErrorCode::UnsupportedTopology,
+                "each live job requires exactly one connected font input from live.font or live.python",
+            ));
+        }
+        Ok(links[0].from())
+    };
+    let mut script_steps = scripts
+        .iter()
+        .map(|&node| {
+            Ok(GraphInputNode {
+                node,
+                input: input(node)?,
+            })
+        })
+        .collect::<Result<Vec<_>, GraphSessionError>>()?;
+    let mut proof_steps = proofs
+        .iter()
+        .map(|&node| {
+            Ok(GraphInputNode {
+                node,
+                input: input(node)?,
+            })
+        })
+        .collect::<Result<Vec<_>, GraphSessionError>>()?;
+    script_steps.sort_by_key(|step| step.node);
+    proof_steps.sort_by_key(|step| step.node);
+    let parents: BTreeMap<_, _> = script_steps
+        .iter()
+        .chain(&proof_steps)
+        .map(|step| (step.node, step.input))
+        .collect();
+    let mut remaining = parents.clone();
+    let mut order = vec![source_node];
+    while !remaining.is_empty() {
+        let ready = remaining
+            .iter()
+            .find(|(_, parent)| order.contains(parent))
+            .map(|(&node, _)| node);
+        let Some(node) = ready else {
+            return Err(GraphSessionError::new(
+                GraphSessionErrorCode::UnsupportedTopology,
+                "live graph contains a cycle or disconnected job",
+            ));
+        };
+        order.push(node);
+        remaining.remove(&node);
+    }
+    let plan = GraphExecutionPlan {
         source_node,
-        unchanged_proof,
-        python_node,
-        changed_proof,
-    })
+        scripts: script_steps,
+        proofs: proof_steps,
+        order,
+    };
+    if version == 1 && plan.comparison().is_none() {
+        return Err(GraphSessionError::new(
+            GraphSessionErrorCode::UnsupportedTopology,
+            "proofs must compare the shared base with the Python-derived version",
+        ));
+    }
+    Ok(plan)
 }
 
 fn validate_capture(
@@ -1925,51 +2130,65 @@ fn validate_capture(
             "font capture source does not match live.font",
         ));
     }
-    if capture.scripts.len() != 1 || capture.scripts[0].node != plan.python_node {
+    let expected_scripts: BTreeSet<_> = plan.scripts.iter().map(|step| step.node).collect();
+    let actual_scripts: BTreeSet<_> = capture.scripts.iter().map(|script| script.node).collect();
+    if capture.scripts.len() != plan.scripts.len() || actual_scripts != expected_scripts {
         return Err(GraphSessionError::new(
             GraphSessionErrorCode::CaptureMismatch,
-            "run must bind exactly the one live.python node",
+            "run must bind exactly the planned live.python nodes",
         ));
     }
-    let script = &capture.scripts[0];
-    validate_digest("script", &script.script_sha256)?;
-    validate_digest("recipe input", &script.input_sha256)?;
-    validate_digest("parameters", &script.parameters_sha256)?;
-    let python = graph.node(plan.python_node).unwrap();
-    let code = python
-        .values
-        .get("code")
-        .and_then(Value::as_str)
-        .filter(|code| !code.is_empty())
-        .ok_or_else(|| {
-            GraphSessionError::new(
+    for script in &capture.scripts {
+        validate_digest("script", &script.script_sha256)?;
+        validate_digest("recipe input", &script.input_sha256)?;
+        validate_digest("parameters", &script.parameters_sha256)?;
+        let python = graph.node(script.node).unwrap();
+        let code = python
+            .values
+            .get("code")
+            .and_then(Value::as_str)
+            .filter(|code| !code.is_empty())
+            .ok_or_else(|| {
+                GraphSessionError::new(
+                    GraphSessionErrorCode::CaptureMismatch,
+                    "live.python code must be non-empty before Run",
+                )
+            })?;
+        if sha256(code.as_bytes()) != script.script_sha256 {
+            return Err(GraphSessionError::new(
                 GraphSessionErrorCode::CaptureMismatch,
-                "live.python code must be non-empty before Run",
-            )
-        })?;
-    if sha256(code.as_bytes()) != script.script_sha256 {
+                "script capture does not match live.python code",
+            ));
+        }
+        let parameters = python
+            .values
+            .get("parameters")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
+        if !parameters.is_object() || digest_json(&parameters)? != script.parameters_sha256 {
+            return Err(GraphSessionError::new(
+                GraphSessionErrorCode::CaptureMismatch,
+                "parameter capture does not match live.python parameters",
+            ));
+        }
+    }
+    if capture.execution_version == 2
+        && capture
+            .scripts
+            .windows(2)
+            .any(|pair| pair[0].input_sha256 != pair[1].input_sha256)
+    {
         return Err(GraphSessionError::new(
             GraphSessionErrorCode::CaptureMismatch,
-            "script capture does not match live.python code",
+            "version 2 scripts must share one frozen root recipe-scope digest",
         ));
     }
-    let parameters = python
-        .values
-        .get("parameters")
-        .cloned()
-        .unwrap_or_else(|| serde_json::json!({}));
-    if !parameters.is_object() || digest_json(&parameters)? != script.parameters_sha256 {
-        return Err(GraphSessionError::new(
-            GraphSessionErrorCode::CaptureMismatch,
-            "parameter capture does not match live.python parameters",
-        ));
-    }
-    let expected_proofs = BTreeSet::from([plan.unchanged_proof, plan.changed_proof]);
+    let expected_proofs: BTreeSet<u32> = plan.proofs.iter().map(|step| step.node).collect();
     let actual_proofs: BTreeSet<u32> = capture.proofs.iter().map(|proof| proof.node).collect();
-    if capture.proofs.len() != 2 || actual_proofs != expected_proofs {
+    if capture.proofs.len() != plan.proofs.len() || actual_proofs != expected_proofs {
         return Err(GraphSessionError::new(
             GraphSessionErrorCode::CaptureMismatch,
-            "run must bind exactly the two comparison proofs",
+            "run must bind exactly the planned proofs",
         ));
     }
     for proof in &capture.proofs {
@@ -1986,7 +2205,9 @@ fn validate_capture(
             ));
         }
     }
-    if capture.proofs[0].recipe_sha256 != capture.proofs[1].recipe_sha256 {
+    if capture.execution_version == 1
+        && capture.proofs[0].recipe_sha256 != capture.proofs[1].recipe_sha256
+    {
         return Err(GraphSessionError::new(
             GraphSessionErrorCode::CaptureMismatch,
             "comparison proofs must use identical rendering settings",
@@ -2017,6 +2238,7 @@ fn sha256(bytes: &[u8]) -> String {
 fn validate_outputs(
     record: &GraphRunRecord,
     outputs: &[GraphNodeOutput],
+    complete: bool,
 ) -> Result<(), GraphSessionError> {
     if outputs.len() > MAX_RUN_OUTPUTS {
         return Err(GraphSessionError::new(
@@ -2024,15 +2246,16 @@ fn validate_outputs(
             format!("run exceeds {MAX_RUN_OUTPUTS} retained outputs"),
         ));
     }
-    let derived_input_sha256 = outputs.iter().find_map(|output| match &output.value {
-        GraphNodeOutputValue::FontVersion { content_sha256, .. }
-            if output.node == record.plan.python_node =>
-        {
-            Some(content_sha256.as_str())
-        }
-        _ => None,
-    });
     let mut unique = BTreeSet::new();
+    let versions: BTreeMap<_, _> = outputs
+        .iter()
+        .filter_map(|output| match &output.value {
+            GraphNodeOutputValue::FontVersion { content_sha256, .. } => {
+                Some((output.node, content_sha256.as_str()))
+            }
+            _ => None,
+        })
+        .collect();
     for output in outputs {
         let kind = match &output.value {
             GraphNodeOutputValue::FontVersion { .. } => 0_u8,
@@ -2050,18 +2273,53 @@ fn validate_outputs(
                 source,
                 version_id,
                 content_sha256,
+                lineage,
                 ..
             } => {
-                if output.node != record.plan.python_node
-                    || *source != record.identity.capture.font.source
-                {
+                let Some(step) = record
+                    .plan
+                    .scripts
+                    .iter()
+                    .find(|step| step.node == output.node)
+                else {
                     return Err(GraphSessionError::new(
                         GraphSessionErrorCode::InvalidOutput,
-                        "derived font output does not match the Python node and root source",
+                        "derived version does not belong to a Python node",
+                    ));
+                };
+                if *source != record.identity.capture.font.source {
+                    return Err(GraphSessionError::new(
+                        GraphSessionErrorCode::InvalidOutput,
+                        "derived version source does not match root",
                     ));
                 }
                 validate_bounded("version_id", version_id, MAX_ID_BYTES)?;
                 validate_digest("font version", content_sha256)?;
+                if record.identity.capture.execution_version == 1 {
+                    if lineage.is_some() {
+                        return Err(GraphSessionError::new(
+                            GraphSessionErrorCode::InvalidOutput,
+                            "version 1 output cannot carry version 2 lineage",
+                        ));
+                    }
+                } else {
+                    let Some(lineage) = lineage else {
+                        return Err(GraphSessionError::new(
+                            GraphSessionErrorCode::InvalidOutput,
+                            "version 2 output requires lineage",
+                        ));
+                    };
+                    if lineage.parent_node != step.input
+                        || lineage.parent_content_sha256
+                            != parent_content(record, &versions, step.input)?
+                    {
+                        return Err(GraphSessionError::new(
+                            GraphSessionErrorCode::InvalidOutput,
+                            "version lineage does not match its exact parent",
+                        ));
+                    }
+                    validate_digest("recipe input", &lineage.recipe_input_sha256)?;
+                }
             }
             GraphNodeOutputValue::Proof {
                 artifact_id,
@@ -2083,46 +2341,39 @@ fn validate_outputs(
                         "proof output does not belong to this run",
                     ));
                 };
+                let step = record
+                    .plan
+                    .proofs
+                    .iter()
+                    .find(|step| step.node == output.node)
+                    .unwrap();
                 validate_bounded("artifact_id", artifact_id, MAX_ID_BYTES)?;
                 validate_digest("proof artifact", content_sha256)?;
                 validate_digest("proof canonical input", canonical_input_sha256)?;
                 validate_digest("proof compiled font", font_sha256)?;
-                if recipe_sha256 != &capture.recipe_sha256 {
+                if recipe_sha256 != &capture.recipe_sha256
+                    || *scope != GraphProofScope::CompiledFamily
+                {
                     return Err(GraphSessionError::new(
                         GraphSessionErrorCode::InvalidOutput,
-                        "proof output recipe does not match the captured run",
+                        "proof recipe or scope does not match capture",
                     ));
                 }
-                if *scope != GraphProofScope::CompiledFamily {
+                if canonical_input_sha256 != parent_content(record, &versions, step.input)? {
                     return Err(GraphSessionError::new(
                         GraphSessionErrorCode::InvalidOutput,
-                        "comparison proof must come from the canonical compiled-family path",
-                    ));
-                }
-                let expected_input = if output.node == record.plan.unchanged_proof {
-                    record.identity.capture.font.capture_sha256.as_str()
-                } else if output.node == record.plan.changed_proof {
-                    derived_input_sha256.ok_or_else(|| {
-                        GraphSessionError::new(
-                            GraphSessionErrorCode::InvalidOutput,
-                            "derived proof has no matching font-version identity",
-                        )
-                    })?
-                } else {
-                    return Err(GraphSessionError::new(
-                        GraphSessionErrorCode::InvalidOutput,
-                        "proof output does not belong to either comparison branch",
-                    ));
-                };
-                if canonical_input_sha256 != expected_input {
-                    return Err(GraphSessionError::new(
-                        GraphSessionErrorCode::InvalidOutput,
-                        "proof canonical input does not match its comparison branch",
+                        "proof input does not match its parent",
                     ));
                 }
             }
             GraphNodeOutputValue::Report { text } => {
-                if output.node != record.plan.python_node || text.len() > MAX_OUTPUT_TEXT_BYTES {
+                if !record
+                    .plan
+                    .scripts
+                    .iter()
+                    .any(|step| step.node == output.node)
+                    || text.len() > MAX_OUTPUT_TEXT_BYTES
+                {
                     return Err(GraphSessionError::new(
                         GraphSessionErrorCode::InvalidOutput,
                         "Python report has the wrong node or exceeds 65536 UTF-8 bytes",
@@ -2131,23 +2382,108 @@ fn validate_outputs(
             }
         }
     }
-    let has_version = outputs.iter().any(|output| {
-        output.node == record.plan.python_node
-            && matches!(output.value, GraphNodeOutputValue::FontVersion { .. })
-    });
-    let proof_nodes: BTreeSet<u32> = outputs
+    if complete {
+        for step in &record.plan.scripts {
+            if !versions.contains_key(&step.node) {
+                return Err(GraphSessionError::new(
+                    GraphSessionErrorCode::InvalidOutput,
+                    "completed run is missing a derived version",
+                ));
+            }
+        }
+        for step in &record.plan.proofs {
+            if !outputs.iter().any(|output| {
+                output.node == step.node
+                    && matches!(output.value, GraphNodeOutputValue::Proof { .. })
+            }) {
+                return Err(GraphSessionError::new(
+                    GraphSessionErrorCode::InvalidOutput,
+                    "completed run is missing a proof",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn parent_content<'a>(
+    record: &'a GraphRunRecord,
+    versions: &'a BTreeMap<u32, &'a str>,
+    parent: u32,
+) -> Result<&'a str, GraphSessionError> {
+    if parent == record.plan.source_node {
+        return Ok(&record.identity.capture.font.capture_sha256);
+    }
+    versions.get(&parent).copied().ok_or_else(|| {
+        GraphSessionError::new(
+            GraphSessionErrorCode::InvalidOutput,
+            "successful node has no successful parent version",
+        )
+    })
+}
+
+fn validate_partial(
+    record: &GraphRunRecord,
+    outputs: &[GraphNodeOutput],
+    errors: &[GraphRunError],
+) -> Result<(), GraphSessionError> {
+    if record.identity.capture.execution_version != 2 {
+        return Err(GraphSessionError::new(
+            GraphSessionErrorCode::InvalidOutput,
+            "partial results require execution version 2",
+        ));
+    }
+    if outputs.is_empty() {
+        return Err(GraphSessionError::new(
+            GraphSessionErrorCode::InvalidOutput,
+            "partial result needs a successful output",
+        ));
+    }
+    validate_outputs(record, outputs, false)?;
+    validate_run_errors(errors)?;
+    let successful: BTreeSet<_> = outputs
         .iter()
-        .filter_map(|output| {
-            matches!(output.value, GraphNodeOutputValue::Proof { .. }).then_some(output.node)
+        .filter_map(|output| match output.value {
+            GraphNodeOutputValue::FontVersion { .. } | GraphNodeOutputValue::Proof { .. } => {
+                Some(output.node)
+            }
+            GraphNodeOutputValue::Report { .. } => None,
         })
         .collect();
-    if !has_version
-        || proof_nodes != BTreeSet::from([record.plan.unchanged_proof, record.plan.changed_proof])
+    let required: BTreeSet<_> = record
+        .plan
+        .scripts
+        .iter()
+        .chain(&record.plan.proofs)
+        .map(|step| step.node)
+        .collect();
+    let failed: BTreeSet<_> = errors.iter().filter_map(|error| error.node).collect();
+    if outputs.iter().any(|output| failed.contains(&output.node)) {
+        return Err(GraphSessionError::new(
+            GraphSessionErrorCode::InvalidOutput,
+            "partial result cannot contain an output from an errored node",
+        ));
+    }
+    if failed.len() != errors.len() || failed != required.difference(&successful).copied().collect()
     {
         return Err(GraphSessionError::new(
             GraphSessionErrorCode::InvalidOutput,
-            "completed comparison run requires one derived font and both proof outputs",
+            "partial errors must cover each and only each missing job",
         ));
+    }
+    for step in record.plan.scripts.iter().chain(&record.plan.proofs) {
+        if failed.contains(&step.node)
+            && step.input != record.plan.source_node
+            && failed.contains(&step.input)
+            && !errors
+                .iter()
+                .any(|error| error.node == Some(step.node) && error.code == "dependency_failed")
+        {
+            return Err(GraphSessionError::new(
+                GraphSessionErrorCode::InvalidOutput,
+                "blocked downstream job requires dependency_failed error",
+            ));
+        }
     }
     Ok(())
 }
@@ -2288,6 +2624,7 @@ mod tests {
                     version_id: "version-1".into(),
                     version_revision: 1,
                     content_sha256: derived_input_sha256.clone(),
+                    lineage: None,
                 },
             },
             GraphNodeOutput {
@@ -2557,14 +2894,14 @@ mod tests {
         let work = session.claim_run(response.receipt.handle).unwrap();
         assert_eq!(
             work.graph
-                .link_into(work.plan.python_node, "font")
+                .link_into(work.plan.comparison().unwrap().python_node, "font")
                 .unwrap()
                 .from(),
             work.plan.source_node
         );
         assert_eq!(
             work.graph
-                .link_into(work.plan.unchanged_proof, "font")
+                .link_into(work.plan.comparison().unwrap().unchanged_proof, "font")
                 .unwrap()
                 .from(),
             work.plan.source_node
@@ -2820,7 +3157,7 @@ mod tests {
         let work = session.claim_run(start.receipt.handle).unwrap();
         let mut completed = outputs(&work.identity);
         completed.push(GraphNodeOutput {
-            node: work.plan.python_node,
+            node: work.plan.comparison().unwrap().python_node,
             value: GraphNodeOutputValue::Report {
                 text: "bounded report".into(),
             },
@@ -2934,6 +3271,285 @@ mod tests {
         assert_eq!(
             session.start_run(changed).unwrap_err().code,
             GraphSessionErrorCode::PayloadMismatch
+        );
+    }
+
+    fn dag_session() -> GraphSession {
+        let mut graph = new_session().graph;
+        let branch = graph.add("live.python", [500.0, 500.0]);
+        graph
+            .node_mut(branch)
+            .unwrap()
+            .values
+            .insert("code".into(), json!("print('branch')"));
+        graph.connect(1, "font", branch, "font");
+        let chain = graph.add("live.python", [700.0, 500.0]);
+        graph
+            .node_mut(chain)
+            .unwrap()
+            .values
+            .insert("code".into(), json!("print('chain')"));
+        graph.connect(branch, "font", chain, "font");
+        let proof = graph.add("live.proof", [900.0, 500.0]);
+        graph
+            .node_mut(proof)
+            .unwrap()
+            .values
+            .insert("recipe".into(), json!({"specimen": "branch"}));
+        graph.connect(chain, "font", proof, "font");
+        GraphSession::new("graph-2", "document-2", graph, Registry::core()).unwrap()
+    }
+
+    fn dag_request(session: &GraphSession, key: &str) -> GraphRunRequest {
+        GraphRunRequest {
+            guard: semantic_guard(session),
+            actor: "agent".into(),
+            operation_key: key.into(),
+            capture: session
+                .capture_run_version(
+                    GraphFontCapture {
+                        source: 3,
+                        document_revision: 12,
+                        capture_sha256: sha256(b"dag-root"),
+                    },
+                    sha256(b"root-recipe-scope"),
+                    2,
+                )
+                .unwrap(),
+        }
+    }
+
+    fn dag_version(node: u32, parent: u32, parent_hash: &str) -> GraphNodeOutput {
+        GraphNodeOutput {
+            node,
+            value: GraphNodeOutputValue::FontVersion {
+                source: 3,
+                version_id: format!("version-{node}"),
+                version_revision: 1,
+                content_sha256: sha256(format!("content-{node}").as_bytes()),
+                lineage: Some(GraphVersionLineage {
+                    parent_node: parent,
+                    parent_content_sha256: parent_hash.into(),
+                    recipe_input_sha256: sha256(format!("recipe-{node}").as_bytes()),
+                }),
+            },
+        }
+    }
+
+    fn dag_proof(node: u32, parent_hash: &str, identity: &GraphRunIdentity) -> GraphNodeOutput {
+        GraphNodeOutput {
+            node,
+            value: GraphNodeOutputValue::Proof {
+                artifact_id: format!("proof-{node}"),
+                content_sha256: sha256(format!("png-{node}").as_bytes()),
+                canonical_input_sha256: parent_hash.into(),
+                font_sha256: sha256(format!("font-{node}").as_bytes()),
+                recipe_sha256: identity
+                    .capture
+                    .proofs
+                    .iter()
+                    .find(|proof| proof.node == node)
+                    .unwrap()
+                    .recipe_sha256
+                    .clone(),
+                scope: GraphProofScope::CompiledFamily,
+            },
+        }
+    }
+
+    #[test]
+    fn version_two_plans_chain_branches_and_distinct_proof_recipes() {
+        let session = dag_session();
+        assert!(session.execution_plan(1).is_err());
+        let plan = session.execution_plan(2).unwrap();
+        assert_eq!(plan.source_node, 1);
+        assert_eq!(
+            plan.scripts,
+            vec![
+                GraphInputNode { node: 3, input: 1 },
+                GraphInputNode { node: 5, input: 1 },
+                GraphInputNode { node: 6, input: 5 }
+            ]
+        );
+        assert_eq!(plan.proofs.len(), 3);
+        assert_eq!(plan.order, vec![1, 2, 3, 4, 5, 6, 7]);
+        assert!(plan.comparison().is_none());
+        let request = dag_request(&session, "dag");
+        assert_ne!(
+            request.capture.proofs[0].recipe_sha256,
+            request.capture.proofs[2].recipe_sha256
+        );
+        assert_eq!(request.capture.execution_version, 2);
+        assert_eq!(
+            session.execution_plan(3).unwrap_err().code,
+            GraphSessionErrorCode::UnsupportedTopology
+        );
+        let before = session.snapshot().semantic_hash;
+        let mut graph = session.graph.clone();
+        graph.node_mut(7).unwrap().pos = [123.0, 456.0];
+        assert_eq!(semantic_hash(&graph).unwrap(), before);
+    }
+
+    #[test]
+    fn version_two_checks_lineage_and_partial_failures() {
+        let mut session = dag_session();
+        let run = session.start_run(dag_request(&session, "partial")).unwrap();
+        let work = session.claim_run(run.receipt.handle).unwrap();
+        let root = &work.identity.capture.font.capture_sha256;
+        let base = dag_proof(2, root, &work.identity);
+        let branch = dag_version(5, 1, root);
+        let branch_hash = match &branch.value {
+            GraphNodeOutputValue::FontVersion { content_sha256, .. } => content_sha256.clone(),
+            _ => unreachable!(),
+        };
+        let chain = dag_version(6, 5, &branch_hash);
+        let chain_hash = match &chain.value {
+            GraphNodeOutputValue::FontVersion { content_sha256, .. } => content_sha256.clone(),
+            _ => unreachable!(),
+        };
+        let errors = vec![
+            GraphRunError {
+                code: "worker_failed".into(),
+                message: "script failed".into(),
+                node: Some(3),
+                port: None,
+                field: None,
+            },
+            GraphRunError {
+                code: "dependency_failed".into(),
+                message: "parent failed".into(),
+                node: Some(4),
+                port: None,
+                field: None,
+            },
+        ];
+        let outputs = vec![
+            base,
+            branch,
+            chain,
+            dag_proof(7, &chain_hash, &work.identity),
+        ];
+        let result = session
+            .complete_run(
+                GraphRunCompletion {
+                    handle: work.handle,
+                    identity: work.identity.clone(),
+                    outcome: GraphRunOutcome::Partial {
+                        outputs: outputs.clone(),
+                        errors,
+                    },
+                },
+                &GraphDocumentState {
+                    document_epoch: "document-2".into(),
+                    document_revision: 12,
+                },
+            )
+            .unwrap();
+        assert_eq!(result.status, GraphRunStatus::PartiallyFailed);
+        assert_eq!(result.outputs.len(), 4);
+        let run = session
+            .start_run(dag_request(&session, "complete"))
+            .unwrap();
+        let work = session.claim_run(run.receipt.handle).unwrap();
+        let mut complete = outputs.clone();
+        let direct = dag_version(3, 1, &work.identity.capture.font.capture_sha256);
+        let direct_hash = match &direct.value {
+            GraphNodeOutputValue::FontVersion { content_sha256, .. } => content_sha256.clone(),
+            _ => unreachable!(),
+        };
+        complete.push(direct);
+        complete.push(dag_proof(4, &direct_hash, &work.identity));
+        let result = session
+            .complete_run(
+                GraphRunCompletion {
+                    handle: work.handle,
+                    identity: work.identity,
+                    outcome: GraphRunOutcome::Completed(complete),
+                },
+                &GraphDocumentState {
+                    document_epoch: "document-2".into(),
+                    document_revision: 12,
+                },
+            )
+            .unwrap();
+        assert_eq!(result.status, GraphRunStatus::Completed);
+        let run = session
+            .start_run(dag_request(&session, "wrong-lineage"))
+            .unwrap();
+        let work = session.claim_run(run.receipt.handle).unwrap();
+        let mut wrong = outputs;
+        if let GraphNodeOutputValue::FontVersion {
+            lineage: Some(lineage),
+            ..
+        } = &mut wrong[2].value
+        {
+            lineage.parent_content_sha256 = sha256(b"wrong");
+        }
+        let result = session
+            .complete_run(
+                GraphRunCompletion {
+                    handle: work.handle,
+                    identity: work.identity,
+                    outcome: GraphRunOutcome::Completed(wrong),
+                },
+                &GraphDocumentState {
+                    document_epoch: "document-2".into(),
+                    document_revision: 12,
+                },
+            )
+            .unwrap();
+        assert_eq!(result.status, GraphRunStatus::Failed);
+        assert_eq!(result.errors[0].code, "invalid_worker_output");
+    }
+
+    #[test]
+    fn legacy_capture_serialization_omits_execution_version() {
+        let session = new_session();
+        let capture = run_request(&session, "agent", "legacy").capture;
+        let value = serde_json::to_value(capture).unwrap();
+        assert!(value.get("execution_version").is_none());
+    }
+
+    #[test]
+    fn version_two_rejects_cycle_and_disconnected_jobs() {
+        let mut graph = dag_session().graph;
+        graph.connect(6, "font", 5, "font");
+        assert_eq!(
+            execution_plan(&graph, 2).unwrap_err().code,
+            GraphSessionErrorCode::UnsupportedTopology
+        );
+        graph.links.retain(|link| link.to() != 5);
+        assert_eq!(
+            execution_plan(&graph, 2).unwrap_err().code,
+            GraphSessionErrorCode::UnsupportedTopology
+        );
+    }
+
+    #[test]
+    fn version_two_allows_one_proof_without_scripts() {
+        let mut graph = dag_session().graph;
+        graph.nodes.retain(|node| node.id == 1 || node.id == 2);
+        graph.links.retain(|link| link.to() == 2);
+        let session =
+            GraphSession::new("proof-only", "document-2", graph, Registry::core()).unwrap();
+        let plan = session.execution_plan(2).unwrap();
+        assert!(plan.scripts.is_empty());
+        assert_eq!(plan.proofs, vec![GraphInputNode { node: 2, input: 1 }]);
+        assert_eq!(
+            session
+                .capture_run_version(
+                    GraphFontCapture {
+                        source: 3,
+                        document_revision: 12,
+                        capture_sha256: sha256(b"root")
+                    },
+                    sha256(b"scope"),
+                    2
+                )
+                .unwrap()
+                .scripts
+                .len(),
+            0
         );
     }
 }

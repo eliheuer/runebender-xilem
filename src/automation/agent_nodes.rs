@@ -50,10 +50,16 @@ pub struct NodesMutateRequest {
     pub request: GraphMutationRequest,
 }
 
-/// Start one native Python comparison from host-derived captures.
+/// Start one native comparison or explicitly versioned DAG from host-derived captures.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NodesRunRequest {
+    /// Execution contract: omitted or 1 keeps the legacy comparison; 2 enables bounded DAGs.
+    #[serde(
+        default = "legacy_execution_version",
+        skip_serializing_if = "is_legacy_execution"
+    )]
+    pub execution_version: u32,
     /// Exact native endpoint lifetime returned by the application.
     pub expected_document_epoch: String,
     /// Layout-independent guard for the one canonical graph.
@@ -106,6 +112,9 @@ pub struct NodesReleaseRequest {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NodesApplyRequest {
+    /// Explicit transform result; omission is accepted only when the eligible result is unique.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node: Option<u32>,
     /// Exact native endpoint lifetime returned by the application.
     pub expected_document_epoch: String,
     /// Exact graph and document lifetime that issued the handle.
@@ -140,8 +149,27 @@ pub struct NodesImageRequest {
     pub identity: GraphIdentity,
     /// Completed run retaining both proof artifacts.
     pub handle: GraphRunHandle,
-    /// Original or changed comparison branch.
-    pub branch: NodesImageBranch,
+    /// Legacy comparison alias, accepted only when it resolves to exactly one proof.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<NodesImageBranch>,
+    /// Explicit proof node, mutually exclusive with the legacy branch selector.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node: Option<u32>,
+}
+
+const fn legacy_execution_version() -> u32 {
+    1
+}
+
+#[cfg_attr(
+    target_pointer_width = "64",
+    expect(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "Serde skip predicates require a reference to the serialized field"
+    )
+)]
+fn is_legacy_execution(version: &u32) -> bool {
+    *version == 1
 }
 
 fn validate_text(name: &str, value: &str, max: usize) -> Result<(), String> {
@@ -209,6 +237,9 @@ impl NodesRunRequest {
     /// the immutable host capture.
     pub fn validate(&self) -> Result<(), String> {
         validate_epoch(&self.expected_document_epoch, &self.guard.identity)?;
+        if !matches!(self.execution_version, 1 | 2) {
+            return Err("execution_version must be 1 or 2".into());
+        }
         validate_actor_key(&self.actor, &self.operation_key)?;
         if self.guard.semantic_hash.len() != 64
             || !self
@@ -280,9 +311,12 @@ impl NodesApplyRequest {
 }
 
 impl NodesImageRequest {
-    /// Validate endpoint and graph-lifetime agreement.
+    /// Validate endpoint, graph lifetime and one unambiguous proof selector.
     pub fn validate(&self) -> Result<(), String> {
         validate_epoch(&self.expected_document_epoch, &self.identity)?;
+        if self.node.is_some() == self.branch.is_some() {
+            return Err("supply exactly one of node or branch".into());
+        }
         validate_handle(self.handle)
     }
 }
@@ -401,6 +435,11 @@ pub fn tools() -> Vec<Tool> {
             );
         object(properties, required)
     };
+    let mut image_parameters = session(
+        json!({"handle":handle.clone(),"branch":{"enum":["original","changed"]},"node":{"type":"integer","minimum":0}}),
+        &["expected_document_epoch", "identity", "handle"],
+    );
+    image_parameters["oneOf"] = json!([{"required":["branch"],"not":{"required":["node"]}}, {"required":["node"],"not":{"required":["branch"]}}]);
     vec![
         Tool {
             name: "nodes_discover".into(),
@@ -425,11 +464,12 @@ pub fn tools() -> Vec<Tool> {
         },
         Tool {
             name: "nodes_run".into(),
-            description: "Run the bounded native base/Python comparison for one explicit source and 1 to 64 glyphs. The host captures current font, code, parameters and proof identities; callers never supply hashes. Poll nodes_status.".into(),
+            description: "Run native nodes for one explicit source and 1 to 64 glyphs. Omitted execution_version or 1 keeps the four-node comparison; version 2 enables bounded chained and branching Python transforms with independent proofs and partial failures. The host captures current font, code, parameters and proof identities; callers never supply hashes. Poll nodes_status.".into(),
             parameters: object(
                 json!({
                     "expected_document_epoch":epoch.clone(),
                     "guard":graph_guard(true),
+                    "execution_version":{"type":"integer","enum":[1,2],"default":1},
                     "actor":actor.clone(),
                     "operation_key":key.clone(),
                     "source":{"type":"integer","minimum":0},
@@ -468,10 +508,11 @@ pub fn tools() -> Vec<Tool> {
         },
         Tool {
             name: "nodes_apply".into(),
-            description: "Apply the guarded staged edit from one completed selected run through the common receipt-backed font edit path. Supply a new edit operation_key and user-approved only within the user's granted authorization. No arbitrary result body is accepted.".into(),
+            description: "Apply one successfully proofed transform from a terminal run through the common receipt-backed font edit path. Select its node explicitly when more than one result is eligible; successful branches of partially failed runs remain available. Supply a new edit operation_key and user-approved only within the user's granted authorization. No arbitrary result body is accepted.".into(),
             parameters: session(
                 json!({
                     "handle":handle.clone(),
+                    "node":{"type":"integer","minimum":0},
                     "actor":actor,
                     "operation_key":key,
                     "authorization":{"enum":["user-approved"]}
@@ -488,11 +529,8 @@ pub fn tools() -> Vec<Tool> {
         },
         Tool {
             name: "nodes_image".into(),
-            description: "Return the exact already-rendered PNG for the original or changed branch of one completed run. The generic MCP response carries image/png separately from metadata; this never rerenders.".into(),
-            parameters: session(
-                json!({"handle":handle,"branch":{"enum":["original","changed"]}}),
-                &["expected_document_epoch", "identity", "handle", "branch"],
-            ),
+            description: "Return an exact already-rendered PNG by proof node. Legacy original/changed aliases require a unique matching proof. Successful proofs in partially failed runs remain available. The generic MCP response carries image/png separately from metadata; this never rerenders.".into(),
+            parameters: image_parameters,
         },
     ]
 }
@@ -558,6 +596,34 @@ mod tests {
             "result":{"edits":[]}
         });
         assert!(serde_json::from_value::<NodesApplyRequest>(apply).is_err());
+    }
+
+    #[test]
+    fn execution_versions_and_image_selectors_preserve_legacy_requests() {
+        let legacy = json!({
+            "expected_document_epoch":"document",
+            "guard":{"identity":{"session_id":"graph","document_epoch":"document"},"semantic_revision":0,"semantic_hash":"0".repeat(64)},
+            "actor":"agent","operation_key":"run","source":0,"glyphs":["A"]
+        });
+        let mut run: NodesRunRequest = serde_json::from_value(legacy.clone()).unwrap();
+        assert_eq!(run.execution_version, 1);
+        assert_eq!(serde_json::to_value(&run).unwrap(), legacy);
+        run.execution_version = 2;
+        assert!(run.validate().is_ok());
+        assert_eq!(serde_json::to_value(&run).unwrap()["execution_version"], 2);
+        run.execution_version = 3;
+        assert!(run.validate().is_err());
+
+        let legacy_image = json!({"expected_document_epoch":"document","identity":{"session_id":"graph","document_epoch":"document"},"handle":1,"branch":"changed"});
+        let mut image: NodesImageRequest = serde_json::from_value(legacy_image.clone()).unwrap();
+        assert!(image.validate().is_ok());
+        assert_eq!(serde_json::to_value(&image).unwrap(), legacy_image);
+        image.node = Some(4);
+        assert!(image.validate().is_err());
+        image.branch = None;
+        assert!(image.validate().is_ok());
+        image.node = None;
+        assert!(image.validate().is_err());
     }
 
     #[test]

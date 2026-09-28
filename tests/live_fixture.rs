@@ -909,3 +909,248 @@ fn mcp_generated_contours_reject_invalid_batches_and_reconcile_retries() {
     assert_eq!(redone["contours"], after["contours"]);
     assert_eq!(fixture.control("state")["source_exists"], false);
 }
+
+#[test]
+fn mcp_dag_chains_branches_and_keeps_successful_proofs_after_partial_failure() {
+    use runebender::font::variable::SourceId;
+    use runebender::workflows::nodes_live;
+    use std::time::{Duration, Instant};
+
+    let mut fixture = Fixture::spawn(Command::new(env!("CARGO_BIN_EXE_runebender")).args([
+        "agent",
+        "fixture",
+        "--duration-seconds",
+        "90",
+    ]));
+    let ready = fixture.read();
+    let mut mcp = Fixture::spawn(Command::new(env!("CARGO_BIN_EXE_runebender")).args([
+        "mcp",
+        "--session",
+        ready["session"].as_str().unwrap(),
+    ]));
+    mcp.rpc("initialize", json!({"protocolVersion":"2025-11-25"}));
+    mcp.assert_contracts(&[
+        "nodes_discover",
+        "nodes_run",
+        "nodes_status",
+        "nodes_apply",
+        "nodes_image",
+    ]);
+    let epoch = &ready["document_epoch"];
+    let discovered = mcp.tool("nodes_discover", json!({"expected_document_epoch":epoch}));
+    assert_eq!(discovered["discovery"]["execution_versions"], json!([1, 2]));
+    let identity = &discovered["identity"];
+    let snapshot = mcp.tool(
+        "nodes_snapshot",
+        json!({"expected_document_epoch":epoch,"identity":identity}),
+    )["snapshot"]
+        .clone();
+    let before = mcp.tool(
+        "read_glyph",
+        json!({"expected_document_epoch":epoch,"source":0,"glyph":"A"}),
+    );
+    let mut graph = nodes_live::comparison_starter(SourceId(0));
+    graph.node_mut(3).unwrap().values.insert("code".into(), json!(r#"import json,sys
+p=json.load(sys.stdin)
+l=p['layers'][0]
+drawing={'points':[{'x':x,'y':y,'type':'line'} for x,y in [(50,500),(150,500),(150,600),(50,600)]]}
+json.dump({'schema_version':2,'job_id':p['job_id'],'input_hash':p['input_hash'],'report':'parent','reads':[],'edits':[{'target':l['guard'],'operations':[{'op':'set_width','width':l['width']+100},{'op':'append_contours','contours':[drawing]}]}]},sys.stdout)
+"#));
+    let child = graph.add("live.python", [700.0, 60.0]);
+    graph.node_mut(child).unwrap().values.insert("code".into(), json!(r#"import json,sys
+p=json.load(sys.stdin)
+l=p['layers'][0]
+point=l['contours'][-1]['points'][0]
+assert point['x']==50 and point['y']==500
+json.dump({'schema_version':2,'job_id':p['job_id'],'input_hash':p['input_hash'],'report':'moved:'+point['id'],'reads':[],'edits':[{'target':l['guard'],'operations':[{'op':'set_width','width':l['width']+17},{'op':'set_point','point_id':point['id'],'x':83,'y':500}]}]},sys.stdout)
+"#));
+    graph.connect(3, "font", child, "font");
+    let child_proof = graph.add("live.proof", [1000.0, 60.0]);
+    graph.connect(child, "font", child_proof, "font");
+    let sibling = graph.add("live.python", [400.0, 650.0]);
+    graph.node_mut(sibling).unwrap().values.insert("code".into(), json!(r#"import json,sys
+p=json.load(sys.stdin)
+l=p['layers'][0]
+assert l['width']==412
+json.dump({'schema_version':2,'job_id':p['job_id'],'input_hash':p['input_hash'],'report':'sibling','reads':[],'edits':[{'target':l['guard'],'operations':[{'op':'set_width','width':l['width']+25}]}]},sys.stdout)
+"#));
+    graph.connect(1, "font", sibling, "font");
+    let sibling_proof = graph.add("live.proof", [700.0, 650.0]);
+    graph.connect(sibling, "font", sibling_proof, "font");
+    let failed = graph.add("live.python", [400.0, 1000.0]);
+    graph.node_mut(failed).unwrap().values.insert(
+        "code".into(),
+        json!("raise RuntimeError('intentional branch failure')"),
+    );
+    graph.connect(1, "font", failed, "font");
+    let blocked = graph.add("live.python", [700.0, 1000.0]);
+    graph.node_mut(blocked).unwrap().values.insert(
+        "code".into(),
+        json!("raise RuntimeError('this dependent must not execute')"),
+    );
+    graph.connect(failed, "font", blocked, "font");
+    let blocked_proof = graph.add("live.proof", [1000.0, 1000.0]);
+    graph.connect(blocked, "font", blocked_proof, "font");
+    for node in &mut graph.nodes {
+        if node.type_name == "live.proof" {
+            let mut recipe = nodes_live::default_proof_recipe();
+            recipe["text"] = json!(if node.id == child_proof { "AAA" } else { "AA" });
+            node.values.insert("recipe".into(), recipe);
+        }
+    }
+    let mut edits = snapshot["graph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|node| json!({"edit":"remove_node","node":node["id"]}))
+        .collect::<Vec<_>>();
+    edits.extend(
+        graph
+            .nodes
+            .iter()
+            .map(|node| json!({"edit":"add_node","node":node})),
+    );
+    edits.extend(
+        graph
+            .links
+            .iter()
+            .map(|link| json!({"edit":"connect","link":link})),
+    );
+    let mutated = mcp.tool("nodes_mutate", json!({"expected_document_epoch":epoch,"request":{
+        "guard":{"identity":identity,"revision":snapshot["revision"]},"actor":"dag-fixture","operation_key":"configure",
+        "mutation":{"mutation":"patch","edits":edits}
+    }}));
+    let snapshot = &mutated["snapshot"];
+    let request = json!({"expected_document_epoch":epoch,"execution_version":2,
+        "guard":{"identity":identity,"semantic_revision":snapshot["semantic_revision"],"semantic_hash":snapshot["semantic_hash"]},
+        "actor":"dag-fixture","operation_key":"run","source":0,"glyphs":["A"]});
+    let mut legacy = request.clone();
+    legacy.as_object_mut().unwrap().remove("execution_version");
+    legacy["operation_key"] = json!("legacy-rejects-dag");
+    mcp.rejected_tool("nodes_run", legacy);
+    let started = mcp.tool("nodes_run", request.clone());
+    let status_args = json!({"expected_document_epoch":epoch,"identity":identity,"handle":started["run"]["receipt"]["handle"]});
+    // Layout changes during execution preserve semantic identity and the captured input.
+    mcp.tool("nodes_mutate", json!({"expected_document_epoch":epoch,"request":{
+        "guard":{"identity":identity,"revision":snapshot["revision"]},"actor":"dag-fixture","operation_key":"layout",
+        "mutation":{"mutation":"patch","edits":[{"edit":"move_node","node":child,"pos":[710.0,60.0]}]}
+    }}));
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let completed = loop {
+        let status = mcp.tool("nodes_status", status_args.clone());
+        match status["run"]["status"].as_str() {
+            Some("partially_failed") => break status,
+            Some("queued" | "running") => {
+                assert!(Instant::now() < deadline, "DAG timed out: {status}");
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            _ => panic!("unexpected DAG status: {status}"),
+        }
+    };
+    assert_eq!(completed["current"], true);
+    assert_eq!(
+        completed["can_apply"], false,
+        "ambiguous default selection must not guess a branch"
+    );
+    let errors = completed["run"]["errors"].as_array().unwrap();
+    for node in [failed, blocked, blocked_proof] {
+        assert!(
+            errors.iter().any(|error| error["node"] == node),
+            "missing failed node {node}: {completed}"
+        );
+    }
+    assert!(
+        errors
+            .iter()
+            .find(|error| error["node"] == blocked)
+            .unwrap()["code"]
+            .as_str()
+            .unwrap()
+            .contains("dependency")
+    );
+    assert_eq!(fixture.control("state")["canonical_advance"], 412.0);
+    assert_eq!(
+        mcp.tool(
+            "read_glyph",
+            json!({"expected_document_epoch":epoch,"source":0,"glyph":"A"})
+        )["contours"],
+        before["contours"]
+    );
+    let retry = mcp.tool("nodes_run", request);
+    assert_eq!(retry["run"], started["run"]);
+    assert_eq!(retry["replayed"], true);
+    let outputs = completed["run"]["outputs"].as_array().unwrap();
+    for (proof_node, parent, advance) in [
+        (2, 1, 412.0),
+        (4, 3, 512.0),
+        (child_proof, child, 529.0),
+        (sibling_proof, sibling, 437.0),
+    ] {
+        let mut args = status_args.clone();
+        args["node"] = json!(proof_node);
+        let proof = mcp.tool("nodes_image", args);
+        assert_eq!(proof["glyphs"][0]["x_advance"], advance);
+        let expected = if parent == 1 {
+            &completed["run"]["identity"]["capture"]["font"]["capture_sha256"]
+        } else {
+            &outputs
+                .iter()
+                .find(|output| {
+                    output["node"] == parent && output["value"]["kind"] == "font_version"
+                })
+                .unwrap()["value"]["content_sha256"]
+        };
+        assert_eq!(&proof["canonical_input_sha256"], expected);
+    }
+    let mut alias = status_args.clone();
+    alias["branch"] = json!("changed");
+    mcp.rejected_tool("nodes_image", alias);
+    let mut apply = status_args.clone();
+    apply["actor"] = json!("dag-fixture");
+    apply["operation_key"] = json!("apply-child");
+    apply["authorization"] = json!("user-approved");
+    mcp.rejected_tool("nodes_apply", apply.clone());
+    apply["node"] = json!(child);
+    let applied = mcp.tool("nodes_apply", apply.clone());
+    assert_eq!(fixture.control("state")["canonical_advance"], 529.0);
+    let after = mcp.tool(
+        "read_glyph",
+        json!({"expected_document_epoch":epoch,"source":0,"glyph":"A"}),
+    );
+    let last = after["contours"].as_array().unwrap().last().unwrap();
+    assert_eq!(last[0]["x"], 83.0);
+    let report = outputs
+        .iter()
+        .find(|output| output["node"] == child && output["value"]["kind"] == "report")
+        .unwrap()["value"]["text"]
+        .as_str()
+        .unwrap();
+    assert_eq!(
+        report.strip_prefix("moved:").unwrap(),
+        last[0]["id"].as_str().unwrap()
+    );
+    assert_eq!(fixture.control("undo")["canonical_advance"], 412.0);
+    let replay = mcp.tool("nodes_apply", apply.clone());
+    assert_eq!(replay["receipt"], applied["receipt"]);
+    assert_eq!(replay["history_state"], "undone");
+    let mut different = apply;
+    different["node"] = json!(sibling);
+    mcp.rejected_tool("nodes_apply", different);
+    assert_eq!(fixture.control("redo")["canonical_advance"], 529.0);
+    let redone = mcp.tool(
+        "read_glyph",
+        json!({"expected_document_epoch":epoch,"source":0,"glyph":"A"}),
+    );
+    assert_eq!(redone["contours"], after["contours"]);
+    assert_eq!(fixture.control("undo")["canonical_advance"], 412.0);
+    assert_eq!(mcp.tool("nodes_status", status_args.clone())["stale"], true);
+    assert_eq!(
+        mcp.tool("nodes_release", status_args.clone())["released"],
+        true
+    );
+    assert_eq!(
+        mcp.tool("nodes_status", status_args)["run"]["status"],
+        "released"
+    );
+    assert_eq!(fixture.control("state")["source_exists"], false);
+}

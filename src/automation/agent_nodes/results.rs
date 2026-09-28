@@ -86,7 +86,7 @@ pub struct NodesStatusResult {
     pub report: Option<String>,
     /// Bounded Python diagnostics, or JSON null before a result is available.
     pub stderr: Option<String>,
-    /// Whether a current staged edit can be applied separately.
+    /// Whether exactly one current, proven transform is eligible without an explicit node selector.
     pub can_apply: bool,
     /// Inspection does not mutate the canonical font.
     pub root_changed: bool,
@@ -114,7 +114,7 @@ pub struct NodesReleaseResult {
     pub root_changed: bool,
 }
 
-/// Metadata and optional transport bytes for one retained comparison image.
+/// Metadata and optional transport bytes for one retained node proof image.
 #[derive(Clone, Debug, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct NodesImageResult {
     /// Whether the read succeeded.

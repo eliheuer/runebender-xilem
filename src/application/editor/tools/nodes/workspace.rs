@@ -53,9 +53,10 @@ impl Workspace {
                 matches!(
                     state.execution.phase(handle),
                     Some(
-                        LiveGraphPhase::ScriptQueued
+                        LiveGraphPhase::Ready
+                            | LiveGraphPhase::ScriptQueued
                             | LiveGraphPhase::ScriptRunning
-                            | LiveGraphPhase::RecipeStaged
+                            | LiveGraphPhase::ProofReady
                             | LiveGraphPhase::ProofsRunning
                     )
                 )
@@ -226,13 +227,24 @@ impl Workspace {
             .execution
             .poll_scripts(&mut state.session, queue, &self.font.project);
         for handle in state.handles.iter().copied() {
-            if state.execution.phase(handle) == Some(LiveGraphPhase::RecipeStaged) {
+            if matches!(
+                state.execution.phase(handle),
+                Some(LiveGraphPhase::Terminal(
+                    runebender::workflows::nodes_session::GraphRunStatus::Stale
+                        | runebender::workflows::nodes_session::GraphRunStatus::Cancelled
+                ))
+            ) {
+                state.proofs.release(handle.get());
+                continue;
+            }
+            if state.execution.phase(handle) == Some(LiveGraphPhase::ProofReady) {
                 match state.execution.take_proof_request(handle) {
                     Ok(request) => {
-                        if let Err(error) = state.proofs.submit(
+                        if let Err(error) = state.proofs.submit_node(
                             handle.get(),
+                            request.node,
                             request.identity.graph.document_epoch,
-                            [request.base_input, request.derived_input],
+                            request.input,
                             request.proof_recipe,
                         ) {
                             let _ = state.execution.fail_proofs(
@@ -244,44 +256,36 @@ impl Workspace {
                         }
                     }
                     Err(error) => {
-                        self.note = error.to_string();
+                        let _ = state.execution.fail_proofs(
+                            &mut state.session,
+                            handle,
+                            &current,
+                            error.to_string(),
+                        );
                     }
                 }
             }
             if state.execution.phase(handle) != Some(LiveGraphPhase::ProofsRunning) {
                 continue;
             }
-            match state.proofs.inspect(handle.get()) {
-                Some(NodeProofInspection::Completed {
-                    artifact_ids,
-                    proofs,
-                }) => {
-                    let [original, changed] = proofs;
-                    let [original_id, changed_id] = artifact_ids;
-                    let result = state.execution.publish_proofs(
+            let Some(node) = state.execution.active_proof_node(handle) else {
+                continue;
+            };
+            match state.proofs.inspect_node(handle.get(), node) {
+                Some(NodeProofInspection::Completed { artifact_id, proof }) => {
+                    let outputs = LiveGraphProofOutputs {
+                        node,
+                        artifact_id,
+                        content_sha256: format!("sha256:{:x}", Sha256::digest(&proof.png)),
+                        canonical_input_sha256: proof.canonical_input_sha256.clone(),
+                        font_sha256: proof.font_sha256.clone(),
+                    };
+                    if let Err(error) = state.execution.publish_proofs(
                         &mut state.session,
                         handle,
                         &current,
-                        LiveGraphProofOutputs {
-                            unchanged_artifact_id: original_id,
-                            unchanged_content_sha256: format!(
-                                "sha256:{:x}",
-                                Sha256::digest(&original.png)
-                            ),
-                            unchanged_canonical_input_sha256: original
-                                .canonical_input_sha256
-                                .clone(),
-                            unchanged_font_sha256: original.font_sha256.clone(),
-                            changed_artifact_id: changed_id,
-                            changed_content_sha256: format!(
-                                "sha256:{:x}",
-                                Sha256::digest(&changed.png)
-                            ),
-                            changed_canonical_input_sha256: changed.canonical_input_sha256.clone(),
-                            changed_font_sha256: changed.font_sha256.clone(),
-                        },
-                    );
-                    if let Err(error) = result {
+                        outputs,
+                    ) {
                         let _ = state.execution.fail_proofs(
                             &mut state.session,
                             handle,
@@ -295,17 +299,31 @@ impl Workspace {
                         state
                             .execution
                             .fail_proofs(&mut state.session, handle, &current, error);
-                    state.proofs.release(handle.get());
+                    state.proofs.release_node(handle.get(), node);
                 }
                 None => {
                     let _ = state.execution.fail_proofs(
                         &mut state.session,
                         handle,
                         &current,
-                        "comparison jobs are no longer retained",
+                        "specimen job is no longer retained",
                     );
                 }
                 Some(NodeProofInspection::Pending) => {}
+            }
+        }
+        // A proof callback can terminalize a run after the loop's initial state check.
+        // Release its bytes now, since an idle Workspace will not schedule another pump.
+        for handle in state.handles.iter().copied() {
+            if matches!(
+                state.execution.phase(handle),
+                Some(LiveGraphPhase::Terminal(
+                    runebender::workflows::nodes_session::GraphRunStatus::Stale
+                        | runebender::workflows::nodes_session::GraphRunStatus::Cancelled
+                        | runebender::workflows::nodes_session::GraphRunStatus::Failed
+                ))
+            ) {
+                state.proofs.release(handle.get());
             }
         }
     }
@@ -470,17 +488,20 @@ impl Workspace {
                     return Err("graph retry retention is full; open a new graph session".into());
                 }
                 let snapshot = state.session.snapshot();
-                let python = snapshot
-                    .graph
-                    .nodes
-                    .iter()
-                    .find(|node| node.type_name == "live.python")
-                    .ok_or("graph has no Python recipe node")?;
-                let parameters = python
-                    .values
-                    .get("parameters")
-                    .cloned()
-                    .unwrap_or_else(|| json!({}));
+                let parameters = if request.execution_version == 1 {
+                    snapshot
+                        .graph
+                        .nodes
+                        .iter()
+                        .find(|node| node.type_name == "live.python")
+                        .ok_or("graph has no Python recipe node")?
+                        .values
+                        .get("parameters")
+                        .cloned()
+                        .unwrap_or_else(|| json!({}))
+                } else {
+                    json!({})
+                };
                 let Value::Object(parameters) = parameters else {
                     return Err("Python parameters must be an object".into());
                 };
@@ -503,6 +524,7 @@ impl Workspace {
                         queue,
                         &self.font.project,
                         LiveGraphSubmitRequest {
+                            execution_version: request.execution_version,
                             guard: request.guard,
                             actor: request.actor,
                             operation_key: request.operation_key,
@@ -567,6 +589,15 @@ impl Workspace {
                         .execution
                         .finish_proof_cancellation(&mut state.session, handle, &current)
                         .map_err(|error| error.to_string())?;
+                }
+                if state.session.inspect_run(handle).is_some_and(|run| {
+                    matches!(
+                        run.status,
+                        runebender::workflows::nodes_session::GraphRunStatus::Cancelled
+                            | runebender::workflows::nodes_session::GraphRunStatus::CancellationRequested
+                    )
+                }) {
+                    state.proofs.release(handle.get());
                 }
                 Ok(success(NodesCancelResult {
                     ok: true,
@@ -639,12 +670,20 @@ impl Workspace {
                         &state.session,
                         &current,
                         request.handle,
+                        request.node,
                         request.actor,
                         request.operation_key,
                         request.authorization,
                     )
                     .map_err(|error| error.to_string())?;
-                let response = self.apply_retained_agent_edit(edit.request, edit.candidate);
+                let response = match edit.payload_digest {
+                    Some(digest) => self.apply_retained_agent_edit_bound(
+                        edit.request,
+                        edit.candidate,
+                        Some(digest),
+                    ),
+                    None => self.apply_retained_agent_edit(edit.request, edit.candidate),
+                };
                 self.live_nodes
                     .as_mut()
                     .expect("Apply does not replace the graph")
@@ -667,24 +706,36 @@ impl Workspace {
                     .inspect_run(request.handle)
                     .ok_or("unknown graph run")?;
                 let fresh = run_is_current(&state.session, &inspection, &current);
-                let Some(NodeProofInspection::Completed {
-                    artifact_ids,
-                    proofs,
-                }) = state.proofs.inspect(request.handle.get())
+                let node = state
+                    .execution
+                    .proof_node(
+                        request.handle,
+                        request.node,
+                        request
+                            .branch
+                            .map(|branch| branch == NodesImageBranch::Changed),
+                    )
+                    .map_err(|error| error.to_string())?;
+                if !inspection.outputs.iter().any(|output| {
+                    output.node == node
+                        && matches!(
+                            output.value,
+                            runebender::workflows::nodes_session::GraphNodeOutputValue::Proof { .. }
+                        )
+                }) {
+                    return Err("proof has no publishable completed output".into());
+                }
+                let Some(NodeProofInspection::Completed { artifact_id, proof }) =
+                    state.proofs.inspect_node(request.handle.get(), node)
                 else {
-                    return Err("comparison images are not available".into());
+                    return Err("proof image is not available".into());
                 };
-                let index = match request.branch {
-                    NodesImageBranch::Original => 0,
-                    NodesImageBranch::Changed => 1,
-                };
-                let proof = &proofs[index];
                 if proof.png.len() > 5 * 1024 * 1024 {
                     return Err("specimen exceeds the transport image limit".into());
                 }
                 Ok(success(NodesImageResult {
                     ok: true,
-                    artifact_id: artifact_ids[index].clone(),
+                    artifact_id,
                     current: fresh,
                     stale: !fresh,
                     captured_document_epoch: inspection.identity.graph.document_epoch,
@@ -959,6 +1010,111 @@ mod tests {
     }
 
     #[test]
+    fn cancelling_a_dag_releases_earlier_proofs_while_script_cancellation_settles() {
+        let mut project = Project::new_font(std::env::temp_dir().join("nodes-cancel-unsaved.ufo"));
+        project
+            .add_document_glyph("A", 400.0, Some(u32::from('A')))
+            .unwrap();
+        let mut app = Workspace::from_model(FontModel::from_project(project)).unwrap();
+        app.ensure_live_graph().unwrap();
+        let epoch = app.live.as_ref().unwrap().document_epoch().to_owned();
+        let snapshot = app.live_graph_session().unwrap().snapshot();
+        let identity = snapshot.identity.clone();
+        let script = snapshot
+            .graph
+            .nodes
+            .iter()
+            .find(|node| node.type_name == "live.python")
+            .unwrap()
+            .id;
+        let original = snapshot
+            .graph
+            .nodes
+            .iter()
+            .find(|node| node.type_name == "live.proof")
+            .unwrap()
+            .id;
+        app.live_graph_session_mut()
+            .unwrap()
+            .mutate_interactive(GraphInteractiveMutationRequest {
+                guard: GraphGuard {
+                    identity: identity.clone(),
+                    revision: snapshot.revision,
+                },
+                mutation: GraphMutation::Patch {
+                    edits: vec![GraphEdit::SetValue {
+                        node: script,
+                        field: "code".into(),
+                        value: json!("import time\ntime.sleep(20)\n"),
+                    }],
+                },
+            })
+            .unwrap();
+        let snapshot = app.live_graph_session().unwrap().snapshot();
+        let started = call(
+            &mut app,
+            "nodes_run",
+            json!({
+                "execution_version":2,"expected_document_epoch":epoch,
+                "guard":{"identity":identity,"semantic_revision":snapshot.semantic_revision,"semantic_hash":snapshot.semantic_hash},
+                "actor":"cancel-test","operation_key":"run","source":0,"glyphs":["A"]
+            }),
+        );
+        assert_eq!(started["ok"], true, "{started}");
+        let handle: GraphRunHandle =
+            serde_json::from_value(started["run"]["receipt"]["handle"].clone()).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(15);
+        loop {
+            app.live_nodes_pump();
+            let state = app.live_nodes.as_ref().unwrap();
+            if matches!(
+                state.execution.phase(handle),
+                Some(LiveGraphPhase::ScriptQueued | LiveGraphPhase::ScriptRunning)
+            ) {
+                assert!(matches!(
+                    state.proofs.inspect_node(handle.get(), original),
+                    Some(NodeProofInspection::Completed { .. })
+                ));
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "script did not start after original proof"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let cancelled = call(
+            &mut app,
+            "nodes_cancel",
+            json!({
+                "expected_document_epoch":epoch,
+                "request":{"identity":identity,"handle":handle,"actor":"cancel-test","operation_key":"cancel"}
+            }),
+        );
+        assert_eq!(cancelled["ok"], true, "{cancelled}");
+        assert!(
+            app.live_nodes
+                .as_ref()
+                .unwrap()
+                .proofs
+                .inspect_node(handle.get(), original)
+                .is_none()
+        );
+        while app.live_nodes_need_pump() {
+            app.live_nodes_pump();
+            assert!(Instant::now() < deadline, "cancellation did not settle");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let state = app.live_nodes.as_ref().unwrap();
+        let run = state.session.inspect_run(handle).unwrap();
+        assert_eq!(
+            run.status,
+            runebender::workflows::nodes_session::GraphRunStatus::Cancelled
+        );
+        assert!(run.outputs.is_empty());
+    }
+
+    #[test]
     fn node_commands_share_images_retry_receipts_apply_and_ordinary_undo() {
         check_node_commands(false);
     }
@@ -1072,6 +1228,16 @@ json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],
             match status["run"]["status"].as_str() {
                 Some("completed") => {
                     assert_eq!(status["can_apply"], true);
+                    for output in status["run"]["outputs"].as_array().unwrap() {
+                        if output["value"]["kind"] == "proof" {
+                            assert!(
+                                output["value"]["content_sha256"]
+                                    .as_str()
+                                    .unwrap()
+                                    .starts_with("sha256:")
+                            );
+                        }
+                    }
                     break;
                 }
                 Some("queued" | "running") => {
@@ -1118,6 +1284,7 @@ json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],
                     document_revision: app.font.project.document_revision(),
                 },
                 serde_json::from_value(handle.clone()).unwrap(),
+                None,
                 "nodes-test",
                 "apply-one",
                 "user-approved",

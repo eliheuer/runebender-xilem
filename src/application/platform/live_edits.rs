@@ -13,7 +13,8 @@ use runebender::automation::agent_edit::{
 };
 use runebender::automation::agent_session::{
     AgentOperationKey, AgentOperationOutcome, AgentOperationReceipt, AgentOperationRejection,
-    AgentReceiptDisposition, AgentSession, AgentSessionError, AgentSessionMetadata,
+    AgentPayloadDigest, AgentReceiptDisposition, AgentSession, AgentSessionError,
+    AgentSessionMetadata,
 };
 use runebender::font::history::HistoryDirection;
 use runebender::font::project::CanonicalDocumentEditTransaction;
@@ -114,7 +115,7 @@ impl Workspace {
     }
 
     fn apply_agent_edit(&mut self, request: AgentEditRequest) -> Value {
-        self.apply_agent_edit_candidate(request, None)
+        self.apply_agent_edit_candidate(request, None, None)
     }
 
     /// Commit a host-retained preview through the same authorization, cancellation and history path.
@@ -124,13 +125,24 @@ impl Workspace {
         request: AgentEditRequest,
         candidate: CanonicalDocumentEditTransaction,
     ) -> Value {
-        self.apply_agent_edit_candidate(request, Some(candidate))
+        self.apply_retained_agent_edit_bound(request, candidate, None)
+    }
+
+    /// Bind a retained DAG result to its graph ancestry as well as its explicit edit intent.
+    pub(crate) fn apply_retained_agent_edit_bound(
+        &mut self,
+        request: AgentEditRequest,
+        candidate: CanonicalDocumentEditTransaction,
+        payload_digest: Option<AgentPayloadDigest>,
+    ) -> Value {
+        self.apply_agent_edit_candidate(request, Some(candidate), payload_digest)
     }
 
     fn apply_agent_edit_candidate(
         &mut self,
         request: AgentEditRequest,
         candidate: Option<CanonicalDocumentEditTransaction>,
+        retained_digest: Option<AgentPayloadDigest>,
     ) -> Value {
         if let Err(error) = self.validate_agent_epoch(&request.expected_document_epoch) {
             return error;
@@ -157,7 +169,7 @@ impl Workspace {
             .as_ref()
             .expect("validated native endpoint remains available")
             .cancellations();
-        let payload_digest = request.payload_digest();
+        let payload_digest = retained_digest.unwrap_or_else(|| request.payload_digest());
         if request.authorization != "user-approved" {
             let _ = cancellations.release_unqueued(&cancellation_identity, payload_digest);
             return failure(

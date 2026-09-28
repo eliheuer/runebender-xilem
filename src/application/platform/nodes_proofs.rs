@@ -1,10 +1,10 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Bounded paired specimens on the application's one shared compiler worker.
+//! Per-node specimens on the application's one shared compiler worker.
 //!
-//! A graph run retains both original captures; no inspection recaptures the document or renders
-//! another image. Dropping or releasing the owner abandons running compilers for global collection.
+//! Each job owns an immutable capture and recipe; failure of one node does not discard siblings.
+//! Dropping or releasing the owner abandons running compilers for global collection.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -16,158 +16,153 @@ use runebender::font::compiler::proof_jobs::{
 
 use super::live_proofs::{ProofService, service};
 
-const MAX_PAIRS: usize = 8;
+const MAX_PROOFS: usize = 32;
 
-struct Pair {
-    handles: [ProofJobHandle; 2],
+struct NodeProof {
+    handle: ProofJobHandle,
     lineage: ProofJobLineage,
-    input_hashes: [String; 2],
+    input_hash: String,
     recipe: CompiledProofRecipe,
 }
 
-/// One coherent observation of the two immutable graph specimens.
+/// One coherent observation of one immutable graph specimen.
 pub(crate) enum NodeProofInspection {
-    /// One or both jobs are still queued or compiling.
+    /// The job is still queued or compiling.
     Pending,
-    /// Both exact submitted captures completed successfully.
+    /// The exact submitted capture completed successfully.
     Completed {
-        /// Artifact identities are process-wide proof handles, not node or document revisions.
-        artifact_ids: [String; 2],
-        /// Original and derived images, in that order, sharing the worker's retained bytes.
-        proofs: [Arc<CompiledProof>; 2],
+        /// Process-wide artifact identity, independent of node and document revisions.
+        artifact_id: String,
+        /// Original worker-produced bytes, retained without rendering again.
+        proof: Arc<CompiledProof>,
     },
-    /// Neither specimen should be advertised as a successful comparison.
+    /// This node failed; other retained specimens remain independently available.
     Failed(String),
 }
 
 /// Per-Workspace graph ownership; it never creates its own compiler thread.
 #[derive(Default)]
 pub(crate) struct NodeProofJobs {
-    pairs: BTreeMap<u64, Pair>,
+    jobs: BTreeMap<(u64, u32), NodeProof>,
 }
 
 impl NodeProofJobs {
-    /// Queue an unchanged/derived pair with one recipe and exact captured lineage.
-    pub(crate) fn submit(
+    /// Queue one node with its own recipe and exact captured lineage.
+    pub(crate) fn submit_node(
         &mut self,
         run: u64,
+        node: u32,
         document_epoch: String,
-        inputs: [CompileProofInput; 2],
+        input: CompileProofInput,
         recipe: CompiledProofRecipe,
     ) -> Result<(), String> {
-        if self.pairs.contains_key(&run) {
-            return Err("graph run already owns specimen jobs".into());
+        if self.jobs.contains_key(&(run, node)) {
+            return Err("graph node already owns a specimen job".into());
         }
-        if self.pairs.len() >= MAX_PAIRS {
-            return Err("release an earlier graph comparison before running another".into());
+        if self.jobs.len() >= MAX_PROOFS {
+            return Err("release earlier graph specimens before running more proofs".into());
         }
         recipe.validate()?;
-        let [original, derived] = inputs;
-        if original.document_revision() != derived.document_revision() {
-            return Err("comparison inputs have different captured document revisions".into());
-        }
         let lineage = ProofJobLineage {
             document_epoch,
-            document_revision: original.document_revision(),
+            document_revision: input.document_revision(),
         };
-        let input_hashes = [
-            original.canonical_input_sha256().to_owned(),
-            derived.canonical_input_sha256().to_owned(),
-        ];
+        let input_hash = input.canonical_input_sha256().to_owned();
         let mut service = service().lock().unwrap_or_else(|error| error.into_inner());
         service.collect();
-        let first = service
+        let handle = service
             .queue
             .submit(ProofJobRequest {
                 lineage: lineage.clone(),
-                input: original,
+                input,
                 recipe: recipe.clone(),
             })
-            .map_err(|error| format!("unchanged specimen submission failed: {error:?}"))?;
-        let second = match service.queue.submit(ProofJobRequest {
-            lineage: lineage.clone(),
-            input: derived,
-            recipe: recipe.clone(),
-        }) {
-            Ok(handle) => handle,
-            Err(error) => {
-                abandon(&mut service, first);
-                return Err(format!("changed specimen submission failed: {error:?}"));
-            }
-        };
-        self.pairs.insert(
-            run,
-            Pair {
-                handles: [first, second],
+            .map_err(|error| format!("specimen submission failed: {error:?}"))?;
+        self.jobs.insert(
+            (run, node),
+            NodeProof {
+                handle,
                 lineage,
-                input_hashes,
+                input_hash,
                 recipe,
             },
         );
         Ok(())
     }
 
-    /// Inspect only this owner's jobs; preserve the original worker-produced PNGs.
-    pub(crate) fn inspect(&self, run: u64) -> Option<NodeProofInspection> {
-        let pair = self.pairs.get(&run)?;
+    /// Inspect only this owner's node and preserve the original worker-produced PNG.
+    pub(crate) fn inspect_node(&self, run: u64, node: u32) -> Option<NodeProofInspection> {
+        let retained = self.jobs.get(&(run, node))?;
         let service = service().lock().unwrap_or_else(|error| error.into_inner());
-        let mut completed = Vec::with_capacity(2);
-        for (index, handle) in pair.handles.iter().enumerate() {
-            let Some(job) = service.queue.inspect(*handle) else {
-                return Some(NodeProofInspection::Failed(
-                    "specimen job is no longer retained".into(),
-                ));
-            };
-            if job.lineage != pair.lineage {
-                return Some(NodeProofInspection::Failed(
-                    "specimen lineage mismatch".into(),
-                ));
-            }
-            match job.outcome {
-                Some(ProofJobOutcome::Completed(proof)) => {
-                    if proof.document_revision != pair.lineage.document_revision
-                        || proof.canonical_input_sha256 != pair.input_hashes[index]
-                        || proof.recipe != pair.recipe
-                    {
-                        return Some(NodeProofInspection::Failed(
-                            "specimen capture mismatch".into(),
-                        ));
-                    }
-                    completed.push(proof);
-                }
-                Some(ProofJobOutcome::Failed(message)) => {
-                    return Some(NodeProofInspection::Failed(message));
-                }
-                Some(ProofJobOutcome::CancelledBeforeStart) => {
-                    return Some(NodeProofInspection::Failed(
-                        "specimen was cancelled before compilation".into(),
-                    ));
-                }
-                None => {}
-            }
-        }
-        let Ok(proofs) = completed.try_into() else {
-            return Some(NodeProofInspection::Pending);
+        let Some(job) = service.queue.inspect(retained.handle) else {
+            return Some(NodeProofInspection::Failed(
+                "specimen job is no longer retained".into(),
+            ));
         };
-        Some(NodeProofInspection::Completed {
-            artifact_ids: pair
-                .handles
-                .map(|handle| format!("node-proof-{}", handle.get())),
-            proofs,
+        if job.lineage != retained.lineage {
+            return Some(NodeProofInspection::Failed(
+                "specimen lineage mismatch".into(),
+            ));
+        }
+        Some(match job.outcome {
+            Some(ProofJobOutcome::Completed(proof)) => {
+                if proof.document_revision != retained.lineage.document_revision
+                    || proof.canonical_input_sha256 != retained.input_hash
+                    || proof.recipe != retained.recipe
+                {
+                    NodeProofInspection::Failed("specimen capture mismatch".into())
+                } else {
+                    NodeProofInspection::Completed {
+                        artifact_id: format!("node-proof-{}", retained.handle.get()),
+                        proof,
+                    }
+                }
+            }
+            Some(ProofJobOutcome::Failed(message)) => NodeProofInspection::Failed(message),
+            Some(ProofJobOutcome::CancelledBeforeStart) => {
+                NodeProofInspection::Failed("specimen was cancelled before compilation".into())
+            }
+            None => NodeProofInspection::Pending,
         })
     }
 
-    /// Release both handles; a running compiler is collected later without blocking the UI.
-    pub(crate) fn release(&mut self, run: u64) -> bool {
-        let Some(pair) = self.pairs.remove(&run) else {
+    /// List successful retained specimens for presentation, independently of sibling failures.
+    pub(crate) fn completed(&self, run: u64) -> Vec<(u32, String, Arc<CompiledProof>)> {
+        self.jobs
+            .keys()
+            .filter(|(owner, _)| *owner == run)
+            .filter_map(|(_, node)| match self.inspect_node(run, *node)? {
+                NodeProofInspection::Completed { artifact_id, proof } => {
+                    Some((*node, artifact_id, proof))
+                }
+                NodeProofInspection::Pending | NodeProofInspection::Failed(_) => None,
+            })
+            .collect()
+    }
+
+    /// Release one node without disturbing successful siblings.
+    pub(crate) fn release_node(&mut self, run: u64, node: u32) -> bool {
+        let Some(job) = self.jobs.remove(&(run, node)) else {
             return false;
         };
         let mut service = service().lock().unwrap_or_else(|error| error.into_inner());
-        for handle in pair.handles {
-            abandon(&mut service, handle);
-        }
+        abandon(&mut service, job.handle);
         service.collect();
         true
+    }
+
+    /// Release every job in one run without blocking on a running compiler.
+    pub(crate) fn release(&mut self, run: u64) -> bool {
+        let nodes = self
+            .jobs
+            .keys()
+            .filter_map(|(owner, node)| (*owner == run).then_some(*node))
+            .collect::<Vec<_>>();
+        let changed = !nodes.is_empty();
+        for node in nodes {
+            self.release_node(run, node);
+        }
+        changed
     }
 }
 
@@ -180,14 +175,12 @@ fn abandon(service: &mut ProofService, handle: ProofJobHandle) {
 
 impl Drop for NodeProofJobs {
     fn drop(&mut self) {
-        if self.pairs.is_empty() {
+        if self.jobs.is_empty() {
             return;
         }
         let mut service = service().lock().unwrap_or_else(|error| error.into_inner());
-        for pair in self.pairs.values() {
-            for handle in pair.handles {
-                abandon(&mut service, handle);
-            }
+        for job in self.jobs.values() {
+            abandon(&mut service, job.handle);
         }
         service.collect();
     }
@@ -247,38 +240,43 @@ mod tests {
             language: None,
         };
         let mut jobs = NodeProofJobs::default();
-        jobs.submit(7, "node-proof-test".into(), [baseline, changed], recipe)
+        jobs.submit_node(7, 1, "node-proof-test".into(), baseline, recipe.clone())
+            .unwrap();
+        jobs.submit_node(7, 2, "node-proof-test".into(), changed, recipe)
             .unwrap();
         let deadline = Instant::now() + Duration::from_secs(30);
-        let (artifacts, proofs) = loop {
-            match jobs.inspect(7).unwrap() {
-                NodeProofInspection::Completed {
-                    artifact_ids,
-                    proofs,
-                } => break (artifact_ids, proofs),
-                NodeProofInspection::Failed(error) => panic!("{error}"),
-                NodeProofInspection::Pending => {
-                    assert!(Instant::now() < deadline, "paired proofs timed out");
-                    std::thread::sleep(Duration::from_millis(10));
+        let completed = loop {
+            let completed = jobs.completed(7);
+            if completed.len() == 2 {
+                break completed;
+            }
+            for node in [1, 2] {
+                if let Some(NodeProofInspection::Failed(error)) = jobs.inspect_node(7, node) {
+                    panic!("{error}");
                 }
             }
+            assert!(Instant::now() < deadline, "node proofs timed out");
+            std::thread::sleep(Duration::from_millis(10));
         };
+        let artifacts = [&completed[0].1, &completed[1].1];
+        let proofs = [&completed[0].2, &completed[1].2];
         assert_ne!(artifacts[0], artifacts[1]);
         assert_eq!(proofs[0].canonical_input_sha256, expected[0]);
         assert_eq!(proofs[1].canonical_input_sha256, expected[1]);
         assert_ne!(proofs[0].font_sha256, proofs[1].font_sha256);
         assert_ne!(proofs[0].png, proofs[1].png);
-        let NodeProofInspection::Completed {
-            proofs: observed, ..
-        } = jobs.inspect(7).unwrap()
-        else {
-            panic!("completed pair changed state");
-        };
-        assert!(Arc::ptr_eq(&proofs[0], &observed[0]));
-        assert!(Arc::ptr_eq(&proofs[1], &observed[1]));
+        let observed = jobs.completed(7);
+        assert!(Arc::ptr_eq(proofs[0], &observed[0].2));
+        assert!(Arc::ptr_eq(proofs[1], &observed[1].2));
+        assert!(jobs.release_node(7, 1));
+        assert!(jobs.inspect_node(7, 1).is_none());
+        assert!(matches!(
+            jobs.inspect_node(7, 2),
+            Some(NodeProofInspection::Completed { .. })
+        ));
         assert!(jobs.release(7));
         assert!(!jobs.release(7));
-        assert!(jobs.inspect(7).is_none());
+        assert!(jobs.completed(7).is_empty());
         assert_eq!(
             project.document_layer("A", &address.layer).unwrap().width(),
             400.0

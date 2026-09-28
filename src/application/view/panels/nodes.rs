@@ -39,8 +39,6 @@ use xilem::view::{FlexSpacer, flex_col, portal, sized_box};
 #[cfg(unix)]
 use crate::application::editor::tools::nodes::execution::LiveGraphPhase;
 #[cfg(unix)]
-use crate::application::platform::nodes_proofs::NodeProofInspection;
-#[cfg(unix)]
 use runebender::workflows::nodes_session::{GraphRunHandle, GraphRunStatus};
 
 struct CanvasProjection {
@@ -166,15 +164,20 @@ fn proof_images(
     cache: &std::collections::BTreeMap<String, ImmutablePng>,
 ) -> Option<std::collections::BTreeMap<u32, ImmutablePng>> {
     let inspection = state.session.inspect_run(handle)?;
-    let NodeProofInspection::Completed { artifact_ids, .. } = state.proofs.inspect(handle.get())?
-    else {
-        return None;
-    };
     let mut images = std::collections::BTreeMap::new();
-    for (index, capture) in inspection.identity.capture.proofs.iter().enumerate() {
-        images.insert(capture.node, cache.get(artifact_ids.get(index)?)?.clone());
+    for (node, artifact, _) in state.proofs.completed(handle.get()) {
+        if inspection.outputs.iter().any(|output| {
+            output.node == node
+                && matches!(
+                    output.value,
+                    runebender::workflows::nodes_session::GraphNodeOutputValue::Proof { .. }
+                )
+        }) && let Some(image) = cache.get(&artifact)
+        {
+            images.insert(node, image.clone());
+        }
     }
-    Some(images)
+    (!images.is_empty()).then_some(images)
 }
 
 #[cfg(unix)]
@@ -195,10 +198,15 @@ fn live_projection(app: &Workspace) -> Option<CanvasProjection> {
             | GraphRunStatus::Running
             | GraphRunStatus::CancellationRequested,
         ) => ContentState::Running,
-        Some(GraphRunStatus::Completed) if fresh => ContentState::Current,
-        Some(GraphRunStatus::Completed | GraphRunStatus::Stale | GraphRunStatus::Released) => {
-            ContentState::Stale
+        Some(GraphRunStatus::Completed | GraphRunStatus::PartiallyFailed) if fresh => {
+            ContentState::Current
         }
+        Some(
+            GraphRunStatus::Completed
+            | GraphRunStatus::PartiallyFailed
+            | GraphRunStatus::Stale
+            | GraphRunStatus::Released,
+        ) => ContentState::Stale,
         Some(GraphRunStatus::Failed | GraphRunStatus::Cancelled) => ContentState::Error(
             inspection
                 .as_ref()
@@ -218,6 +226,14 @@ fn live_projection(app: &Workspace) -> Option<CanvasProjection> {
     });
     let mut content = NodeContentMap::default();
     for node in &snapshot.graph.nodes {
+        let node_state = inspection
+            .as_ref()
+            .filter(|run| run.status == GraphRunStatus::PartiallyFailed && fresh)
+            .and_then(|run| run.errors.iter().find(|error| error.node == Some(node.id)))
+            .map_or_else(
+                || visible_state.clone(),
+                |error| ContentState::Error(error.message.clone()),
+            );
         match node.type_name.as_str() {
             "live.python" => {
                 let content_hash = inspection
@@ -241,7 +257,7 @@ fn live_projection(app: &Workspace) -> Option<CanvasProjection> {
                             .unwrap_or_default()
                             .into(),
                         content_hash,
-                        state: visible_state.clone(),
+                        state: node_state.clone(),
                         size: content_size(app, node.id, runebender::ui::nodes::CODE_H),
                     }),
                 );
@@ -258,7 +274,7 @@ fn live_projection(app: &Workspace) -> Option<CanvasProjection> {
                             .as_ref()
                             .and_then(|images| images.get(&node.id))
                             .cloned(),
-                        state: visible_state.clone(),
+                        state: node_state.clone(),
                         size: content_size(app, node.id, runebender::ui::nodes::IMAGE_H),
                     }),
                 );
@@ -272,9 +288,10 @@ fn live_projection(app: &Workspace) -> Option<CanvasProjection> {
         .is_some_and(|phase| {
             matches!(
                 phase,
-                LiveGraphPhase::ScriptQueued
+                LiveGraphPhase::Ready
+                    | LiveGraphPhase::ScriptQueued
                     | LiveGraphPhase::ScriptRunning
-                    | LiveGraphPhase::RecipeStaged
+                    | LiveGraphPhase::ProofReady
                     | LiveGraphPhase::ProofsRunning
             )
         });
@@ -290,6 +307,7 @@ fn live_projection(app: &Workspace) -> Option<CanvasProjection> {
                 matches!(
                     run.status,
                     GraphRunStatus::Completed
+                        | GraphRunStatus::PartiallyFailed
                         | GraphRunStatus::Failed
                         | GraphRunStatus::Cancelled
                         | GraphRunStatus::Stale
@@ -309,6 +327,12 @@ fn live_projection(app: &Workspace) -> Option<CanvasProjection> {
         .and_then(|node| node.values.get("source"))
         .and_then(serde_json::Value::as_u64)
         .and_then(|source| usize::try_from(source).ok());
+    let selected_result = crate::application::editor::tools::nodes::controls::live_result_node(
+        &snapshot.graph,
+        app.nodes.selected,
+    );
+    let can_apply =
+        fresh && latest.is_some_and(|handle| state.execution.can_apply(handle, selected_result));
     Some(CanvasProjection {
         graph: Arc::new(snapshot.graph),
         registry: Arc::new(Registry::core()),
@@ -323,7 +347,7 @@ fn live_projection(app: &Workspace) -> Option<CanvasProjection> {
         running,
         can_cancel,
         can_clear,
-        can_apply: fresh && summary.as_ref().is_some_and(|summary| summary.can_apply),
+        can_apply,
         report: summary.map(|summary| {
             if summary.stderr.is_empty() {
                 summary.report
