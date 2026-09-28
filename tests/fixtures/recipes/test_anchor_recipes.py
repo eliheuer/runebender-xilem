@@ -27,12 +27,17 @@ def fixture(name: str) -> dict:
 
 
 class AnchorRecipeTests(unittest.TestCase):
-    def test_canonical_move_matches_expected_and_preserves_guards(self) -> None:
+    def test_legacy_v1_move_matches_exact_expected_output(self) -> None:
         value = fixture("fixture-move-input.json")
         before = deepcopy(value)
         result = recipes.run("move_named_anchors", value)
         expected = fixture("fixture-move-expected.json")
         self.assertEqual(result, expected)
+        self.assertEqual(result["schema_version"], 1)
+        self.assertEqual(
+            result["input_hash"],
+            "81b724e9788b5bb4c365095867ee81766d095b00201d63c578c3b5867cb5d8d6",
+        )
         self.assertEqual(
             set(result),
             {"schema_version", "job_id", "input_hash", "report", "reads", "edits"},
@@ -45,6 +50,35 @@ class AnchorRecipeTests(unittest.TestCase):
                 value["layers"][0]["guard"],
             ],
         )
+
+    def test_v2_capture_ignores_outline_and_component_context(self) -> None:
+        value = fixture("fixture-move-input.json")
+        value["schema_version"] = 2
+        value["layers"][0]["contours"] = [
+            {
+                "id": "contour-a",
+                "closed": True,
+                "hyper": False,
+                "points": [
+                    {"id": "point-a", "x": 1.0, "y": 2.0, "type": "line", "smooth": False}
+                ],
+            }
+        ]
+        value["layers"][0]["components"] = [
+            {
+                "id": "component-a",
+                "reference": "acute",
+                "transform": [1.0, 0.0, 0.0, 1.0, 3.0, 4.0],
+            }
+        ]
+        before = deepcopy(value)
+
+        result = recipes.run("move_named_anchors", value)
+
+        expected = fixture("fixture-move-expected.json")
+        expected["schema_version"] = 2
+        self.assertEqual(result, expected)
+        self.assertEqual(value, before)
 
     def test_list_reports_source_layer_name_coordinates_and_unnamed_anchor(self) -> None:
         result = recipes.run("list_anchors", fixture("fixture-list-input.json"))
@@ -88,7 +122,12 @@ class AnchorRecipeTests(unittest.TestCase):
             envelope["parameters"][key] = value
             with self.subTest(parameter=key), self.assertRaises(recipes.RecipeError):
                 recipes.run("move_named_anchors", envelope)
-        for schema_label, schema_version in (("bool", True), ("float", 1.0), ("huge", 10**10000)):
+        for schema_label, schema_version in (
+            ("bool", True),
+            ("float", 1.0),
+            ("future", 3),
+            ("huge", 10**10000),
+        ):
             envelope = fixture("fixture-move-input.json")
             envelope["schema_version"] = schema_version
             with self.subTest(schema_version=schema_label), self.assertRaises(recipes.RecipeError):
@@ -97,6 +136,18 @@ class AnchorRecipeTests(unittest.TestCase):
         envelope["parameters"]["dx"] = 10**10000
         with self.assertRaises(recipes.RecipeError):
             recipes.run("move_named_anchors", envelope)
+
+    def test_v1_and_v2_reject_unknown_fields(self) -> None:
+        legacy = fixture("fixture-move-input.json")
+        legacy["layers"][0]["contours"] = []
+        current = fixture("fixture-move-input.json")
+        current["schema_version"] = 2
+        current["layers"][0]["future_field"] = True
+        for envelope in (legacy, current):
+            with self.subTest(schema_version=envelope["schema_version"]), self.assertRaises(
+                recipes.RecipeError
+            ):
+                recipes.run("move_named_anchors", envelope)
 
     def test_unsupported_scope_is_reported_without_edits(self) -> None:
         envelope = fixture("fixture-move-input.json")

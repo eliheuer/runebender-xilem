@@ -466,6 +466,17 @@ impl CanonicalLayerSnapshot {
             .map(PointView::position)
     }
 
+    /// Contour and point identities retained by this exact canonical snapshot.
+    pub(crate) fn contour_and_point_ids(&self) -> (Vec<ContourId>, Vec<PointId>) {
+        let mut contours = Vec::new();
+        let mut points = Vec::new();
+        for contour in LayerView::new(&self.layer, &self.preserved).contours() {
+            contours.push(contour.id());
+            points.extend(contour.points().map(PointView::id));
+        }
+        (contours, points)
+    }
+
     /// Position of one stable anchor in this snapshot.
     pub(crate) fn anchor_position(&self, id: AnchorId) -> Option<kurbo::Point> {
         LayerView::new(&self.layer, &self.preserved)
@@ -567,6 +578,8 @@ pub enum DocumentEditError {
     InvalidFontInfo,
     /// Layer metadata is malformed, nonfinite or uses an unsupported schema.
     InvalidLayerMetadata,
+    /// Generated contour geometry has an invalid bound or segment topology.
+    InvalidGeneratedContour(&'static str),
     /// The requested point identity does not exist in the layer.
     MissingPoint(PointId),
     /// The requested contour identity does not exist in the layer.
@@ -603,6 +616,9 @@ impl std::fmt::Display for DocumentEditError {
             }
             Self::InvalidFontInfo => formatter.write_str("font information is invalid"),
             Self::InvalidLayerMetadata => formatter.write_str("glyph-layer metadata is invalid"),
+            Self::InvalidGeneratedContour(reason) => {
+                write!(formatter, "generated contour: {reason}")
+            }
             Self::MissingPoint(id) => write!(formatter, "point {id:?} does not exist"),
             Self::MissingContour(id) => write!(formatter, "contour {id:?} does not exist"),
             Self::NotOpenContour(id) => write!(formatter, "contour {id:?} is not open"),

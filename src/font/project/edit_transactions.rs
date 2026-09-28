@@ -1,23 +1,24 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Bounded, guarded edit groups over existing objects in one canonical source.
+//! Bounded, guarded edit groups over canonical geometry and metrics in one source.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use kurbo::Point;
 
 use super::*;
+use crate::font::generated::{GeneratedContour, MAX_GENERATED_CONTOURS, MAX_GENERATED_POINTS};
 use crate::font::history::HistoryDirection;
 use crate::font::variable::GlyphId;
-use crate::font::{AnchorId, CanonicalLayerSnapshot, DocumentEditError, PointId};
+use crate::font::{AnchorId, CanonicalLayerSnapshot, ContourId, DocumentEditError, PointId};
 
 const MAX_EDIT_LAYERS: usize = 64;
 const MAX_EDIT_OPERATIONS: usize = 256;
 const MAX_HISTORY_GROUPS: usize = 128;
 const MAX_HISTORY_NAME_BYTES: usize = 256;
 
-/// One supported nonstructural operation in a canonical edit transaction.
+/// One supported operation in a canonical edit transaction.
 #[derive(Clone, Debug, PartialEq)]
 pub enum DocumentEditOperation {
     /// Set the exact horizontal advance.
@@ -36,18 +37,19 @@ pub enum DocumentEditOperation {
         /// Exact replacement position.
         position: Point,
     },
+    /// Append bounded ordinary contours with engine-minted stable identities.
+    AppendContours(Vec<GeneratedContour>),
 }
 
-/// One existing object that changed in a committed canonical edit transaction.
-///
-/// This limited transaction surface supports only the exact advance and existing points or
-/// anchors, so its receipt can retain stable identities without implying structural edits.
+/// One object changed or inserted by a committed canonical edit transaction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DocumentEditObjectKind {
     /// The exact horizontal advance changed.
     Width,
-    /// One existing point moved.
+    /// One existing point moved or a generated point inserted.
     Point(PointId),
+    /// One generated contour was appended.
+    Contour(ContourId),
     /// One existing anchor moved.
     Anchor(AnchorId),
 }
@@ -61,21 +63,24 @@ pub struct DocumentEditChangedObject {
     pub glyph_id: GlyphId,
     /// Stable source and layer identity at the committed canonical address.
     pub layer: LayerId,
-    /// Existing object that changed.
+    /// Existing object changed or new object inserted.
     pub object: DocumentEditObjectKind,
 }
 
 impl DocumentEditOperation {
     fn apply(&self, draft: &mut super::super::LayerEditDraft) -> Result<(), DocumentEditError> {
-        match *self {
+        match self {
             Self::SetWidth(width) => {
-                draft.set_width(width)?;
+                draft.set_width(*width)?;
             }
             Self::SetPoint { point, position } => {
-                draft.set_point_position(point, position)?;
+                draft.set_point_position(*point, *position)?;
             }
             Self::SetAnchor { anchor, position } => {
-                draft.set_anchor_position(anchor, position)?;
+                draft.set_anchor_position(*anchor, *position)?;
+            }
+            Self::AppendContours(contours) => {
+                draft.append_generated_contours(contours)?;
             }
         }
         Ok(())
@@ -102,23 +107,43 @@ fn changed_objects(
         }
     };
     for operation in operations {
-        match *operation {
+        match operation {
             DocumentEditOperation::SetWidth(_) if before.width() != after.width() => {
                 push(DocumentEditObjectKind::Width);
             }
             DocumentEditOperation::SetPoint { point, .. }
-                if before.point_position(point) != after.point_position(point) =>
+                if before.point_position(*point) != after.point_position(*point) =>
             {
-                push(DocumentEditObjectKind::Point(point));
+                push(DocumentEditObjectKind::Point(*point));
             }
             DocumentEditOperation::SetAnchor { anchor, .. }
-                if before.anchor_position(anchor) != after.anchor_position(anchor) =>
+                if before.anchor_position(*anchor) != after.anchor_position(*anchor) =>
             {
-                push(DocumentEditObjectKind::Anchor(anchor));
+                push(DocumentEditObjectKind::Anchor(*anchor));
             }
+            DocumentEditOperation::AppendContours(_) => {}
             DocumentEditOperation::SetWidth(_)
             | DocumentEditOperation::SetPoint { .. }
             | DocumentEditOperation::SetAnchor { .. } => {}
+        }
+    }
+    if operations
+        .iter()
+        .any(|operation| matches!(operation, DocumentEditOperation::AppendContours(_)))
+    {
+        let (before_contours, before_points) = before.contour_and_point_ids();
+        let before_contours = before_contours.into_iter().collect::<BTreeSet<_>>();
+        let before_points = before_points.into_iter().collect::<BTreeSet<_>>();
+        let (after_contours, after_points) = after.contour_and_point_ids();
+        for contour in after_contours {
+            if !before_contours.contains(&contour) {
+                push(DocumentEditObjectKind::Contour(contour));
+            }
+        }
+        for point in after_points {
+            if !before_points.contains(&point) {
+                push(DocumentEditObjectKind::Point(point));
+            }
         }
     }
     changed
@@ -452,6 +477,29 @@ impl Project {
                 "transaction must contain 1..={MAX_EDIT_OPERATIONS} operations"
             )));
         }
+        let (generated_contours, generated_points) = edits
+            .iter()
+            .flat_map(|edit| &edit.operations)
+            .filter_map(|operation| match operation {
+                DocumentEditOperation::AppendContours(contours) => Some(contours),
+                _ => None,
+            })
+            .fold(
+                (0_usize, 0_usize),
+                |(contour_count, point_count), contours| {
+                    (
+                        contour_count.saturating_add(contours.len()),
+                        contours.iter().fold(point_count, |count, contour| {
+                            count.saturating_add(contour.points.len())
+                        }),
+                    )
+                },
+            );
+        if generated_contours > MAX_GENERATED_CONTOURS || generated_points > MAX_GENERATED_POINTS {
+            return Err(DocumentEditTransactionError::Invalid(format!(
+                "transaction may append at most {MAX_GENERATED_CONTOURS} contours and {MAX_GENERATED_POINTS} points"
+            )));
+        }
         if reads.len().saturating_add(edits.len()) > MAX_EDIT_LAYERS {
             return Err(DocumentEditTransactionError::Invalid(format!(
                 "transaction may guard at most {MAX_EDIT_LAYERS} layer entries"
@@ -495,7 +543,9 @@ impl Project {
             if before != after {
                 let glyph_id = self
                     .document_glyph(&before.address().glyph)
-                    .expect("an edit guard retains an existing canonical glyph")
+                    .ok_or_else(|| {
+                        DocumentEditTransactionError::MissingLayer(before.address().clone())
+                    })?
                     .id();
                 let changed_objects = changed_objects(&before, &after, &edit.operations, glyph_id);
                 debug_assert!(
@@ -777,6 +827,27 @@ mod tests {
     use norad::{Anchor, Contour, ContourPoint, Font, Glyph, Name, PointType};
 
     use super::*;
+    use crate::font::LayerPointType;
+    use crate::font::generated::GeneratedPoint;
+
+    fn generated_contour() -> GeneratedContour {
+        use LayerPointType::{Curve, Move, OffCurve};
+        GeneratedContour {
+            points: [
+                (Point::new(0.0, 0.0), Move),
+                (Point::new(25.0, 80.0), OffCurve),
+                (Point::new(75.0, 80.0), OffCurve),
+                (Point::new(100.0, 0.0), Curve),
+            ]
+            .into_iter()
+            .map(|(position, point_type)| GeneratedPoint {
+                position,
+                point_type,
+                smooth: false,
+            })
+            .collect(),
+        }
+    }
 
     fn project() -> Project {
         let mut font = Font::new();
@@ -836,6 +907,312 @@ mod tests {
             .document_layer(&address.glyph, &address.layer)
             .unwrap()
             .width()
+    }
+
+    #[test]
+    fn generated_contours_stage_commit_and_replay_with_stable_inserted_ids() {
+        let mut project = project();
+        let source = project.source_id(0).unwrap();
+        let a = address(&project, "A");
+        let before = project.capture_document_layer(&a).unwrap();
+        let before_ids = before.contour_and_point_ids();
+        let before_revision = project.document_revision();
+        let transaction = project
+            .begin_document_edit_transaction(
+                source,
+                "generated outline",
+                Vec::new(),
+                vec![DocumentLayerEdit::new(
+                    before.clone(),
+                    vec![DocumentEditOperation::AppendContours(vec![
+                        generated_contour(),
+                    ])],
+                )],
+            )
+            .unwrap();
+        let preview = project
+            .preview_document_edit_transaction(&transaction)
+            .unwrap();
+        assert_eq!(project.capture_document_layer(&a).unwrap(), before);
+        assert_eq!(preview.len(), 1);
+        assert_eq!(
+            preview[0].contour_and_point_ids().0.len(),
+            before_ids.0.len() + 1
+        );
+
+        let DocumentEditTransactionOutcome::Changed {
+            after_revision,
+            change,
+            changed_objects,
+            history_group,
+            ..
+        } = project
+            .commit_document_edit_transaction(transaction)
+            .unwrap()
+        else {
+            panic!("generated geometry must change the layer");
+        };
+        assert_eq!(after_revision, before_revision + 1);
+        assert!(change.geometry_changed());
+        assert!(!change.metrics_changed());
+        let after = project.capture_document_layer(&a).unwrap();
+        let after_ids = after.contour_and_point_ids();
+        let added_contour = *after_ids.0.last().unwrap();
+        let added_points = &after_ids.1[before_ids.1.len()..];
+        assert_eq!(added_points.len(), 4);
+        assert!(
+            changed_objects.iter().any(|changed| {
+                changed.object == DocumentEditObjectKind::Contour(added_contour)
+            })
+        );
+        for point in added_points {
+            assert!(
+                changed_objects
+                    .iter()
+                    .any(|changed| { changed.object == DocumentEditObjectKind::Point(*point) })
+            );
+        }
+        let layer = project.document_layer("A", &a.layer).unwrap();
+        let appended = layer.contours().last().unwrap();
+        assert!(!appended.is_closed());
+        assert_eq!(appended.id(), added_contour);
+        assert_eq!(
+            appended
+                .points()
+                .map(|point| point.point_type())
+                .collect::<Vec<_>>(),
+            vec![
+                LayerPointType::Move,
+                LayerPointType::OffCurve,
+                LayerPointType::OffCurve,
+                LayerPointType::Curve,
+            ]
+        );
+
+        project
+            .replay_document_edit_history_group(history_group, HistoryDirection::Undo)
+            .unwrap();
+        assert_eq!(project.capture_document_layer(&a).unwrap(), before);
+        project
+            .replay_document_edit_history_group(history_group, HistoryDirection::Redo)
+            .unwrap();
+        assert_eq!(project.capture_document_layer(&a).unwrap(), after);
+        assert_eq!(
+            project
+                .capture_document_layer(&a)
+                .unwrap()
+                .contour_and_point_ids(),
+            after_ids
+        );
+    }
+
+    #[test]
+    fn closed_all_offcurve_quadratic_is_stored_as_an_ordinary_contour() {
+        let mut project = project();
+        let source = project.source_id(0).unwrap();
+        let a = address(&project, "A");
+        let contour = GeneratedContour {
+            points: [
+                Point::new(0.0, 0.0),
+                Point::new(50.0, 100.0),
+                Point::new(100.0, 0.0),
+            ]
+            .into_iter()
+            .map(|position| GeneratedPoint {
+                position,
+                point_type: LayerPointType::OffCurve,
+                smooth: false,
+            })
+            .collect(),
+        };
+        let transaction = project
+            .begin_document_edit_transaction(
+                source,
+                "closed quadratic",
+                Vec::new(),
+                vec![DocumentLayerEdit::new(
+                    project.capture_document_layer(&a).unwrap(),
+                    vec![DocumentEditOperation::AppendContours(vec![contour])],
+                )],
+            )
+            .unwrap();
+        project
+            .commit_document_edit_transaction(transaction)
+            .unwrap();
+        let appended = project
+            .document_layer("A", &a.layer)
+            .unwrap()
+            .contours()
+            .last()
+            .unwrap();
+        assert!(appended.is_closed());
+        assert!(!appended.is_hyper());
+        assert!(
+            appended
+                .points()
+                .all(|point| point.point_type() == LayerPointType::OffCurve)
+        );
+    }
+
+    #[test]
+    fn invalid_generated_draft_and_aggregate_batch_leave_document_unchanged() {
+        let project = project();
+        let source = project.source_id(0).unwrap();
+        let a = address(&project, "A");
+        let before = project.capture_document_layer(&a).unwrap();
+        let (layer, preserved) = before.clone().into_parts();
+        let mut draft = super::super::super::LayerEditDraft::new(layer, preserved);
+        let mut invalid = generated_contour();
+        invalid.points[2].position.x = f64::INFINITY;
+        assert_eq!(
+            draft.append_generated_contours(&[generated_contour(), invalid]),
+            Err(DocumentEditError::NonFinite)
+        );
+        let (layer, preserved) = draft.into_parts();
+        assert_eq!(
+            CanonicalLayerSnapshot::new(a.clone(), layer, preserved),
+            before
+        );
+
+        let before_revision = project.document_revision();
+        let batch = vec![generated_contour(); MAX_GENERATED_CONTOURS / 2 + 1];
+        let result = project.begin_document_edit_transaction(
+            source,
+            "too many contours",
+            Vec::new(),
+            vec![DocumentLayerEdit::new(
+                before.clone(),
+                vec![
+                    DocumentEditOperation::AppendContours(batch.clone()),
+                    DocumentEditOperation::AppendContours(batch),
+                ],
+            )],
+        );
+        assert!(matches!(
+            result,
+            Err(DocumentEditTransactionError::Invalid(_))
+        ));
+        assert_eq!(project.document_revision(), before_revision);
+        assert_eq!(project.capture_document_layer(&a).unwrap(), before);
+
+        let long = GeneratedContour {
+            points: vec![
+                GeneratedPoint {
+                    position: Point::new(0.0, 0.0),
+                    point_type: LayerPointType::OffCurve,
+                    smooth: false,
+                };
+                MAX_GENERATED_POINTS / 2 + 1
+            ],
+        };
+        let result = project.begin_document_edit_transaction(
+            source,
+            "too many points",
+            Vec::new(),
+            vec![DocumentLayerEdit::new(
+                before.clone(),
+                vec![
+                    DocumentEditOperation::AppendContours(vec![long.clone()]),
+                    DocumentEditOperation::AppendContours(vec![long]),
+                ],
+            )],
+        );
+        assert!(matches!(
+            result,
+            Err(DocumentEditTransactionError::Invalid(_))
+        ));
+        assert_eq!(project.capture_document_layer(&a).unwrap(), before);
+    }
+
+    #[test]
+    fn generated_contour_rejects_stale_guard_and_invalidates_component_dependents() {
+        let mut project = project();
+        let source = project.source_id(0).unwrap();
+        let a = address(&project, "A");
+        let b = address(&project, "B");
+        project
+            .edit_document_layer("B", &b.layer, |draft| {
+                draft.add_component("A".into(), kurbo::Affine::IDENTITY)?;
+                Ok(())
+            })
+            .unwrap();
+        let transaction = project
+            .begin_document_edit_transaction(
+                source,
+                "guarded generated contour",
+                Vec::new(),
+                vec![DocumentLayerEdit::new(
+                    project.capture_document_layer(&a).unwrap(),
+                    vec![DocumentEditOperation::AppendContours(vec![
+                        generated_contour(),
+                    ])],
+                )],
+            )
+            .unwrap();
+        let DocumentEditTransactionOutcome::Changed { change, .. } = project
+            .commit_document_edit_transaction(transaction)
+            .unwrap()
+        else {
+            panic!("generated contour must publish");
+        };
+        assert!(change.dependent_layers().contains(&b));
+
+        let stale = project
+            .begin_document_edit_transaction(
+                source,
+                "stale generated contour",
+                Vec::new(),
+                vec![DocumentLayerEdit::new(
+                    project.capture_document_layer(&a).unwrap(),
+                    vec![DocumentEditOperation::AppendContours(vec![
+                        generated_contour(),
+                    ])],
+                )],
+            )
+            .unwrap();
+        project
+            .edit_document_layer("A", &a.layer, |draft| {
+                draft.set_width(777.0)?;
+                Ok(())
+            })
+            .unwrap();
+        let before_rejection = project.capture_document_layer(&a).unwrap();
+        let revision = project.document_revision();
+        assert_eq!(
+            project.commit_document_edit_transaction(stale),
+            Err(DocumentEditTransactionError::StaleLayer(a.clone()))
+        );
+        assert_eq!(project.document_revision(), revision);
+        assert_eq!(
+            project.capture_document_layer(&a).unwrap(),
+            before_rejection
+        );
+    }
+
+    #[test]
+    fn generated_contour_rejects_deleted_target_without_panicking() {
+        let mut project = project();
+        let source = project.source_id(0).unwrap();
+        let a = address(&project, "A");
+        let captured = project.capture_document_layer(&a).unwrap();
+        project.remove_document_glyph("A").unwrap();
+        let revision = project.document_revision();
+        let result = project.begin_document_edit_transaction(
+            source,
+            "stale generated contour",
+            Vec::new(),
+            vec![DocumentLayerEdit::new(
+                captured,
+                vec![DocumentEditOperation::AppendContours(vec![
+                    generated_contour(),
+                ])],
+            )],
+        );
+        assert!(
+            matches!(result, Err(DocumentEditTransactionError::MissingLayer(address)) if address == a)
+        );
+        assert_eq!(project.document_revision(), revision);
+        assert!(project.document_glyph("A").is_none());
     }
 
     #[test]

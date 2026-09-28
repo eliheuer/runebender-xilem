@@ -994,6 +994,8 @@ mod native {
                     },
                     width: 600.0,
                     anchors: Vec::new(),
+                    contours: Vec::new(),
+                    components: Vec::new(),
                 }],
             )
             .expect("valid test input")
@@ -1063,16 +1065,42 @@ mod native {
                 .expect("example fixture has the Rust input hash");
             let script = fs::read_to_string(examples.join("anchor_recipes.py"))
                 .expect("read actual anchor example");
+            let mut layers = input.layers.clone();
+            layers[0].contours = serde_json::from_value(serde_json::json!([{
+                "id":"fixture-contour","closed":true,"hyper":false,"points":[
+                    {"id":"fixture-p1","x":0.0,"y":0.0,"type":"line","smooth":false},
+                    {"id":"fixture-p2","x":10.0,"y":20.0,"type":"line","smooth":false}
+                ]
+            }]))
+            .unwrap();
+            layers[0].components = serde_json::from_value(serde_json::json!([{
+                "id":"fixture-component","reference":"base","transform":[1.0,0.0,0.0,1.0,20.0,30.0]
+            }]))
+            .unwrap();
+            let current = ScriptRecipeInput::new(
+                input.job_id.clone(),
+                input.source,
+                input.parameters.clone(),
+                layers,
+            )
+            .expect("current capture has its own exact hash");
             let queue = queue(python, Duration::from_secs(2));
-            let handle = queue
-                .submit(ScriptJobRequest { input, script })
-                .expect("submit actual anchor example");
-            match wait(&queue, handle) {
-                ScriptJobOutcome::Completed { result, .. } => {
-                    assert!(result.report.starts_with("Proposed 3 anchor move(s)"));
-                    assert_eq!(result.edits.len(), 2);
+            for input in [input, current] {
+                let expected_version = input.schema_version;
+                let handle = queue
+                    .submit(ScriptJobRequest {
+                        input,
+                        script: script.clone(),
+                    })
+                    .expect("submit actual anchor example");
+                match wait(&queue, handle) {
+                    ScriptJobOutcome::Completed { result, .. } => {
+                        assert_eq!(result.schema_version, expected_version);
+                        assert!(result.report.starts_with("Proposed 3 anchor move(s)"));
+                        assert_eq!(result.edits.len(), 2);
+                    }
+                    other => panic!("unexpected example outcome: {other:?}"),
                 }
-                other => panic!("unexpected example outcome: {other:?}"),
             }
         }
 

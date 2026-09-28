@@ -1121,6 +1121,8 @@ mod tests {
                 },
                 width: layer.width(),
                 anchors: Vec::new(),
+                contours: Vec::new(),
+                components: Vec::new(),
             }],
         )
         .unwrap()

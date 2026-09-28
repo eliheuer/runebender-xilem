@@ -644,10 +644,20 @@ fn mcp_graph_results_preserve_captures_images_and_explicit_apply_receipts() {
         }),
     )["snapshot"]
         .clone();
+    let read_args = json!({"expected_document_epoch":epoch,"source":0,"glyph":"A"});
+    let before = mcp.tool("read_glyph", read_args.clone());
     let code = r#"import json, sys
 p=json.load(sys.stdin)
-edits=[{"target":layer["guard"],"operations":[{"op":"set_width","width":layer["width"]+100}]} for layer in p["layers"]]
-json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],"report":"Widen selected glyphs","reads":[],"edits":edits},sys.stdout)
+assert p["schema_version"] == 2
+edits=[]
+for layer in p["layers"]:
+    point=layer["contours"][0]["points"][0]
+    drawing={"points":[{"x":x,"y":y,"type":"line"} for x,y in [(50,500),(150,500),(150,600),(50,600)]]}
+    edits.append({"target":layer["guard"],"operations":[
+        {"op":"set_width","width":layer["width"]+100},
+        {"op":"set_point","point_id":point["id"],"x":point["x"]+10,"y":point["y"]},
+        {"op":"append_contours","contours":[drawing]}]})
+json.dump({"schema_version":p["schema_version"],"job_id":p["job_id"],"input_hash":p["input_hash"],"report":"Generate and reshape","reads":[],"edits":edits},sys.stdout)
 "#;
     let edits = snapshot["graph"]["nodes"]
         .as_array()
@@ -698,9 +708,13 @@ json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],
         }
     };
     assert_eq!(completed["can_apply"], true);
-    assert_eq!(completed["report"], "Widen selected glyphs");
+    assert_eq!(completed["report"], "Generate and reshape");
     assert_eq!(completed["current"], true);
     assert_eq!(fixture.control("state")["canonical_advance"], 412.0);
+    assert_eq!(
+        mcp.tool("read_glyph", read_args.clone())["contours"],
+        before["contours"]
+    );
     let retry = mcp.tool("nodes_run", run_request);
     assert_eq!(retry["replayed"], true);
     assert_eq!(retry["run"], started["run"]);
@@ -749,12 +763,46 @@ json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],
     serde_json::from_value::<AgentApplyResponse>(applied.clone()).unwrap();
     assert_eq!(applied["root_changed"], true);
     assert_eq!(fixture.control("state")["canonical_advance"], 512.0);
+    let after = mcp.tool("read_glyph", read_args.clone());
+    assert_eq!(
+        after["contour_count"].as_u64().unwrap(),
+        before["contour_count"].as_u64().unwrap() + 1
+    );
+    assert_eq!(
+        after["contours"][0][0]["id"],
+        before["contours"][0][0]["id"]
+    );
+    assert_eq!(
+        after["contours"][0][0]["x"].as_f64().unwrap(),
+        before["contours"][0][0]["x"].as_f64().unwrap() + 10.0
+    );
+    let added_id = after["contour_ids"].as_array().unwrap().last().unwrap();
+    assert!(
+        applied["receipt"]["outcome"]["changed_objects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|object| object["kind"] == "contour" && &object["contour_id"] == added_id),
+        "receipt must identify the new contour"
+    );
     assert_eq!(fixture.control("undo")["canonical_advance"], 412.0);
+    let undone = mcp.tool("read_glyph", read_args.clone());
+    assert_eq!(undone["contours"], before["contours"]);
+    assert_eq!(undone["contour_ids"], before["contour_ids"]);
     let replay = mcp.tool("nodes_apply", apply);
     serde_json::from_value::<AgentApplyResponse>(replay.clone()).unwrap();
     assert_eq!(replay["receipt"], applied["receipt"]);
     assert_eq!(replay["history_state"], "undone");
     assert_eq!(replay["root_changed"], false);
+    assert_eq!(
+        mcp.tool("read_glyph", read_args.clone())["contours"],
+        before["contours"]
+    );
+    assert_eq!(fixture.control("redo")["canonical_advance"], 512.0);
+    let redone = mcp.tool("read_glyph", read_args);
+    assert_eq!(redone["contour_ids"], after["contour_ids"]);
+    assert_eq!(redone["contours"], after["contours"]);
+    assert_eq!(fixture.control("undo")["canonical_advance"], 412.0);
     let stale = mcp.tool("nodes_status", status_args.clone());
     assert_eq!(stale["stale"], true);
     assert_eq!(stale["can_apply"], false);
@@ -769,4 +817,95 @@ json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],
     let state = fixture.control("state");
     assert_eq!(state["canonical_advance"], 412.0);
     assert_eq!(state["source_exists"], false);
+}
+
+#[test]
+fn mcp_generated_contours_reject_invalid_batches_and_reconcile_retries() {
+    use runebender::automation::agent_edit::results::AgentApplyResponse;
+
+    let mut fixture = Fixture::start();
+    let ready = fixture.read();
+    let endpoint = ready["session"].as_str().unwrap();
+    let epoch = &ready["document_epoch"];
+    let mut mcp = Fixture::spawn(Command::new(env!("CARGO_BIN_EXE_runebender")).args([
+        "mcp",
+        "--session",
+        endpoint,
+    ]));
+    mcp.rpc("initialize", json!({"protocolVersion":"2025-11-25"}));
+    let read_args = json!({"expected_document_epoch":epoch,"source":0,"glyph":"A"});
+    let before = mcp.tool("read_glyph", read_args.clone());
+    let triangle = json!({"points":[
+        {"x":20.0,"y":20.0,"type":"line"},
+        {"x":80.0,"y":20.0,"type":"line"},
+        {"x":50.0,"y":80.0,"type":"line"}
+    ]});
+    let payload = json!({"expected_document_epoch":epoch,"actor":"shape-fixture",
+    "operation_key":"append-triangle","authorization":"user-approved","source":0,
+    "history_name":"Add generated triangle","edits":[{
+        "target":{"glyph":"A","glyph_id":before["glyph_id"],"layer":before["layer"],"expected_revision":before["revision"]},
+        "operations":[{"op":"set_width","width":500.0},{"op":"append_contours","contours":[triangle]}]
+    }]});
+    let state = fixture.control("state");
+    let mut malformed = payload.clone();
+    malformed["operation_key"] = json!("invalid-contour");
+    malformed["edits"][0]["operations"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({
+            "op":"append_contours","contours":[{"points":[
+                {"x":0,"y":0,"type":"move"},{"x":50,"y":50,"type":"curve"}
+            ]}]
+        }));
+    let rejected = mcp.rejected_tool("agent_apply", malformed.clone());
+    serde_json::from_value::<AgentApplyResponse>(rejected.clone()).unwrap();
+    assert_eq!(rejected["receipt"]["outcome"]["status"], "rejected");
+    assert_eq!(
+        mcp.rejected_tool("agent_apply", malformed)["receipt"],
+        rejected["receipt"]
+    );
+    let untouched = mcp.tool("read_glyph", read_args.clone());
+    assert_eq!(untouched["contours"], before["contours"]);
+    assert_eq!(untouched["advance"], before["advance"]);
+    assert_eq!(
+        fixture.control("state")["document_revision"],
+        state["document_revision"]
+    );
+    let mut oversized = payload.clone();
+    oversized["operation_key"] = json!("oversized-contours");
+    oversized["edits"][0]["operations"][1]["contours"] = json!(vec![triangle; 257]);
+    assert_eq!(
+        mcp.rejected_tool("agent_apply", oversized)["receipt"]["outcome"]["status"],
+        "rejected"
+    );
+
+    let applied = mcp.tool("agent_apply", payload.clone());
+    serde_json::from_value::<AgentApplyResponse>(applied.clone()).unwrap();
+    let after = mcp.tool("read_glyph", read_args.clone());
+    assert_eq!(
+        after["contour_count"].as_u64().unwrap(),
+        before["contour_count"].as_u64().unwrap() + 1
+    );
+    let mut stale = payload.clone();
+    stale["operation_key"] = json!("stale-contour");
+    assert_eq!(
+        mcp.rejected_tool("agent_apply", stale)["receipt"]["outcome"]["status"],
+        "rejected"
+    );
+    assert_eq!(
+        mcp.tool("agent_apply", payload.clone())["receipt"],
+        applied["receipt"]
+    );
+    fixture.control("undo");
+    let replay = mcp.tool("agent_apply", payload);
+    assert_eq!(replay["history_state"], "undone");
+    assert_eq!(replay["root_changed"], false);
+    let undone = mcp.tool("read_glyph", read_args.clone());
+    assert_eq!(undone["contours"], before["contours"]);
+    assert_eq!(undone["advance"], before["advance"]);
+    fixture.control("redo");
+    let redone = mcp.tool("read_glyph", read_args);
+    assert_eq!(redone["contour_ids"], after["contour_ids"]);
+    assert_eq!(redone["contours"], after["contours"]);
+    assert_eq!(fixture.control("state")["source_exists"], false);
 }

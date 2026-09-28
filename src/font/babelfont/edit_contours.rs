@@ -4,6 +4,7 @@
 //! Layer draft lifecycle, contour construction, importing, and duplication.
 
 use super::*;
+use crate::font::generated::{GeneratedContour, validate_contours};
 
 impl LayerEditDraft {
     pub(in crate::font) fn new(layer: Layer, preserved: LayerPreservation) -> Self {
@@ -109,6 +110,60 @@ impl LayerEditDraft {
             .retain(|shape| !matches!(shape, Shape::Path(_)));
         self.preserved.contours.clear();
         true
+    }
+
+    /// Append validated ordinary generated contours with fresh stable identities.
+    ///
+    /// The entire slice is checked before the draft changes. Existing contours, components,
+    /// anchors, advances and metadata remain untouched.
+    pub fn append_generated_contours(
+        &mut self,
+        contours: &[GeneratedContour],
+    ) -> Result<PastedContours, DocumentEditError> {
+        validate_contours(contours)?;
+        let mut inserted = PastedContours::default();
+        let mut additions = Vec::with_capacity(contours.len());
+        for contour in contours {
+            let contour_id = ContourId::next();
+            inserted.contours.push(contour_id);
+            let mut path = babelfont::Path {
+                closed: contour.points[0].point_type != LayerPointType::Move,
+                ..babelfont::Path::default()
+            };
+            write_id(&mut path.format_specific, contour_id.0);
+            let mut preserved_points = Vec::with_capacity(contour.points.len());
+            for point in &contour.points {
+                let node_type = match point.point_type {
+                    LayerPointType::Move => NodeType::Move,
+                    LayerPointType::Line => NodeType::Line,
+                    LayerPointType::OffCurve => NodeType::OffCurve,
+                    LayerPointType::Curve => NodeType::Curve,
+                    LayerPointType::QCurve => NodeType::QCurve,
+                };
+                let (id, node, preserved) =
+                    new_document_point(point.position, node_type, point.smooth);
+                inserted.points.push(id);
+                path.nodes.push(node);
+                preserved_points.push(preserved);
+            }
+            additions.push((
+                Shape::Path(path),
+                PreservedContour {
+                    id: contour_id,
+                    hyper: false,
+                    metadata: ObjectMetadata {
+                        identifier: None,
+                        lib: None,
+                    },
+                    points: preserved_points,
+                },
+            ));
+        }
+        for (shape, preserved) in additions {
+            self.layer.shapes.push(shape);
+            self.preserved.contours.push(preserved);
+        }
+        Ok(inserted)
     }
 
     /// Start a new open contour at `position`.

@@ -45,6 +45,47 @@ pub enum DrawingPointType {
     Offcurve,
 }
 
+impl From<crate::font::LayerPointType> for DrawingPointType {
+    fn from(kind: crate::font::LayerPointType) -> Self {
+        use crate::font::LayerPointType;
+        match kind {
+            LayerPointType::Move => Self::Move,
+            LayerPointType::Line => Self::Line,
+            LayerPointType::OffCurve => Self::Offcurve,
+            LayerPointType::Curve => Self::Curve,
+            LayerPointType::QCurve => Self::Qcurve,
+        }
+    }
+}
+
+impl From<DrawingPointType> for crate::font::LayerPointType {
+    fn from(kind: DrawingPointType) -> Self {
+        match kind {
+            DrawingPointType::Move => Self::Move,
+            DrawingPointType::Line => Self::Line,
+            DrawingPointType::Offcurve => Self::OffCurve,
+            DrawingPointType::Curve => Self::Curve,
+            DrawingPointType::Qcurve => Self::QCurve,
+        }
+    }
+}
+
+impl From<&DrawingContour> for crate::font::generated::GeneratedContour {
+    fn from(contour: &DrawingContour) -> Self {
+        Self {
+            points: contour
+                .points
+                .iter()
+                .map(|point| crate::font::generated::GeneratedPoint {
+                    position: kurbo::Point::new(point.x, point.y),
+                    point_type: point.kind.into(),
+                    smooth: point.smooth,
+                })
+                .collect(),
+        }
+    }
+}
+
 /// Check explicit contours for coordinate limits and segment grammar.
 /// Empty outlines are allowed for deliberate clearing. Limits are 256 contours and
 /// 16,384 points per glyph.

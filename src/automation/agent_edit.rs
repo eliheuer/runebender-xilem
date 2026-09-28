@@ -36,7 +36,7 @@ pub struct AgentLayerGuard {
     pub expected_revision: String,
 }
 
-/// One supported nonstructural operation, addressed by stable object identity.
+/// One guarded operation over existing objects or newly generated contours.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentEditOperation {
@@ -53,6 +53,11 @@ pub enum AgentEditOperation {
         x: f64,
         /// New vertical coordinate.
         y: f64,
+    },
+    /// Append ordinary contours with identities minted by the canonical font engine.
+    AppendContours {
+        /// Ordered contours in font coordinates; a leading move starts an open contour.
+        contours: Vec<crate::outline::drawing::DrawingContour>,
     },
     /// Move one existing anchor.
     SetAnchor {
@@ -125,6 +130,22 @@ impl AgentEditRequest {
                 "supply 1..=256 operations, with at least one per edited layer",
             ));
         }
+        let (mut contour_count, mut point_count) = (0_usize, 0_usize);
+        for operation in self.edits.iter().flat_map(|edit| &edit.operations) {
+            if let AgentEditOperation::AppendContours { contours } = operation {
+                contour_count = contour_count.saturating_add(contours.len());
+                for contour in contours {
+                    point_count = point_count.saturating_add(contour.points.len());
+                }
+            }
+        }
+        if contour_count > crate::font::generated::MAX_GENERATED_CONTOURS
+            || point_count > crate::font::generated::MAX_GENERATED_POINTS
+        {
+            return Err(invalid(
+                "generated contours exceed the whole-batch geometry limit",
+            ));
+        }
         let source = SourceId(self.source);
         let reads = self
             .reads
@@ -145,6 +166,11 @@ impl AgentEditRequest {
                     .map(|operation| match operation {
                         AgentEditOperation::SetWidth { width } => {
                             Ok(DocumentEditOperation::SetWidth(*width))
+                        }
+                        AgentEditOperation::AppendContours { contours } => {
+                            Ok(DocumentEditOperation::AppendContours(
+                                contours.iter().map(Into::into).collect(),
+                            ))
                         }
                         AgentEditOperation::SetPoint { point_id, x, y } => {
                             let point = layer
@@ -235,7 +261,28 @@ impl AgentLayerGuard {
 pub fn tools() -> Vec<Tool> {
     let string = json!({"type":"string","minLength":1,"maxLength":256});
     let guard = json!({"type":"object","properties":{"glyph":string,"glyph_id":string,"layer":string,"expected_revision":string},"required":["glyph","glyph_id","layer","expected_revision"],"additionalProperties":false});
+    let mut generated_contour = serde_json::to_value(
+        schemars::generate::SchemaSettings::default()
+            .with(|settings| settings.inline_subschemas = true)
+            .into_generator()
+            .into_root_schema_for::<crate::outline::drawing::DrawingContour>(),
+    )
+    .expect("drawing input schema serializes");
+    generated_contour
+        .as_object_mut()
+        .expect("contour schema is an object")
+        .remove("$schema");
+    generated_contour["properties"]["points"]["minItems"] = json!(2);
+    generated_contour["properties"]["points"]["maxItems"] =
+        json!(crate::font::generated::MAX_GENERATED_POINTS);
+    for coordinate in ["x", "y"] {
+        let property =
+            &mut generated_contour["properties"]["points"]["items"]["properties"][coordinate];
+        property["minimum"] = json!(-1_000_000.0);
+        property["maximum"] = json!(1_000_000.0);
+    }
     let operation = json!({"oneOf":[
+        {"type":"object","properties":{"op":{"const":"append_contours"},"contours":{"type":"array","minItems":1,"maxItems":crate::font::generated::MAX_GENERATED_CONTOURS,"items":generated_contour}},"required":["op","contours"],"additionalProperties":false},
         {"type":"object","properties":{"op":{"const":"set_width"},"width":{"type":"number"}},"required":["op","width"],"additionalProperties":false},
         {"type":"object","properties":{"op":{"const":"set_point"},"point_id":string,"x":{"type":"number"},"y":{"type":"number"}},"required":["op","point_id","x","y"],"additionalProperties":false},
         {"type":"object","properties":{"op":{"const":"set_anchor"},"anchor_id":string,"x":{"type":"number"},"y":{"type":"number"}},"required":["op","anchor_id","x","y"],"additionalProperties":false}
@@ -256,7 +303,7 @@ pub fn tools() -> Vec<Tool> {
     let mut result = vec![
         make(
             "agent_apply",
-            "Apply one authorized guarded batch to the unsaved root with one history group. Read explicit glyph/source/layer identities first. Reuse exactly the same actor, operation_key and payload after a lost response; a different payload under that key rejects. In-memory receipts do not survive document closure.",
+            "Apply one authorized guarded batch to the unsaved root with one history group. Append contours are bounded to 256 contours and 4096 points across the complete batch, with engine-owned identities. Read explicit glyph/source/layer identities first. Reuse exactly the same actor, operation_key and payload after a lost response; a different payload under that key rejects. In-memory receipts do not survive document closure.",
             apply,
             json!([
                 "expected_document_epoch",
@@ -285,4 +332,42 @@ pub fn tools() -> Vec<Tool> {
     identity["authorization"] = json!({"enum":["user-approved"]});
     result.push(make("agent_history", "Undo or redo the group associated with an apply receipt, sharing ordinary editor history. Overlapping later changes reject. After a lost response inspect agent_receipt history_state before retrying; this command is not an idempotent apply.", identity, json!(["expected_document_epoch","actor","operation_key","direction","authorization"])));
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generated_input_schema_bounds_geometry_without_accepting_caller_ids() {
+        let tools = tools();
+        let schema = &tools
+            .iter()
+            .find(|tool| tool.name == "agent_apply")
+            .unwrap()
+            .parameters;
+        let choices =
+            schema["properties"]["edits"]["items"]["properties"]["operations"]["items"]["oneOf"]
+                .as_array()
+                .unwrap();
+        let append = choices
+            .iter()
+            .find(|choice| choice["properties"]["op"]["const"] == "append_contours")
+            .unwrap();
+        let contours = &append["properties"]["contours"];
+        assert_eq!(contours["maxItems"], 256);
+        let points = &contours["items"]["properties"]["points"];
+        assert_eq!(points["maxItems"], 4096);
+        assert_eq!(points["items"]["additionalProperties"], false);
+        assert!(points["items"]["properties"].get("id").is_none());
+        assert_eq!(points["items"]["properties"]["x"]["maximum"], 1_000_000.0);
+        assert!(
+            serde_json::from_value::<AgentEditOperation>(json!({
+                "op":"append_contours","contours":[{"points":[
+                    {"x":0,"y":0,"type":"line","id":"caller-point"}
+                ]}]
+            }))
+            .is_err()
+        );
+    }
 }

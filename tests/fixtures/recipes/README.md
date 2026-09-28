@@ -1,13 +1,13 @@
 # Native anchor recipes
 
-These examples are pure Python workers for the version-one script envelope.
+These examples are pure Python workers that accept current host version-two captures and legacy version-one fixtures.
 They receive one immutable JSON capture on standard input and emit one typed JSON result on standard output.
 Human-readable diagnostics go to standard error.
 
 The workers never open a font, create a mutable font wrapper, open a socket, write a source file, apply an edit, or invent authorization.
 The editor runner owns those boundaries.
 
-The version-one input envelope is:
+The checked-in legacy fixture uses this version-one input envelope:
 
 ```json
 {
@@ -38,6 +38,11 @@ The version-one input envelope is:
   ]
 }
 ```
+
+Current host captures use schema version 2 and may include optional `contours` and `components` arrays on each layer.
+This anchor recipe ignores that outline and component context, edits anchors only, and echoes the input schema version.
+The checked-in version-one fixture output and hash remain unchanged.
+A copied script that requires version 1 or exactly the version-one layer keys must update its parser for current host captures; accepting version 2 here does not make every unchanged version-one script compatible.
 
 `source` is explicit and is never inferred from the active editor source.
 `glyphs` is the selected glyph scope; an empty list is an intentional empty scope.

@@ -41,7 +41,7 @@ pub enum ChangedObject {
         /// Layer name within the source.
         layer: String,
     },
-    /// An existing contour point moved.
+    /// An existing point moved or a generated contour introduced a new point.
     Point {
         /// Glyph name at publication.
         glyph: String,
@@ -53,6 +53,19 @@ pub enum ChangedObject {
         layer: String,
         /// Opaque point identity.
         point_id: String,
+    },
+    /// A generated contour was appended with a new engine-owned identity.
+    Contour {
+        /// Glyph name at publication.
+        glyph: String,
+        /// Opaque glyph identity.
+        glyph_id: String,
+        /// Stable source index.
+        source: usize,
+        /// Layer name within the source.
+        layer: String,
+        /// Opaque contour identity.
+        contour_id: String,
     },
     /// An existing anchor moved.
     Anchor {
@@ -286,6 +299,13 @@ impl AgentReceipt {
                                 layer,
                                 point_id: point_id.to_wire(),
                             },
+                            DocumentEditObjectKind::Contour(contour_id) => ChangedObject::Contour {
+                                glyph,
+                                glyph_id,
+                                source,
+                                layer,
+                                contour_id: contour_id.to_wire(),
+                            },
                             DocumentEditObjectKind::Anchor(anchor_id) => ChangedObject::Anchor {
                                 glyph,
                                 glyph_id,
@@ -453,7 +473,8 @@ mod tests {
             "changed_objects":[
                 {"kind":"width","glyph":"A","glyph_id":"g1","source":0,"layer":"foreground"},
                 {"kind":"point","glyph":"A","glyph_id":"g1","source":0,"layer":"foreground","point_id":"p1"},
-                {"kind":"anchor","glyph":"A","glyph_id":"g1","source":0,"layer":"foreground","anchor_id":"a1"}
+                {"kind":"anchor","glyph":"A","glyph_id":"g1","source":0,"layer":"foreground","anchor_id":"a1"},
+                {"kind":"contour","glyph":"A","glyph_id":"g1","source":0,"layer":"foreground","contour_id":"c1"}
             ]
         });
         let parsed: AgentReceiptOutcome = serde_json::from_value(committed.clone()).unwrap();

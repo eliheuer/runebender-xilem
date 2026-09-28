@@ -2,7 +2,7 @@
 # Copyright 2026 the Runebender Authors
 # SPDX-License-Identifier: Apache-2.0 OR MIT
 
-"""Pure, bounded anchor recipes for the version-one script envelope."""
+"""Pure, bounded anchor recipes for version-one and version-two script envelopes."""
 
 from __future__ import annotations
 
@@ -12,7 +12,9 @@ import sys
 from typing import Any, NoReturn
 
 
-SCHEMA_VERSION = 1
+LEGACY_SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+SUPPORTED_SCHEMA_VERSIONS = {LEGACY_SCHEMA_VERSION, SCHEMA_VERSION}
 MAX_GUARDED_LAYERS = 64
 MAX_OPERATIONS = 256
 MAX_STRING_BYTES = 256
@@ -109,7 +111,7 @@ def _guard(value: Any) -> dict[str, Any]:
     }
 
 
-def _layers(value: Any) -> list[dict[str, Any]]:
+def _layers(value: Any, schema_version: int) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         _fail("layers must be an array")
     if len(value) > MAX_GUARDED_LAYERS:
@@ -123,8 +125,21 @@ def _layers(value: Any) -> list[dict[str, Any]]:
     addresses: set[tuple[str, str]] = set()
     for layer_index, raw_layer in enumerate(value):
         layer = _object(raw_layer, f"layers[{layer_index}]")
-        if set(layer) != {"guard", "width", "anchors"}:
+        required = {"guard", "width", "anchors"}
+        allowed = required
+        if schema_version == SCHEMA_VERSION:
+            allowed = required | {"contours", "components"}
+        if not required.issubset(layer) or set(layer) - allowed:
+            if schema_version == SCHEMA_VERSION:
+                _fail(
+                    "each layer must contain guard, width and anchors, with only optional "
+                    "contours and components"
+                )
             _fail("each layer must contain exactly guard, width and anchors")
+        if schema_version == SCHEMA_VERSION:
+            for key in ("contours", "components"):
+                if key in layer and not isinstance(layer[key], list):
+                    _fail(f"layers[{layer_index}].{key} must be an array")
         guard = _guard(layer["guard"])
         address = (guard["glyph"], guard["layer"])
         if address in addresses:
@@ -169,9 +184,9 @@ def _envelope(value: Any, recipe: str) -> tuple[dict[str, Any], list[dict[str, A
     if (
         not isinstance(schema_version, int)
         or isinstance(schema_version, bool)
-        or schema_version != SCHEMA_VERSION
+        or schema_version not in SUPPORTED_SCHEMA_VERSIONS
     ):
-        _fail(f"schema_version must be {SCHEMA_VERSION}")
+        _fail("schema_version must be 1 or 2")
     job_id = _string(envelope.get("job_id"), "job_id")
     input_hash = _string(envelope.get("input_hash"), "input_hash")
     source = envelope.get("source")
@@ -195,9 +210,9 @@ def _envelope(value: Any, recipe: str) -> tuple[dict[str, Any], list[dict[str, A
         if "dx" in parameters or "dy" in parameters:
             _fail("list_anchors does not accept dx or dy", status="unsupported")
         dx = dy = 0.0
-    layers = _layers(envelope.get("layers"))
+    layers = _layers(envelope.get("layers"), schema_version)
     normalized = {
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": schema_version,
         "job_id": job_id,
         "input_hash": input_hash,
         "source": source,
@@ -208,7 +223,12 @@ def _envelope(value: Any, recipe: str) -> tuple[dict[str, Any], list[dict[str, A
         "dy": dy,
     }
     return (
-        {"schema_version": SCHEMA_VERSION, "job_id": job_id, "input_hash": input_hash, "source": source},
+        {
+            "schema_version": schema_version,
+            "job_id": job_id,
+            "input_hash": input_hash,
+            "source": source,
+        },
         layers,
         normalized,
     )
