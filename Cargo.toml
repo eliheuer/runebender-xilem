@@ -42,6 +42,8 @@ masonry = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a", optio
 clap = { version = "4", features = ["derive"], optional = true }
 base64 = { version = "0.22.1", optional = true }
 norad = "0.18"
+# TODO: Move Babelfont to an Eli-maintained fork when Runebender needs custom changes.
+# Pin the fork to a revision and bring in useful upstream fixes selectively.
 babelfont = { git = "https://github.com/simoncozens/babelfont-rs", rev = "29bdedbbfa7d3150b651dbd7c94fce6b79677ca4", default-features = false, features = ["types", "glyphs", "fontir"] }
 fontdrasil = "=1.0.0"
 fontc = { version = "=1.0.0", default-features = false }
