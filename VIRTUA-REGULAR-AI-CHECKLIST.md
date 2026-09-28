@@ -1,6 +1,6 @@
 # Virtua Regular AI workflow checklist
 
-Status: B1, C1 and C2 validated; B2 patch failed coordinator validation and needs correction; trial preflight active.
+Status: B1, C1 and C2 validated; Sol is correcting B2 validation failures; trial preflight complete, target preference requested.
 Created: 2026-09-28.
 Coordinator: this Codex task, with Astra owning architecture and integration review.
 Worktree: /Users/eli/.codex/worktrees/virtua-regular-ai/runebender-xilem.
@@ -196,11 +196,11 @@ If only F5 or another external prerequisite remains, report "ready for review" a
 | B1 | regular_proof_sol (GPT-6 Sol) | src/font/compiler/proof.rs and five recipe constructor call sites | Validated; d6f50f7 |
 | C1 | regular_proof_sol (GPT-6 Sol), reused | src/font/project/edit_transactions.rs, src/font/babelfont/edit_contours.rs, src/automation/agent_edit.rs, src/automation/agent_edit/results.rs, src/font/compiler/proof.rs; narrowly necessary exhaustive-match sites | Validated; c57edc3 |
 | C2 | regular_proof_sol (GPT-6 Sol), reused | src/formats/image_trace.rs, src/automation/agent_edit.rs; narrowly necessary canonical contour conversion helper only | Validated; a67dfe4 |
-| B2 | regular_proof_sol (GPT-6 Sol), reused | src/text/buffer/**, src/font/compiler/proof.rs, existing editor/proof request call sites as needed | Worker complete; validation failed; correction dispatch queued after capacity limit |
+| B2 | regular_proof_sol (GPT-6 Sol), reused | src/text/buffer/**, src/font/compiler/proof.rs, existing editor/proof request call sites as needed | Correction running: /root/regular_proof_sol; validation gates remain open |
 
-B2 correction dispatch hit the worker thread limit once; do not repeatedly retry.
-Terra regular_trial_inventory is active on tests/fixtures/glyph_workflow/local-trial-inventory.md only, reading actual font/checkpoint metadata without modifying sources.
-Dispatch one Sol correction worker after Terra completes; do not start B3/C3 before this review is resolved.
+B2 correction dispatch initially hit capacity; after Terra completed, one retry successfully resumed Sol.
+Terra regular_trial_inventory completed tests/fixtures/glyph_workflow/local-trial-inventory.md; coordinator reviewed it.
+Do not start B3/C3 before the B2 review is resolved.
 Terra has completed the reviewed fixture preparation.
 The earlier capacity limit cleared after Sol completed; the queued Terra assignment was dispatched once.
 Worker completion means a patch is ready for review, not that its acceptance gates passed.
@@ -254,6 +254,12 @@ The v2 comparison-pair test rejects mismatched pair recipes but its distinct-DAG
 All-target Clippy reports collapsible_if in proof target validation and two usize-to-u32 truncation casts; fix structurally.
 Review also requires an explicit error for missing/wrong-context proof capture in an active text workflow instead of silently using unrelated starter text; genuinely no-text legacy starter remains supported.
 No B2 code committed or gate checked; exact corrective tests, broader text/proof/nodes checks and Clippy remain pending.
+- Trial preflight: current qaf-ar is blue with two components; exact-red Arabic entries found are U+0600 through U+0603 signs, not joining forms.
+Coordinator spot-checked actual GLIF colors and green relatives through contents.plist; original files were read only.
+Installed checkpoint/runtime paths are recorded in tests/fixtures/glyph_workflow/local-trial-inventory.md, without executing inference or hashing weights yet.
+Asked Eli for a preferred first glyph/form while implementation continues.
+Arabic signs are already in scope; absence of a same-construction green reference does not introduce a new authorization gate.
+F1 remains pending an actual selected scratch trial, not accepted by this inventory.
 - Add exact implementation commits, validation commands/results and human-review status here as each gate completes.
 
 ## Context sources
