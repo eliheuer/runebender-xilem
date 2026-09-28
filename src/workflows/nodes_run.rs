@@ -214,7 +214,7 @@ fn hash_tree(path: &Path, hasher: &mut impl Hasher) -> bool {
         }
     };
     if kind.is_symlink() {
-        2u8.hash(hasher);
+        2_u8.hash(hasher);
         match std::fs::read_link(path) {
             Ok(target) => target.hash(hasher),
             Err(error) => error.kind().hash(hasher),
@@ -222,14 +222,14 @@ fn hash_tree(path: &Path, hasher: &mut impl Hasher) -> bool {
         return false;
     }
     if kind.is_file() {
-        0u8.hash(hasher);
+        0_u8.hash(hasher);
         return hash_file(path, hasher);
     }
     if !kind.is_dir() {
-        3u8.hash(hasher);
+        3_u8.hash(hasher);
         return false;
     }
-    1u8.hash(hasher);
+    1_u8.hash(hasher);
     let Ok(entries) = std::fs::read_dir(path) else {
         return false;
     };
@@ -251,7 +251,7 @@ fn hash_tree(path: &Path, hasher: &mut impl Hasher) -> bool {
             }
         }
     }
-    4u8.hash(hasher);
+    4_u8.hash(hasher);
     complete
 }
 
@@ -275,8 +275,8 @@ fn hash_file(path: &Path, hasher: &mut impl Hasher) -> bool {
             return false;
         }
     };
-    let mut buf = [0u8; 64 * 1024];
-    let mut len = 0u64;
+    let mut buf = [0_u8; 16 * 1024];
+    let mut len = 0_u64;
     loop {
         match file.read(&mut buf) {
             Ok(0) => break,

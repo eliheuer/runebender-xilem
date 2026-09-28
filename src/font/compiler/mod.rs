@@ -288,7 +288,7 @@ fn stable_modified_timestamp(mut bytes: Vec<u8>) -> Result<Vec<u8>, String> {
     if head_length < 36 || bytes.get(head_offset..head_end).is_none() {
         return Err("compiled font has a truncated head table".into());
     }
-    let record_checksum_offset = 12usize
+    let record_checksum_offset = 12_usize
         .checked_add(
             record_index
                 .checked_mul(16)
@@ -315,7 +315,7 @@ fn stable_modified_timestamp(mut bytes: Vec<u8>) -> Result<Vec<u8>, String> {
     bytes[record_checksum_offset..record_checksum_offset + 4]
         .copy_from_slice(&head_checksum.to_be_bytes());
     let font_checksum = skrifa::raw::tables::compute_checksum(&bytes);
-    let adjustment = 0xB1B0_AFBAu32.wrapping_sub(font_checksum);
+    let adjustment = 0xB1B0_AFBA_u32.wrapping_sub(font_checksum);
     bytes[head_offset + 8..head_offset + 12].copy_from_slice(&adjustment.to_be_bytes());
     Ok(bytes)
 }
