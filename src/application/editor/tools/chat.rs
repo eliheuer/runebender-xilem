@@ -3,15 +3,35 @@
 
 //! Local chat over the editor-owned live document.
 //!
-//! `font-ml chat` owns inference and asks `runebender` for the same
-//! read/propose tools exposed to other agents. This shell owns only process
-//! lifetime, streaming presentation, and the private live-session endpoint.
+//! The editor can use a supervised `font-ml chat` child or an explicitly
+//! configured, externally managed local server. Both use the editor-owned
+//! live document and expose only read/propose tools.
+
+#[cfg(unix)]
+#[path = "chat_endpoint.rs"]
+mod chat_endpoint;
+#[cfg(not(unix))]
+mod chat_endpoint {
+    pub(super) fn run_chat_endpoint(
+        _endpoint: &runebender::workflows::local_chat::LocalChatEndpoint,
+        _session: &std::path::Path,
+        _epoch: &str,
+        _conversation: &str,
+        _job: &super::ChatJob,
+    ) -> Result<(), String> {
+        Err("live Chat tools require a native Unix editor".into())
+    }
+}
+#[cfg(all(test, unix))]
+#[path = "chat_endpoint_tests.rs"]
+mod endpoint_tests;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 
+use runebender::workflows::local_chat::LocalChatEndpoint;
 use runebender::workflows::process::{
     OutputStream, ProcessCancellation, ProcessLimits, ProcessOutcome,
 };
@@ -41,6 +61,8 @@ pub(crate) enum ChatEntry {
 /// Shared state for one background chat turn.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ChatJob {
+    /// Document lifetime captured before starting inference.
+    pub(crate) document_epoch: Option<String>,
     pub(crate) events: Arc<Mutex<Vec<Value>>>,
     pub(crate) cancellation: ProcessCancellation,
     pub(crate) finished: Arc<Mutex<Option<Result<(), String>>>>,
@@ -51,6 +73,8 @@ pub(crate) struct ChatJob {
 pub(crate) struct ChatState {
     pub(crate) prompt: String,
     pub(crate) model: Option<PathBuf>,
+    /// An explicitly configured resident local model, or its configuration error.
+    pub(crate) endpoint: Option<Result<LocalChatEndpoint, String>>,
     pub(crate) installed: Vec<(String, PathBuf)>,
     pub(crate) entries: Vec<ChatEntry>,
     pub(crate) messages: Vec<Value>,
@@ -88,6 +112,18 @@ fn core_binary() -> Option<PathBuf> {
 impl Workspace {
     /// Rescan local GGUF chat-model folders without loading any weights.
     pub(crate) fn scan_chat_models(&mut self) {
+        self.chat.endpoint = std::env::var_os("RUNEBENDER_CHAT_ENDPOINT").map(|url| {
+            let url = url
+                .into_string()
+                .map_err(|_| "endpoint URL is not UTF-8".to_string())?;
+            let model = match std::env::var_os("RUNEBENDER_CHAT_MODEL") {
+                Some(model) => model
+                    .into_string()
+                    .map_err(|_| "model name is not UTF-8".to_string())?,
+                None => "font-ml".into(),
+            };
+            LocalChatEndpoint::parse(&url, &model).map_err(|error| error.to_string())
+        });
         self.chat.installed =
             runebender::workflows::nodes_run::installed_chat_models(Self::models_dir().as_deref());
         if self
@@ -133,13 +169,13 @@ impl Workspace {
             self.note = "The model is still answering".into();
             return;
         }
-        let Some(model) = self.chat.model.clone() else {
-            self.note = "Choose a local chat model first".into();
-            return;
-        };
-        let Some(font_ml) = self.nodes.font_ml.clone() else {
-            self.note = "font-ml not found; install it or set RUNEBENDER_FONT_ML".into();
-            return;
+        let endpoint = match self.chat.endpoint.clone() {
+            Some(Ok(endpoint)) => Some(endpoint),
+            Some(Err(error)) => {
+                self.note = format!("Local chat endpoint: {error}");
+                return;
+            }
+            None => None,
         };
         #[cfg(unix)]
         let session = self.live.as_ref().map(|server| server.path().to_path_buf());
@@ -149,9 +185,29 @@ impl Workspace {
             self.note = "Live chat requires the native Unix editor endpoint".into();
             return;
         };
-        let Some(core) = core_binary() else {
-            self.note = "Could not locate the running Runebender executable".into();
-            return;
+        #[cfg(unix)]
+        let epoch = self
+            .live
+            .as_ref()
+            .map(|server| server.document_epoch().to_string());
+        #[cfg(not(unix))]
+        let epoch: Option<String> = None;
+        let (font_ml, model, core) = if endpoint.is_none() {
+            let Some(model) = self.chat.model.clone() else {
+                self.note = "Choose a local chat model first".into();
+                return;
+            };
+            let Some(font_ml) = self.nodes.font_ml.clone() else {
+                self.note = "font-ml not found; install it or set RUNEBENDER_FONT_ML".into();
+                return;
+            };
+            let Some(core) = core_binary() else {
+                self.note = "Could not locate the running Runebender executable".into();
+                return;
+            };
+            (Some(font_ml), Some(model), Some(core))
+        } else {
+            (None, None, None)
         };
 
         self.chat.entries.push(ChatEntry::User(text.clone()));
@@ -160,7 +216,12 @@ impl Workspace {
             .push(serde_json::json!({"role":"user", "content":text}));
         self.chat.entries.push(ChatEntry::Assistant(String::new()));
         self.chat.raw_assistant.clear();
-        self.chat.busy = Some("Loading the model…".into());
+        self.chat.last_speed = None;
+        self.chat.busy = Some(if endpoint.is_some() {
+            "Thinking…".into()
+        } else {
+            "Loading the model…".into()
+        });
         let conversation = match serde_json::to_string(&self.chat.messages) {
             Ok(value) => value,
             Err(error) => {
@@ -170,25 +231,38 @@ impl Workspace {
             }
         };
         let font = self.font.document_source().to_path_buf();
-        let job = ChatJob::default();
+        let job = ChatJob {
+            document_epoch: epoch.clone(),
+            ..ChatJob::default()
+        };
         self.chat.job = Some(job.clone());
         std::thread::spawn(move || {
-            let result = run_chat(
-                &font_ml,
-                &model,
-                &font,
-                &core,
-                &session,
-                &conversation,
-                &job,
-            );
+            let result = if let Some(endpoint) = endpoint {
+                chat_endpoint::run_chat_endpoint(
+                    &endpoint,
+                    &session,
+                    epoch.as_deref().unwrap_or_default(),
+                    &conversation,
+                    &job,
+                )
+            } else {
+                run_chat(
+                    font_ml.as_deref().expect("subprocess runner checked"),
+                    model.as_deref().expect("subprocess model checked"),
+                    &font,
+                    core.as_deref().expect("subprocess core checked"),
+                    &session,
+                    &conversation,
+                    &job,
+                )
+            };
             *job.finished
                 .lock()
                 .unwrap_or_else(|error| error.into_inner()) = Some(result);
         });
     }
 
-    /// Stop the child process for the current turn.
+    /// Cancel the current request or stop its supervised child process.
     pub(crate) fn chat_cancel(&mut self) {
         let Some(job) = self.chat.job.as_ref() else {
             return;
@@ -202,6 +276,29 @@ impl Workspace {
         let Some(job) = self.chat.job.clone() else {
             return;
         };
+        #[cfg(unix)]
+        let current_epoch = self.live.as_ref().map(|server| server.document_epoch());
+        #[cfg(not(unix))]
+        let current_epoch: Option<&str> = None;
+        if job
+            .document_epoch
+            .as_deref()
+            .is_some_and(|epoch| Some(epoch) != current_epoch)
+        {
+            job.cancellation.cancel();
+            self.chat.job = None;
+            self.chat.busy = None;
+            self.chat.messages.clear();
+            self.chat.streaming_artifacts.clear();
+            self.chat.raw_assistant.clear();
+            self.chat
+                .entries
+                .retain(|entry| !matches!(entry, ChatEntry::Assistant(text) if text.is_empty()));
+            self.chat.entries.push(ChatEntry::Error(
+                "The open document changed; discarded the previous chat response and model context.".into(),
+            ));
+            return;
+        }
         let events =
             std::mem::take(&mut *job.events.lock().unwrap_or_else(|error| error.into_inner()));
         if !job.cancellation.is_cancelled() {
@@ -263,7 +360,7 @@ impl Workspace {
                 self.chat.busy = Some(format!("Running {name}…"));
                 self.chat.entries.push(ChatEntry::Tool {
                     name: name.into(),
-                    ok: true,
+                    ok: false,
                     note: "…".into(),
                 });
             }
@@ -291,12 +388,12 @@ impl Workspace {
                 self.chat.busy = Some("Thinking…".into());
             }
             "done" => {
-                let tokens = event.get("tokens").and_then(Value::as_u64).unwrap_or(0);
-                let speed = event
-                    .get("tokens_per_second")
-                    .and_then(Value::as_f64)
-                    .unwrap_or(0.0);
-                self.chat.last_speed = Some(format!("{tokens} tokens, {speed:.1} tok/s"));
+                if let (Some(tokens), Some(speed)) = (
+                    event.get("tokens").and_then(Value::as_u64),
+                    event.get("tokens_per_second").and_then(Value::as_f64),
+                ) {
+                    self.chat.last_speed = Some(format!("{tokens} tokens, {speed:.1} tok/s"));
+                }
                 if let Some(text) = event.get("text").and_then(Value::as_str) {
                     let artifacts = python_artifacts(text);
                     if let Some(ChatEntry::Assistant(current)) = self.chat.entries.last_mut() {

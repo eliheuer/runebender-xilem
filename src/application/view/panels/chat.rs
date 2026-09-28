@@ -81,6 +81,7 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         .chat
         .installed
         .iter()
+        .filter(|_| app.chat.endpoint.is_none())
         .cloned()
         .map(|(name, path)| {
             let active = selected.as_deref() == Some(path.as_path());
@@ -91,9 +92,17 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             })
         })
         .collect();
-    let no_model = app.chat.installed.is_empty().then(|| {
+    let no_model = (app.chat.endpoint.is_none() && app.chat.installed.is_empty()).then(|| {
         label("No local chat model. Add a GGUF folder with tokenizer.json under the model root.")
             .color(pal.text_muted)
+    });
+
+    let endpoint = app.chat.endpoint.as_ref().map(|endpoint| {
+        let text = match endpoint {
+            Ok(endpoint) => format!("{} · {}", endpoint.model(), endpoint.url()),
+            Err(error) => format!("Local server configuration: {error}"),
+        };
+        label(text).color(pal.text_muted)
     });
 
     let mut transcript: Vec<Box<xilem::AnyWidgetView<Workspace>>> = app
@@ -214,7 +223,13 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
     xcolumn(
         Region::Panel,
         (
-            label("Local chat model").color(pal.text_muted),
+            label(if app.chat.endpoint.is_some() {
+                "Local model server"
+            } else {
+                "Local chat model"
+            })
+            .color(pal.text_muted),
+            endpoint,
             xcolumn(Region::List, models),
             no_model,
             transcript.flex(1.0),

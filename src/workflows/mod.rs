@@ -6,6 +6,8 @@
 //! Workflows describe and run typed operations over a font.
 //! They do not own the canonical font or application session.
 
+/// Bounded requests to an externally managed local chat server.
+pub mod local_chat;
 pub mod nodes;
 /// Connected workflows over the editor's isolated font versions.
 pub mod nodes_live;
