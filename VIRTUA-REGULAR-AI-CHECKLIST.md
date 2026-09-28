@@ -1,6 +1,6 @@
 # Virtua Regular AI workflow checklist
 
-Status: B1, C1 and C2 validated and committed; context fixtures reviewed but not yet consumed; B2 running.
+Status: B1, C1 and C2 validated; B2 patch failed coordinator validation and needs correction; trial preflight active.
 Created: 2026-09-28.
 Coordinator: this Codex task, with Astra owning architecture and integration review.
 Worktree: /Users/eli/.codex/worktrees/virtua-regular-ai/runebender-xilem.
@@ -196,9 +196,11 @@ If only F5 or another external prerequisite remains, report "ready for review" a
 | B1 | regular_proof_sol (GPT-6 Sol) | src/font/compiler/proof.rs and five recipe constructor call sites | Validated; d6f50f7 |
 | C1 | regular_proof_sol (GPT-6 Sol), reused | src/font/project/edit_transactions.rs, src/font/babelfont/edit_contours.rs, src/automation/agent_edit.rs, src/automation/agent_edit/results.rs, src/font/compiler/proof.rs; narrowly necessary exhaustive-match sites | Validated; c57edc3 |
 | C2 | regular_proof_sol (GPT-6 Sol), reused | src/formats/image_trace.rs, src/automation/agent_edit.rs; narrowly necessary canonical contour conversion helper only | Validated; a67dfe4 |
-| B2 | regular_proof_sol (GPT-6 Sol), reused | src/text/buffer/**, src/font/compiler/proof.rs, existing editor/proof request call sites as needed | Running: /root/regular_proof_sol |
+| B2 | regular_proof_sol (GPT-6 Sol), reused | src/text/buffer/**, src/font/compiler/proof.rs, existing editor/proof request call sites as needed | Worker complete; validation failed; correction dispatch queued after capacity limit |
 
-Sol is active on B2 after the validated C2 handoff.
+B2 correction dispatch hit the worker thread limit once; do not repeatedly retry.
+Terra regular_trial_inventory is active on tests/fixtures/glyph_workflow/local-trial-inventory.md only, reading actual font/checkpoint metadata without modifying sources.
+Dispatch one Sol correction worker after Terra completes; do not start B3/C3 before this review is resolved.
 Terra has completed the reviewed fixture preparation.
 The earlier capacity limit cleared after Sol completed; the queued Terra assignment was dispatched once.
 Worker completion means a patch is ready for review, not that its acceptance gates passed.
@@ -242,6 +244,16 @@ Coordinator checked pinned img2bez 80bdb2e neutral-em coordinate semantics again
 Legacy tracing is retained; structured outline models can use C1 replacement directly without rasterization.
 Encoded images are capped at 4 MiB, 1024 pixels per edge and 262144 total pixels; larger generator outputs need resizing with adjusted calibration before import.
 Synthetic tests establish placement and detached staging, not Arabic style quality; C3 user-facing retention/provenance integration and real-model trials remain pending.
+- B2 review, not accepted: 13-file uncommitted patch adds selected occurrence capture and a canvas/panel/Workspace event bridge plus pair validation.
+The narrow ownership expansion into existing view/canvas/editor.rs, view/panels/editor.rs, workspace.rs, platform/host.rs and nodes/execution.rs was necessary for a connected implementation.
+`selected_arabic_occurrence_survives_real_compiled_proof_and_rejects_drift` fails at the auto-direction Arabic mark after TextBuffer::clear: proof_selection reads pinned fallback direction rather than the effective line direction.
+The 33-test canvas editor suite has 31 passes and two event-queue failures: parked_text_does_not_consume_outline_tool_typing and select_double_click_activates_the_composed_sort.
+Tests must explicitly verify the additional proof event without weakening text/edit assertions.
+The starter recipe test passes with scoped local Unix-socket permission; its first sandbox run failed only because the native live socket was unavailable.
+The v2 comparison-pair test rejects mismatched pair recipes but its distinct-DAG acceptance assertion fails; diagnose the actual validation error and preserve valid differing proof recipes outside comparison pairs.
+All-target Clippy reports collapsible_if in proof target validation and two usize-to-u32 truncation casts; fix structurally.
+Review also requires an explicit error for missing/wrong-context proof capture in an active text workflow instead of silently using unrelated starter text; genuinely no-text legacy starter remains supported.
+No B2 code committed or gate checked; exact corrective tests, broader text/proof/nodes checks and Clippy remain pending.
 - Add exact implementation commits, validation commands/results and human-review status here as each gate completes.
 
 ## Context sources
