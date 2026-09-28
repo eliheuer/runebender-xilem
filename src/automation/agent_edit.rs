@@ -75,6 +75,18 @@ pub enum AgentEditOperation {
     },
 }
 
+impl AgentEditOperation {
+    /// Adapt detached traced geometry to the same guarded replacement as an editable outline.
+    ///
+    /// The trace retains its image identity and calibration separately. This only copies its
+    /// font-coordinate contours; a caller must still stage an [`AgentEditRequest`].
+    pub fn from_calibrated_trace(trace: &crate::formats::image_trace::CalibratedTrace) -> Self {
+        Self::ReplaceContours {
+            contours: trace.contours.clone(),
+        }
+    }
+}
+
 /// Guarded operations for one layer.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -381,6 +393,7 @@ mod tests {
     use super::*;
     use crate::automation::script_recipe::{capture, capture_staged};
     use crate::font::project::SourceInput;
+    use crate::formats::image_trace::{TraceCalibration, trace_image_calibrated};
     use crate::outline::drawing::{DrawingContour, DrawingPoint, DrawingPointType};
 
     fn project() -> Project {
@@ -566,6 +579,71 @@ mod tests {
         assert_eq!(
             committed.layers[0].contours[0].id,
             staged.layers[0].contours[0].id
+        );
+    }
+
+    #[test]
+    fn calibrated_image_stages_through_the_same_guarded_replacement() {
+        use img2bez::image::{GrayImage, ImageFormat, Luma};
+
+        let mut image = GrayImage::from_pixel(96, 96, Luma([255_u8]));
+        for y in 18..58 {
+            for x in 20..60 {
+                image.put_pixel(x, y, Luma([0_u8]));
+            }
+        }
+        let mut bytes = Vec::new();
+        image
+            .write_to(&mut std::io::Cursor::new(&mut bytes), ImageFormat::Png)
+            .unwrap();
+        let traced = trace_image_calibrated(
+            &bytes,
+            TraceCalibration {
+                font_units_per_pixel: 2.0,
+                pixel_baseline_y: 80.0,
+                font_x_at_left: 100.0,
+                font_baseline_y: 0.0,
+            },
+            false,
+        )
+        .unwrap();
+
+        let mut project = project();
+        let source = project.source_id(0).unwrap();
+        let glyphs = ["A".to_owned()];
+        let root = capture(&project, source, &glyphs, "root".into(), BTreeMap::new()).unwrap();
+        let request = request(
+            source,
+            root.layers[0].guard.clone(),
+            AgentEditOperation::from_calibrated_trace(&traced),
+        );
+        let candidate = request.stage(&project).unwrap();
+        let staged = capture_staged(
+            &project,
+            &candidate,
+            source,
+            &glyphs,
+            "image candidate".into(),
+            BTreeMap::new(),
+        )
+        .unwrap();
+        assert!(root.layers[0].contours.is_empty());
+        assert_eq!(staged.layers[0].contours.len(), traced.contours.len());
+        assert!(
+            project
+                .document_layer(
+                    "A",
+                    &project.document_source(source).unwrap().default_layer()
+                )
+                .unwrap()
+                .contours()
+                .next()
+                .is_none()
+        );
+        project.commit_document_edit_transaction(candidate).unwrap();
+        assert!(
+            request.stage(&project).is_err(),
+            "the original layer guard is stale"
         );
     }
 
