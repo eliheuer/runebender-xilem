@@ -1,6 +1,6 @@
 # Virtua Regular AI workflow checklist
 
-Status: B1, B2, C1 and C2 validated; B3 assigned next; trial preflight complete, target preference requested.
+Status: B1-B3, C1 and C2 validated; C3 assigned next; trial preflight complete, target preference requested.
 Created: 2026-09-28.
 Coordinator: this Codex task, with Astra owning architecture and integration review.
 Worktree: /Users/eli/.codex/worktrees/virtua-regular-ai/runebender-xilem.
@@ -152,7 +152,7 @@ Acceptance: coordinator reviews sources and semantics; JSON parses; later B/D co
 ### B. Reproducible proof context (Sol; independent of C)
 - [x] B1. Add bounded, backward-compatible viewing-size/layout settings to compiled proof recipes and render from them; freeze defaults for older recipes.
 - [x] B2. Capture editor text settings and exact shaped target occurrence; send the same recipe to baseline and candidate proofs; reject comparison recipe mismatch.
-- [ ] B3. Supply reading-size and enlarged-detail proof artifacts with document/font/recipe/renderer identity.
+- [x] B3. Supply reading-size and enlarged-detail proof artifacts with document/font/recipe/renderer identity.
 Acceptance: meaningful geometry/size tests, invalid/oversized input rejection, old fixture compatibility, Arabic contextual/ligature/mark occurrence identity and matched baseline/candidate recipes.
 Actual headless proof inspection is required before visual claims.
 
@@ -200,7 +200,7 @@ If only F5 or another external prerequisite remains, report "ready for review" a
 
 B2 correction dispatch initially hit capacity; after Terra completed, one retry successfully resumed Sol.
 Terra regular_trial_inventory completed tests/fixtures/glyph_workflow/local-trial-inventory.md; coordinator reviewed it.
-B2 review is resolved; B3 is the next bounded assignment.
+B2 review is resolved; B3 is under coordinator review with corrections assigned to /root/regular_proof_sol.
 B3 ownership: regular_proof_sol, src/font/compiler/proof.rs (or adjacent proof artifact module), src/formats/designbot.rs, and existing proof result adapters only as needed.
 B3 must deliver callable paired reading/detail artifacts and honest renderer provenance; no UI redesign or model inference.
 Coordinator retains all Cargo validation and checklist ownership.
@@ -293,3 +293,36 @@ Read only the relevant source, not the entire archive.
 - [Arabic shaping](https://learn.microsoft.com/en-us/typography/script-development/arabic)
 - [OpenAI image generation](https://developers.openai.com/api/docs/guides/image-generation)
 - [OpenAI vision limitations](https://developers.openai.com/api/docs/guides/images-vision)
+
+### B3 first validation, pending
+Nine-file patch reviewed in progress; no B3 acceptance or commit.
+The serialized `cargo test --lib --locked font::compiler::proof::tests -- --test-threads=1` with the established font/target/jobs environment failed compilation.
+Errors: ambiguous detail closure Result error type, formatting an unfinished SHA-256 digest, and ambiguous floating-point pen type; two unnecessary-qualification warnings also need correction.
+Sol owns these corrections and an empty-target detail regression: an empty missing glyph must produce a blank baseline detail rather than abort the proof.
+Renderer PATH resolution must skip non-executable files on Unix; executable provenance remains limited to the invoked entrypoint, not its transitive helpers.
+No Cargo jobs remain active; coordinator will rerun after worker handoff.
+
+### B3 second validation, pending
+Worker compile and empty-baseline corrections reviewed; serialized proof tests passed 17, agent_proof passed 2, agent_nodes passed 7, with no failures or ignored tests.
+Commands used `cargo test --lib --locked` with filters `font::compiler::proof::tests`, `automation::agent_proof::`, and `automation::agent_nodes::`, each with `-- --test-threads=1` and the established font/target/jobs environment.
+All-target Clippy with warnings denied failed four checks: reference predicate for Copy enum, complex borrowed image tuple, 64KiB stack buffer, and missing RenderedScene Debug.
+Sol is correcting these structurally and preparing a temporary real Arabic paired-image driver for coordinator inspection.
+B3 remains unchecked and uncommitted; browser validation and actual image inspection remain pending.
+No Cargo jobs remain active after this run.
+
+### B3 acceptance and C3 handoff
+B3 implementation committed at ad453f7; earlier failures above are resolved.
+All-target Clippy with warnings denied, cargo fmt check and git diff check passed.
+Focused library tests passed 17 proof, 2 agent_proof and 7 agent_nodes tests before the final structural lint corrections.
+After those corrections, `cargo test --bin runebender --locked application::platform::live_proofs:: -- --test-threads=1` passed 2 and `cargo test --bin runebender --locked application::editor::tools::nodes:: -- --test-threads=1` passed 22; one existing Bold test stayed ignored, not coverage.
+Actual Arabic context/detail PNGs were rendered from the immutable compiled Virtua snapshot and inspected at /private/tmp/runebender-b3-arabic-proof/{context,detail}.png.
+The 32 px/em context is intact and the selected kasra is fully visible at 320 px/em; neighboring base ink may cross the detail crop by design.
+This establishes rendering and target visibility, not aesthetic approval or a generated-glyph trial.
+Font identity: sha256:d89a8384959be76bb2d64ea078f672787afffc5842af5b19d334f0e113208e9c.
+Recipe identity: sha256:70559a8e2409820a678ef2e5ff97fcc4d7efd8f0402336a76b49eca5f4acd262.
+Renderer entrypoint identity: sha256:679656960abd698378971ad806a2f019d33c39598fc9e78f9868d89b7d2dd63f.
+Temporary driver is /private/tmp/runebender-b3-proof-driver/src/main.rs, compiled with rustc against `cargo build --lib --locked` output and the shared dependency directory.
+An initial standalone Cargo driver build was stopped because its separate manifest selected different cached dependency versions; final proof evidence uses the repository locked build.
+Browser checks remain F4; no font sources were changed.
+C3 assigned to regular_proof_sol: connect calibrated detached replacement candidates to existing UI/MCP inspection, selection and guarded Apply/Undo; own existing agent edit/node and native node adapters as narrowly required.
+Workers still do not run Cargo, commit or edit this checklist.
