@@ -72,7 +72,9 @@ Trusted local Python is not an OS sandbox; do not imply otherwise.
   Verify CLI/MCP parity, errors, retries, and cancellation against supported protocol versions.
 - [ ] B4. Extend recipe captures to useful outline operations and provide guarded structural editing for shape generators.
   Verify exact retries, stale reads, full-batch rejection, dependent glyph invalidation, and one-step undo.
-- [ ] B5. Remove identified reverse dependencies: engine mark metadata must not depend on loading a UI theme; live workflows must call typed engine operations rather than a transport dispatcher.
+- [x] B5. Remove identified reverse dependencies: engine mark metadata must not depend on loading a UI theme; live workflows must call typed engine operations rather than a transport dispatcher.
+  Integrated as 0ca60b6 with raw canonical mark values, application palette resolution, typed workflow application, and dependency-direction regression checks.
+  Verified: 979 native tests, strict Clippy, browser release build and quality matrix, plus inspected Gray/Light headless captures.
 
 - [ ] B6. Preserve explicit source creation timestamps at the canonical metadata/import boundary and define a deterministic absent-date fallback.
   Verify repeat open/compile behavior separately from same-snapshot compiler determinism.
@@ -183,6 +185,31 @@ Verification logs:
 - /tmp/runebender-ai-foundation-headless.log: no-default-features library check passed.
 
 
-Next dependency-ready work after A: B5 reverse dependencies, followed by the consumed B2/B3 operation descriptors and structured MCP results.
+Next dependency-ready work: consumed B2/B3 operation descriptors and structured MCP results.
+B5 is complete; keep B6 source-date work separate from transport changes.
 Use at most two disjoint implementation workers and keep source-date work B6 separate from transport changes.
-The recurring coordinator is active every two hours and should remain quiet unless there is a verified milestone, actionable failure, completion, or user decision.
+The recurring coordinator is active every 30 minutes and should remain quiet unless there is a verified milestone, actionable failure, completion, or user decision.
+
+
+2026-09-28: User requested a 30-minute cadence; the existing heartbeat was updated and remains active.
+Started two GPT-6 Sol implementation subagents inside this coordinator task: engine_mark_boundary and live_workflow_boundary.
+Both completed the two parts of B5 with disjoint file ownership.
+The coordinator reviewed the patches, added dependency-direction regression checks, validated the combined result, and integrated commit 0ca60b6.
+These are internal subagents, not separate sidebar tasks.
+
+
+B5 verification:
+
+- /tmp/runebender-ai-foundation-boundaries-tests.log: 979 passed, 0 failed, 4 ignored in the full native suite.
+- /tmp/runebender-ai-foundation-boundaries-clippy.log: strict all-target Clippy passed.
+- Formatting, copyright and git diff checks passed.
+- /tmp/runebender-ai-foundation-boundaries-web.log: complete browser release build passed from a fresh cache.
+- /tmp/runebender-ai-foundation-boundaries-browser-quality.log: the repository quality matrix passed at 1x, 2x and 1.25x display densities.
+- /tmp/runebender-ai-boundaries-proofs/gray.png and light.png: headless captures inspected; glyph mark display remains consistent across both themes.
+- The temporary loopback browser test server was stopped after validation.
+
+The legacy nodes_live::apply helper has no production caller in the current application.
+Its typed refactor removes a dependency and propagates engine errors correctly; it does not replace the current guarded Nodes Apply path.
+The font engine now exposes custom mark labels and typed colors without reading theme files; the application retains the existing Gray-palette display classification.
+No accounts or real model providers were connected, and no native foreground window was opened.
+All 21 original dirty baseline paths remain unchanged.
