@@ -121,6 +121,9 @@ Trusted local Python is not an OS sandbox; do not imply otherwise.
 - [ ] D1. Replace the fixed four-node comparison planner with a validated directed-acyclic-graph execution plan.
   Acceptance: chained transforms, branching, multiple proofs, and partial failure.
 - [ ] D2. Preserve immutable version lineage, semantic hashes independent of layout, bounded retention, and guarded result application.
+  Canonical lineage groundwork and exact preview-to-Apply identity are integrated as caf92b0.
+  The engine now composes immutable staged transactions with cumulative bounds, and native Nodes applies its retained candidate through the existing receipt/history owner.
+  D2 remains open until the general graph scheduler consumes per-node candidates and verifies branch/result lineage end to end.
 - [ ] D3. Bridge external workers through detached captures and validated candidate imports; remove implicit root-save requirements from live execution.
 - [ ] D4. Make cache policy and side effects explicit per node implementation; carry structured Rows inputs faithfully.
 - [ ] D5. Version graph/node contracts and preserve existing saved graphs through an explicit compatibility path.
@@ -220,6 +223,12 @@ Next dependency-ready work: D1/D2, general live DAG planning and consumed execut
 A-C are complete for their recorded acceptance scope; provider-neutral cloud/vector contracts, extension registries and restart recovery remain separate work.
 The current fixed plan is GraphExecutionPlan plus execution_plan in src/workflows/nodes_session.rs: exactly one live.font, one live.python and two live.proof nodes.
 The application adapter in src/application/editor/tools/nodes/execution.rs retains one recipe and a fixed proof pair; replacing the planner alone is not acceptance.
+Commit caf92b0 supplies the canonical candidate chain needed by that scheduler without introducing another mutable Project.
+For each child transform, use script_recipe::capture_staged and AgentEditRequest::stage_after against its parent's retained CanonicalDocumentEditTransaction.
+Keep the explicit source and selected glyph scope from the run capture; retain each parent's candidate independently for branching.
+Derive every proof from the captured root CompileProofInput with with_staged_edit and the selected node's complete candidate.
+Explicit Apply must pass that exact candidate through Workspace::apply_retained_agent_edit; rebuilding its operations remints generated IDs.
+The general run's apply/retry identity must bind the chosen node and complete ancestry, not only the last recipe text.
 Agree the bounded DAG execution, per-node lineage/results and compatibility contract before assigning at most two Sol workers with disjoint planner and host ownership.
 Support chained transforms, branching, multiple proofs and partial failure through actual application/MCP runs while keeping root edits behind explicit Apply.
 Preserve layout-independent semantic identities, immutable captures, bounded retention, cancellation and stale-result rejection; never make live execution save the source font implicitly.
@@ -482,4 +491,43 @@ Native release/advisory checks remain in H, and the existing block 0.1.6 depende
 README documents the consumed configuration route and cancellation/server-lifetime limits.
 H4 should extend the website local-models guidance with the endpoint option and qualify the FAQ's “nothing is sent anywhere” wording to distinguish local loopback context transfer from cloud transfer.
 All 21 original dirty baseline paths were rehashed and remain unchanged; no push, merge, publication, account connection, paid API call or model download occurred.
+The 30-minute coordinator remains ACTIVE for D-H.
+
+
+2026-09-28: Integrated canonical staged lineage and exact preview application as caf92b07ca27d1ae87b1b2f1184cd2cd3ffa7c93.
+Two GPT-6 Sol workers implemented disjoint engine and automation slices; the coordinator reviewed both and connected native Nodes to the exact retained candidate.
+A GPT-6 Luna worker reviewed the application authorization, cancellation, receipt, stale-result and release paths without editing them.
+All workers are complete; no assignment is active at this checkpoint.
+
+Project::extend_document_edit_transaction validates the parent's complete root read set and requires new guards to match its staged overlay.
+It composes final snapshots into one atomic transaction while retaining original root guards and generated contour/point identities.
+The original candidate remains immutable and may produce independent siblings.
+Limits accumulate across the entire lineage: 64 unique guarded layers, 256 operations, 256 generated contours and 4096 generated points.
+Net reversion produces no changed-object receipt or undo entry.
+The recipe capture/staging adapters expose exact staged geometry and opaque guards without exporting a mutable font wrapper.
+The existing native four-node flow now retains its proofed candidate and commits it directly through the shared application edit adapter, preserving authorization, cancellation, retry receipts and ordinary undo.
+Previously Apply rebuilt AppendContours operations and therefore minted different identities from the preview.
+
+Verification for caf92b0:
+
+- /tmp/runebender-ai-foundation-lineage-build.log: all native test targets compiled with cargo test --workspace --locked --no-run.
+- /tmp/runebender-ai-foundation-lineage-tests.log: full native suite passed 1057 tests, 0 failed, 4 ignored across 23 suites.
+- The real application Nodes fixture runs Python, compiles both proof images, checks the exact preview snapshot after Apply, then verifies generated identities through ordinary Undo/Redo and receipt replay.
+- /tmp/runebender-ai-foundation-lineage-bounds.log: all 6 lineage tests passed after adding two final test-only cases for the exact 4096-point and 64-layer limits and their rejection boundaries.
+- The complete native suite preceded those last two test-only additions; no behavioral code changed afterward.
+- /tmp/runebender-ai-foundation-lineage-clippy.log: strict workspace/all-target Clippy passed on the final implementation and tests.
+- /tmp/runebender-ai-foundation-lineage-doc.log: workspace documentation passed.
+- /tmp/runebender-ai-foundation-lineage-headless.log: the no-default-features library check passed.
+- cargo fmt --all --check, copyright and git diff checks passed.
+- /tmp/runebender-ai-foundation-lineage-web.log: separate browser release build passed in 4m 09s.
+- /tmp/runebender-ai-foundation-lineage-browser-smoke.log: headless 1x smoke check passed with 140 measured frames, 4.7 ms median and 8.5 ms p95 on this host.
+- Browser artifacts are under /tmp/runebender-ai-lineage-browser-proofs; the temporary loopback server was stopped.
+
+This is a D2 foundation checkpoint, not completion of D1 or D2.
+The live planner and host still accept the existing four-node comparison; chained nodes, branches, multiple independently configured proofs and partial failures are the next consumed integration.
+No graph wire/file schema changed in this checkpoint, and no general DAG, provider, extension or restart-recovery acceptance is claimed.
+Four ignored tests remain outside runtime coverage; real models, cloud providers, Linux/Windows runtime and native pointer/IME/accessibility/GPU behavior were not exercised.
+Native release/advisory checks remain in H; the existing block 0.1.6 dependency warning remains.
+All 21 original dirty baseline paths were rehashed unchanged.
+No user font was saved, and no push, merge, publication, account connection, paid call or model download occurred.
 The 30-minute coordinator remains ACTIVE for D-H.
