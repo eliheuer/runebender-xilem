@@ -3,7 +3,7 @@
 
 //! The theme system, shared by every Runebender editor.
 //!
-//! Built-in colors are authored in `themes/builtin/*.theme.json` and
+//! Built-in colors are authored in `assets/themes/default/*.theme.toml` and
 //! resolved to sRGB with the original web generator's conversion:
 //! Björn Ottosson's Oklab matrices plus chroma-reducing gamut
 //! mapping, where a color outside sRGB keeps lightness and hue and
@@ -451,10 +451,14 @@ fn resolve_optional(
         .transpose()
 }
 
-/// Parse and resolve one portable theme file, reporting invalid references by name.
+/// Parse and resolve a TOML theme or an existing JSON theme.
+/// Reports invalid references by name.
 pub fn parse_theme(source: &str) -> Result<Theme, String> {
-    let file: ThemeFile =
-        serde_json::from_str(source).map_err(|error| format!("invalid theme JSON: {error}"))?;
+    let file: ThemeFile = if source.trim_start().starts_with('{') {
+        serde_json::from_str(source).map_err(|error| format!("invalid theme JSON: {error}"))?
+    } else {
+        toml::from_str(source).map_err(|error| format!("invalid theme TOML: {error}"))?
+    };
     let theme_id = file.id.as_str();
     validate_theme_id(theme_id)?;
     if file.format_version != 1 {
@@ -626,9 +630,9 @@ pub fn load_theme_checked(theme_id: &str) -> Result<Theme, String> {
 /// The source text of a built-in theme, useful as a custom-theme starting point.
 pub fn builtin_theme_source(theme_id: &str) -> Result<&'static str, String> {
     let source = match theme_id {
-        "dark" => include_str!("../../themes/builtin/dark.theme.json"),
-        "gray" => include_str!("../../themes/builtin/gray.theme.json"),
-        "light" => include_str!("../../themes/builtin/light.theme.json"),
+        "dark" => include_str!("../../assets/themes/default/dark.theme.toml"),
+        "gray" => include_str!("../../assets/themes/default/gray.theme.toml"),
+        "light" => include_str!("../../assets/themes/default/light.theme.toml"),
         _ => return Err(format!("unknown built-in theme '{theme_id}'")),
     };
     Ok(source)
@@ -768,13 +772,13 @@ mod tests {
     #[test]
     fn custom_palette_changes_display_without_changing_saved_marks() {
         let source = builtin_theme_source("gray").expect("gray source");
-        let mut file: serde_json::Value = serde_json::from_str(source).expect("built-in JSON");
+        let mut file: toml::Value = toml::from_str(source).expect("built-in TOML");
         file["id"] = "custom".into();
         file["name"] = "Custom".into();
         file["baseUi"]["20"] = "#AABBCC".into();
         file["glyphGrid"]["hues"]["red"]["hue"] = 200.into();
         let theme =
-            parse_theme(&serde_json::to_string(&file).expect("custom JSON")).expect("custom theme");
+            parse_theme(&toml::to_string(&file).expect("custom TOML")).expect("custom theme");
 
         assert_eq!(hex(theme.surface("panel")), "#aabbcc");
         assert_ne!(
@@ -791,20 +795,23 @@ mod tests {
 
     #[test]
     fn edited_theme_reports_missing_and_unknown_tokens() {
-        let source = include_str!("../../themes/builtin/gray.theme.json");
-        let mut file: serde_json::Value = serde_json::from_str(source).expect("built-in JSON");
+        let source = include_str!("../../assets/themes/default/gray.theme.toml");
+        let mut file: toml::Value = toml::from_str(source).expect("built-in TOML");
         file["roles"]
-            .as_object_mut()
+            .as_table_mut()
             .expect("roles")
             .remove("pointSmooth");
-        let edited = serde_json::to_string(&file).expect("edited JSON");
+        let edited = toml::to_string(&file).expect("edited TOML");
         assert_eq!(
             parse_theme(&edited).unwrap_err(),
             "theme 'gray' is missing roles.pointSmooth"
         );
 
-        file["roles"]["pointSmooth"] = "glyphGrid.blue.missing".into();
-        let edited = serde_json::to_string(&file).expect("edited JSON");
+        file["roles"]
+            .as_table_mut()
+            .expect("roles")
+            .insert("pointSmooth".into(), "glyphGrid.blue.missing".into());
+        let edited = toml::to_string(&file).expect("edited TOML");
         assert_eq!(
             parse_theme(&edited).unwrap_err(),
             "theme 'gray' roles.pointSmooth has unknown color 'glyphGrid.blue.missing'"
@@ -813,10 +820,10 @@ mod tests {
 
     #[test]
     fn edited_theme_reports_invalid_optional_color_and_style() {
-        let source = include_str!("../../themes/builtin/gray.theme.json");
-        let mut file: serde_json::Value = serde_json::from_str(source).expect("built-in JSON");
+        let source = include_str!("../../assets/themes/default/gray.theme.toml");
+        let mut file: toml::Value = toml::from_str(source).expect("built-in TOML");
         file["pointOutline"] = "baseUi.nope".into();
-        let edited = serde_json::to_string(&file).expect("edited JSON");
+        let edited = toml::to_string(&file).expect("edited TOML");
         assert_eq!(
             parse_theme(&edited).unwrap_err(),
             "theme 'gray' pointOutline has unknown color 'baseUi.nope'"
@@ -824,7 +831,7 @@ mod tests {
 
         file["pointOutline"] = "baseUi.05".into();
         file["pointStyle"] = "circle".into();
-        let edited = serde_json::to_string(&file).expect("edited JSON");
+        let edited = toml::to_string(&file).expect("edited TOML");
         assert_eq!(
             parse_theme(&edited).unwrap_err(),
             "theme 'gray' has unknown pointStyle 'circle'"
@@ -834,24 +841,37 @@ mod tests {
     #[test]
     fn edited_theme_rejects_unknown_role_and_format_version() {
         let source = builtin_theme_source("gray").expect("gray source");
-        let mut file: serde_json::Value = serde_json::from_str(source).expect("built-in JSON");
-        file["roles"]["pointSmoth"] = "glyphGrid.blue.base".into();
-        let edited = serde_json::to_string(&file).expect("edited JSON");
+        let mut file: toml::Value = toml::from_str(source).expect("built-in TOML");
+        file["roles"]
+            .as_table_mut()
+            .expect("roles")
+            .insert("pointSmoth".into(), "glyphGrid.blue.base".into());
+        let edited = toml::to_string(&file).expect("edited TOML");
         assert_eq!(
             parse_theme(&edited).unwrap_err(),
             "theme 'gray' has unknown roles.pointSmoth"
         );
 
         file["roles"]
-            .as_object_mut()
+            .as_table_mut()
             .expect("roles")
             .remove("pointSmoth");
         file["formatVersion"] = 2.into();
-        let edited = serde_json::to_string(&file).expect("edited JSON");
+        let edited = toml::to_string(&file).expect("edited TOML");
         assert_eq!(
             parse_theme(&edited).unwrap_err(),
             "theme 'gray' uses unsupported formatVersion 2"
         );
+    }
+
+    #[test]
+    fn existing_json_themes_still_load() {
+        let toml: toml::Value = toml::from_str(builtin_theme_source("gray").unwrap()).unwrap();
+        let mut json = serde_json::to_value(&toml).unwrap();
+        json["$comment"] = serde_json::json!(["Existing JSON comments remain valid."]);
+        let json = serde_json::to_string(&json).unwrap();
+        let theme = parse_theme(&json).expect("existing JSON theme");
+        assert_eq!(theme.id, "gray");
     }
 
     fn hex(c: ColorRgba) -> String {

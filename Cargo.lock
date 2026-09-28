@@ -4570,6 +4570,7 @@ dependencies = [
  "spline",
  "syn 2.0.119",
  "tokio",
+ "toml",
  "unicode-bidi",
  "unicode-general-category",
  "unicode-normalization",

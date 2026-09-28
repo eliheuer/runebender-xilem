@@ -237,7 +237,7 @@ enum ThemeAction {
     List,
     /// Check a theme file and report its resolved identity.
     Validate {
-        /// A .theme.json file.
+        /// A .theme.toml or existing .theme.json file.
         file: PathBuf,
     },
     /// Copy a built-in theme into a new, editable file.
@@ -251,7 +251,7 @@ enum ThemeAction {
         /// Human-readable display name.
         #[arg(long)]
         name: String,
-        /// Destination .theme.json file; must not already exist.
+        /// Destination .theme.toml file; must not already exist.
         #[arg(long)]
         out: PathBuf,
     },
@@ -736,6 +736,13 @@ fn theme_command(action: &ThemeAction, json_output: bool) -> i32 {
                 if name.trim().is_empty() {
                     return Err("theme name must not be empty".into());
                 }
+                if !out
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.ends_with(".theme.toml"))
+                {
+                    return Err("theme output must end in .theme.toml".into());
+                }
                 let source = builtin_theme_source(from)?;
                 let base_name = match from.as_str() {
                     "dark" => "Dark",
@@ -743,17 +750,13 @@ fn theme_command(action: &ThemeAction, json_output: bool) -> i32 {
                     "light" => "Light",
                     _ => return Err(format!("unknown built-in theme '{from}'")),
                 };
-                let id_value = serde_json::to_string(id).map_err(|error| error.to_string())?;
-                let name_value = serde_json::to_string(name).map_err(|error| error.to_string())?;
+                let id_value = toml::Value::String(id.clone()).to_string();
+                let name_value = toml::Value::String(name.clone()).to_string();
                 let text = source
+                    .replacen(&format!("id = \"{from}\""), &format!("id = {id_value}"), 1)
                     .replacen(
-                        &format!("\"id\": \"{from}\""),
-                        &format!("\"id\": {id_value}"),
-                        1,
-                    )
-                    .replacen(
-                        &format!("\"name\": \"{base_name}\""),
-                        &format!("\"name\": {name_value}"),
+                        &format!("name = \"{base_name}\""),
+                        &format!("name = {name_value}"),
                         1,
                     );
                 let theme = parse_theme(&text)?;

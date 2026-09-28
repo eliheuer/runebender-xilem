@@ -103,7 +103,9 @@ impl ThemeCatalog {
             .filter(|path| {
                 path.file_name()
                     .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.ends_with(".theme.json"))
+                    .is_some_and(|name| {
+                        name.ends_with(".theme.toml") || name.ends_with(".theme.json")
+                    })
             })
             .collect();
         files.sort();

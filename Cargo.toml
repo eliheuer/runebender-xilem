@@ -57,6 +57,7 @@ schemars = "1.2"
 sha2 = "0.10"
 regex = { version = "1", optional = true }
 serde_json = "1"
+toml = "0.8"
 unicode-general-category = "0.6"
 unicode-normalization = "0.1"
 unicode-bidi = { version = "0.3.18", default-features = false, features = ["hardcoded-data"] }
