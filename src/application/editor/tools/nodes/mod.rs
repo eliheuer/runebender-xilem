@@ -24,6 +24,7 @@ use runebender::font::proposal;
 use runebender::ui::nodes::ImmutablePng;
 use runebender::workflows::nodes::{NodeGraph, Problem, Registry};
 use runebender::workflows::nodes_run::{self, Event, RunReport, Status};
+use runebender::workflows::process::{self, ProcessCancellation, ProcessLimits, ProcessOutcome};
 
 use crate::application::editor::tools::local_ai::{foreground_is_current, foreground_revisions};
 use crate::application::workspace::{Mode, Workspace};
@@ -63,6 +64,8 @@ pub(crate) struct GraphState {
 pub(crate) struct NodeJob {
     pub(crate) events: Arc<Mutex<Vec<Event>>>,
     pub(crate) finished: Arc<Mutex<Option<RunReport>>>,
+    /// Cancellation is retained even before the background child starts.
+    pub(crate) cancellation: ProcessCancellation,
     /// The active master and in-memory document session at launch.
     pub(crate) master_path: PathBuf,
     pub(crate) document_id: u64,
@@ -108,6 +111,14 @@ pub(crate) struct NodesState {
     pub(crate) content_sizes: BTreeMap<u32, [f32; 2]>,
 }
 
+impl Drop for NodesState {
+    fn drop(&mut self) {
+        if let Some(job) = &self.job {
+            job.cancellation.cancel();
+        }
+    }
+}
+
 /// The pump's message: something arrived from the run thread.
 #[derive(Debug)]
 pub(crate) struct NodesProgress;
@@ -139,17 +150,22 @@ fn font_ml_binary() -> Option<PathBuf> {
 }
 
 fn font_ml_tasks(font_ml: &Path) -> Result<serde_json::Value, String> {
-    let output = std::process::Command::new(font_ml)
-        .arg("tasks")
-        .arg("--json")
-        .output()
-        .map_err(|error| format!("font-ml tasks --json: {error}"))?;
-    if !output.status.success() {
+    let output = process::run(
+        std::process::Command::new(font_ml).args(["tasks", "--json"]),
+        &[],
+        ProcessLimits {
+            deadline: std::time::Duration::from_secs(2),
+            ..ProcessLimits::default()
+        },
+        &ProcessCancellation::default(),
+        |_, _| {},
+    );
+    if !matches!(output.outcome, ProcessOutcome::Exited { success: true, .. }) {
         let diagnostic = String::from_utf8_lossy(&output.stderr).trim().to_string();
         return Err(if diagnostic.is_empty() {
-            format!("font-ml tasks --json exited with {}", output.status)
+            format!("font-ml tasks --json: {}", output.outcome)
         } else {
-            format!("font-ml tasks --json: {diagnostic}")
+            format!("font-ml tasks --json: {}: {diagnostic}", output.outcome)
         });
     }
     parse_tasks_json(&output.stdout)
@@ -488,6 +504,7 @@ impl Workspace {
         };
         let events = job.events.clone();
         let finished = job.finished.clone();
+        let cancellation = job.cancellation.clone();
         for row in rows.values_mut() {
             *row = RowState::Waiting;
         }
@@ -497,7 +514,17 @@ impl Workspace {
         let note = format!("Running {}\u{2026}", file_label(&path));
         std::thread::spawn(move || {
             let mut on_event = |e: Event| {
-                events.lock().unwrap_or_else(|e| e.into_inner()).push(e);
+                let mut events = events.lock().unwrap_or_else(|e| e.into_inner());
+                // Only the latest progress per node is useful to the next UI pump.
+                if let Event::Progress { id, .. } = &e
+                    && let Some(previous) = events.iter_mut().rev().find(|previous| {
+                        matches!(previous, Event::Progress { id: previous_id, .. } if previous_id == id)
+                    })
+                {
+                    *previous = e;
+                } else {
+                    events.push(e);
+                }
             };
             let mut ctx = nodes_run::RunContext {
                 font: &font,
@@ -508,6 +535,8 @@ impl Workspace {
                 device: Some(device),
                 force: false,
                 cache: Some(nodes_run::cache_path(&path)),
+                cancellation,
+                process_limits: ProcessLimits::default(),
                 on_event: &mut on_event,
             };
             let report = nodes_run::run(&graph, &registry, &mut ctx);
@@ -577,6 +606,10 @@ impl Workspace {
     /// The run ended. Install changes the font on disk, so the font is
     /// re-read when one ran.
     fn nodes_finished(&mut self, job: &NodeJob, report: &RunReport) {
+        if job.cancellation.is_cancelled() {
+            self.note = "Node run cancelled; disk effects are not undone".into();
+            return;
+        }
         let installed = report
             .nodes
             .iter()
@@ -928,6 +961,8 @@ mod tests {
         let mut original = norad::Glyph::new("A");
         original.width = 500.0;
         font.default_layer_mut().insert_glyph(original.clone());
+        font.save(&path).expect("the foreground fixture saves");
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
         let mut proposed = original.clone();
         proposed.width = 620.0;
         runebender::formats::proposal_ufo::write_proposal_layer(
@@ -936,8 +971,8 @@ mod tests {
             vec![proposed],
         )
         .expect("the proposal is valid");
-        font.save(&path).expect("the proposal fixture saves");
-        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        font.save(&path)
+            .expect("the external proposal fixture saves");
         assert!(workspace.node_glyphs().is_empty());
         workspace.open_glyph(0);
         assert_eq!(workspace.node_glyphs(), vec!["A"]);
@@ -969,6 +1004,18 @@ mod tests {
             }],
         };
 
+        // Cancellation after worker completion but before the UI pump must not import it.
+        job.cancellation.cancel();
+        workspace.nodes_finished(&job, &report);
+        assert!(
+            workspace.ai.proposals.is_empty(),
+            "cancelled late result imported a proposal"
+        );
+        assert!(workspace.note.contains("cancelled"));
+        let job = NodeJob {
+            cancellation: ProcessCancellation::default(),
+            ..job
+        };
         workspace.nodes_finished(&job, &report);
 
         assert_eq!(
@@ -1149,13 +1196,12 @@ mod tests {
                 ..
             }
         )));
-        for glyph in ["R", "S"] {
-            assert!(
-                events
-                    .iter()
-                    .any(|event| matches!(event, Event::Progress { label, .. } if label == glyph))
-            );
-        }
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, Event::Progress { id: 3, label, .. } if label == "S")),
+            "the UI retains the latest progress per node between pumps"
+        );
         workspace.nodes_pump();
 
         assert!(workspace.nodes.job.is_none(), "the bounded graph finishes");

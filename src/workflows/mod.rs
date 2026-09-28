@@ -11,3 +11,5 @@ pub mod nodes;
 pub mod nodes_live;
 pub mod nodes_run;
 pub mod nodes_session;
+/// Bounded native subprocess execution shared by worker adapters.
+pub mod process;

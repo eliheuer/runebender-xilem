@@ -3,6 +3,8 @@
 
 //! Saved Nodes graph commands and external node discovery.
 
+use runebender::workflows::process::{self, ProcessCancellation, ProcessLimits, ProcessOutcome};
+
 use super::font_commands::find_font_ml;
 use super::*;
 
@@ -11,13 +13,19 @@ fn node_registry(tool: Option<&Path>) -> (nodes::Registry, Option<String>) {
     let Some(font_ml) = find_font_ml(tool) else {
         return (registry, None);
     };
-    let Ok(output) = std::process::Command::new(&font_ml)
-        .arg("tasks")
-        .arg("--json")
-        .output()
-    else {
+    let output = process::run(
+        std::process::Command::new(&font_ml).args(["tasks", "--json"]),
+        &[],
+        ProcessLimits {
+            deadline: std::time::Duration::from_secs(2),
+            ..ProcessLimits::default()
+        },
+        &ProcessCancellation::default(),
+        |_, _| {},
+    );
+    if !matches!(output.outcome, ProcessOutcome::Exited { success: true, .. }) {
         return (registry, None);
-    };
+    }
     let Ok(value) = serde_json::from_slice::<serde_json::Value>(&output.stdout) else {
         return (registry, None);
     };
@@ -178,6 +186,8 @@ pub(super) fn nodes_run(
         device: None,
         force,
         cache: (!no_cache).then(|| nodes_run::cache_path(file)),
+        cancellation: ProcessCancellation::default(),
+        process_limits: ProcessLimits::default(),
         on_event: &mut on_event,
     };
     let report = nodes_run::run(&graph, &registry, &mut ctx);

@@ -21,6 +21,9 @@ use runebender::font::history::HistoryDirection;
 use runebender::font::project::DocumentHistoryReplayOutcome;
 use runebender::font::proposal::{self, ProposalSummary};
 use runebender::font::variable::GlyphLayerAddress;
+use runebender::workflows::process::{
+    OutputStream, ProcessCancellation, ProcessLimits, ProcessOutcome,
+};
 
 use crate::application::editor::session::Session;
 use crate::application::font_model::FontModel;
@@ -96,15 +99,13 @@ impl TaskRow {
     }
 }
 
-/// A run in progress: what font-ml has said so far, the child so
-/// Cancel can kill it, and its result when it is done. The pump view
-/// polls these.
+/// A run in progress: progress, cancellation, and a retained result for the pump.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct AiJob {
     /// The last progress line: done, total, glyph.
     pub(crate) progress: Arc<Mutex<Option<(usize, usize, String)>>>,
-    /// The running process.
-    pub(crate) child: Arc<Mutex<Option<std::process::Child>>>,
+    /// Stops a running process or prevents a queued worker from starting.
+    pub(crate) cancellation: ProcessCancellation,
     /// The report, or the error.
     pub(crate) finished: Arc<Mutex<Option<Result<serde_json::Value, String>>>>,
     /// The task and stable document targets captured at launch.
@@ -144,6 +145,14 @@ pub(crate) struct LocalAiState {
     /// Canonical foreground edits installed, most recent last, so Undo install can verify and
     /// replay the exact Project history step.
     pub(crate) installed_order: Vec<InstalledProposalEdit>,
+}
+
+impl Drop for LocalAiState {
+    fn drop(&mut self) {
+        if let Some(job) = &self.job {
+            job.cancellation.cancel();
+        }
+    }
 }
 
 /// One canonical proposal installation and its expected Project history depth.
@@ -217,9 +226,8 @@ fn parse_progress(line: &str) -> Option<(usize, usize, &str)> {
     Some((done.parse().ok()?, total.parse().ok()?, glyph.trim()))
 }
 
-/// Run one font-ml task to completion on the calling thread, feeding
-/// progress lines into the job and parking the child in it so it can
-/// be killed. Returns the JSON object font-ml printed last.
+/// Run one font-ml task to completion on the calling thread, feeding progress
+/// lines into the job. Returns the JSON object font-ml printed last.
 fn run_font_ml(
     font_ml: &Path,
     task: &str,
@@ -231,7 +239,33 @@ fn run_font_ml(
     device: &str,
     job: &AiJob,
 ) -> Result<serde_json::Value, String> {
-    use std::io::BufRead as _;
+    run_font_ml_with_limits(
+        font_ml,
+        task,
+        model,
+        source,
+        glyph,
+        strength,
+        reference,
+        device,
+        job,
+        ProcessLimits::default(),
+    )
+}
+
+/// Allow offline worker fixtures to exercise deadline and output bounds.
+fn run_font_ml_with_limits(
+    font_ml: &Path,
+    task: &str,
+    model: &Path,
+    source: &Path,
+    glyph: Option<&str>,
+    strength: f64,
+    reference: Option<&Path>,
+    device: &str,
+    job: &AiJob,
+    limits: ProcessLimits,
+) -> Result<serde_json::Value, String> {
     let mut cmd = std::process::Command::new(font_ml);
     cmd.arg("run")
         .arg(task)
@@ -244,10 +278,7 @@ fn run_font_ml(
         .arg("--device")
         .arg(device)
         .arg("--write")
-        .arg("--json")
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
+        .arg("--json");
     match glyph {
         Some(name) => {
             cmd.arg("--glyph").arg(name);
@@ -259,59 +290,49 @@ fn run_font_ml(
     if let Some(reference) = reference {
         cmd.arg("--reference").arg(reference);
     }
-    let mut child = cmd.spawn().map_err(|e| format!("{e}"))?;
-    let stderr = child.stderr.take().ok_or("no stderr")?;
-    let stdout = child.stdout.take().ok_or("no stdout")?;
-    *job.child.lock().unwrap_or_else(|e| e.into_inner()) = Some(child);
-    let stdout_reader = std::thread::spawn(move || {
-        let mut text = String::new();
-        let _ = std::io::Read::read_to_string(&mut std::io::BufReader::new(stdout), &mut text);
-        text
-    });
-    let mut errors = Vec::new();
-    for line in std::io::BufReader::new(stderr)
-        .lines()
-        .map_while(Result::ok)
-    {
-        match parse_progress(&line) {
-            Some((done, total, glyph)) => {
-                *job.progress.lock().unwrap_or_else(|e| e.into_inner()) =
+    let output = runebender::workflows::process::run(
+        &mut cmd,
+        &[],
+        limits,
+        &job.cancellation,
+        |stream, line| {
+            if stream == OutputStream::Stderr
+                && let Some((done, total, glyph)) = parse_progress(line)
+            {
+                *job.progress
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner()) =
                     Some((done, total, glyph.to_string()));
             }
-            None if !line.trim().is_empty() => errors.push(line),
-            None => {}
-        }
+        },
+    );
+    if job.cancellation.is_cancelled() {
+        return Err("cancelled".into());
     }
-    let status = {
-        let mut slot = job.child.lock().unwrap_or_else(|e| e.into_inner());
-        match slot.as_mut() {
-            Some(child) => child.wait().map_err(|e| format!("{e}"))?,
-            None => return Err("cancelled".into()),
-        }
-    };
-    let stdout = stdout_reader.join().unwrap_or_default();
-    let report: serde_json::Value = stdout
+    let report: serde_json::Value = String::from_utf8_lossy(&output.stdout)
         .lines()
         .rev()
         .find_map(|l| serde_json::from_str(l).ok())
         .unwrap_or(serde_json::Value::Null);
-    if status.success() {
-        Ok(report)
-    } else if status.code().is_none() {
-        Err("cancelled".into())
-    } else {
-        let report_error = report
+    match output.outcome {
+        ProcessOutcome::Exited { success: true, .. } => Ok(report),
+        ProcessOutcome::Exited { code, .. } => Err(report
             .get("error")
-            .and_then(|e| e.as_str())
-            .map(str::to_string);
-        Err(report_error.unwrap_or_else(|| {
-            let diagnostics = errors.join("\n");
-            if diagnostics.is_empty() {
-                format!("font-ml exited with {status}")
-            } else {
-                diagnostics
-            }
-        }))
+            .and_then(|error| error.as_str())
+            .map(str::to_owned)
+            .unwrap_or_else(|| {
+                let diagnostics = String::from_utf8_lossy(&output.stderr)
+                    .lines()
+                    .filter(|line| !line.trim().is_empty() && parse_progress(line).is_none())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                if diagnostics.is_empty() {
+                    format!("font-ml exited with code {code:?}")
+                } else {
+                    diagnostics
+                }
+            })),
+        outcome => Err(outcome.to_string()),
     }
 }
 
@@ -642,15 +663,13 @@ impl Workspace {
         });
     }
 
-    /// Stop the running task. font-ml writes its proposal only at the
-    /// end, so a killed run leaves nothing behind.
+    /// Request that the running task stop. A worker can have already written
+    /// partial disk effects; cancellation only stops its direct child process.
     pub(crate) fn cancel_task(&mut self) {
         let Some(job) = self.ai.job.as_ref() else {
             return;
         };
-        if let Some(child) = job.child.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
-            let _ = child.kill();
-        }
+        job.cancellation.cancel();
         self.note = "Cancelled".into();
     }
 
@@ -659,11 +678,12 @@ impl Workspace {
         let Some(job) = self.ai.job.clone() else {
             return;
         };
-        if let Some((done, total, glyph)) = job
-            .progress
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()
+        if !job.cancellation.is_cancelled()
+            && let Some((done, total, glyph)) = job
+                .progress
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone()
         {
             self.ai.busy = Some(format!("{}: {done}/{total} ({glyph})", job.task));
         }
@@ -675,9 +695,15 @@ impl Workspace {
         if let Some(result) = finished {
             self.ai.busy = None;
             self.ai.job = None;
-            match result {
-                Ok(report) => self.task_finished(&job, &report),
-                Err(e) => self.note = format!("font-ml: {e}"),
+            // Cancel can arrive after the worker's success is retained but
+            // before the UI pumps it. Never import that late candidate.
+            if job.cancellation.is_cancelled() {
+                self.note = "font-ml: cancelled".into();
+            } else {
+                match result {
+                    Ok(report) => self.task_finished(&job, &report),
+                    Err(e) => self.note = format!("font-ml: {e}"),
+                }
             }
         }
     }
@@ -685,6 +711,10 @@ impl Workspace {
     /// What happens when font-ml comes back: adopt its proposal layer
     /// from disk and leave it pending for explicit review.
     fn task_finished(&mut self, job: &AiJob, report: &serde_json::Value) {
+        if job.cancellation.is_cancelled() {
+            self.note = "font-ml: cancelled".into();
+            return;
+        }
         if self.document_id != job.document_id
             || self.font.source() != job.master_path
             || self.font.source() != job.source
@@ -1244,6 +1274,146 @@ mod tests {
         assert!(error.contains("first failure"));
         assert!(error.contains("second detail"));
         std::fs::remove_dir_all(root).expect("the failure fixture is removed");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn task_runner_preserves_command_and_progress() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let root = std::env::temp_dir().join(format!(
+            "runebender-xilem-ai-adapter-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        std::fs::create_dir(&root).expect("the fixture directory is created");
+        let tool = root.join("font-ml-fake");
+        std::fs::write(
+            &tool,
+            "#!/bin/sh\n[ \"$1\" = run ] && [ \"$2\" = bolden ] && [ \"$3\" = --model ] && [ \"$5\" = --source ] && [ \"$7\" = --strength ] && [ \"$8\" = 1 ] && [ \"$9\" = --device ] && [ \"${10}\" = cpu ] && [ \"${11}\" = --write ] && [ \"${12}\" = --json ] && [ \"${13}\" = --glyph ] && [ \"${14}\" = A ] || exit 17\nprintf 'progress 1/2 A\\n' >&2\nprintf '%s\\n' '{\"moved\":1,\"points\":2}'\n",
+        )
+        .expect("the fake worker is written");
+        std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o700))
+            .expect("the fake worker is executable");
+        let job = AiJob::default();
+        let report = run_font_ml(
+            &tool,
+            "bolden",
+            &root,
+            &root,
+            Some("A"),
+            1.0,
+            None,
+            "cpu",
+            &job,
+        )
+        .expect("the fake worker succeeds");
+        assert_eq!(report["moved"], 1);
+        assert_eq!(
+            *job.progress
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()),
+            Some((1, 2, "A".into()))
+        );
+        std::fs::remove_dir_all(root).expect("the fixture directory is removed");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn task_runner_bounds_hung_and_noisy_workers() {
+        use std::os::unix::fs::PermissionsExt as _;
+        use std::time::Duration;
+
+        let root = std::env::temp_dir().join(format!(
+            "runebender-xilem-ai-bounds-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        std::fs::create_dir(&root).expect("the fixture directory is created");
+        let tool = root.join("font-ml-fake");
+        std::fs::write(&tool, "#!/bin/sh\nexec sleep 10\n").expect("the hung worker is written");
+        std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o700))
+            .expect("the fake worker is executable");
+        let job = AiJob::default();
+        let limits = ProcessLimits {
+            deadline: Duration::from_millis(100),
+            ..ProcessLimits::default()
+        };
+        let error = run_font_ml_with_limits(
+            &tool,
+            "bolden",
+            &root,
+            &root,
+            Some("A"),
+            1.0,
+            None,
+            "cpu",
+            &job,
+            limits,
+        )
+        .expect_err("the hung worker exceeds its deadline");
+        assert!(error.contains("deadline"), "{error}");
+
+        std::fs::write(&tool, "#!/bin/sh\nprintf '12345678901234567890\\n' >&2\n")
+            .expect("the noisy worker is written");
+        let limits = ProcessLimits {
+            stderr_bytes: 8,
+            ..ProcessLimits::default()
+        };
+        let error = run_font_ml_with_limits(
+            &tool,
+            "bolden",
+            &root,
+            &root,
+            Some("A"),
+            1.0,
+            None,
+            "cpu",
+            &job,
+            limits,
+        )
+        .expect_err("the noisy worker exceeds its output limit");
+        assert!(error.contains("stderr"), "{error}");
+        std::fs::remove_dir_all(root).expect("the fixture directory is removed");
+    }
+
+    #[test]
+    fn cancelled_completed_task_never_imports_a_late_candidate() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-ai-late-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        norad::Font::new()
+            .save(&path)
+            .expect("the empty UFO fixture saves");
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        let job = AiJob {
+            task: "bolden".into(),
+            source: path.clone(),
+            master_path: path.clone(),
+            document_id: workspace.document_id,
+            ..AiJob::default()
+        };
+        *job.finished
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = Some(Ok(serde_json::json!({"moved": 1})));
+        workspace.ai.job = Some(job.clone());
+        workspace.cancel_task();
+        workspace.ai_pump();
+        assert!(workspace.ai.job.is_none());
+        assert!(workspace.ai.proposals.is_empty());
+        assert_eq!(workspace.note, "font-ml: cancelled");
+        std::fs::remove_dir_all(path).expect("the fixture is removed");
     }
 
     #[test]

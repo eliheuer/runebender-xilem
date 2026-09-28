@@ -12,6 +12,10 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 
+use runebender::workflows::process::{
+    OutputStream, ProcessCancellation, ProcessLimits, ProcessOutcome,
+};
+
 use crate::application::editor::tools::scripts::{ScriptArtifact, python_artifacts};
 use crate::application::workspace::Workspace;
 
@@ -38,7 +42,7 @@ pub(crate) enum ChatEntry {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ChatJob {
     pub(crate) events: Arc<Mutex<Vec<Value>>>,
-    pub(crate) child: Arc<Mutex<Option<std::process::Child>>>,
+    pub(crate) cancellation: ProcessCancellation,
     pub(crate) finished: Arc<Mutex<Option<Result<(), String>>>>,
 }
 
@@ -63,14 +67,8 @@ pub(crate) struct ChatState {
 
 impl Drop for ChatState {
     fn drop(&mut self) {
-        if let Some(job) = &self.job
-            && let Some(child) = job
-                .child
-                .lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .as_mut()
-        {
-            let _ = child.kill();
+        if let Some(job) = &self.job {
+            job.cancellation.cancel();
         }
     }
 }
@@ -195,14 +193,7 @@ impl Workspace {
         let Some(job) = self.chat.job.as_ref() else {
             return;
         };
-        if let Some(child) = job
-            .child
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .as_mut()
-        {
-            let _ = child.kill();
-        }
+        job.cancellation.cancel();
         self.chat.busy = Some("Cancelling…".into());
     }
 
@@ -213,8 +204,10 @@ impl Workspace {
         };
         let events =
             std::mem::take(&mut *job.events.lock().unwrap_or_else(|error| error.into_inner()));
-        for event in events {
-            self.chat_event(&event);
+        if !job.cancellation.is_cancelled() {
+            for event in events {
+                self.chat_event(&event);
+            }
         }
         let finished = job
             .finished
@@ -224,13 +217,24 @@ impl Workspace {
         if let Some(result) = finished {
             self.chat.busy = None;
             self.chat.job = None;
-            if let Err(error) = result {
+            // Cancellation may arrive after the process exits but before this pump.
+            // Do not publish its final messages or artifacts in that interval.
+            if job.cancellation.is_cancelled() {
+                // A bounded event queue cancels the runner too; retain its
+                // specific terminal error instead of silently dropping it.
+                self.chat.entries.push(ChatEntry::Error(
+                    result.err().unwrap_or_else(|| "cancelled".into()),
+                ));
+                self.chat.streaming_artifacts.clear();
+            } else if let Err(error) = result {
                 self.chat.entries.push(ChatEntry::Error(error));
             }
             let streaming_artifacts = std::mem::take(&mut self.chat.streaming_artifacts);
-            self.chat
-                .entries
-                .extend(streaming_artifacts.into_iter().map(ChatEntry::Script));
+            if !job.cancellation.is_cancelled() {
+                self.chat
+                    .entries
+                    .extend(streaming_artifacts.into_iter().map(ChatEntry::Script));
+            }
             self.chat
                 .entries
                 .retain(|entry| !matches!(entry, ChatEntry::Assistant(text) if text.is_empty()));
@@ -366,9 +370,34 @@ fn run_chat(
     conversation: &str,
     job: &ChatJob,
 ) -> Result<(), String> {
-    use std::io::{BufRead as _, Write as _};
+    run_chat_with_limits(
+        font_ml,
+        model,
+        font,
+        core,
+        session,
+        conversation,
+        job,
+        ProcessLimits::default(),
+    )
+}
 
-    let mut child = std::process::Command::new(font_ml)
+/// Execute one chat turn with overridable limits for offline worker fixtures.
+fn run_chat_with_limits(
+    font_ml: &Path,
+    model: &Path,
+    font: &Path,
+    core: &Path,
+    session: &Path,
+    conversation: &str,
+    job: &ChatJob,
+    limits: ProcessLimits,
+) -> Result<(), String> {
+    // A wire-byte cap alone still permits millions of tiny JSON values and
+    // unbounded Vec<Value> allocation before the UI gets its next pump.
+    const MAX_EVENTS: usize = 8192;
+    let mut command = std::process::Command::new(font_ml);
+    command
         .arg("chat")
         .arg("--model")
         .arg(model)
@@ -376,57 +405,48 @@ fn run_chat(
         .arg(font)
         .arg("--core")
         .arg(core)
-        .env("RUNEBENDER_LIVE_SESSION", session)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|error| error.to_string())?;
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(conversation.as_bytes())
-            .map_err(|error| error.to_string())?;
+        .env("RUNEBENDER_LIVE_SESSION", session);
+    let mut accepted_events = 0;
+    let mut event_limit_exceeded = false;
+    let output = runebender::workflows::process::run(
+        &mut command,
+        conversation.as_bytes(),
+        limits,
+        &job.cancellation,
+        |stream, line| {
+            if stream != OutputStream::Stdout || event_limit_exceeded {
+                return;
+            }
+            if let Ok(event) = serde_json::from_str::<Value>(line) {
+                if accepted_events == MAX_EVENTS {
+                    event_limit_exceeded = true;
+                    job.cancellation.cancel();
+                } else {
+                    accepted_events += 1;
+                    job.events
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner())
+                        .push(event);
+                }
+            }
+        },
+    );
+    if event_limit_exceeded {
+        return Err(format!(
+            "font-ml chat produced more than {MAX_EVENTS} events"
+        ));
     }
-    let stdout = child.stdout.take().ok_or("font-ml chat has no stdout")?;
-    let stderr = child.stderr.take();
-    *job.child.lock().unwrap_or_else(|error| error.into_inner()) = Some(child);
-    let error_reader = std::thread::spawn(move || {
-        let mut text = String::new();
-        if let Some(mut stderr) = stderr {
-            let _ = std::io::Read::read_to_string(&mut stderr, &mut text);
-        }
-        text
-    });
-    for line in std::io::BufReader::new(stdout)
-        .lines()
-        .map_while(Result::ok)
-    {
-        if let Ok(event) = serde_json::from_str(&line) {
-            job.events
-                .lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .push(event);
-        }
+    if job.cancellation.is_cancelled() {
+        return Err("cancelled".into());
     }
-    let status = {
-        let mut child = job.child.lock().unwrap_or_else(|error| error.into_inner());
-        child
-            .as_mut()
-            .ok_or("cancelled")?
-            .wait()
-            .map_err(|error| error.to_string())?
-    };
-    let stderr = error_reader.join().unwrap_or_default();
-    if status.success() {
-        Ok(())
-    } else if status.code().is_none() {
-        Err("cancelled".into())
-    } else {
-        Err(stderr
+    match output.outcome {
+        ProcessOutcome::Exited { success: true, .. } => Ok(()),
+        ProcessOutcome::Exited { .. } => Err(String::from_utf8_lossy(&output.stderr)
             .lines()
             .last()
             .unwrap_or("font-ml chat failed")
-            .into())
+            .into()),
+        outcome => Err(outcome.to_string()),
     }
 }
 
@@ -466,7 +486,7 @@ mod tests {
         let runner = root.join("font-ml");
         std::fs::write(
             &runner,
-            "#!/bin/sh\ninput=$(cat)\nprintf '%s\\n' '{\"event\":\"loaded\",\"device\":\"cpu\"}' '{\"event\":\"token\",\"text\":\"Hello\"}' \"{\\\"event\\\":\\\"messages\\\",\\\"messages\\\":$input}\"\n",
+            "#!/bin/sh\n[ \"$1\" = chat ] && [ \"$2\" = --model ] && [ \"$3\" = model ] && [ \"$4\" = --font ] && [ \"$5\" = font.ufo ] && [ \"$6\" = --core ] && [ \"$7\" = runebender ] && [ \"$RUNEBENDER_LIVE_SESSION\" = live.sock ] || exit 17\ninput=$(cat)\nprintf '%s\\n' '{\"event\":\"loaded\",\"device\":\"cpu\"}' '{\"event\":\"token\",\"text\":\"Hello\"}' \"{\\\"event\\\":\\\"messages\\\",\\\"messages\\\":$input}\"\n",
         )
         .expect("write fake chat runner");
         std::fs::set_permissions(&runner, std::fs::Permissions::from_mode(0o700))
@@ -487,6 +507,162 @@ mod tests {
         assert_eq!(events[0]["event"], "loaded");
         assert_eq!(events[1]["text"], "Hello");
         assert_eq!(events[2]["messages"][0]["content"], "Inspect beh-ar");
+        std::fs::remove_dir_all(root).expect("remove chat fixture directory");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn chat_runner_bounds_hung_and_noisy_workers() {
+        use std::os::unix::fs::PermissionsExt as _;
+        use std::time::Duration;
+
+        let root = std::env::temp_dir().join(format!(
+            "runebender-chat-bounds-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).expect("create chat fixture directory");
+        let runner = root.join("font-ml");
+        let job = ChatJob::default();
+        std::fs::write(&runner, "#!/bin/sh\nexec sleep 10\n").expect("write hung chat runner");
+        std::fs::set_permissions(&runner, std::fs::Permissions::from_mode(0o700))
+            .expect("make fake runner executable");
+        let limits = ProcessLimits {
+            deadline: Duration::from_millis(100),
+            ..ProcessLimits::default()
+        };
+        let error = run_chat_with_limits(
+            &runner,
+            Path::new("model"),
+            Path::new("font.ufo"),
+            Path::new("runebender"),
+            Path::new("live.sock"),
+            "[]",
+            &job,
+            limits,
+        )
+        .expect_err("hung chat must stop at its deadline");
+        assert!(error.contains("deadline"), "{error}");
+
+        std::fs::write(&runner, "#!/bin/sh\nprintf '12345678901234567890\\n'\n")
+            .expect("write noisy chat runner");
+        let limits = ProcessLimits {
+            stdout_bytes: 8,
+            ..ProcessLimits::default()
+        };
+        let error = run_chat_with_limits(
+            &runner,
+            Path::new("model"),
+            Path::new("font.ufo"),
+            Path::new("runebender"),
+            Path::new("live.sock"),
+            "[]",
+            &job,
+            limits,
+        )
+        .expect_err("noisy chat must stop at its output limit");
+        assert!(error.contains("stdout"), "{error}");
+
+        std::fs::write(
+            &runner,
+            "#!/bin/sh\nprintf 'chat failure detail\\n' >&2\nexit 7\n",
+        )
+        .expect("write failing chat runner");
+        let error = run_chat(
+            &runner,
+            Path::new("model"),
+            Path::new("font.ufo"),
+            Path::new("runebender"),
+            Path::new("live.sock"),
+            "[]",
+            &job,
+        )
+        .expect_err("failed chat reports stderr");
+        assert_eq!(error, "chat failure detail");
+
+        std::fs::write(
+            &runner,
+            "#!/bin/sh\ni=0\nwhile [ \"$i\" -lt 8200 ]; do printf '%s\\n' '{\"event\":\"token\",\"text\":\"x\"}'; i=$((i+1)); done\n",
+        )
+        .expect("write many-event chat runner");
+        let crowded = ChatJob::default();
+        let error = run_chat(
+            &runner,
+            Path::new("model"),
+            Path::new("font.ufo"),
+            Path::new("runebender"),
+            Path::new("live.sock"),
+            "[]",
+            &crowded,
+        )
+        .expect_err("too many tiny events must fail explicitly");
+        assert!(error.contains("more than 8192 events"), "{error}");
+        assert_eq!(
+            crowded
+                .events
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .len(),
+            8192
+        );
+        std::fs::remove_dir_all(root).expect("remove chat fixture directory");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn chat_cancellation_before_spawn_is_retained() {
+        let job = ChatJob::default();
+        job.cancellation.cancel();
+        let error = run_chat(
+            Path::new("not-a-real-font-ml"),
+            Path::new("model"),
+            Path::new("font.ufo"),
+            Path::new("runebender"),
+            Path::new("live.sock"),
+            "[]",
+            &job,
+        )
+        .expect_err("cancellation prevents the worker from starting");
+        assert_eq!(error, "cancelled");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn chat_cancel_after_worker_completion_suppresses_late_messages() {
+        let root = std::env::temp_dir().join(format!(
+            "runebender-chat-late-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos()
+        ));
+        let source = root.join("Late.ufo");
+        std::fs::create_dir(&root).expect("create chat fixture directory");
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(norad::Glyph::new("A"));
+        font.save(&source).expect("save chat fixture");
+        let mut workspace = Workspace::open(&source).expect("open chat fixture");
+        let job = ChatJob::default();
+        job.events.lock().unwrap_or_else(|error| error.into_inner()).push(
+            serde_json::json!({"event":"messages","messages":[{"role":"assistant","content":"late"}]}),
+        );
+        *job.finished
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = Some(Ok(()));
+        workspace.chat.job = Some(job.clone());
+        workspace.chat_cancel();
+        workspace.chat_pump();
+        assert!(workspace.chat.job.is_none());
+        assert!(workspace.chat.messages.is_empty());
+        assert_eq!(
+            workspace.chat.entries,
+            vec![ChatEntry::Error("cancelled".into())]
+        );
         std::fs::remove_dir_all(root).expect("remove chat fixture directory");
     }
 }

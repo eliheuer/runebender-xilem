@@ -19,7 +19,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::io::{BufRead as _, Read as _};
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -31,6 +31,9 @@ use crate::font::project::Project;
 use crate::font::proposal;
 use crate::font::variable::{GlyphLayerAddress, LayerId, SourceId};
 use crate::workflows::nodes::{Kind, NodeGraph, NodeType, Port, Registry};
+use crate::workflows::process::{
+    self, OutputStream, ProcessCancellation, ProcessLimits, ProcessOutcome,
+};
 
 /// A value on a wire, after a node ran.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -430,6 +433,11 @@ pub struct RunContext<'a> {
     pub force: bool,
     /// Where the cache lives. None keeps nothing.
     pub cache: Option<PathBuf>,
+    /// Stops external children and prevents subsequent nodes from starting.
+    /// Running core operations are not preempted and their effects are not undone.
+    pub cancellation: ProcessCancellation,
+    /// Per-external-node deadline and retained standard stream limits.
+    pub process_limits: ProcessLimits,
     /// Hears every step.
     pub on_event: &'a mut dyn FnMut(Event),
 }
@@ -445,6 +453,8 @@ impl fmt::Debug for RunContext<'_> {
             .field("device", &self.device)
             .field("force", &self.force)
             .field("cache", &self.cache)
+            .field("cancellation", &self.cancellation)
+            .field("process_limits", &self.process_limits)
             .finish_non_exhaustive()
     }
 }
@@ -702,6 +712,19 @@ pub fn run(graph: &NodeGraph, registry: &Registry, ctx: &mut RunContext<'_>) -> 
         let Some(node) = graph.node(id) else {
             continue;
         };
+        if ctx.cancellation.is_cancelled() {
+            let result = failed(id, &node.type_name, "cancelled before node start", 0.0);
+            (ctx.on_event)(Event::End {
+                id,
+                status: Status::Failed,
+                seconds: 0.0,
+                error: Some("cancelled before node start".into()),
+            });
+            cache.nodes.remove(&id);
+            results.insert(id, result);
+            ok = false;
+            continue;
+        }
         let started = Instant::now();
         let Some(node_type) = registry.get(&node.type_name) else {
             let result = failed(node.id, &node.type_name, "unknown type", 0.0);
@@ -822,6 +845,7 @@ pub fn run(graph: &NodeGraph, registry: &Registry, ctx: &mut RunContext<'_>) -> 
         // what the designer did to the foreground since.
         let cached = cache.nodes.get(&id);
         if !ctx.force
+            && !ctx.cancellation.is_cancelled()
             && cacheable_inputs
             && node.type_name != "core.install"
             && let Some(c) = cached
@@ -890,7 +914,7 @@ pub fn run(graph: &NodeGraph, registry: &Registry, ctx: &mut RunContext<'_>) -> 
         let _ = std::fs::write(path, text);
     }
     RunReport {
-        ok,
+        ok: ok && !ctx.cancellation.is_cancelled(),
         nodes: order.iter().filter_map(|id| results.remove(id)).collect(),
     }
 }
@@ -1015,6 +1039,9 @@ fn run_node(
     inputs: &Inputs,
     ctx: &mut RunContext<'_>,
 ) -> Result<(Outputs, Value), String> {
+    if ctx.cancellation.is_cancelled() {
+        return Err("cancelled before node execution".into());
+    }
     let mut out = Outputs::new();
     match node_type.name.as_str() {
         "core.source" => {
@@ -1357,55 +1384,56 @@ fn run_tool_node(
         cmd.arg("--device").arg(device);
     }
     cmd.arg("--write").arg("--json");
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::piped());
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("could not run {}: {e}", binary.display()))?;
-    let stderr = child.stderr.take();
-    let stdout = child.stdout.take();
-    // stderr carries progress; read it as it comes. stdout is the
-    // report, read after.
-    let reader = std::thread::spawn(move || {
-        let mut text = String::new();
-        if let Some(out) = stdout {
-            let mut out = out;
-            let _ = std::io::Read::read_to_string(&mut out, &mut text);
-        }
-        text
-    });
-    let mut err_lines = Vec::new();
-    if let Some(err) = stderr {
-        for line in std::io::BufReader::new(err).lines().map_while(Result::ok) {
-            if let Some((done, total, label)) = parse_progress(&line) {
+    let output = process::run(
+        &mut cmd,
+        &[],
+        ctx.process_limits,
+        &ctx.cancellation,
+        |stream, line| {
+            if stream == OutputStream::Stderr
+                && let Some((done, total, label)) = parse_progress(line)
+            {
                 (ctx.on_event)(Event::Progress {
                     id,
                     done,
                     total,
                     label: label.to_string(),
                 });
-            } else {
-                err_lines.push(line);
             }
-        }
+        },
+    );
+    // A host can cancel while the last progress callback is being delivered.
+    // Do not publish or cache a detached candidate after that request.
+    if ctx.cancellation.is_cancelled() {
+        return Err("cancelled".into());
     }
-    let status = child.wait().map_err(|e| e.to_string())?;
-    let stdout = reader.join().unwrap_or_default();
+    let stdout = String::from_utf8_lossy(&output.stdout);
     let report: Value = stdout
         .lines()
         .rev()
-        .find_map(|l| serde_json::from_str(l).ok())
+        .find_map(|line| serde_json::from_str(line).ok())
         .unwrap_or_else(|| json!({ "raw": stdout.trim() }));
-    if !status.success() {
-        let message = report
-            .get("error")
-            .and_then(Value::as_str)
-            .map(String::from)
-            .unwrap_or_else(|| err_lines.join("\n"));
-        return Err(format!(
-            "{tool} {task} exited {}: {message}",
-            status.code().unwrap_or(-1)
-        ));
+    match output.outcome {
+        ProcessOutcome::Exited { success: true, .. } => {}
+        ProcessOutcome::Exited { code, .. } => {
+            let diagnostics = String::from_utf8_lossy(&output.stderr);
+            let message = report
+                .get("error")
+                .and_then(Value::as_str)
+                .map(String::from)
+                .unwrap_or_else(|| {
+                    diagnostics
+                        .lines()
+                        .filter(|line| parse_progress(line).is_none())
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                });
+            return Err(format!(
+                "{tool} {task} exited {}: {message}",
+                code.unwrap_or(-1)
+            ));
+        }
+        outcome => return Err(format!("{tool} {task}: {outcome}")),
     }
     let mut out = Outputs::new();
     for port in &node_type.outputs {
@@ -1733,6 +1761,152 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
+    fn worker(scratch: &Scratch, body: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let path = scratch.0.join("worker");
+        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        path
+    }
+
+    #[cfg(unix)]
+    fn worker_node() -> NodeType {
+        NodeType {
+            name: "fixture.transform".into(),
+            title: "Fixture".into(),
+            help: String::new(),
+            implemented: true,
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn external_worker_preserves_progress_and_report_and_bounds_failures() {
+        let scratch = Scratch::new();
+        let binary = worker(
+            &scratch,
+            "printf 'progress 1/1 A\\n' >&2; printf '{\"answer\":42}\\n'",
+        );
+        let mut events = Vec::new();
+        let mut on_event = |event| events.push(event);
+        let mut ctx = RunContext {
+            font: &scratch.0,
+            master: None,
+            glyphs: Vec::new(),
+            tools: BTreeMap::from([("fixture".into(), binary)]),
+            models_dir: None,
+            device: None,
+            force: true,
+            cache: None,
+            cancellation: ProcessCancellation::default(),
+            process_limits: ProcessLimits {
+                deadline: std::time::Duration::from_secs(2),
+                stdout_bytes: 512,
+                stderr_bytes: 512,
+                ..ProcessLimits::default()
+            },
+            on_event: &mut on_event,
+        };
+        let node = worker_node();
+        let inputs = Inputs {
+            values: BTreeMap::new(),
+        };
+        let (_, report) = run_tool_node(7, &node, &inputs, &mut ctx).unwrap();
+        assert_eq!(report["answer"], 42);
+        worker(
+            &scratch,
+            "printf '{\"error\":\"fixture failure\"}\\n'; exit 7",
+        );
+        assert!(
+            run_tool_node(7, &node, &inputs, &mut ctx)
+                .unwrap_err()
+                .contains("fixture failure")
+        );
+        for (body, expected) in [
+            ("exec sleep 10", "deadline"),
+            ("printf '%01024d' 0", "stdout"),
+            ("printf '%01024d' 0 >&2", "stderr"),
+        ] {
+            worker(&scratch, body);
+            ctx.process_limits.deadline = if expected == "deadline" {
+                std::time::Duration::from_millis(200)
+            } else {
+                std::time::Duration::from_secs(2)
+            };
+            let started = Instant::now();
+            let error = run_tool_node(7, &node, &inputs, &mut ctx).unwrap_err();
+            assert!(
+                error.contains(expected),
+                "unexpected worker failure: {error}"
+            );
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(3),
+                "bounded worker did not terminate"
+            );
+        }
+        assert!(events.iter().any(|event| matches!(event, Event::Progress { id: 7, done: 1, total: 1, label } if label == "A")), "worker progress did not reach the host");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cancelled_external_node_does_not_publish_cache_or_run_downstream() {
+        let scratch = Scratch::new();
+        let binary = worker(&scratch, "printf 'progress 1/2 A\\n' >&2; exec sleep 10");
+        let cancellation = ProcessCancellation::default();
+        let mut on_event = |event| {
+            if matches!(event, Event::Progress { .. }) {
+                cancellation.cancel();
+            }
+        };
+        let cache = scratch.0.join("cache.json");
+        let mut ctx = RunContext {
+            font: &scratch.0,
+            master: None,
+            glyphs: Vec::new(),
+            tools: BTreeMap::from([("fixture".into(), binary)]),
+            models_dir: None,
+            device: None,
+            force: true,
+            cache: Some(cache.clone()),
+            cancellation: cancellation.clone(),
+            process_limits: ProcessLimits {
+                deadline: std::time::Duration::from_secs(2),
+                ..ProcessLimits::default()
+            },
+            on_event: &mut on_event,
+        };
+        let registry = Registry {
+            types: vec![worker_node()],
+        };
+        let mut graph = NodeGraph::default();
+        graph.add("fixture.transform", [0.0, 0.0]);
+        graph.add("fixture.transform", [100.0, 0.0]);
+        let report = run(&graph, &registry, &mut ctx);
+        assert!(!report.ok);
+        assert_eq!(report.nodes.len(), 2);
+        assert!(
+            report
+                .nodes
+                .iter()
+                .all(|node| node.status == Status::Failed && node.outputs.is_empty()),
+            "cancelled graph retained candidate outputs"
+        );
+        assert!(
+            report.nodes[1].report["error"]
+                .as_str()
+                .unwrap()
+                .contains("before node start")
+        );
+        let cached: Cache = serde_json::from_slice(&std::fs::read(cache).unwrap()).unwrap();
+        assert!(
+            cached.nodes.is_empty(),
+            "cancelled external output entered the cache"
+        );
+    }
+
     fn source_selection_project() -> Project {
         let document = crate::font::persistence::memory::designspace_from_str(
             r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -2011,8 +2185,24 @@ mod tests {
             device: None,
             force: true,
             cache: None,
+            cancellation: ProcessCancellation::default(),
+            process_limits: ProcessLimits::default(),
             on_event: &mut events,
         };
+        context.cancellation.cancel();
+        assert_eq!(
+            run_node(7, &node, &inputs, &mut context).unwrap_err(),
+            "cancelled before node execution"
+        );
+        let untouched = Project::load(&path).unwrap();
+        assert!(
+            matches!(
+                proposal::find_project(&untouched, SourceId(0), crate::font::compose::TASK),
+                Err(proposal::ProposalError::NoProposal { .. })
+            ),
+            "cancelled core node wrote a proposal"
+        );
+        context.cancellation = ProcessCancellation::default();
         let (outputs, report) = run_node(7, &node, &inputs, &mut context).unwrap();
         assert_eq!(report["proposed"], 1);
         assert_eq!(

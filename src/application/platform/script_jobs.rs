@@ -240,16 +240,19 @@ pub(crate) enum ScriptRuntimeAvailability {
 #[cfg(not(target_arch = "wasm32"))]
 mod native {
     use std::collections::BTreeMap;
-    use std::fs::{self, File, OpenOptions};
-    use std::io::{Read, Seek, SeekFrom, Write};
+    use std::fs::{self, OpenOptions};
+    use std::io::Write;
     use std::path::Path;
-    use std::process::{Child, Command, ExitStatus, Stdio};
-    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::process::Command;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
     use std::sync::{Arc, Mutex};
     use std::thread::JoinHandle;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
 
+    use runebender::workflows::process::{
+        OutputStream, ProcessCancellation, ProcessLimits, ProcessOutcome, run,
+    };
     use sha2::{Digest, Sha256};
 
     use super::*;
@@ -261,7 +264,7 @@ mod native {
     struct JobRecord {
         identity: ScriptJobIdentity,
         phase: JobPhase,
-        cancel: Arc<AtomicBool>,
+        cancel: ProcessCancellation,
         reported: bool,
     }
 
@@ -332,60 +335,27 @@ mod native {
         /// Run the explicitly selected interpreter's version command with a cleared environment.
         pub(crate) fn check(executable: impl Into<PathBuf>) -> Self {
             let executable = executable.into();
-            let temporary = match TemporaryDirectory::new() {
-                Ok(temporary) => temporary,
-                Err(error) => return Self::Unavailable(error.to_string()),
-            };
-            let stdout_path = temporary.path.join("version.stdout");
-            let stderr_path = temporary.path.join("version.stderr");
-            let (stdout, mut stdout_reader) = match create_capture(&stdout_path) {
-                Ok(capture) => capture,
-                Err(error) => return Self::Unavailable(error.to_string()),
-            };
-            let (stderr, mut stderr_reader) = match create_capture(&stderr_path) {
-                Ok(capture) => capture,
-                Err(error) => return Self::Unavailable(error.to_string()),
-            };
-            let mut child = match Command::new(&executable)
-                .arg("--version")
-                .env_clear()
-                .stdin(Stdio::null())
-                .stdout(Stdio::from(stdout))
-                .stderr(Stdio::from(stderr))
-                .spawn()
-            {
-                Ok(child) => child,
-                Err(error) => return Self::Unavailable(error.to_string()),
-            };
-            let cancel = AtomicBool::new(false);
-            let completion = monitor_child(
-                &mut child,
-                &cancel,
-                RUNTIME_CHECK_DEADLINE,
-                &stdout_reader,
-                &stderr_reader,
-                MAX_RUNTIME_CHECK_OUTPUT_BYTES,
-                MAX_RUNTIME_CHECK_OUTPUT_BYTES,
+            let mut command = Command::new(&executable);
+            command.arg("--version").env_clear();
+            let output = run(
+                &mut command,
+                b"",
+                ProcessLimits {
+                    deadline: RUNTIME_CHECK_DEADLINE,
+                    stdin_bytes: 0,
+                    stdout_bytes: MAX_RUNTIME_CHECK_OUTPUT_BYTES,
+                    stderr_bytes: MAX_RUNTIME_CHECK_OUTPUT_BYTES,
+                },
+                &ProcessCancellation::default(),
+                |_, _| {},
             );
-            let (stdout, stdout_exceeded) =
-                match read_bounded_capture(&mut stdout_reader, MAX_RUNTIME_CHECK_OUTPUT_BYTES) {
-                    Ok(output) => output,
-                    Err(error) => return Self::Unavailable(error.to_string()),
-                };
-            let (stderr, stderr_exceeded) =
-                match read_bounded_capture(&mut stderr_reader, MAX_RUNTIME_CHECK_OUTPUT_BYTES) {
-                    Ok(output) => output,
-                    Err(error) => return Self::Unavailable(error.to_string()),
-                };
-            match completion {
-                ProcessCompletion::Exited(status) if status.success() => {
-                    if stdout_exceeded {
-                        return Self::Unavailable("version stdout exceeded 4096 bytes".into());
-                    }
-                    if stderr_exceeded {
-                        return Self::Unavailable("version stderr exceeded 4096 bytes".into());
-                    }
-                    let bytes = if stdout.is_empty() { stderr } else { stdout };
+            match output.outcome {
+                ProcessOutcome::Exited { success: true, .. } => {
+                    let bytes = if output.stdout.is_empty() {
+                        output.stderr
+                    } else {
+                        output.stdout
+                    };
                     Self::Available(
                         String::from_utf8_lossy(&bytes)
                             .trim()
@@ -394,22 +364,25 @@ mod native {
                             .collect(),
                     )
                 }
-                ProcessCompletion::Exited(status) => {
-                    Self::Unavailable(format!("exit status {:?}", status.code()))
+                ProcessOutcome::Exited { code, .. } => {
+                    Self::Unavailable(format!("exit status {code:?}"))
                 }
-                ProcessCompletion::Forced(ForcedStop::Deadline) => {
+                ProcessOutcome::DeadlineExceeded => {
                     Self::Unavailable("version check exceeded its deadline".into())
                 }
-                ProcessCompletion::Forced(ForcedStop::StdoutLimit) => {
-                    Self::Unavailable("version stdout exceeded 4096 bytes".into())
-                }
-                ProcessCompletion::Forced(ForcedStop::StderrLimit) => {
-                    Self::Unavailable("version stderr exceeded 4096 bytes".into())
-                }
-                ProcessCompletion::Forced(ForcedStop::Cancelled) => {
+                ProcessOutcome::OutputLimitExceeded {
+                    stream: OutputStream::Stdout,
+                } => Self::Unavailable("version stdout exceeded 4096 bytes".into()),
+                ProcessOutcome::OutputLimitExceeded {
+                    stream: OutputStream::Stderr,
+                } => Self::Unavailable("version stderr exceeded 4096 bytes".into()),
+                ProcessOutcome::Cancelled { .. } => {
                     Self::Unavailable("version check was cancelled".into())
                 }
-                ProcessCompletion::Io(error) => Self::Unavailable(error),
+                ProcessOutcome::SpawnFailed(error)
+                | ProcessOutcome::IoFailed(error)
+                | ProcessOutcome::InvalidRequest(error) => Self::Unavailable(error),
+                ProcessOutcome::BrowserUnavailable => Self::BrowserUnavailable,
             }
         }
     }
@@ -481,7 +454,7 @@ mod native {
                     JobRecord {
                         identity,
                         phase: JobPhase::Queued(Box::new(request)),
-                        cancel: Arc::new(AtomicBool::new(false)),
+                        cancel: ProcessCancellation::default(),
                         reported: false,
                     },
                 );
@@ -544,7 +517,7 @@ mod native {
             };
             match &record.phase {
                 JobPhase::Queued(_) => {
-                    record.cancel.store(true, Ordering::Release);
+                    record.cancel.cancel();
                     record.phase = JobPhase::Terminal(ScriptJobOutcome::Cancelled {
                         while_running: false,
                         stderr: String::new(),
@@ -552,7 +525,7 @@ mod native {
                     ScriptJobCancelOutcome::CancelledBeforeStart
                 }
                 JobPhase::Running => {
-                    record.cancel.store(true, Ordering::Release);
+                    record.cancel.cancel();
                     ScriptJobCancelOutcome::CancellationRequested
                 }
                 JobPhase::Terminal(_) => ScriptJobCancelOutcome::TooLate,
@@ -578,7 +551,7 @@ mod native {
                 let mut state = lock(&self.shared.state);
                 state.accepting = false;
                 for record in state.jobs.values_mut() {
-                    record.cancel.store(true, Ordering::Release);
+                    record.cancel.cancel();
                     if matches!(record.phase, JobPhase::Queued(_)) {
                         record.phase = JobPhase::Terminal(ScriptJobOutcome::Cancelled {
                             while_running: false,
@@ -610,24 +583,43 @@ mod native {
                 continue;
             };
             let outcome = run_process(&config, *request, &cancel);
-            let mut state = lock(&shared.state);
-            if let Some(record) = state.jobs.get_mut(&handle)
-                && matches!(record.phase, JobPhase::Running)
+            publish_outcome(&shared, handle, outcome);
+        }
+    }
+
+    fn publish_outcome(shared: &SharedQueue, handle: ScriptJobHandle, outcome: ScriptJobOutcome) {
+        let mut state = lock(&shared.state);
+        if let Some(record) = state.jobs.get_mut(&handle)
+            && matches!(record.phase, JobPhase::Running)
+        {
+            let outcome = if record.cancel.is_cancelled()
+                && !matches!(&outcome, ScriptJobOutcome::Cancelled { .. })
             {
-                record.phase = JobPhase::Terminal(outcome);
-            }
+                let stderr = match outcome {
+                    ScriptJobOutcome::Completed { stderr, .. }
+                    | ScriptJobOutcome::Failed { stderr, .. }
+                    | ScriptJobOutcome::Cancelled { stderr, .. } => stderr,
+                };
+                ScriptJobOutcome::Cancelled {
+                    while_running: true,
+                    stderr,
+                }
+            } else {
+                outcome
+            };
+            record.phase = JobPhase::Terminal(outcome);
         }
     }
 
     fn take_request(
         shared: &SharedQueue,
         handle: ScriptJobHandle,
-    ) -> Option<(Box<ScriptJobRequest>, Arc<AtomicBool>)> {
+    ) -> Option<(Box<ScriptJobRequest>, ProcessCancellation)> {
         let mut state = lock(&shared.state);
         let record = state.jobs.get_mut(&handle)?;
         let phase = std::mem::replace(&mut record.phase, JobPhase::Running);
         match phase {
-            JobPhase::Queued(request) if !record.cancel.load(Ordering::Acquire) => {
+            JobPhase::Queued(request) if !record.cancel.is_cancelled() => {
                 Some((request, record.cancel.clone()))
             }
             JobPhase::Queued(_) => {
@@ -647,8 +639,14 @@ mod native {
     fn run_process(
         config: &ScriptJobConfig,
         request: ScriptJobRequest,
-        cancel: &AtomicBool,
+        cancel: &ProcessCancellation,
     ) -> ScriptJobOutcome {
+        if cancel.is_cancelled() {
+            return ScriptJobOutcome::Cancelled {
+                while_running: false,
+                stderr: String::new(),
+            };
+        }
         let input = match serde_json::to_vec(&request.input) {
             Ok(input) => input,
             Err(error) => return failed(ScriptJobFailure::InvalidRequest(error.to_string()), ""),
@@ -661,109 +659,66 @@ mod native {
         if let Err(error) = write_script(&script_path, request.script.as_bytes()) {
             return failed(ScriptJobFailure::Io(error.to_string()), "");
         }
-        let input_path = temporary.path.join("input.json");
-        if let Err(error) = write_file(&input_path, &input) {
-            return failed(ScriptJobFailure::Io(error.to_string()), "");
-        }
-        let stdout_path = temporary.path.join("stdout");
-        let stderr_path = temporary.path.join("stderr");
-        let stdin = match File::open(&input_path) {
-            Ok(stdin) => stdin,
-            Err(error) => return failed(ScriptJobFailure::Io(error.to_string()), ""),
-        };
-        let (stdout, mut stdout_reader) = match create_capture(&stdout_path) {
-            Ok(capture) => capture,
-            Err(error) => return failed(ScriptJobFailure::Io(error.to_string()), ""),
-        };
-        let (stderr, mut stderr_reader) = match create_capture(&stderr_path) {
-            Ok(capture) => capture,
-            Err(error) => return failed(ScriptJobFailure::Io(error.to_string()), ""),
-        };
-
-        let mut child = match Command::new(&config.python_executable)
+        let mut command = Command::new(&config.python_executable);
+        command
             .args(["-I", "recipe.py"])
             .current_dir(&temporary.path)
             .env_clear()
             .env("PYTHONDONTWRITEBYTECODE", "1")
             .env("PYTHONIOENCODING", "utf-8")
-            .env("PYTHONUNBUFFERED", "1")
-            .stdin(Stdio::from(stdin))
-            .stdout(Stdio::from(stdout))
-            .stderr(Stdio::from(stderr))
-            .spawn()
-        {
-            Ok(child) => child,
-            Err(error) => {
-                return failed(ScriptJobFailure::PythonUnavailable(error.to_string()), "");
-            }
-        };
-
-        let completion = monitor_child(
-            &mut child,
+            .env("PYTHONUNBUFFERED", "1");
+        let output = run(
+            &mut command,
+            &input,
+            ProcessLimits {
+                deadline: config.deadline,
+                stdin_bytes: MAX_INPUT_BYTES,
+                stdout_bytes: MAX_STDOUT_BYTES,
+                stderr_bytes: MAX_STDERR_BYTES,
+            },
             cancel,
-            config.deadline,
-            &stdout_reader,
-            &stderr_reader,
-            MAX_STDOUT_BYTES,
-            MAX_STDERR_BYTES,
+            |_, _| {},
         );
-        let (stdout, stdout_exceeded) =
-            match read_bounded_capture(&mut stdout_reader, MAX_STDOUT_BYTES) {
-                Ok(output) => output,
-                Err(error) => return failed(ScriptJobFailure::Io(error.to_string()), ""),
-            };
-        let (stderr_bytes, stderr_exceeded) =
-            match read_bounded_capture(&mut stderr_reader, MAX_STDERR_BYTES) {
-                Ok(output) => output,
-                Err(error) => return failed(ScriptJobFailure::Io(error.to_string()), ""),
-            };
-        let stderr = String::from_utf8_lossy(&stderr_bytes).into_owned();
-        let status = match completion {
-            ProcessCompletion::Exited(status) => {
-                if stdout_exceeded {
-                    return failed(
-                        ScriptJobFailure::OutputLimitExceeded { stream: "stdout" },
-                        stderr,
-                    );
-                }
-                if stderr_exceeded {
-                    return failed(
-                        ScriptJobFailure::OutputLimitExceeded { stream: "stderr" },
-                        stderr,
-                    );
-                }
-                status
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        match output.outcome {
+            ProcessOutcome::Exited { success: true, .. } => {}
+            ProcessOutcome::Exited { code, .. } => {
+                return failed(ScriptJobFailure::NonZeroExit { code }, stderr);
             }
-            ProcessCompletion::Forced(forced) => {
-                return match forced {
-                    ForcedStop::Cancelled => ScriptJobOutcome::Cancelled {
-                        while_running: true,
-                        stderr,
-                    },
-                    ForcedStop::StdoutLimit => failed(
-                        ScriptJobFailure::OutputLimitExceeded { stream: "stdout" },
-                        stderr,
-                    ),
-                    ForcedStop::StderrLimit => failed(
-                        ScriptJobFailure::OutputLimitExceeded { stream: "stderr" },
-                        stderr,
-                    ),
-                    ForcedStop::Deadline => failed(ScriptJobFailure::DeadlineExceeded, stderr),
+            ProcessOutcome::Cancelled { started } => {
+                return ScriptJobOutcome::Cancelled {
+                    while_running: started,
+                    stderr,
                 };
             }
-            ProcessCompletion::Io(error) => {
+            ProcessOutcome::DeadlineExceeded => {
+                return failed(ScriptJobFailure::DeadlineExceeded, stderr);
+            }
+            ProcessOutcome::OutputLimitExceeded { stream } => {
+                return failed(
+                    ScriptJobFailure::OutputLimitExceeded {
+                        stream: match stream {
+                            OutputStream::Stdout => "stdout",
+                            OutputStream::Stderr => "stderr",
+                        },
+                    },
+                    stderr,
+                );
+            }
+            ProcessOutcome::SpawnFailed(error) => {
+                return failed(ScriptJobFailure::PythonUnavailable(error), stderr);
+            }
+            ProcessOutcome::IoFailed(error) => {
                 return failed(ScriptJobFailure::Io(error), stderr);
             }
-        };
-        if !status.success() {
-            return failed(
-                ScriptJobFailure::NonZeroExit {
-                    code: status.code(),
-                },
-                stderr,
-            );
+            ProcessOutcome::InvalidRequest(error) => {
+                return failed(ScriptJobFailure::InvalidRequest(error), stderr);
+            }
+            ProcessOutcome::BrowserUnavailable => {
+                return failed(ScriptJobFailure::BrowserUnavailable, stderr);
+            }
         }
-        let result = match serde_json::from_slice::<ScriptRecipeResult>(&stdout) {
+        let result = match serde_json::from_slice::<ScriptRecipeResult>(&output.stdout) {
             Ok(result) => result,
             Err(error) => {
                 return failed(ScriptJobFailure::InvalidResult(error.to_string()), stderr);
@@ -773,87 +728,6 @@ mod native {
             return failed(ScriptJobFailure::InvalidResult(error.to_string()), stderr);
         }
         ScriptJobOutcome::Completed { result, stderr }
-    }
-
-    #[derive(Debug)]
-    enum ForcedStop {
-        Cancelled,
-        StdoutLimit,
-        StderrLimit,
-        Deadline,
-    }
-
-    enum ProcessCompletion {
-        Exited(ExitStatus),
-        Forced(ForcedStop),
-        Io(String),
-    }
-
-    fn monitor_child(
-        child: &mut Child,
-        cancel: &AtomicBool,
-        deadline: Duration,
-        stdout: &File,
-        stderr: &File,
-        stdout_limit: usize,
-        stderr_limit: usize,
-    ) -> ProcessCompletion {
-        let started = Instant::now();
-        loop {
-            let forced = if cancel.load(Ordering::Acquire) {
-                Some(ForcedStop::Cancelled)
-            } else if capture_exceeds(stdout, stdout_limit) {
-                Some(ForcedStop::StdoutLimit)
-            } else if capture_exceeds(stderr, stderr_limit) {
-                Some(ForcedStop::StderrLimit)
-            } else if started.elapsed() >= deadline {
-                Some(ForcedStop::Deadline)
-            } else {
-                None
-            };
-            if let Some(forced) = forced {
-                return match kill_and_wait(child) {
-                    Ok(_) => ProcessCompletion::Forced(forced),
-                    Err(error) => ProcessCompletion::Io(format!(
-                        "could not stop script process after {forced:?}: {error}"
-                    )),
-                };
-            }
-            match child.try_wait() {
-                Ok(Some(status)) => return ProcessCompletion::Exited(status),
-                Ok(None) => std::thread::sleep(Duration::from_millis(10)),
-                Err(error) => {
-                    let _ = kill_and_wait(child);
-                    return ProcessCompletion::Io(error.to_string());
-                }
-            }
-        }
-    }
-
-    fn capture_exceeds(file: &File, limit: usize) -> bool {
-        file.metadata()
-            .is_ok_and(|metadata| metadata.len() > limit as u64)
-    }
-
-    fn read_bounded_capture(file: &mut File, limit: usize) -> std::io::Result<(Vec<u8>, bool)> {
-        file.seek(SeekFrom::Start(0))?;
-        let mut output = Vec::new();
-        Read::by_ref(file)
-            .take(limit.saturating_add(1) as u64)
-            .read_to_end(&mut output)?;
-        let exceeded = output.len() > limit || capture_exceeds(file, limit);
-        output.truncate(limit);
-        Ok((output, exceeded))
-    }
-
-    fn kill_and_wait(child: &mut Child) -> std::io::Result<ExitStatus> {
-        match child.kill() {
-            Ok(()) => child.wait(),
-            Err(kill_error) => match child.try_wait()? {
-                Some(status) => Ok(status),
-                None => Err(kill_error),
-            },
-        }
     }
 
     fn failed(failure: ScriptJobFailure, stderr: impl Into<String>) -> ScriptJobOutcome {
@@ -899,7 +773,15 @@ mod native {
                     "runebender-script-job-{}-{sequence}",
                     std::process::id()
                 ));
-                match fs::create_dir(&path) {
+                #[cfg(unix)]
+                let created = {
+                    use std::os::unix::fs::DirBuilderExt;
+                    let mut builder = fs::DirBuilder::new();
+                    builder.mode(0o700).create(&path)
+                };
+                #[cfg(not(unix))]
+                let created = fs::create_dir(&path);
+                match created {
                     Ok(()) => return Ok(Self { path }),
                     Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
                     Err(error) => return Err(error),
@@ -919,19 +801,9 @@ mod native {
     }
 
     fn write_script(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-        write_file(path, bytes)
-    }
-
-    fn write_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
         file.write_all(bytes)?;
         file.sync_all()
-    }
-
-    fn create_capture(path: &Path) -> std::io::Result<(File, File)> {
-        let writer = OpenOptions::new().write(true).create_new(true).open(path)?;
-        let reader = OpenOptions::new().read(true).open(path)?;
-        Ok((writer, reader))
     }
 
     fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -949,6 +821,7 @@ mod native {
     #[cfg(test)]
     mod tests {
         use std::collections::BTreeMap;
+        use std::time::Instant;
 
         use runebender::automation::agent_edit::AgentLayerGuard;
         use runebender::automation::script_recipe::{
@@ -1023,6 +896,70 @@ mod native {
                 "import json, sys\ndata = json.load(sys.stdin)\njson.dump({{'schema_version': {}, 'job_id': data['job_id'], 'input_hash': data['input_hash'], 'report': 'ok', 'reads': [], 'edits': []}}, sys.stdout)\n{suffix}\n",
                 SCRIPT_RECIPE_SCHEMA_VERSION
             )
+        }
+
+        #[test]
+        fn cancellation_before_publication_discards_completed_proposal() {
+            let input = input();
+            let handle = ScriptJobHandle(1);
+            let cancel = ProcessCancellation::default();
+            let shared = SharedQueue {
+                state: Mutex::new(QueueState {
+                    accepting: true,
+                    next_handle: 2,
+                    jobs: BTreeMap::from([(
+                        handle,
+                        JobRecord {
+                            identity: ScriptJobIdentity {
+                                job_id: input.job_id.clone(),
+                                input_hash: input.input_hash.clone(),
+                                script_hash: "script".into(),
+                                python_executable: PathBuf::from("python3"),
+                            },
+                            phase: JobPhase::Running,
+                            cancel: cancel.clone(),
+                            reported: false,
+                        },
+                    )]),
+                }),
+            };
+            let completed = ScriptJobOutcome::Completed {
+                result: ScriptRecipeResult {
+                    schema_version: input.schema_version,
+                    job_id: input.job_id,
+                    input_hash: input.input_hash,
+                    report: "proposal".into(),
+                    reads: Vec::new(),
+                    edits: Vec::new(),
+                },
+                stderr: "diagnostic".into(),
+            };
+            assert!(cancel.cancel());
+            publish_outcome(&shared, handle, completed);
+            let state = lock(&shared.state);
+            let record = state.jobs.get(&handle).expect("retained record");
+            assert!(matches!(
+                record.phase.outcome(),
+                Some(ScriptJobOutcome::Cancelled {
+                    while_running: true,
+                    stderr,
+                }) if stderr == "diagnostic"
+            ));
+            drop(state);
+            lock(&shared.state).jobs.get_mut(&handle).unwrap().phase = JobPhase::Running;
+            publish_outcome(
+                &shared,
+                handle,
+                ScriptJobOutcome::Cancelled {
+                    while_running: false,
+                    stderr: String::new(),
+                },
+            );
+            assert_eq!(
+                lock(&shared.state).jobs[&handle].phase.status(),
+                ScriptJobStatus::CancelledBeforeStart,
+                "publication must preserve the runner's pre-spawn cancellation receipt"
+            );
         }
 
         #[test]
@@ -1175,18 +1112,25 @@ mod native {
                 }
             ));
 
-            let cancel_queue = queue(python, Duration::from_secs(2));
+            let temporary = TemporaryDirectory::new().expect("cancellation fixture directory");
+            let marker = temporary.path.join("child-started");
+            let cancel_queue = queue(python, Duration::from_secs(5));
             let cancelled = cancel_queue
                 .submit(ScriptJobRequest {
                     input: input(),
-                    script: "while True:\n    pass\n".into(),
+                    script: format!(
+                        "from pathlib import Path\nPath({}).write_text('started')\nwhile True:\n    pass\n",
+                        serde_json::to_string(&marker).expect("fixture path serializes")
+                    ),
                 })
                 .expect("submit cancellation");
             let started = Instant::now();
-            while cancel_queue.inspect(cancelled).expect("job").status == ScriptJobStatus::Queued {
+            // Running includes process preparation; wait for the actual child
+            // before asserting the distinct while-running cancellation receipt.
+            while !marker.exists() {
                 assert!(
-                    started.elapsed() < Duration::from_secs(1),
-                    "job never started"
+                    started.elapsed() < Duration::from_secs(2),
+                    "child never started"
                 );
                 std::thread::sleep(Duration::from_millis(5));
             }
@@ -1254,7 +1198,7 @@ mod native {
 
         #[cfg(unix)]
         #[test]
-        fn result_capture_uses_the_preopened_file_identity() {
+        fn result_capture_ignores_working_directory_stdout_file() {
             let Some(python) = python() else {
                 return;
             };
@@ -1263,7 +1207,7 @@ mod native {
                 .submit(ScriptJobRequest {
                     input: input(),
                     script: format!(
-                        "import json, os, sys\ndata = json.load(sys.stdin)\nos.unlink('stdout')\nwith open('stdout', 'w') as replacement:\n    replacement.write('not the result')\njson.dump({{'schema_version': {}, 'job_id': data['job_id'], 'input_hash': data['input_hash'], 'report': 'original capture', 'reads': [], 'edits': []}}, sys.stdout)\n",
+                        "import json, sys\ndata = json.load(sys.stdin)\nwith open('stdout', 'w') as decoy:\n    decoy.write('not the result')\njson.dump({{'schema_version': {}, 'job_id': data['job_id'], 'input_hash': data['input_hash'], 'report': 'original capture', 'reads': [], 'edits': []}}, sys.stdout)\n",
                         SCRIPT_RECIPE_SCHEMA_VERSION
                     ),
                 })
