@@ -13,10 +13,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::agent::Tool;
+use super::agent_edit::AgentLayerGuard;
 use crate::font::project::Project;
 use crate::font::variable::SourceId;
+use crate::formats::image_trace::TraceCalibration;
 use crate::workflows::nodes_session::{
-    GraphCancelRequest, GraphIdentity, GraphMutationRequest, GraphRunHandle, GraphSemanticGuard,
+    GraphCancelRequest, GraphGuard, GraphIdentity, GraphMutationRequest, GraphRunHandle,
+    GraphSemanticGuard,
 };
 
 /// Typed success bodies for native live graph tools.
@@ -48,6 +51,48 @@ pub struct NodesMutateRequest {
     pub expected_document_epoch: String,
     /// Existing guarded graph request nested without changing its typed contract.
     pub request: GraphMutationRequest,
+}
+
+/// Place one calibrated image trace in an existing live Python candidate node.
+///
+/// Submission leaves the graph and font unchanged. Guarded publication changes graph intent only.
+/// Nodes Run, proof inspection and Apply retain their existing separate guards and receipts.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct NodesTraceRequest {
+    /// Exact native endpoint lifetime.
+    pub expected_document_epoch: String,
+    /// Exact graph revision displayed before the trace was requested.
+    pub guard: GraphGuard,
+    /// Actor owning this graph mutation receipt.
+    pub actor: String,
+    /// Actor-local idempotency key.
+    pub operation_key: String,
+    /// Existing live.python node to receive the detached candidate recipe.
+    pub node: u32,
+    /// Explicit source that owns the guarded layer.
+    pub source: usize,
+    /// Exact target layer read from the canonical document.
+    pub target: AgentLayerGuard,
+    /// Bounded encoded raster image, base64 without a data URL prefix.
+    pub image_base64: String,
+    /// Explicit full-image pixel-to-font placement.
+    pub calibration: TraceCalibration,
+    /// Whether light pixels are ink.
+    #[serde(default)]
+    pub invert: bool,
+}
+
+/// Address one retained asynchronous calibrated trace without resubmitting image bytes.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct NodesTraceHandleRequest {
+    /// Exact native endpoint lifetime.
+    pub expected_document_epoch: String,
+    /// Graph lifetime that accepted the trace.
+    pub identity: GraphIdentity,
+    /// Opaque session-local trace handle.
+    pub handle: u64,
 }
 
 /// Start one native comparison or explicitly versioned DAG from host-derived captures.
@@ -233,6 +278,29 @@ impl NodesMutateRequest {
     pub fn validate(&self) -> Result<(), String> {
         validate_epoch(&self.expected_document_epoch, &self.request.guard.identity)?;
         validate_actor_key(&self.request.actor, &self.request.operation_key)
+    }
+}
+
+impl NodesTraceRequest {
+    /// Validate transport bounds before decoding or tracing the image.
+    pub fn validate(&self) -> Result<(), String> {
+        validate_epoch(&self.expected_document_epoch, &self.guard.identity)?;
+        validate_actor_key(&self.actor, &self.operation_key)?;
+        if self.image_base64.is_empty() || self.image_base64.len() > 5_592_408 {
+            return Err("calibrated trace image exceeds the bounded transport size".into());
+        }
+        Ok(())
+    }
+}
+
+impl NodesTraceHandleRequest {
+    /// Validate handle and document lifetime before reading retained trace state.
+    pub fn validate(&self) -> Result<(), String> {
+        validate_epoch(&self.expected_document_epoch, &self.identity)?;
+        if self.handle == 0 {
+            return Err("trace handle must be greater than zero".into());
+        }
+        Ok(())
     }
 }
 
@@ -469,6 +537,44 @@ pub fn tools() -> Vec<Tool> {
             parameters: mutation_schema(),
         },
         Tool {
+            name: "nodes_trace".into(),
+            description: "Submit one bounded calibrated image to the shared trace worker. This returns a session-local handle without changing the font or graph. Poll nodes_trace_status; completion installs a guarded recipe into the selected live.python node only while the document, layer and graph still match. Then Nodes Run, Image and Apply use their existing paths.".into(),
+            parameters: object(
+                json!({
+                    "expected_document_epoch":epoch.clone(),
+                    "guard":graph_guard(false),
+                    "actor":actor.clone(),
+                    "operation_key":key.clone(),
+                    "node":{"type":"integer","minimum":0},
+                    "source":{"type":"integer","minimum":0},
+                    "target":{"type":"object","additionalProperties":false,
+                        "required":["glyph","glyph_id","layer","expected_revision"],
+                        "properties":{"glyph":string(256),"glyph_id":string(256),"layer":string(256),"expected_revision":string(256)}},
+                    "image_base64":{"type":"string","minLength":1,"maxLength":5592408},
+                    "calibration":{"type":"object","additionalProperties":false,
+                        "required":["font_units_per_pixel","pixel_baseline_y","font_x_at_left","font_baseline_y"],
+                        "properties":{"font_units_per_pixel":{"type":"number"},"pixel_baseline_y":{"type":"number"},"font_x_at_left":{"type":"number"},"font_baseline_y":{"type":"number"}}},
+                    "invert":{"type":"boolean","default":false}
+                }),
+                &["expected_document_epoch","guard","actor","operation_key","node","source","target","image_base64","calibration"],
+            ),
+        },
+        Tool {
+            name: "nodes_trace_status".into(),
+            description: "Inspect a retained calibrated trace. A completed worker result publishes its guarded graph recipe exactly once; cancelled and stale results never publish. Does not change the font.".into(),
+            parameters: session(json!({"handle":handle.clone()}), &["expected_document_epoch","identity","handle"]),
+        },
+        Tool {
+            name: "nodes_trace_cancel".into(),
+            description: "Suppress publication of a queued or running calibrated trace. Running img2bez work may not stop immediately; its global worker slot remains occupied until it returns.".into(),
+            parameters: session(json!({"handle":handle.clone()}), &["expected_document_epoch","identity","handle"]),
+        },
+        Tool {
+            name: "nodes_trace_release".into(),
+            description: "Release one terminal trace receipt so this session can submit another image. Running or queued traces must settle first.".into(),
+            parameters: session(json!({"handle":handle.clone()}), &["expected_document_epoch","identity","handle"]),
+        },
+        Tool {
             name: "nodes_run".into(),
             description: "Run native nodes for one explicit source and 1 to 64 glyphs. Omitted execution_version or 1 keeps the four-node comparison; version 2 enables bounded chained and branching Python transforms with independent proofs and partial failures. The host captures current font, code, parameters and proof identities; callers never supply hashes. Poll nodes_status.".into(),
             parameters: object(
@@ -552,7 +658,7 @@ mod tests {
         let tools = tools();
         let names: BTreeSet<_> = tools.iter().map(|tool| tool.name.as_str()).collect();
         assert_eq!(names.len(), tools.len());
-        assert_eq!(tools.len(), 9);
+        assert_eq!(tools.len(), 13);
         assert!(
             tools
                 .iter()

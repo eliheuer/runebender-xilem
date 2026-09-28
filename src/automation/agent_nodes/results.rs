@@ -61,6 +61,73 @@ pub struct NodesMutateResult {
     pub root_changed: bool,
 }
 
+/// Phase of one retained asynchronous calibrated image trace.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum NodesTracePhase {
+    /// Accepted by the global bounded worker, not yet started.
+    Queued,
+    /// Image decoding or tracing is active off the editor thread.
+    Running,
+    /// Cancellation requested; an active worker may still occupy its global slot.
+    Cancelling,
+    /// A guarded recipe was installed in the existing graph exactly once.
+    Completed,
+    /// Worker, validation or graph publication failed.
+    Failed,
+    /// Cancellation prevented graph publication.
+    Cancelled,
+    /// Captured document, layer or graph changed before publication.
+    Stale,
+    /// Heavy trace state was released; its retry key remains reserved.
+    Released,
+}
+
+/// Admission receipt for an asynchronous calibrated trace.
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
+pub struct NodesTraceStartResult {
+    /// Whether submission or an exact retry succeeded.
+    pub ok: bool,
+    /// Opaque session-local handle.
+    pub handle: u64,
+    /// Current phase at the time of admission.
+    pub phase: NodesTracePhase,
+    /// Whether this was an exact retry of the retained request.
+    pub replayed: bool,
+    /// Submission does not mutate the font.
+    pub root_changed: bool,
+}
+
+/// Inspection and optional graph-mutation receipt for one retained trace.
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
+pub struct NodesTraceStatusResult {
+    /// Whether the handle was inspected.
+    pub ok: bool,
+    /// Opaque session-local handle.
+    pub handle: u64,
+    /// Current trace phase.
+    pub phase: NodesTracePhase,
+    /// Original graph mutation receipt, only after successful guarded publication.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mutation: Option<GraphMutationResponse>,
+    /// Failure or stale reason, when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// Inspection never changes the font.
+    pub root_changed: bool,
+}
+
+/// Receipt for dropping one terminal trace and admitting the next in this session.
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
+pub struct NodesTraceReleaseResult {
+    /// Whether the terminal trace was released.
+    pub ok: bool,
+    /// Opaque released handle.
+    pub handle: u64,
+    /// Release never changes the font.
+    pub root_changed: bool,
+}
+
 /// Receipt for a new or replayed graph run.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct NodesRunResult {
@@ -188,6 +255,11 @@ pub fn response_schema(name: &str) -> Option<Value> {
         "nodes_discover" => serialized_schema::<NodesDiscoverResult>(),
         "nodes_snapshot" => serialized_schema::<NodesSnapshotResult>(),
         "nodes_mutate" => serialized_schema::<NodesMutateResult>(),
+        "nodes_trace" => serialized_schema::<NodesTraceStartResult>(),
+        "nodes_trace_status" | "nodes_trace_cancel" => {
+            serialized_schema::<NodesTraceStatusResult>()
+        }
+        "nodes_trace_release" => serialized_schema::<NodesTraceReleaseResult>(),
         "nodes_run" => serialized_schema::<NodesRunResult>(),
         "nodes_status" => serialized_schema::<NodesStatusResult>(),
         "nodes_cancel" => serialized_schema::<NodesCancelResult>(),

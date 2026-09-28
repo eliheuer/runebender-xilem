@@ -21,6 +21,7 @@ use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
 use super::execution::{LiveGraphExecution, LiveGraphPhase, LiveGraphProofOutputs};
+use super::trace::TraceSession;
 use crate::application::platform::nodes_file::{self, LiveGraphFileMetadata};
 use crate::application::platform::nodes_proofs::{NodeProofInspection, NodeProofJobs};
 use crate::application::workspace::Workspace;
@@ -37,6 +38,9 @@ pub(crate) struct LiveNodesState {
     pub(crate) next_job: u64,
     pub(crate) file: Option<LiveGraphFileMetadata>,
     pub(crate) saved_revision: Option<u64>,
+    pub(super) trace: Option<TraceSession>,
+    pub(super) trace_receipts: BTreeMap<(String, String), (String, u64)>,
+    pub(super) next_trace_id: u64,
 }
 
 /// Retained transport retry body for graph runs or delegated font Apply.
@@ -50,18 +54,19 @@ impl Workspace {
     /// Whether a retained live comparison still needs its owned jobs observed.
     pub(crate) fn live_nodes_need_pump(&self) -> bool {
         self.live_nodes.as_ref().is_some_and(|state| {
-            state.handles.iter().copied().any(|handle| {
-                matches!(
-                    state.execution.phase(handle),
-                    Some(
-                        LiveGraphPhase::Ready
-                            | LiveGraphPhase::ScriptQueued
-                            | LiveGraphPhase::ScriptRunning
-                            | LiveGraphPhase::ProofReady
-                            | LiveGraphPhase::ProofsRunning
+            state.trace.as_ref().is_some_and(TraceSession::needs_pump)
+                || state.handles.iter().copied().any(|handle| {
+                    matches!(
+                        state.execution.phase(handle),
+                        Some(
+                            LiveGraphPhase::Ready
+                                | LiveGraphPhase::ScriptQueued
+                                | LiveGraphPhase::ScriptRunning
+                                | LiveGraphPhase::ProofReady
+                                | LiveGraphPhase::ProofsRunning
+                        )
                     )
-                )
-            })
+                })
         })
     }
 
@@ -218,9 +223,11 @@ impl Workspace {
         if self
             .live_nodes
             .as_ref()
-            .is_some_and(|state| !state.handles.is_empty())
+            .is_some_and(|state| !state.handles.is_empty() || state.trace.is_some())
         {
-            return Err("release current live graph runs before opening another graph".into());
+            return Err(
+                "release current live graph runs and traces before opening another graph".into(),
+            );
         }
         let mut document = nodes_file::load(path).map_err(|error| error.to_string())?;
         let fonts: Vec<usize> = document
@@ -266,6 +273,7 @@ impl Workspace {
 
     /// Observe only owned Python/proof jobs and publish results with their captured identities.
     pub(crate) fn live_nodes_pump(&mut self) {
+        self.poll_live_trace();
         let Some(state) = self.live_nodes.as_mut() else {
             return;
         };
@@ -409,6 +417,9 @@ fn fresh_live_nodes(
         next_job: 0,
         saved_revision: file.as_ref().map(|_| 0),
         file,
+        trace: None,
+        trace_receipts: BTreeMap::new(),
+        next_trace_id: 1,
     })
 }
 
@@ -430,6 +441,10 @@ impl Workspace {
             "nodes_discover"
                 | "nodes_snapshot"
                 | "nodes_mutate"
+                | "nodes_trace"
+                | "nodes_trace_status"
+                | "nodes_trace_cancel"
+                | "nodes_trace_release"
                 | "nodes_run"
                 | "nodes_status"
                 | "nodes_cancel"
@@ -477,7 +492,15 @@ impl Workspace {
             self.ensure_script_job_queue()?;
         }
         self.ensure_live_graph()?;
-        self.live_nodes_pump();
+        if call.name != "nodes_trace_cancel" {
+            self.live_nodes_pump();
+        }
+        if matches!(
+            call.name.as_str(),
+            "nodes_trace" | "nodes_trace_status" | "nodes_trace_cancel" | "nodes_trace_release"
+        ) {
+            return self.handle_trace_call(call);
+        }
         let current = GraphDocumentState {
             document_epoch: epoch,
             document_revision: self.font.project.document_revision(),
@@ -1252,6 +1275,272 @@ mod tests {
     #[test]
     fn generated_node_geometry_applies_the_exact_preview_and_replays_its_ids() {
         check_node_commands(true);
+    }
+
+    #[test]
+    fn calibrated_trace_draws_empty_glyph_through_nodes_proof_and_apply_history() {
+        check_calibrated_trace_candidate(false);
+    }
+
+    #[test]
+    fn calibrated_trace_replaces_junk_through_nodes_proof_and_apply_history() {
+        check_calibrated_trace_candidate(true);
+    }
+
+    fn check_calibrated_trace_candidate(junk: bool) {
+        use base64::Engine as _;
+
+        let mut project = Project::new_font(std::env::temp_dir().join("nodes-trace-unsaved.ufo"));
+        for name in ["A", "G"] {
+            project
+                .add_document_glyph(name, 400.0, Some(u32::from(name.chars().next().unwrap())))
+                .unwrap();
+        }
+        let layer = project
+            .document_source(project.source_id(0).unwrap())
+            .unwrap()
+            .default_layer();
+        if junk {
+            project
+                .edit_document_layer("A", &layer, |draft| {
+                    draft.add_shape_contour(kurbo::Rect::new(5.0, 0.0, 390.0, 700.0), false)?;
+                    Ok(())
+                })
+                .unwrap();
+        }
+        project
+            .edit_document_layer("G", &layer, |draft| {
+                draft.add_shape_contour(kurbo::Rect::new(30.0, 0.0, 300.0, 600.0), false)?;
+                Ok(())
+            })
+            .unwrap();
+        let mut app = Workspace::from_model(FontModel::from_project(project)).unwrap();
+        app.ensure_live_graph().unwrap();
+        let epoch = app.live.as_ref().unwrap().document_epoch().to_owned();
+        let initial = app.live_graph_session().unwrap().snapshot();
+        let node = initial
+            .graph
+            .nodes
+            .iter()
+            .find(|node| node.type_name == "live.python")
+            .unwrap()
+            .id;
+        let edits = initial
+            .graph
+            .nodes
+            .iter()
+            .filter(|node| node.type_name == "live.proof")
+            .map(|node| {
+                let mut recipe = node.values["recipe"].clone();
+                recipe["text"] = json!("AA");
+                GraphEdit::SetValue {
+                    node: node.id,
+                    field: "recipe".into(),
+                    value: recipe,
+                }
+            })
+            .collect();
+        app.live_graph_session_mut()
+            .unwrap()
+            .mutate_interactive(GraphInteractiveMutationRequest {
+                guard: GraphGuard {
+                    identity: initial.identity.clone(),
+                    revision: initial.revision,
+                },
+                mutation: GraphMutation::Patch { edits },
+            })
+            .unwrap();
+        let graph = app.live_graph_session().unwrap().snapshot();
+        let address = runebender::font::variable::GlyphLayerAddress {
+            glyph: "A".into(),
+            layer: layer.clone(),
+        };
+        let green_address = runebender::font::variable::GlyphLayerAddress {
+            glyph: "G".into(),
+            layer: layer.clone(),
+        };
+        let before = app.font.project.capture_document_layer(&address).unwrap();
+        let green = app
+            .font
+            .project
+            .capture_document_layer(&green_address)
+            .unwrap();
+        let revision = app.font.project.document_revision();
+        let target = json!({
+            "glyph":"A",
+            "glyph_id":app.font.project.document_glyph("A").unwrap().id().to_wire(),
+            "layer":layer.name,
+            "expected_revision":runebender::font::edit_batch::canonical_glyph_revision(before.view()).unwrap(),
+        });
+        let raster = image::GrayImage::from_fn(64, 64, |x, y| {
+            image::Luma([if (20..44).contains(&x) && (18..46).contains(&y) {
+                0
+            } else {
+                255
+            }])
+        });
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageLuma8(raster)
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .unwrap();
+        let request = json!({
+            "expected_document_epoch":epoch,
+            "guard":{"identity":graph.identity,"revision":graph.revision},
+            "actor":"trace-test","operation_key":"draft-one","node":node,"source":0,
+            "target":target,
+            "image_base64":base64::engine::general_purpose::STANDARD.encode(bytes.into_inner()),
+            "calibration":{"font_units_per_pixel":2.0,"pixel_baseline_y":50.0,
+                "font_x_at_left":0.0,"font_baseline_y":0.0}
+        });
+        let mut stale = request.clone();
+        stale["target"]["expected_revision"] = json!("stale");
+        assert_eq!(call(&mut app, "nodes_trace", stale)["ok"], false);
+        assert_eq!(app.live_graph_session().unwrap().snapshot(), graph);
+        let traced = call(&mut app, "nodes_trace", request.clone());
+        assert_eq!(traced["ok"], true, "{traced}");
+        assert_eq!(traced["root_changed"], false);
+        assert_eq!(traced["phase"], "queued");
+        assert_eq!(app.font.project.document_revision(), revision);
+        assert_eq!(
+            app.font.project.capture_document_layer(&address).unwrap(),
+            before
+        );
+        assert_eq!(
+            app.font
+                .project
+                .capture_document_layer(&green_address)
+                .unwrap(),
+            green
+        );
+        assert_eq!(app.live_graph_session().unwrap().snapshot(), graph);
+        let trace_status_request = json!({
+            "expected_document_epoch":epoch,"identity":graph.identity,"handle":traced["handle"]
+        });
+        let trace_deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            let status = call(&mut app, "nodes_trace_status", trace_status_request.clone());
+            assert_eq!(status["ok"], true, "{status}");
+            match status["phase"].as_str() {
+                Some("completed") => {
+                    assert!(status["mutation"]["receipt"].is_object());
+                    break;
+                }
+                Some("queued" | "running") => {
+                    assert!(Instant::now() < trace_deadline, "{status}");
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                _ => panic!("{status}"),
+            }
+        }
+        let graph = app.live_graph_session().unwrap().snapshot();
+        let trace = &graph.graph.node(node).unwrap().values["parameters"]["calibrated_trace"];
+        assert_eq!(trace["target"], target);
+        assert_eq!(trace["calibration"]["font_units_per_pixel"], 2.0);
+        assert!(
+            trace["image_sha256"]
+                .as_str()
+                .unwrap()
+                .starts_with("sha256:")
+        );
+        let mut mismatched_retry = request.clone();
+        mismatched_retry["calibration"]["font_x_at_left"] = json!(10.0);
+        assert_eq!(
+            call(&mut app, "nodes_trace", mismatched_retry.clone())["ok"],
+            false
+        );
+        let replay = call(&mut app, "nodes_trace", request.clone());
+        assert_eq!(replay["replayed"], true, "{replay}");
+        assert_eq!(replay["handle"], traced["handle"]);
+        let run = call(
+            &mut app,
+            "nodes_run",
+            json!({
+                "expected_document_epoch":epoch,
+                "guard":{"identity":graph.identity,"semantic_revision":graph.semantic_revision,
+                    "semantic_hash":graph.semantic_hash},
+                "actor":"trace-test","operation_key":"run-one","source":0,"glyphs":["A"]
+            }),
+        );
+        assert_eq!(run["ok"], true, "{run}");
+        let handle = run["run"]["receipt"]["handle"].clone();
+        let status_request =
+            json!({"expected_document_epoch":epoch,"identity":graph.identity,"handle":handle});
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            let status = call(&mut app, "nodes_status", status_request.clone());
+            match status["run"]["status"].as_str() {
+                Some("completed") => break,
+                Some("queued" | "running") => {
+                    assert!(Instant::now() < deadline, "{status}");
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                _ => panic!("{status}"),
+            }
+        }
+        let original = call(
+            &mut app,
+            "nodes_image",
+            json!({
+                "expected_document_epoch":epoch,"identity":graph.identity,"handle":handle,"branch":"original"
+            }),
+        );
+        let changed = call(
+            &mut app,
+            "nodes_image",
+            json!({
+                "expected_document_epoch":epoch,"identity":graph.identity,"handle":handle,"branch":"changed"
+            }),
+        );
+        assert_eq!(original["ok"], true, "{original}");
+        assert_eq!(changed["ok"], true, "{changed}");
+        assert_eq!(original["recipe_sha256"], changed["recipe_sha256"]);
+        assert_ne!(original["font_sha256"], changed["font_sha256"]);
+        assert_eq!(
+            app.font.project.capture_document_layer(&address).unwrap(),
+            before
+        );
+        let apply = call(
+            &mut app,
+            "nodes_apply",
+            json!({
+                "expected_document_epoch":epoch,"identity":graph.identity,"handle":handle,
+                "actor":"trace-test","operation_key":"apply-one","authorization":"user-approved"
+            }),
+        );
+        assert_eq!(apply["ok"], true, "{apply}");
+        let after = app.font.project.capture_document_layer(&address).unwrap();
+        assert_ne!(after, before);
+        assert_eq!(
+            after.view().width(),
+            before.view().width(),
+            "calibrated replacement must preserve the captured advance"
+        );
+        assert_eq!(
+            app.font
+                .project
+                .capture_document_layer(&green_address)
+                .unwrap(),
+            green
+        );
+        app.mode = crate::application::workspace::Mode::Nodes;
+        app.undo_active_edit(false);
+        assert_eq!(
+            app.font.project.capture_document_layer(&address).unwrap(),
+            before
+        );
+        app.undo_active_edit(true);
+        assert_eq!(
+            app.font.project.capture_document_layer(&address).unwrap(),
+            after
+        );
+        assert_eq!(
+            call(&mut app, "nodes_trace_release", trace_status_request)["ok"],
+            true
+        );
+        let released_replay = call(&mut app, "nodes_trace", request);
+        assert_eq!(released_replay["phase"], "released");
+        assert_eq!(released_replay["replayed"], true);
+        assert_eq!(call(&mut app, "nodes_trace", mismatched_retry)["ok"], false);
     }
 
     fn check_node_commands(generate_geometry: bool) {

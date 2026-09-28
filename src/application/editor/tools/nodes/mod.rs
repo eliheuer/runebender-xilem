@@ -14,6 +14,8 @@ pub(crate) mod controls;
 #[cfg(unix)]
 pub(crate) mod execution;
 #[cfg(unix)]
+mod trace;
+#[cfg(unix)]
 pub(crate) mod workspace;
 
 use std::collections::BTreeMap;
