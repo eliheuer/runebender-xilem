@@ -9,6 +9,7 @@ use crate::application::view::theme::Palette;
 use crate::application::view::{label, recipes};
 use crate::application::workspace::Workspace;
 use masonry::layout::Length;
+use masonry::properties::LineBreaking;
 use xilem::WidgetView;
 use xilem::style::Style;
 
@@ -86,6 +87,12 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         }),
                     ),
                 )
+            }),
+            (!app.note.is_empty()).then(|| {
+                label(format!("Brush status: {}", app.note))
+                    .text_size(TextSize::Caption.px())
+                    .line_break_mode(LineBreaking::WordWrap)
+                    .color(pal.text)
             }),
             retained.map(|trace| {
                 label(format!(
