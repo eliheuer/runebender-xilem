@@ -58,7 +58,7 @@ Source checkout HEAD a6375df8e82ac38f118baf12eb3aba628c1899e5 has unrelated unco
 Prioritize a font-unit brush sketch layer, erase/clear, and deterministic Trace-to-draft in the native editor, then restored local-model drafting with verified calibration.
 Sketch input expresses Eli's intended construction; Rubik is optional supporting reference, not a skeleton to copy mechanically.
 Do not port old automatic blue grading or direct source installation; use current detached candidate review and explicit Apply/Undo.
-- [ ] S1. Restore separate native brush sketch input with font-unit widths, erase/clear and stable glyph/viewport placement; no outline mutation while drawing.
+- [x] S1. Restore separate native brush sketch input with font-unit widths, erase/clear and stable glyph/viewport placement; no outline mutation while drawing.
 - [ ] S2. Connect the actual sketch to deterministic calibrated tracing and existing staged candidate review; verify Apply/Undo and protected grades.
 - [ ] S3. Fix and verify the local runner's placement before enabling Draft with Virtua; reproduce a known sketch control before judging new Arabic generation.
 Confirmed X2 defect: installed img2bez defaults to canvas fitting and ignores --lsb in that mode, but the runner passes ink-box placement arguments without --fit-source ink.
@@ -615,3 +615,14 @@ Browser wasm check now passes with no version changes.
 A locked release browser build is running serially with log /private/tmp/runebender-kaf-trial-sjiv0m10/experiment/browser-build.log; wait before any other Cargo command or browser smoke test.
 Remaining promotion gates: browser build/smoke, final native build/theme capture, retained executable, coherent commits, fast-forward main preserving icon hash, push verification and scoped cargo/worktree cleanup.
 No actual post-calibration model inference has run and local Draft remains unavailable in the Brush UI.
+
+### Validated native testing handoff
+Implementation committed at 2207f33; calibrated model-input boundary at 27aba5d.
+Locked browser release build passed in 6m26s; existing headless browser quality suite passed at DPR 1 (120 frames, median 5.2ms, p95 8.1ms locally).
+Other browser densities were not rerun; no foreground native pointer, IME or GPU certification is claimed.
+Final native build and all-target Clippy with warnings denied pass; final Gray/Light captures confirm all brush presets and actions fit the inspector.
+Retained executable: /private/tmp/runebender-kaf-trial-sjiv0m10/runebender-tested, with exact SHA-256 and implementation commit in tested-build.json.
+Scratch font, proofs, rejected candidate and calibration diagnosis remain in the same review packet.
+S1 is complete under automated geometry/event checks and headless layout evidence; S2/S3 and visual acceptance remain open for the hands-on trial and real calibrated model control.
+The font is not complete, and local Draft/cloud/optical generation is not advertised as completed.
+Proceed with the authorized fast-forward main promotion and push, then scoped cleanup and pause for Eli's testing feedback.
