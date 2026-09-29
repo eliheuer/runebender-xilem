@@ -180,7 +180,8 @@ Trusted local Python is not an OS sandbox; do not imply otherwise.
 
 - [ ] H1. Complete the end-to-end extension acceptance: one shape generator and one model node use supported interfaces with preview, cancellation, apply, and undo.
 - [ ] H2. Run formatting, copyright, strict Clippy, docs, native tests, release build, advisories, and no-default-features library checks as applicable.
-- [ ] H3. Run browser build and smoke checks when shared source changes affect it; inspect Gray and Light headless captures when UI changes.
+- [ ] H3. Run browser build and smoke checks when shared source changes affect it; inspect headless captures in the default theme (currently Gray) when UI changes.
+  Check other themes when working on themes or when the user explicitly requests them.
 - [ ] H4. Update maintained architecture, agent/MCP, workflow, and limitations guidance to match implemented behavior.
   Website changes must be narrowly scoped to this architecture pass and coordinated with its checkout.
 - [ ] H5. Review the complete integration diff, report exact commits and remaining validation limits, and disable the recurring coordinator.

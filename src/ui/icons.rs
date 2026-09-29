@@ -144,7 +144,14 @@ mod tests {
         assert!(!is_inked(invert, 11.0, 8.0));
 
         assert!(is_inked(&icons["sidebar-open"], 6.0, 8.0));
-        assert!(is_inked(&icons["sidebar-closed"], 3.0, 8.0));
+        assert!(is_inked(&icons["sidebar-closed"], 4.25, 8.0));
+        for name in ["sidebar-open", "sidebar-closed"] {
+            let panel = &icons[name];
+            assert!(is_inked(panel, 1.5, 8.0), "{name} includes its frame");
+            assert!(is_inked(panel, 8.0, 2.5), "{name} includes its top edge");
+            assert!(!is_inked(panel, 11.0, 8.0), "{name} has an open interior");
+            assert!(!is_inked(panel, 1.0, 2.0), "{name} has rounded corners");
+        }
 
         let dot = &icons["coordinate-dot"];
         assert!(is_inked(dot, 8.0, 1.2));

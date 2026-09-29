@@ -35,7 +35,6 @@ pub(crate) struct IconWidget {
     hover_bg: Color,
     rail: Option<(Color, Color, f64)>,
     icon_size: Option<f64>,
-    frame: Option<(Color, Color)>,
     tile_size: f64,
     focus_target: Option<Arc<Mutex<Option<WidgetId>>>>,
     size: Size,
@@ -69,18 +68,6 @@ impl Widget for IconWidget {
         painter: &mut Painter<'_>,
     ) {
         let rect = self.size.to_rect();
-        if let Some((background, border)) = self.frame {
-            let face = rect.inset(0.5);
-            let background = if self.active {
-                self.active_bg
-            } else if self.hovered {
-                self.hover_bg
-            } else {
-                background
-            };
-            painter.fill(face, background).draw();
-            painter.stroke(face, &Stroke::new(1.0), border).draw();
-        }
         if let Some((background, border, _)) = self.rail {
             // Open at the bottom when selected, joining the panel below.
             let r = RAIL_TAB_RADIUS;
@@ -103,11 +90,11 @@ impl Widget for IconWidget {
             }
         }
 
-        if self.rail.is_none() && self.frame.is_none() && self.active {
+        if self.rail.is_none() && self.active {
             painter
                 .fill(rect.to_rounded_rect(6.0), self.active_bg)
                 .draw();
-        } else if self.rail.is_none() && self.frame.is_none() && self.hovered {
+        } else if self.rail.is_none() && self.hovered {
             painter
                 .fill(rect.to_rounded_rect(6.0), self.hover_bg)
                 .draw();
@@ -206,7 +193,6 @@ pub(crate) struct IconView<F> {
     hover_bg: Color,
     rail: Option<(Color, Color, f64)>,
     icon_size: Option<f64>,
-    frame: Option<(Color, Color)>,
     tile_size: f64,
     focus_target: Option<Arc<Mutex<Option<WidgetId>>>>,
     on_click: F,
@@ -231,7 +217,6 @@ pub(crate) fn icon_button<State: 'static, F: Fn(&mut State) + 'static>(
         hover_bg,
         rail: None,
         icon_size: None,
-        frame: None,
         tile_size: TILE,
         focus_target: None,
         on_click,
@@ -259,7 +244,6 @@ pub(crate) fn named_icon_button<State: 'static, F: Fn(&mut State) + 'static>(
         hover_bg,
         rail: None,
         icon_size: None,
-        frame: None,
         tile_size: TILE,
         focus_target: None,
         on_click,
@@ -271,12 +255,6 @@ impl<F> IconView<F> {
     /// Rail tabs continue to use the rail's own icon-size token.
     pub(crate) fn icon_size(mut self, size: f64) -> Self {
         self.icon_size = Some(size.max(0.0));
-        self
-    }
-
-    /// Give the icon a square keylined control face.
-    pub(crate) fn framed(mut self, background: Color, border: Color) -> Self {
-        self.frame = Some((background, border));
         self
     }
 
@@ -315,7 +293,6 @@ impl<State: 'static, F: Fn(&mut State) + 'static> View<State, (), ViewCtx> for I
             hover_bg: self.hover_bg,
             rail: self.rail,
             icon_size: self.icon_size,
-            frame: self.frame,
             tile_size: self.tile_size,
             focus_target: self.focus_target.clone(),
             size: Size::ZERO,
@@ -340,14 +317,12 @@ impl<State: 'static, F: Fn(&mut State) + 'static> View<State, (), ViewCtx> for I
             || self.active_bg != prev.active_bg
             || self.hover_bg != prev.hover_bg
             || self.icon_size != prev.icon_size
-            || self.frame != prev.frame
             || self.tile_size != prev.tile_size
         {
             el.widget.icon = self.icon;
             el.widget.active = self.active;
             el.widget.rail = self.rail;
             el.widget.icon_size = self.icon_size;
-            el.widget.frame = self.frame;
             el.widget.tile_size = self.tile_size;
             el.widget.fg = self.fg;
             el.widget.fg_active = self.fg_active;
@@ -401,7 +376,6 @@ mod tests {
             hover_bg: Color::TRANSPARENT,
             rail: None,
             icon_size: None,
-            frame: None,
             tile_size: TILE,
             focus_target: Some(target),
             size: Size::ZERO,

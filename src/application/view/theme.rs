@@ -153,18 +153,16 @@ impl Palette {
 
     /// The ink for filled type and compact marks inside the editing workspace.
     ///
-    /// Panel keylines remain the darkest neutral in Gray. Filled glyphs and
-    /// proof type use the theme's existing preview-fill neutral instead of
-    /// competing with the structure around them.
+    /// Filled proof type uses the theme's preview-fill neutral, which remains
+    /// quieter than Gray's shared dark ink for keylines and controls.
     pub(crate) fn editor_ink(&self) -> Color {
         self.role("previewFill")
     }
 
-    /// The slightly stronger neutral for an active compact editor control.
+    /// The neutral for a compact editor control.
     ///
-    /// This is one step quieter than a structural outline and one step
-    /// stronger than filled proof type, so state remains visible without an
-    /// isolated near-black pupil or picker centre.
+    /// Gray keeps controls quieter than structural outlines and darker than
+    /// filled proof type.
     pub(crate) fn editor_control_ink(&self) -> Color {
         self.text_muted
     }

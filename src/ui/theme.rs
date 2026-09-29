@@ -782,6 +782,20 @@ mod tests {
     fn built_in_themes_have_complete_color_references() {
         for id in ["dark", "gray", "light"] {
             load_theme_checked(id).unwrap_or_else(|error| panic!("{error}"));
+            let file: toml::Value = toml::from_str(builtin_theme_source(id).unwrap()).unwrap();
+            let base = file["baseUi"].as_table().unwrap();
+            assert_eq!(base.len(), 10, "{id} has ten Base UI stops");
+            for step in 1..=10 {
+                assert!(base.contains_key(&format!("{step:02}")));
+            }
+            for section in ["surfaces", "text"] {
+                for (role, value) in file[section].as_table().unwrap() {
+                    assert!(
+                        value.as_str().unwrap().starts_with("baseUi."),
+                        "{id}.{section}.{role} must use the Base UI scale"
+                    );
+                }
+            }
         }
     }
 
@@ -791,7 +805,7 @@ mod tests {
         let mut file: toml::Value = toml::from_str(source).expect("built-in TOML");
         file["id"] = "custom".into();
         file["name"] = "Custom".into();
-        file["baseUi"]["20"] = "#AABBCC".into();
+        file["baseUi"]["08"] = "#AABBCC".into();
         file["glyphGrid"]["hues"]["red"]["hue"] = 200.into();
         let theme =
             parse_theme(&toml::to_string(&file).expect("custom TOML")).expect("custom theme");
@@ -909,7 +923,7 @@ mod tests {
         assert_eq!(hex(dark.role("pointSmooth")), "#4b91d1");
         assert_eq!(hex(dark.role("pointOffcurve")), "#876fd4");
         assert_eq!(hex(dark.role("pointSelected")), "#fde895");
-        assert_eq!(hex(dark.role("pathStroke")), "#b1b1b1");
+        assert_eq!(hex(dark.role("pathStroke")), "#c1c1c1");
         assert_eq!(hex(dark.role("gridSelected")), "#c1c1c1");
         assert_eq!(hex(dark.role("continuityG2")), "#4db2a7");
     }

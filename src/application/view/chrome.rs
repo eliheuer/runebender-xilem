@@ -421,7 +421,7 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     ))
 }
 
-/// One compact, pixel-stable control shared by the five overview footer actions.
+/// One compact control using the same ink and rounded treatment as the sidebar toggle.
 fn overview_status_button<F>(
     pal: &Palette,
     label: &'static str,
@@ -437,13 +437,12 @@ where
         icon,
         active,
         pal.editor_control_ink(),
-        pal.selected_ink(),
-        pal.selected_bg(),
+        pal.editor_control_ink(),
+        pal.control,
         pal.control,
         on_click,
     )
     .icon_size(STATUS_ICON_SIZE)
-    .framed(pal.panel, pal.outline)
     .tile_size(STATUS_ICON_SIZE)
 }
 
@@ -467,7 +466,7 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
                                 "eye-closed"
                             },
                             app.preview_visible,
-                            pal.editor_ink(),
+                            pal.editor_control_ink(),
                             pal.editor_control_ink(),
                             Color::TRANSPARENT,
                             Color::TRANSPARENT,
@@ -479,7 +478,7 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
                             "Invert proof",
                             "invert",
                             app.preview_invert,
-                            pal.editor_ink(),
+                            pal.editor_control_ink(),
                             pal.editor_control_ink(),
                             Color::TRANSPARENT,
                             Color::TRANSPARENT,
@@ -536,6 +535,5 @@ fn sidebar_toggle(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         |app: &mut Workspace| app.left_collapsed = !app.left_collapsed,
     )
     .icon_size(STATUS_ICON_SIZE)
-    .framed(pal.panel, pal.outline)
     .tile_size(STATUS_ICON_SIZE)
 }

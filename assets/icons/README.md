@@ -7,6 +7,9 @@ The existing icon outlines stay on their original coordinates, with the baseline
 The glyph's advance width and height define its display frame, so keep the outline inside that frame.
 The `plus`, `minus`, `grid`, `list`, `eye-*`, `invert`, and `sidebar-*` glyphs are the small status and navigation controls.
 Their 768-unit frames correspond to 16 logical pixels in the footer.
+The `sidebar-open` and `sidebar-closed` glyphs each include their complete rounded frame and state indicator.
+Their 72-unit outline thickness corresponds to 1.5 logical pixels, matching the neighboring proof controls.
+The `plus`, `minus`, `grid`, and `list` glyphs use the same thickness and rounded corners or line ends.
 Disclosure markers, menu symbols, the coordinate picker grid and dots, and the node resize grip also live here.
 Colors and placement remain in the application, while each icon's shape comes from its UFO glyph.
 

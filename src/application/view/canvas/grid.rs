@@ -486,15 +486,18 @@ impl Widget for GridWidget {
         let pal = &self.palette;
         painter.fill_rect(self.size.to_rect(), pal.grid_bg());
 
-        // Keep cell paint inside the fitted-row area without clipping the
-        // grid's own ground. A widget-level clip also clipped that ground,
+        // Keep cell paint inside the fitted-row area, including the last
+        // row's shadow, without clipping the grid's own ground.
+        // A widget-level clip also clipped that ground,
         // letting the parent panel show as mismatched strips above and below.
         let inset = self.inset_y();
         painter.push_fill_clip(Rect::new(
             0.0,
             inset,
             self.size.width,
-            (self.size.height - inset).max(inset),
+            (self.size.height - inset + GRID_CELL_SELECTED_SHADOW_OFFSET)
+                .min(self.size.height)
+                .max(inset),
         ));
 
         let pitch = self.row_pitch();
@@ -1117,6 +1120,58 @@ mod thumbnail_tests {
             harness.pop_action::<GridEvent>().map(|pair| pair.0),
             Some(GridEvent::Selected { index: 50, .. })
         ));
+    }
+
+    #[test]
+    fn bottom_row_shadows_match_the_rows_above_in_both_grids() {
+        use masonry::core::NewWidget;
+        use masonry_testing::TestHarness;
+
+        for captions in [false, true] {
+            for selected in [false, true] {
+                let mut grid = rail();
+                grid.metrics.captions_below = captions;
+                if captions {
+                    grid.metrics.cell = 100.0;
+                    grid.metrics.padding = 8.0;
+                    grid.metrics.padding_y = 8.0;
+                }
+                let last_row = grid.visible_rows() - 1;
+                if selected {
+                    grid.multi = Arc::new(std::collections::HashSet::from([
+                        grid.packed()[0][0].0,
+                        grid.packed()[last_row][0].0,
+                    ]));
+                }
+                let pixel = |value| {
+                    u32::try_from(round_units(value)).expect("sample lies inside the test image")
+                };
+                let x = pixel(grid.inset_x() + grid.cell_width(1) / 2.0);
+                let first_bottom = pixel(grid.inset_y() + grid.cell_height());
+                let last_bottom =
+                    pixel(grid.inset_y() + last_row as f64 * grid.row_pitch() + grid.cell_height());
+                let offset = pixel(if selected {
+                    GRID_CELL_SELECTED_SHADOW_OFFSET
+                } else {
+                    GRID_CELL_SHADOW_OFFSET
+                });
+                let mut harness = TestHarness::create_with_size(
+                    crate::application::view::default_property_set(),
+                    NewWidget::new(grid),
+                    (246, 538),
+                );
+                let rendered = harness.render();
+                for dy in 0..offset {
+                    let shadow = rendered.get_pixel(x, first_bottom + dy);
+                    assert_ne!(shadow, rendered.get_pixel(1, 1));
+                    assert_eq!(
+                        rendered.get_pixel(x, last_bottom + dy),
+                        shadow,
+                        "bottom shadow differs: captions={captions}, selected={selected}, dy={dy}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

@@ -74,7 +74,8 @@ Read [the theme guide](https://runebender.org/docs/themes.html) before changing 
 Views read workspace state; commands own intent; the font engine owns font behavior.
 
 Use the headless screenshot path for visual checks.
-Inspect Gray and Light when UI code changes, and wait for idle auto-hide before accepting a capture.
+For ordinary UI work, inspect only the default theme (currently Gray), and wait for idle auto-hide before accepting a capture.
+Check other themes when working on themes or when the user explicitly requests them.
 A headless image does not prove native pointer, IME, accessibility, or GPU behavior.
 Prefer headless validation; launch a foreground GUI only when the task requires interactive evidence and the user has agreed to the interruption.
 
