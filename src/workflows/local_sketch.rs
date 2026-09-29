@@ -340,6 +340,7 @@ pub fn run(
         return Err("local sketch returned no editable contours".into());
     }
     crate::outline::drawing::validate(&contours)?;
+    check_sketch_fidelity(request, &contours)?;
     Ok(SketchCandidate {
         runtime: current,
         image_sha256: format!("sha256:{:x}", Sha256::digest(&request.png)),
@@ -359,6 +360,88 @@ pub fn run(
 
 struct ValidatedPlacement {
     image_size: [u32; 2],
+}
+
+// A coarse geometric gate, not an optical-quality score. The original calibrated ink is the
+// authority: matching a remembered letter's bounding box is insufficient. Sample the whole
+// canvas so extra ink, missing strokes and holes all contribute to the same union.
+fn check_sketch_fidelity(
+    request: &SketchRequest,
+    contours: &[DrawingContour],
+) -> Result<(), String> {
+    use crate::outline::path::hyper_model::{Contour, ContourPoint, PointType};
+    use kurbo::Shape as _;
+
+    let mut path = kurbo::BezPath::new();
+    for contour in contours {
+        let contour = Contour {
+            points: contour
+                .points
+                .iter()
+                .map(|point| ContourPoint {
+                    x: point.x,
+                    y: point.y,
+                    smooth: point.smooth,
+                    point_type: match point.kind {
+                        DrawingPointType::Move => PointType::Move,
+                        DrawingPointType::Line => PointType::Line,
+                        DrawingPointType::Curve => PointType::Curve,
+                        DrawingPointType::Qcurve => PointType::QCurve,
+                        DrawingPointType::Offcurve => PointType::OffCurve,
+                    },
+                })
+                .collect(),
+        };
+        crate::outline::path::Path::from_contour(&contour).append_to_bezpath(&mut path);
+    }
+    let image = image::load_from_memory_with_format(&request.png, image::ImageFormat::Png)
+        .map_err(|error| format!("sketch fidelity PNG: {error}"))?
+        .to_luma8();
+    let calibration = request.placement.calibration;
+    let to_font = |x: f64, y: f64| {
+        kurbo::Point::new(
+            calibration.font_x_at_left + x * calibration.font_units_per_pixel,
+            calibration.font_baseline_y
+                + (calibration.pixel_baseline_y - y) * calibration.font_units_per_pixel,
+        )
+    };
+    let canvas = kurbo::Rect::from_points(
+        to_font(0.0, 0.0),
+        to_font(f64::from(image.width()), f64::from(image.height())),
+    );
+    let bounds = path.bounding_box();
+    if bounds.x0 < canvas.x0
+        || bounds.x1 > canvas.x1
+        || bounds.y0 < canvas.y0
+        || bounds.y1 > canvas.y1
+    {
+        return Err("Virtua moved the drawing outside your sketch canvas. Your ink is unchanged; use Trace to draft to keep its form.".into());
+    }
+    let mut intersection = 0_u32;
+    let mut union = 0_u32;
+    // At native resolution this is one sample per eight font units. Small fixture images use
+    // every pixel; production inputs remain bounded to about 16,384 winding evaluations.
+    let step = image.width().max(image.height()).div_ceil(128).max(1);
+    for y in (0..image.height()).step_by(step as usize) {
+        for x in (0..image.width()).step_by(step as usize) {
+            let x = (x + step / 2).min(image.width() - 1);
+            let y = (y + step / 2).min(image.height() - 1);
+            let ink = image.get_pixel(x, y)[0] < 128;
+            let candidate = path.winding(to_font(f64::from(x) + 0.5, f64::from(y) + 0.5)) != 0;
+            intersection += u32::from(ink && candidate);
+            union += u32::from(ink || candidate);
+        }
+    }
+    let overlap = f64::from(intersection) / f64::from(union.max(1));
+    // Deliberately allow local cleanup and modest weight changes. This conservative floor is
+    // experimental, not a calibrated type-design acceptance criterion or human approval.
+    if overlap < 0.60 {
+        return Err(format!(
+            "Virtua changed your sketch too much ({:.0}% shape overlap). Your ink is unchanged; use Trace to draft to keep its form.",
+            overlap * 100.0
+        ));
+    }
+    Ok(())
 }
 
 struct ModelInput {
@@ -676,12 +759,12 @@ mod tests {
         glyph.codepoints.insert('A');
         glyph.contours.push(norad::Contour::new(
             vec![
-                norad::ContourPoint::new(20.0, 0.0, norad::PointType::Line, false, None, None),
-                norad::ContourPoint::new(80.0, 0.0, norad::PointType::Line, false, None, None),
-                norad::ContourPoint::new(90.0, 20.0, norad::PointType::OffCurve, false, None, None),
-                norad::ContourPoint::new(90.0, 80.0, norad::PointType::OffCurve, false, None, None),
-                norad::ContourPoint::new(80.0, 100.0, norad::PointType::Curve, false, None, None),
-                norad::ContourPoint::new(20.0, 100.0, norad::PointType::Line, false, None, None),
+                norad::ContourPoint::new(20.0, 8.0, norad::PointType::Line, false, None, None),
+                norad::ContourPoint::new(36.0, 8.0, norad::PointType::Line, false, None, None),
+                norad::ContourPoint::new(38.0, 12.0, norad::PointType::OffCurve, false, None, None),
+                norad::ContourPoint::new(38.0, 24.0, norad::PointType::OffCurve, false, None, None),
+                norad::ContourPoint::new(36.0, 28.0, norad::PointType::Curve, false, None, None),
+                norad::ContourPoint::new(20.0, 28.0, norad::PointType::Line, false, None, None),
             ],
             None,
         ));
@@ -749,6 +832,40 @@ mod tests {
                 .any(|point| point.kind == DrawingPointType::Curve)
         );
         assert_eq!(candidate.contours[0].points[0].x, 20.0);
+    }
+
+    #[test]
+    fn rejects_changed_form_even_when_candidate_matches_sketch_bounds() {
+        let (_root, _runtime, request) = fixture(&glif_result());
+        let outline = |positions: &[(f64, f64)]| DrawingContour {
+            points: positions
+                .iter()
+                .map(|&(x, y)| DrawingPoint {
+                    x,
+                    y,
+                    kind: DrawingPointType::Line,
+                    smooth: false,
+                })
+                .collect(),
+        };
+        let faithful = outline(&[(18.0, 8.0), (38.0, 8.0), (38.0, 28.0), (18.0, 28.0)]);
+        assert!(check_sketch_fidelity(&request, &[faithful]).is_ok());
+        let substituted = outline(&[
+            (18.0, 8.0),
+            (38.0, 8.0),
+            (38.0, 28.0),
+            (34.0, 28.0),
+            (34.0, 12.0),
+            (18.0, 12.0),
+        ]);
+        let error = check_sketch_fidelity(&request, &[substituted]).unwrap_err();
+        assert!(error.contains("changed your sketch too much"), "{error}");
+        let outside = outline(&[(0.0, 8.0), (38.0, 8.0), (38.0, 28.0), (0.0, 28.0)]);
+        assert!(
+            check_sketch_fidelity(&request, &[outside])
+                .unwrap_err()
+                .contains("outside")
+        );
     }
 
     #[test]

@@ -646,6 +646,37 @@ Use main and VIRTUA-REGULAR-TESTING.md for the next hands-on session; remaining 
 
 ## Local Virtua hookup evidence (interactive follow-up)
 
+### Sketch-controlled refinement priority (2026-09-29)
+
+Eli clarified that the sketch supplies the intended form; the model should refine its drawing rather than invent a replacement letter.
+The img2bez cubic trace remains the usable geometry baseline, including extrema, inflections and curve controls.
+Current clean1 inference generates a whole outline autoregressively; it does not predict bounded corrections to the supplied contour.
+Green reference geometry is recorded for guards and review but is not an input supported by this checkpoint.
+FontGarden's `notes/model-issues-and-plan.md`, especially “teach the VIRTUA STYLE, not letterforms”, already describes identity override and insufficiently Virtua-styled training targets.
+
+Matched scratch control: `/private/tmp/kaf-sketch-web-shape.png`, SHA-256 `c9e39afd33562eb249903d21e3982b2eacddd4316aab6341d2f78ffe7b130248`.
+Both runs use copied clean1, kaf-ar.medi, U+0643, Regular, width808, target-height703, lsb79, y-offset-10, k1, temperature0 and seed0.
+Identity1 returned zero cubic segments and raster ink IoU0.1839 against the calibrated img2bez trace.
+Identity0 returned one cubic segment and IoU0.2675; neither demonstrates usable sketch-preserving refinement.
+Results and logs are `/private/tmp/kaf-clean1-identity-control.{json,log}` and `/private/tmp/kaf-clean1-faithful.{json,log}`; measurement script is `/private/tmp/measure-virtua-cleanup.py`.
+These are synthetic scratch controls, not Eli's exact live brush bitmap and not human visual approval.
+
+Native initialization now defaults to identity0.
+The runtime rejects candidates leaving the calibrated canvas or falling below a conservative 60% coarse raster ink overlap before publishing or installing them.
+This threshold is experimental, permits modest local edits, and does not establish topology, optical quality or stylistic correctness.
+Failure leaves the brush and foreground unchanged; Trace to draft remains the explicit non-model alternative.
+No model weights or training data were changed, no source font was saved, and no cloud call was made.
+
+Next bounded experiment: retain the exact designer sketch, calibrated cubic baseline and generated intermediate together; compare them at identical placement.
+Then assemble rough-to-approved pairs from green Virtua outlines, withholding complete glyphs for evaluation and preserving the rough input's proportions and stroke connectivity.
+Investigate predicting constrained local contour edits instead of unconstrained whole-letter replacement; this is a proposal, not an implemented model capability.
+Before training, verify that simulated rough sketches resemble Eli's brush input and that their targets really express Virtua's terminal, chamfer, curve and weight conventions.
+Success requires preserving the intended form while reducing measured manual correction on held-out sketches, followed by Eli's visual review.
+The useful Arabic refinement gate remains open; protecting against failed output is not completion of that gate.
+Validation: seven local_sketch library tests passed with zero ignored, including same-bounds wrong-form rejection and retained cubic controls.
+Native bin/lib Clippy passed with warnings denied, and the native debug executable rebuilt successfully.
+Formatting and diff whitespace checks passed; no live Apply/Undo, exact user-sketch experiment or browser smoke was performed for this patch.
+
 User-selected library: `~/runebender/models`, with copied `virtua-12m-v1` config, vocabulary and weights.
 The source checkpoint remains `/Users/eli/GH/repos/font-garden-lab/runs/clean1`; Web's `runs/sketch1` alias resolves there.
 The copied weights SHA-256 is `4ba0ceaf34da472f73e9863b97f64170ab7bac3d0c30cbe1bfe5889e008f28f5`.
