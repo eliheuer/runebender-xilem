@@ -6,15 +6,15 @@ The Brush panel offers deterministic img2bez tracing and **Draft with Virtua** u
 The model library is `~/runebender/models`; see [Local models](LOCAL-MODELS.md) for package and runtime setup.
 Cloud generation and autonomous optical refinement remain pending.
 
-## Start the scratch session
+## Open Virtua Grotesk
 
-The coordinator retains the tested native executable and copied font in `/private/tmp/runebender-kaf-trial-sjiv0m10/` before cleaning Cargo artifacts.
-These are temporary local testing files, not release assets.
-Open `Start Virtua Trial.command` in that folder when ready for a native window, or use:
+Open the native Runebender editor on `~/GH/repos/virtua-grotesk/sources/VirtuaGrotesk.designspace`.
+Choose the Regular source and the target glyph in the app.
+For the first Arabic test, use the text `مكتبة` and select its medial kaf occurrence in Text before switching to Brush.
+The copied model is in `~/runebender/models/virtua-12m-v1` and appears in the Brush panel as **Virtua 12M v1**.
+The font source in this path is your working project; do not save an experimental candidate unless you decide to keep it.
 
-```sh
-RUNEBENDER_TOOL=text RUNEBENDER_GLYPH=kaf-ar.medi RUNEBENDER_TEXT='مكتبة' RUNEBENDER_TEXT_SELECTION=2:4 /private/tmp/runebender-kaf-trial-sjiv0m10/runebender-virtua /private/tmp/runebender-kaf-trial-sjiv0m10/VirtuaGrotesk-Regular.ufo
-```
+The coordinator's earlier scratch trial and retained model evidence remain in `/private/tmp/runebender-kaf-trial-sjiv0m10/` for diagnosis, but that folder is not needed to use the editor.
 
 ## Try one glyph
 
@@ -30,7 +30,7 @@ RUNEBENDER_TOOL=text RUNEBENDER_GLYPH=kaf-ar.medi RUNEBENDER_TEXT='مكتبة' R
    Inspect the Arabic word and outline before selecting the changed proof or Python node and choosing **Apply**.
 6. Try Cmd+Z and Cmd+Shift+Z in Nodes to verify Undo and Redo.
 
-If an existing comparison contains the default Latin proof, reopen the scratch font and select the Arabic occurrence before creating another graph.
+If an existing comparison contains the default Latin proof, reselect the Arabic occurrence in Text before creating another graph.
 The current UI rejects mismatched proof context rather than silently comparing the wrong text.
 Temporary ink is not saved, and switching glyphs clears it.
 Keep ink away from the sketch image edge; clipped ink is rejected.

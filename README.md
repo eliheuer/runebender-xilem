@@ -15,7 +15,7 @@ For documentation and installation instructions, see [runebender.org](https://ru
 
 The native Brush panel can draft with an installed Virtua model and compare the result before applying it.
 Put compatible model packages in `~/runebender/models`; see [Local models](LOCAL-MODELS.md) for the package layout and runtime requirements.
-Use the [scratch-font testing guide](VIRTUA-REGULAR-TESTING.md) for the first Arabic trial.
+Use the [Virtua testing guide](VIRTUA-REGULAR-TESTING.md) for the first Arabic trial.
 
 ## Persistent local chat
 
