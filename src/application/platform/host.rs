@@ -353,6 +353,8 @@ impl Workspace {
             nodes: nodes::NodesState::default(),
             #[cfg(unix)]
             live_nodes: None,
+            #[cfg(unix)]
+            live_nodes_pending: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             export_job: None,
             ai: local_ai::LocalAiState::default(),
             chat: chat::ChatState::default(),

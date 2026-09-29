@@ -36,20 +36,21 @@ fn installed_in_active_source(
 pub(crate) fn with_live<V: xilem::WidgetView<Workspace>>(
     view: V,
     pending: Option<Arc<AtomicBool>>,
-    live_nodes_running: bool,
+    live_nodes_pending: Arc<AtomicBool>,
 ) -> impl xilem::WidgetView<Workspace> + use<V> {
     xilem::core::fork(
         view,
         xilem::view::task_raw(
             move |proxy: xilem::core::MessageProxy<()>, _: &mut Workspace| {
                 let pending = pending.clone();
+                let live_nodes_pending = live_nodes_pending.clone();
                 async move {
                     loop {
                         tokio::time::sleep(std::time::Duration::from_millis(40)).await;
                         let has_request = pending
                             .as_ref()
                             .is_some_and(|pending| pending.load(Ordering::Acquire));
-                        if !(has_request || live_nodes_running) {
+                        if !(has_request || live_nodes_pending.load(Ordering::Acquire)) {
                             continue;
                         }
                         if proxy.message(()).is_err() {
@@ -67,6 +68,8 @@ pub(crate) fn with_live<V: xilem::WidgetView<Workspace>>(
                 if let Some(request) = request {
                     request.respond(|call| app.call_live(call));
                 }
+                app.live_nodes_pending
+                    .store(app.live_nodes_need_pump(), Ordering::Release);
             },
         ),
     )

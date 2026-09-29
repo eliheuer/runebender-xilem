@@ -297,6 +297,9 @@ pub(crate) struct Workspace {
     pub(crate) nodes: nodes::NodesState,
     #[cfg(unix)]
     pub(crate) live_nodes: Option<nodes::workspace::LiveNodesState>,
+    /// Shared wake flag for the long-lived live mailbox task while Nodes work is active.
+    #[cfg(unix)]
+    pub(crate) live_nodes_pending: Arc<std::sync::atomic::AtomicBool>,
     /// A font build running outside the UI thread.
     pub(crate) export_job: Option<export::ExportJob>,
     /// The Local AI panel: models, tasks, a run, proposals.

@@ -547,6 +547,47 @@ impl Workspace {
                 }
             }
         }
+        // The worker owns the canonical phase, while Brush retains a small presentation copy.
+        // Keep them in step during the ordinary background pump; otherwise Brush can say
+        // "queued" indefinitely even after the graph candidate has been published.
+        if let Some(brush) = self.sketch_trace.as_mut()
+            && brush.handle == trace.handle
+            && brush.identity == trace.intent.graph.identity
+        {
+            let phase = match trace.phase {
+                NodesTracePhase::Queued => "queued",
+                NodesTracePhase::Running => "running",
+                NodesTracePhase::Cancelling => "cancelling",
+                NodesTracePhase::Completed => "completed",
+                NodesTracePhase::Failed => "failed",
+                NodesTracePhase::Cancelled => "cancelled",
+                NodesTracePhase::Stale => "stale",
+                NodesTracePhase::Released => "released",
+            };
+            if brush.phase != phase {
+                brush.phase = phase.into();
+                self.note = match trace.phase {
+                    NodesTracePhase::Running => match brush.backend {
+                        crate::application::editor::tools::sketch::SketchBackend::Virtua => {
+                            "Virtua is generating a draft; this may take up to two minutes".into()
+                        }
+                        crate::application::editor::tools::sketch::SketchBackend::Trace => {
+                            "Tracing the sketch into a draft".into()
+                        }
+                    },
+                    NodesTracePhase::Completed => {
+                        "Draft ready for comparison; your font is unchanged".into()
+                    }
+                    NodesTracePhase::Failed => "Draft failed; see the error below".into(),
+                    NodesTracePhase::Stale => {
+                        "Draft stopped because the font or graph changed".into()
+                    }
+                    NodesTracePhase::Cancelled => "Draft cancelled; your font is unchanged".into(),
+                    _ => self.note.clone(),
+                };
+            }
+            brush.error.clone_from(&trace.error);
+        }
         state.trace = Some(trace);
     }
 }
@@ -1092,6 +1133,13 @@ mod tests {
                 mutation: None,
                 error: None,
             });
+            app.sketch_trace = Some(crate::application::editor::tools::sketch::SketchTraceUi {
+                handle: 1,
+                backend: crate::application::editor::tools::sketch::SketchBackend::Trace,
+                identity: graph.identity.clone(),
+                phase: "queued".into(),
+                error: None,
+            });
             let epoch = app.live.as_ref().unwrap().document_epoch().to_owned();
             let handle_arguments = json!({
                 "expected_document_epoch":epoch,
@@ -1121,6 +1169,7 @@ mod tests {
             );
             events.send(TraceEvent::Finished(Ok(trace.into()))).unwrap();
             app.poll_live_trace();
+            assert_eq!(app.sketch_trace.as_ref().unwrap().phase, "cancelled");
             assert_eq!(
                 app.live_nodes
                     .as_ref()

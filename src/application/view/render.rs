@@ -309,12 +309,16 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     // otherwise the macOS linker receives multi-megabyte symbol names.
     let content = content.boxed();
     #[cfg(unix)]
+    app.live_nodes_pending.store(
+        app.live_nodes_need_pump(),
+        std::sync::atomic::Ordering::Release,
+    );
     let content = live::with_live(
         content,
         app.live
             .as_ref()
             .map(runebender::automation::live_socket::Server::pending_signal),
-        app.live_nodes_need_pump(),
+        app.live_nodes_pending.clone(),
     );
     #[cfg(target_arch = "wasm32")]
     return content;
