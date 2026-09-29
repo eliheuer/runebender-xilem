@@ -91,7 +91,7 @@ where
         ),
     };
     xilem::view::zstack((
-        content,
+        content.alignment(UnitPoint::TOP_LEFT),
         sized_box(canvas(move |_: &mut State, _, scene, size| {
             use masonry::imaging::Painter;
             let mut painter = Painter::new(scene);
@@ -221,6 +221,7 @@ where
     B: WidgetView<State>,
 {
     flex_col((sections, preview.flex(1.0)))
+        .main_axis_alignment(xilem::view::MainAxisAlignment::Start)
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
         .gap(Space::None)
 }

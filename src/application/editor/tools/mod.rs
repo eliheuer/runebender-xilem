@@ -13,4 +13,5 @@ pub(crate) mod local_ai;
 pub(crate) mod metaballs;
 pub(crate) mod nodes;
 pub(crate) mod scripts;
+pub(crate) mod sketch;
 pub(crate) mod text;

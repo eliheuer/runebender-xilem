@@ -569,3 +569,49 @@ Sol delivered the private calibrated launcher and exact model-input provenance; 
 Coordinator corrected one doc-markdown lint; all-target Clippy with warnings denied, cargo fmt check and git diff check then passed.
 The adapter preserves the requested advance and rejects model vocabulary overflow instead of silent coordinate clamping.
 S3 remains unchecked until a real known-sketch control is tested; offline placement correctness does not establish generated drawing quality.
+
+### Testing handoff blockers and bounded follow-up
+Calibrated local input is committed at 27aba5d; it is offline-validated, not a new successful model trial.
+The native build passed, but Gray/Light screenshots still hid the top brush controls; alignment must be applied to inspector_stack in render.rs rather than the inner info panel.
+Coordinator owns that narrow correction and headless verification.
+Read-only handoff audit found the default Latin proof can hide the Arabic target change, and the brush UI lacks trace status/release needed for retry.
+Sol now owns only sketch.rs, panels/sketch.rs and narrowly required workspace/host state for guarded status/cancel/release and an actionable selected-Arabic-proof prerequisite.
+No new framework, model run, original source edit or foreground GUI is authorized by this assignment.
+Do not call the application ready for hands-on testing until those two blockers are resolved and checked.
+
+### Final state of this coordinator slice
+The inspector-stack alignment alone did not resolve clipping in the new Gray/Light screenshots.
+Coordinator found the edge-keyline ZStack wrapper centers overflowing content and changed its content alignment to TOP_LEFT; this final correction is not yet built or visually verified.
+The last build also encountered Sol's in-progress SketchTraceUi field; do not run another build until Sol signals a stable handoff.
+No Cargo job is active, Sol is the only active worker, and no additional assignment should be launched.
+The only completed commit in this slice is 27aba5d; brush UI and retry/proof guards remain uncommitted pending integrated validation.
+
+### Authorized final promotion and disk cleanup
+Eli authorizes committing, merging the validated work into main and pushing main when the current hands-on testing fixes are ready.
+This supersedes the earlier no-push/no-main/no-worktree-removal restriction for this final phase only.
+Finish active worker patches and integrated checks first; retain a runnable test binary outside cleaned target directories.
+Inventory each worktree from this effort, preserve unrelated changes and verify every retained commit is on main and pushed before removal.
+Main currently has an unrelated assets/icons/icons.ufo/glyphs/invert.glif edit; preserve it exactly.
+Use cargo clean for scoped build artifacts only after all builds stop; preserve source fonts, models, scratch review evidence and unrelated worktrees.
+Record final commit, remote synchronization, removed worktrees and measured disk recovery, then pause the coordinator for user testing.
+
+### Integrated testing controls and MCP corrections
+Sol delivered retained trace status/error, Check/Cancel/Release/Retry/Open comparison controls and strict selected-Arabic proof-context checks.
+Coordinator corrected a String error-type mismatch; all 6 brush tests and all 5 panel resize tests pass.
+All-target Clippy passes and native build succeeds.
+Gray/Light headless captures confirm top controls are visible after anchoring edge-keyline content; shortened preset labels address horizontal clipping, with refreshed captures pending.
+The full library run passed 635 tests and exposed two omitted nodes_trace registrations: strict socket epoch retention and effect metadata.
+Coordinator added trace/start/status/cancel/release registrations; all 75 automation tests now pass, including both failing regression cases.
+The native application suite is running serially; no worker remains active.
+VIRTUA-REGULAR-TESTING.md provides the scratch launch and manual review procedure with explicit limits: deterministic Trace is exposed, local Draft quality and controls remain pending.
+The original main icon edit has a pre-promotion SHA-256 receipt in the scratch review packet.
+
+### Native regression completion and browser boundary
+Native application suite: 286 passed, 4 explicitly ignored model-dependent tests, zero failures.
+The library suite's 635 passing cases plus the subsequent 75 passing automation cases cover its two corrected MCP failures; a single all-green workspace rerun is not claimed.
+Formatting, diff and copyright checks pass.
+Browser check first failed because local_sketch used image while image was optional behind application; promoted the already-pinned PNG dependency to the library and added only its dependency edge to web/Cargo.lock offline.
+Browser wasm check now passes with no version changes.
+A locked release browser build is running serially with log /private/tmp/runebender-kaf-trial-sjiv0m10/experiment/browser-build.log; wait before any other Cargo command or browser smoke test.
+Remaining promotion gates: browser build/smoke, final native build/theme capture, retained executable, coherent commits, fast-forward main preserving icon hash, push verification and scoped cargo/worktree cleanup.
+No actual post-calibration model inference has run and local Draft remains unavailable in the Brush UI.

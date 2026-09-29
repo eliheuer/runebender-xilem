@@ -2287,6 +2287,7 @@ dependencies = [
  "fontdrasil",
  "glyphslib",
  "harfrust",
+ "image",
  "img2bez",
  "kurbo 0.13.1",
  "kurbo 0.9.5",

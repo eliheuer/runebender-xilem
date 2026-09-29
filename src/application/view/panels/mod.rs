@@ -12,6 +12,7 @@ pub(crate) mod nodes;
 pub(crate) mod preview;
 pub(crate) mod scripts;
 pub(crate) mod sections;
+pub(crate) mod sketch;
 pub(crate) mod tabs;
 
 pub(crate) mod metaballs;

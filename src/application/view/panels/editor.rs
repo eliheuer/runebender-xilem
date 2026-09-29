@@ -53,6 +53,8 @@ pub(crate) fn editor_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<>
         groups,
         mark,
         app.tool,
+        app.sketch.clone(),
+        app.font.active(),
         app.tool_before_space_pan.is_some(),
         app.view,
         ghosts,
@@ -92,6 +94,9 @@ pub(crate) fn editor_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<>
             canvas::editor::EditorEvent::Undo => app.undo_open_glyph(false),
             canvas::editor::EditorEvent::Redo => app.undo_open_glyph(true),
             canvas::editor::EditorEvent::TextChanged(text) => app.set_editor_text(text),
+            canvas::editor::EditorEvent::SketchChanged => {
+                app.note = "Sketch ink changed; the glyph outline is unchanged".into();
+            }
             canvas::editor::EditorEvent::TextProofSelection(selection) => {
                 app.text_proof_selection = Some(crate::application::workspace::TextProofCapture {
                     context: app.text_context_id(),

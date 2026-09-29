@@ -4,7 +4,7 @@
 //! Files: opening a project, reloading it when the sources change, saving, and a new font.
 
 use crate::application::editor::session::Session;
-use crate::application::editor::tools::{chat, local_ai, nodes, scripts};
+use crate::application::editor::tools::{chat, local_ai, nodes, scripts, sketch};
 use crate::application::font_model::FontModel;
 use crate::application::view::canvas::grid::cells_of;
 use crate::application::view::panels::sections::metric_bufs;
@@ -182,9 +182,15 @@ impl Workspace {
             Ok("metaball") => Tool::Metaball,
             Ok("measure") => Tool::Measure,
             Ok("text") => Tool::Text,
+            Ok("sketch") => Tool::Sketch,
             _ => Tool::Select,
         };
         let has_text_session = tool == Tool::Text || !initial_text.is_empty();
+        let sketch = Arc::new(std::sync::Mutex::new(sketch::SketchLayer::new(
+            first_name.clone(),
+            font.active(),
+            session.advance(),
+        )));
         let mut app = Self {
             document_id: NEXT_DOCUMENT_ID.fetch_add(1, Ordering::Relaxed),
             font,
@@ -279,6 +285,7 @@ impl Workspace {
             show_background,
             show_mark_cloud: std::env::var("RUNEBENDER_MARK_CLOUD").as_deref() == Ok("1"),
             reference_buf,
+            sketch_trace: None,
             component_base_buf: String::new(),
             name_buf: first_name,
             unicode_buf: first_uni,
@@ -296,6 +303,8 @@ impl Workspace {
             selected_points: 0,
             tool,
             tool_before_space_pan: None,
+            sketch,
+            sketch_reference_rationale: String::new(),
             editor_focus: Arc::new(std::sync::Mutex::new(None)),
             modified,
             source_roots,

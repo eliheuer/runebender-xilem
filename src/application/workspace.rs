@@ -4,7 +4,7 @@
 //! The editor's state: the `Workspace` struct and the types it is made of.
 
 use crate::application::editor::session::Session;
-use crate::application::editor::tools::{chat, local_ai, nodes, scripts};
+use crate::application::editor::tools::{chat, local_ai, nodes, scripts, sketch};
 use crate::application::font_model::FontModel;
 use crate::application::platform::{dialogs, export, script_jobs};
 use crate::application::view::canvas;
@@ -48,6 +48,8 @@ pub(crate) enum Tool {
     HyperPen,
     Knife,
     Measure,
+    /// Draw temporary raster ink, separate from the glyph's outline.
+    Sketch,
     /// Type glyphs into a line and edit them in context: the web
     /// editor's text tool, on Runebender's text engine.
     Text,
@@ -186,6 +188,10 @@ pub(crate) struct Workspace {
     /// The persistent tool restored when a temporary Space-held pan ends.
     /// `None` distinguishes a selected Hand tool from the temporary override.
     pub(crate) tool_before_space_pan: Option<Tool>,
+    /// Session-only brush raster; never serialized into the font.
+    pub(crate) sketch: Arc<std::sync::Mutex<sketch::SketchLayer>>,
+    /// The user's explicit design reason for the reference shown in the inspector.
+    pub(crate) sketch_reference_rationale: String,
     /// The live edit canvas. Toolbar controls use this to transfer native
     /// keyboard/IME focus without making the view-owned text buffer `Send`.
     pub(crate) editor_focus: Arc<std::sync::Mutex<Option<masonry::core::WidgetId>>>,
@@ -225,6 +231,8 @@ pub(crate) struct Workspace {
     pub(crate) show_mark_cloud: bool,
     /// A glyph name to show behind the drawing, empty for none.
     pub(crate) reference_buf: String,
+    /// Retained native brush trace handle and its visible guarded status.
+    pub(crate) sketch_trace: Option<sketch::SketchTraceUi>,
     /// Base glyph typed in the Shapes panel when adding a component.
     pub(crate) component_base_buf: String,
     /// Current axis location in user units, one per designspace axis.

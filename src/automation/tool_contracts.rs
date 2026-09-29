@@ -196,15 +196,18 @@ fn effects_for(name: &str, surface: ToolSurface) -> Option<ToolEffects> {
             "project_info" | "font_info" | "read_glyph" | "proof" | "proposal_list"
             | "editor_context" | "glyph_inventory" | "design_context" | "experiment_list"
             | "read_kerning" | "specimen" | "agent_receipt" | "proof_status" | "nodes_discover"
-            | "nodes_snapshot" | "nodes_status" | "nodes_image" | "editor_sessions" => {
-                ToolEffects::read()
-            }
+            | "nodes_snapshot" | "nodes_status" | "nodes_trace_status" | "nodes_image"
+            | "editor_sessions" => ToolEffects::read(),
             "editor_connect" | "editor_open_glyph" | "editor_set_text" | "experiment_fork"
-            | "proof_cancel" | "agent_cancel" | "nodes_cancel" => ToolEffects::session(),
+            | "proof_cancel" | "agent_cancel" | "nodes_cancel" | "nodes_trace_cancel" => {
+                ToolEffects::session()
+            }
             "proof_start" => ToolEffects::session().idempotent(),
             "nodes_mutate" => ToolEffects::session().destructive().idempotent(),
-            "proof_release" | "nodes_release" => ToolEffects::session().destructive(),
-            "nodes_run" => ToolEffects::session().local_code().idempotent(),
+            "proof_release" | "nodes_release" | "nodes_trace_release" => {
+                ToolEffects::session().destructive()
+            }
+            "nodes_run" | "nodes_trace" => ToolEffects::session().local_code().idempotent(),
             "experiment_kern" => ToolEffects::session().destructive(),
             "propose_edits" => ToolEffects::document(),
             "proposal_discard" => ToolEffects::document().destructive(),

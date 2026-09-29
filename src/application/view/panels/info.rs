@@ -231,6 +231,8 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                 (
                     (editing && app.tool == Tool::Metaball)
                         .then(|| recipes::inspector_group(pal, super::metaballs::panel(app))),
+                    (editing && app.tool == Tool::Sketch)
+                        .then(|| recipes::inspector_group(pal, super::sketch::panel(app))),
                     editing.then(|| recipes::inspector_group(pal, coordinates_section(app))),
                 ),
             ),

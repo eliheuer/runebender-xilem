@@ -5,6 +5,7 @@
 //! and gesture state, and the view that hosts it.
 
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use masonry::accesskit::{Node, Role};
 use masonry::core::keyboard::{Key, KeyState, NamedKey};
@@ -18,11 +19,13 @@ use masonry::imaging::Painter;
 use masonry::kurbo;
 use masonry::kurbo::{Affine, Axis, Circle, Line, Point, Rect, Shape as _, Size, Stroke};
 use masonry::layout::{LenReq, Length};
+use masonry::peniko::{Blob, ImageAlphaType, ImageData, ImageFormat};
 use runebender::font::{AnchorId, ContourId, PointId};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
 use crate::application::editor::session::{Session, SessionSyncOutcome};
+use crate::application::editor::tools::sketch::SketchLayer;
 use crate::application::view::theme::Palette;
 use crate::application::widgets::context_menu::{ContextMenu, MenuAction, MenuRow, MenuTarget};
 use crate::application::widgets::text_label::{self, Anchor};
@@ -373,6 +376,8 @@ pub(crate) enum EditorEvent {
     TextChanged(String),
     /// Widget-owned selected shaped occurrence and its proof settings.
     TextProofSelection(Result<runebender::text::buffer::TextProofSelection, String>),
+    /// Session-only brush ink changed; the canonical glyph did not.
+    SketchChanged,
     /// Cmd+Z: the app undoes on the master's pile.
     Undo,
     /// Cmd+Shift+Z or Cmd+Y.
@@ -385,6 +390,10 @@ fn dispatch_editor_event(
     event: EditorEvent,
     on_event: impl FnOnce(&mut Workspace, EditorEvent),
 ) {
+    if matches!(&event, EditorEvent::SketchChanged) {
+        on_event(app, event);
+        return;
+    }
     match app.sync_session_from(session) {
         SessionSyncOutcome::Changed => on_event(app, event),
         SessionSyncOutcome::Unchanged if !matches!(event, EditorEvent::Edited) => {
@@ -405,6 +414,10 @@ enum Drag {
     },
     Pan {
         last: Point,
+    },
+    Sketch {
+        last: Point,
+        changed: bool,
     },
     /// Pen mouse-down at `origin` (design space); becomes handle-drag past a threshold.
     Pen {
@@ -453,6 +466,8 @@ pub(crate) struct EditorWidget {
     /// A glyph mark colors the card header, as it does in GPUI.
     mark: Option<xilem::Color>,
     tool: Tool,
+    sketch: Arc<Mutex<SketchLayer>>,
+    sketch_source: usize,
     /// Space is held: pan while showing only the filled design.
     preview_mode: bool,
     ghosts: Arc<Vec<kurbo::BezPath>>,
@@ -1799,6 +1814,25 @@ impl Widget for EditorWidget {
             }
         }
 
+        if self.tool == Tool::Sketch {
+            let sketch = self
+                .sketch
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            if sketch.matches(&self.session.glyph_name, self.sketch_source) && sketch.has_ink() {
+                let image = ImageData {
+                    data: Blob::new(Arc::new(
+                        sketch.display_rgba(pal.tool_feedback().with_alpha(0.55)),
+                    )),
+                    format: ImageFormat::Rgba8,
+                    alpha_type: ImageAlphaType::Alpha,
+                    width: 512,
+                    height: 512,
+                };
+                let pixel_to_glyph = Affine::new([2.0, 0.0, 0.0, -2.0, sketch.left(), 800.0]);
+                painter.draw_image(&image, self.glyph_affine() * pixel_to_glyph);
+            }
+        }
         self.paint_metrics(painter);
     }
 
@@ -1932,6 +1966,28 @@ impl Widget for EditorWidget {
                 }
                 ctx.capture_pointer();
                 match button {
+                    Some(PointerButton::Primary) if self.tool == Tool::Sketch => {
+                        let design = self.screen_to_glyph_design(at);
+                        let mut sketch = self
+                            .sketch
+                            .lock()
+                            .unwrap_or_else(|error| error.into_inner());
+                        if !sketch.matches(&self.session.glyph_name, self.sketch_source) {
+                            *sketch = sketch.for_glyph(
+                                self.session.glyph_name.clone(),
+                                self.sketch_source,
+                                self.session.advance(),
+                            );
+                        }
+                        let changed = sketch.stroke((design.x, design.y), (design.x, design.y));
+                        self.drag = Drag::Sketch {
+                            last: design,
+                            changed,
+                        };
+                        ctx.request_render();
+                        ctx.set_handled();
+                        return;
+                    }
                     Some(PointerButton::Primary) if self.tool == Tool::Metaball => {
                         ctx.request_focus();
                         let at = self.screen_to_glyph_design(at);
@@ -2123,6 +2179,16 @@ impl Widget for EditorWidget {
                     }
                 }
                 match &mut self.drag {
+                    Drag::Sketch { last, changed } => {
+                        let mut sketch = self
+                            .sketch
+                            .lock()
+                            .unwrap_or_else(|error| error.into_inner());
+                        *changed |=
+                            sketch.stroke((last.x, last.y), (glyph_design.x, glyph_design.y));
+                        *last = glyph_design;
+                        ctx.request_render();
+                    }
                     Drag::Metaballs { last, changed } => {
                         let moved = self.session.move_metaballs(glyph_design - *last, true);
                         *changed |= moved;
@@ -2212,6 +2278,12 @@ impl Widget for EditorWidget {
             event @ (PointerEvent::Up(_) | PointerEvent::Cancel(_)) => {
                 let cancelled = matches!(event, PointerEvent::Cancel(_));
                 match &self.drag {
+                    Drag::Sketch { changed, .. } => {
+                        if *changed {
+                            ctx.submit_action::<EditorEvent>(EditorEvent::SketchChanged);
+                        }
+                        self.drag = Drag::None;
+                    }
                     Drag::Metaballs { changed, .. } => {
                         let changed = *changed;
                         if cancelled {
@@ -2743,13 +2815,16 @@ pub(crate) struct EditorView<F> {
     groups: (String, String),
     mark: Option<xilem::Color>,
     tool: Tool,
+    sketch: Arc<Mutex<SketchLayer>>,
+    sketch_source: usize,
+    sketch_revision: u64,
     preview_mode: bool,
     view: ViewOptions,
     ghosts: Arc<Vec<kurbo::BezPath>>,
     interp: Option<Arc<kurbo::BezPath>>,
     underlay: Underlay,
     text: Option<crate::application::editor::tools::text::TextInputs>,
-    focus_target: Arc<std::sync::Mutex<Option<WidgetId>>>,
+    focus_target: Arc<Mutex<Option<WidgetId>>>,
     on_event: F,
 }
 
@@ -2765,21 +2840,30 @@ pub(crate) fn editor<F: Fn(&mut Workspace, EditorEvent) + 'static>(
     groups: (String, String),
     mark: Option<xilem::Color>,
     tool: Tool,
+    sketch: Arc<Mutex<SketchLayer>>,
+    sketch_source: usize,
     preview_mode: bool,
     view: ViewOptions,
     ghosts: Arc<Vec<kurbo::BezPath>>,
     interp: Option<Arc<kurbo::BezPath>>,
     underlay: Underlay,
     text: Option<crate::application::editor::tools::text::TextInputs>,
-    focus_target: Arc<std::sync::Mutex<Option<WidgetId>>>,
+    focus_target: Arc<Mutex<Option<WidgetId>>>,
     on_event: F,
 ) -> EditorView<F> {
+    let sketch_revision = sketch
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .revision();
     EditorView {
         session,
         palette,
         groups,
         mark,
         tool,
+        sketch,
+        sketch_source,
+        sketch_revision,
         preview_mode,
         view,
         ghosts,
@@ -2881,6 +2965,8 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
             groups: self.groups.clone(),
             mark: self.mark,
             tool: self.tool,
+            sketch: self.sketch.clone(),
+            sketch_source: self.sketch_source,
             preview_mode: self.preview_mode,
             ghosts: self.ghosts.clone(),
             interp: self.interp.clone(),
@@ -2935,6 +3021,13 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
             if self.tool != Tool::Pen {
                 element.widget.session.pen_cancel();
             }
+            dirty = true;
+        }
+        if self.sketch_source != prev.sketch_source {
+            element.widget.sketch_source = self.sketch_source;
+            dirty = true;
+        }
+        if self.sketch_revision != prev.sketch_revision {
             dirty = true;
         }
         if self.preview_mode != prev.preview_mode {
@@ -3091,6 +3184,8 @@ mod tests {
             groups: (String::new(), String::new()),
             mark: None,
             tool: Tool::Select,
+            sketch: Arc::new(Mutex::new(SketchLayer::new("A".into(), 0, 500.0))),
+            sketch_source: 0,
             preview_mode: false,
             ghosts: Arc::new(Vec::new()),
             interp: None,
@@ -3882,6 +3977,67 @@ mod tests {
             assert_eq!(source.groups[0].balls.len(), 1);
             assert!(root.widget.session.metaballs.selected.is_empty());
         });
+    }
+
+    #[test]
+    fn brush_pointer_event_changes_only_session_ink() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-brush-event-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(projected_glyph(&session()));
+        font.save(&path).expect("the fixture saves");
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        workspace.open_glyph(0);
+        let original = projected_glyph(&workspace.session);
+        let revision = workspace.font.project.document_revision();
+        let undo_depth = workspace.metadata_undo.len();
+        let mut editor = widget();
+        editor.session = (*workspace.session).clone();
+        editor.tool = Tool::Sketch;
+        editor.sketch = workspace.sketch.clone();
+        editor.sketch_source = workspace.font.active();
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+        let (from, to) = harness.edit_root_widget(|root| {
+            let affine = root.widget.glyph_affine();
+            (
+                affine * Point::new(220.0, 180.0),
+                affine * Point::new(280.0, 240.0),
+            )
+        });
+        harness.mouse_move(from);
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_move(to);
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        let mut sketch_events = 0;
+        while let Some((event, _)) = harness.pop_action::<EditorEvent>() {
+            harness.edit_root_widget(|root| {
+                dispatch_editor_event(
+                    &mut workspace,
+                    &mut root.widget.session,
+                    event,
+                    |app, event| {
+                        assert!(matches!(event, EditorEvent::SketchChanged));
+                        sketch_events += 1;
+                        app.note = "Sketch ink changed".into();
+                    },
+                );
+            });
+        }
+        assert_eq!(sketch_events, 1);
+        assert!(workspace.sketch.lock().unwrap().has_ink());
+        assert_eq!(projected_glyph(&workspace.session), original);
+        assert_eq!(workspace.font.project.document_revision(), revision);
+        assert_eq!(workspace.metadata_undo.len(), undo_depth);
+        assert!(!workspace.modified);
+        std::fs::remove_dir_all(path).expect("the fixture is removed");
     }
 
     fn check_metaball_drag_preview(cancel: bool) {
