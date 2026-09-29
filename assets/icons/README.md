@@ -70,6 +70,7 @@ The `select-all-layers` glyph is reserved for a future multi-layer editing tool;
 | `U+E02F` | `text-ltr` |
 | `U+E030` | `text-rtl` |
 | `U+E031` | `union` |
+| `U+E032` | `brush` |
 
 Some of these designs started as Private Use Area glyphs in Virtua Grotesk.
 This small UFO keeps the application's editable copies together without making it depend on the full font source.

@@ -179,19 +179,7 @@ pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<
             tile("preview", Tool::Hand),
             tile("pen", Tool::Pen),
             tile("hyperpen", Tool::HyperPen),
-            button(
-                label("Brush").text_size(TextSize::Caption.px()).color(
-                    if app.tool == Tool::Sketch {
-                        fg_active
-                    } else {
-                        fg
-                    },
-                ),
-                |app: &mut Workspace| app.select_tool(Tool::Sketch),
-            )
-            .background_color(active_bg)
-            .border_color(hover_bg)
-            .border_width(Stroke::Hairline.length()),
+            tile("brush", Tool::Sketch),
             tool_group(ToolGroup::Shapes, app.tool, app.palette.clone()),
             tile("knife", Tool::Knife),
             tile("measure", Tool::Measure),
