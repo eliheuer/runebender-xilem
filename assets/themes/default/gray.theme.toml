@@ -119,7 +119,7 @@ popcount3 = "#FF990F"
 popcount4 = "#FF4A3D"
 
 [geometry]
-radius = 4.0
-radiusControl = 4.0
+radius = 1.0
+radiusControl = 1.0
 stroke = 1.0
 strokeEmphasis = 2.0
