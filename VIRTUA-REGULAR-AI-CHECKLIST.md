@@ -256,7 +256,7 @@ A model may iterate autonomously within this scope, but tests must not equate a 
 - [ ] F4. Run relevant native/browser regression checks, review all diffs, commit coherent changes locally and provide Eli a reproducible launch/recipe.
 - [ ] F5. Obtain Eli's visual verdict; only Eli can make the glyph green.
 If only F5 or another external prerequisite remains, report "ready for review" and pause instead of pretending the checklist or font is complete.
-- [ ] F6. Pause the coordinator after completion or the review handoff; summarize actual results and remaining font work without reopening broad architecture tasks.
+- [x] F6. Pause the coordinator after completion or the review handoff; summarize actual results and remaining font work without reopening broad architecture tasks.
 
 ## Assignment ledger
 
@@ -626,3 +626,14 @@ Scratch font, proofs, rejected candidate and calibration diagnosis remain in the
 S1 is complete under automated geometry/event checks and headless layout evidence; S2/S3 and visual acceptance remain open for the hands-on trial and real calibrated model control.
 The font is not complete, and local Draft/cloud/optical generation is not advertised as completed.
 Proceed with the authorized fast-forward main promotion and push, then scoped cleanup and pause for Eli's testing feedback.
+
+### Main promotion, cleanup and paused testing handoff
+Main fast-forwarded to aa692d8 and pushed; git ls-remote confirmed aa692d8ae606da30a74075dd5e0334ef34a4521e on origin/main.
+Clean worktrees codex/ai-foundation and codex/virtua-regular-ai were verified as ancestors of pushed main and removed without force.
+Only those two worktrees were removed; unrelated stale registrations and other projects were left alone.
+Cargo clean removed the shared native/browser target (reported 161.3 GiB logical artifacts) and the old foundation browser target (1.4 GiB).
+Filesystem available space increased from 152861812 KiB to 247731808 KiB during cleanup, approximately 90.5 GiB net reclaimed.
+The retained executable and unrelated main invert.glif icon edit both match their pre-cleanup SHA-256 receipts.
+Original font sources, installed models and scratch proof/diagnosis artifacts were preserved.
+The recurring coordinator is PAUSED for user testing; the former integration worktree path no longer exists and must not be reused on a future resume.
+Use main and VIRTUA-REGULAR-TESTING.md for the next hands-on session; remaining S2/S3/model-quality and visual gates stay open honestly.
