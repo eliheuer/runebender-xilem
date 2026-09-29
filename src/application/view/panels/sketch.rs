@@ -20,6 +20,10 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let terminal = retained.is_some_and(|trace| trace.terminal());
     let completed = retained.is_some_and(|trace| trace.phase == "completed");
     let proof_unavailable = completed && app.font.preview_font().is_err();
+    #[cfg(unix)]
+    let can_use = completed && app.brush_candidate_outline().is_some();
+    #[cfg(not(unix))]
+    let can_use = false;
     xcolumn(
         Region::Form,
         (
@@ -131,8 +135,16 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     app.retry_sketch_trace();
                 })
             }),
+            can_use.then(|| {
+                recipes::action(pal, "Use draft in glyph".into(), |app: &mut Workspace| {
+                    #[cfg(unix)]
+                    app.use_brush_candidate();
+                    #[cfg(not(unix))]
+                    let _ = app;
+                })
+            }),
             proof_unavailable.then(|| {
-                label("Text proof is unavailable because the font preview cannot compile. The draft is still visible on the canvas.")
+                label("Text proof is unavailable because the font preview cannot compile. You can still use the editable draft and Undo it.")
                     .text_size(TextSize::Caption.px())
                     .line_break_mode(LineBreaking::WordWrap)
                     .color(pal.text_muted)

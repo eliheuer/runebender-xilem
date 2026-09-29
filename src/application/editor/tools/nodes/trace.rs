@@ -43,7 +43,7 @@ use runebender::workflows::process::ProcessCancellation;
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
 
-use crate::application::workspace::Workspace;
+use crate::application::workspace::{Tool, Workspace};
 
 const MAX_GLOBAL_TRACE_JOBS: usize = 2;
 static GLOBAL_TRACE_JOBS: AtomicUsize = AtomicUsize::new(0);
@@ -306,6 +306,10 @@ fn validate_target(
 impl Workspace {
     /// Show a completed brush candidate without requiring a compilable whole-font proof.
     pub(crate) fn brush_candidate_outline(&self) -> Option<kurbo::BezPath> {
+        drawing_contours_to_bezpath(&self.brush_candidate_contours()?).ok()
+    }
+
+    fn brush_candidate_contours(&self) -> Option<Vec<DrawingContour>> {
         let brush = self.sketch_trace.as_ref()?;
         let state = self.live_nodes.as_ref()?;
         let trace = state.trace.as_ref()?;
@@ -338,7 +342,73 @@ impl Workspace {
             .or_else(|| parameters.get("calibrated_trace"))?
             .get("contours")?;
         let contours: Vec<DrawingContour> = serde_json::from_value(contours.clone()).ok()?;
-        drawing_contours_to_bezpath(&contours).ok()
+        validate_target(&self.font.project, &trace.intent).ok()?;
+        let grading = capture_replacement_context(
+            &self.font.project,
+            SourceId(trace.intent.source),
+            &trace.intent.target,
+            &trace.intent.references,
+        )
+        .ok()?;
+        (grading == trace.intent.grading).then_some(contours)
+    }
+
+    /// Install a completed brush draft as editable contours in the active Regular glyph.
+    pub(crate) fn use_brush_candidate(&mut self) {
+        let Some(contours) = self.brush_candidate_contours() else {
+            self.note = "This draft is no longer current; draw and draft again".into();
+            return;
+        };
+        let Some(trace) = self
+            .live_nodes
+            .as_ref()
+            .and_then(|state| state.trace.as_ref())
+        else {
+            self.note = "There is no retained brush draft to use".into();
+            return;
+        };
+        let request = AgentEditRequest {
+            expected_document_epoch: trace.intent.epoch.clone(),
+            actor: "brush-panel".into(),
+            operation_key: format!("use-draft-{}", trace.handle),
+            authorization: "user-approved".into(),
+            source: trace.intent.source,
+            history_name: format!("Use brush draft for {}", trace.intent.target.glyph),
+            reads: trace
+                .intent
+                .references
+                .iter()
+                .map(|reference| reference.guard.clone())
+                .collect(),
+            edits: vec![AgentLayerEdits {
+                target: trace.intent.target.clone(),
+                operations: vec![AgentEditOperation::ReplaceContours { contours }],
+            }],
+        };
+        let response = self.call_agent_edit(&ToolCall {
+            name: "agent_apply".into(),
+            arguments: serde_json::to_value(request).expect("typed brush edit serializes"),
+        });
+        if response
+            .as_ref()
+            .is_some_and(|result| result["ok"] == true && result["root_changed"] == true)
+        {
+            self.select_tool(Tool::Select);
+            self.note = "Editable draft installed; use Undo to remove it".into();
+        } else {
+            self.note = format!(
+                "Could not use this draft: {}",
+                response
+                    .as_ref()
+                    .and_then(|result| result["error"].as_str())
+                    .or_else(|| {
+                        response
+                            .as_ref()
+                            .and_then(|result| result["receipt"]["outcome"]["error"].as_str())
+                    })
+                    .unwrap_or("the outline did not change; retry the current ink")
+            );
+        }
     }
 
     pub(super) fn handle_trace_call(&mut self, call: &ToolCall) -> Result<Value, String> {
@@ -589,6 +659,7 @@ impl Workspace {
         // The worker owns the canonical phase, while Brush retains a small presentation copy.
         // Keep them in step during the ordinary background pump; otherwise Brush can say
         // "queued" indefinitely even after the graph candidate has been published.
+        let mut install_virtua = false;
         if let Some(brush) = self.sketch_trace.as_mut()
             && brush.handle == trace.handle
             && brush.identity == trace.intent.graph.identity
@@ -604,6 +675,9 @@ impl Workspace {
                 NodesTracePhase::Released => "released",
             };
             if brush.phase != phase {
+                install_virtua = trace.phase == NodesTracePhase::Completed
+                    && brush.backend
+                        == crate::application::editor::tools::sketch::SketchBackend::Virtua;
                 brush.phase = phase.into();
                 self.note = match trace.phase {
                     NodesTracePhase::Running => match brush.backend {
@@ -614,9 +688,7 @@ impl Workspace {
                             "Tracing the sketch into a draft".into()
                         }
                     },
-                    NodesTracePhase::Completed => {
-                        "Draft preview is on the canvas; your font is unchanged".into()
-                    }
+                    NodesTracePhase::Completed => "Draft ready for review".into(),
                     NodesTracePhase::Failed => "Draft failed; see the error below".into(),
                     NodesTracePhase::Stale => {
                         "Draft stopped because the font or graph changed".into()
@@ -628,6 +700,11 @@ impl Workspace {
             brush.error.clone_from(&trace.error);
         }
         state.trace = Some(trace);
+        // Clicking Draft with Virtua is the user's request for an editable glyph, as in the Web
+        // editor. The same explicit, guarded edit and ordinary Undo are used by the panel action.
+        if install_virtua {
+            self.use_brush_candidate();
+        }
     }
 }
 
@@ -915,8 +992,6 @@ mod tests {
                 script_home: "/tmp/fake-home".into(),
                 img2bez_path: "/tmp/fake-home/.cargo/bin/img2bez".into(),
                 img2bez_sha256: "sha256:tracer".into(),
-                launcher_sha256: "sha256:launcher".into(),
-                tracer_cargo_lock_sha256: "sha256:lockfile".into(),
             },
             image_sha256: trace.image_sha256,
             image_size_px: [trace.image_width_px, trace.image_height_px],
@@ -930,8 +1005,8 @@ mod tests {
             identity: None,
             seed: 7,
             script_score: -17.0,
-            model_input_sha256: "sha256:pretrace".into(),
-            model_input_tracer: "img2bez-crate/clean/grid2/full-image-v1".into(),
+            model_input_sha256: "sha256:crop".into(),
+            model_input_tracer: "web-compatible-crop/one-pixel-per-unit/img2bez-clean-grid2".into(),
             contours: trace.contours,
         }
     }
@@ -955,8 +1030,7 @@ mod tests {
         let node = graph.graph.node(intent.node).unwrap();
         let model = &node.values["parameters"]["local_sketch"];
         assert_eq!(model["runtime"]["checkpoint_sha256"], "sha256:weights");
-        assert_eq!(model["runtime"]["launcher_sha256"], "sha256:launcher");
-        assert_eq!(model["model_input_sha256"], "sha256:pretrace");
+        assert_eq!(model["model_input_sha256"], "sha256:crop");
         assert_eq!(model["script_score_not_visual_approval"], -17.0);
         assert!(model.get("identity").is_none());
         assert_eq!(model["target"]["glyph"], "A");
@@ -1135,6 +1209,132 @@ mod tests {
         );
         assert!(retry.unwrap_err().0);
         assert_eq!(session.snapshot(), completed);
+    }
+
+    #[test]
+    fn completed_brush_draft_becomes_editable_cubic_outline_and_undoes() {
+        let (project, _, mut intent, trace) = fixture();
+        let mut app = Workspace::from_model(FontModel::from_project(project)).unwrap();
+        app.open_glyph(app.font.index_of("A").unwrap());
+        app.ensure_live_graph().unwrap();
+        let snapshot = app.live_graph_session().unwrap().snapshot();
+        intent.epoch = app.live.as_ref().unwrap().document_epoch().into();
+        intent.graph = GraphGuard {
+            identity: snapshot.identity.clone(),
+            revision: snapshot.revision,
+        };
+        intent.document_revision = app.font.project.document_revision();
+        intent.node = snapshot
+            .graph
+            .nodes
+            .iter()
+            .find(|node| node.type_name == "live.python")
+            .unwrap()
+            .id;
+        let mut candidate = sketch_candidate(trace);
+        candidate.contours = vec![DrawingContour {
+            points: vec![
+                DrawingPoint {
+                    x: 20.0,
+                    y: 0.0,
+                    kind: DrawingPointType::Line,
+                    smooth: false,
+                },
+                DrawingPoint {
+                    x: 80.0,
+                    y: 0.0,
+                    kind: DrawingPointType::Line,
+                    smooth: false,
+                },
+                DrawingPoint {
+                    x: 90.0,
+                    y: 20.0,
+                    kind: DrawingPointType::Offcurve,
+                    smooth: false,
+                },
+                DrawingPoint {
+                    x: 90.0,
+                    y: 80.0,
+                    kind: DrawingPointType::Offcurve,
+                    smooth: false,
+                },
+                DrawingPoint {
+                    x: 80.0,
+                    y: 100.0,
+                    kind: DrawingPointType::Curve,
+                    smooth: false,
+                },
+                DrawingPoint {
+                    x: 20.0,
+                    y: 100.0,
+                    kind: DrawingPointType::Line,
+                    smooth: false,
+                },
+            ],
+        }];
+        let mutation = publish_trace(
+            &app.font.project,
+            Some(&intent.epoch),
+            &mut app.live_nodes.as_mut().unwrap().session,
+            &intent,
+            TraceOutput::LocalSketch(Box::new(candidate)),
+        )
+        .unwrap();
+        let (events, receiver) = mpsc::channel();
+        drop(events);
+        app.live_nodes.as_mut().unwrap().trace = Some(TraceSession {
+            handle: 7,
+            actor: "trace-test".into(),
+            operation_key: "cubic".into(),
+            payload_sha256: "sha256:test".into(),
+            intent,
+            backend: NodesTraceBackend::LocalSketch,
+            local_sketch_runtime: None,
+            cancelled: ProcessCancellation::default(),
+            events: receiver,
+            phase: NodesTracePhase::Completed,
+            mutation: Some(mutation),
+            error: None,
+        });
+        app.sketch_trace = Some(crate::application::editor::tools::sketch::SketchTraceUi {
+            handle: 7,
+            backend: crate::application::editor::tools::sketch::SketchBackend::Virtua,
+            identity: snapshot.identity,
+            phase: "queued".into(),
+            error: None,
+        });
+        app.poll_live_trace();
+        assert!(
+            app.note.contains("Editable draft installed"),
+            "{}",
+            app.note
+        );
+        let layer = app
+            .font
+            .project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
+        let current = app.font.project.document_layer("A", &layer).unwrap();
+        assert_eq!(current.contours().count(), 1);
+        assert!(
+            current
+                .contours()
+                .next()
+                .unwrap()
+                .points()
+                .any(|point| { point.point_type() == runebender::font::LayerPointType::Curve })
+        );
+        app.undo_active_edit(false);
+        assert_eq!(
+            app.font
+                .project
+                .document_layer("A", &layer)
+                .unwrap()
+                .contours()
+                .count(),
+            0
+        );
     }
 
     #[test]

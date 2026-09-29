@@ -510,8 +510,11 @@ impl Workspace {
                     .and_then(|cluster| expected_recipe.text.get(cluster..))
                     .and_then(|text| text.chars().next())
                     .map(u32::from),
-                candidates: 3,
-                temperature: 0.5,
+                // The installed scorer chose a poorer-looking sampled Arabic candidate than
+                // greedy decoding in a controlled Web-compatible trial. Keep this first draft
+                // deterministic until candidates can be compared visually by the designer.
+                candidates: 1,
+                temperature: 0.0,
                 identity: Some(self.sketch_identity),
                 seed: 0,
                 timeout_seconds: 120,

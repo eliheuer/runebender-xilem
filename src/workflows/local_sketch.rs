@@ -3,9 +3,8 @@
 
 //! Detached, bounded invocation of the installed sketch2glyph inference script.
 //!
-//! The installed script's CLI tracer fits the entire image to an ink-box height.
-//! A private launcher instead supplies calibrated, ordered pen operations from the original
-//! padded image to its one trace slot; the installed sampler and GLIF writer remain unchanged.
+//! Native brush pixels are cropped and scaled to one pixel per font unit, matching the working
+//! RuneBender Web path. The installed model's own img2bez tracer then produces its sketch input.
 //! Generated GLIF points are decoded directly into editable contours without rasterization.
 
 use std::fs::{self, File};
@@ -36,11 +35,8 @@ const MODULE_FILES: &[&str] = &[
     "model.py",
     "conform.py",
 ];
-const CALIBRATED_LAUNCHER: &str = include_str!("local_sketch_launcher.py");
-const MODEL_INPUT_TRACER: &str = "img2bez-crate/clean/grid2/full-image-v1";
-const MODEL_COORD_MIN: f64 = -512.0;
+const MODEL_INPUT_TRACER: &str = "web-compatible-crop/one-pixel-per-unit/img2bez-clean-grid2";
 const MODEL_COORD_MAX: f64 = 1_280.0;
-const MAX_MODEL_OPS: usize = 4_096;
 static NEXT_SCRATCH: AtomicU64 = AtomicU64::new(1);
 
 /// Installed runtime and one concrete checkpoint, without following a run-directory alias.
@@ -75,14 +71,10 @@ pub struct SketchRuntimeIdentity {
     pub checkpoint_sha256: String,
     /// Resolved home directory passed to the script.
     pub script_home: PathBuf,
-    /// Resolved legacy img2bez helper; pinned but bypassed by calibrated pretrace.
+    /// Resolved img2bez helper used by the installed model's tracer.
     pub img2bez_path: PathBuf,
     /// SHA-256 of that installed helper executable.
     pub img2bez_sha256: String,
-    /// SHA-256 of the exact private Python launcher passed to `-c`.
-    pub launcher_sha256: String,
-    /// SHA-256 of the lockfile pinning the img2bez crate used for calibrated pretrace.
-    pub tracer_cargo_lock_sha256: String,
 }
 
 /// Full-image calibration plus the exact dark-ink box used by this legacy runner.
@@ -143,7 +135,7 @@ pub struct SketchCandidate {
     pub seed: u32,
     /// Score reported by the script; not a visual-quality judgment.
     pub script_score: f64,
-    /// Exact ordered pen-operation JSON consumed by the installed model.
+    /// SHA-256 of the cropped PNG consumed by the installed model's tracer.
     pub model_input_sha256: String,
     /// Tracer and grid contract for that model input.
     pub model_input_tracer: String,
@@ -209,17 +201,6 @@ pub fn inspect_runtime(runtime: &SketchRuntime) -> Result<SketchRuntimeIdentity,
         script_home,
         img2bez_path,
         img2bez_sha256,
-        launcher_sha256: format!(
-            "sha256:{:x}",
-            Sha256::digest(CALIBRATED_LAUNCHER.as_bytes())
-        ),
-        tracer_cargo_lock_sha256: format!(
-            "sha256:{:x}",
-            Sha256::digest(include_bytes!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/Cargo.lock"
-            )))
-        ),
     })
 }
 
@@ -233,7 +214,7 @@ pub fn run(
     cancel: &ProcessCancellation,
 ) -> Result<SketchCandidate, String> {
     if cancel.is_cancelled() {
-        return Err("local sketch inference cancelled before pretrace".into());
+        return Err("local sketch inference cancelled before tracing".into());
     }
     let validated = validate_request(request)?;
     let current = inspect_runtime(runtime)?;
@@ -242,16 +223,13 @@ pub fn run(
     }
     let scratch = Scratch::new()?;
     let image = scratch.path.join("sketch.png");
-    let model_input = calibrated_model_input(request, validated.image_size)?;
+    let model_input = web_compatible_crop(request, validated.image_size)?;
     if cancel.is_cancelled() {
-        return Err("local sketch inference cancelled during pretrace".into());
+        return Err("local sketch inference cancelled during image preparation".into());
     }
-    let model_input_sha256 = format!("sha256:{:x}", Sha256::digest(&model_input));
-    let model_input_path = scratch.path.join("calibrated-ops.json");
-    fs::write(&model_input_path, &model_input)
-        .map_err(|error| format!("scratch calibrated model input: {error}"))?;
+    let model_input_sha256 = format!("sha256:{:x}", Sha256::digest(&model_input.png));
     let mut file = File::create(&image).map_err(|error| format!("scratch image: {error}"))?;
-    file.write_all(&request.png)
+    file.write_all(&model_input.png)
         .map_err(|error| format!("scratch image: {error}"))?;
     file.sync_all()
         .map_err(|error| format!("scratch image: {error}"))?;
@@ -266,22 +244,13 @@ pub fn run(
         .env("HOME", &current.script_home)
         .env("TMPDIR", &scratch.path)
         .env("XDG_CACHE_HOME", &scratch.path)
-        .env("RUNEBENDER_PRETRACE_OPS", &model_input_path)
-        .env("RUNEBENDER_PRETRACE_SHA256", &model_input_sha256)
-        .env("RUNEBENDER_PRETRACE_PNG", &image)
-        .env("RUNEBENDER_PRETRACE_GLYPH", &request.glyph)
-        .env("RUNEBENDER_PRETRACE_ADVANCE", request.advance.to_string())
-        .env("RUNEBENDER_PRETRACE_HEIGHT", validated.height.to_string())
-        .env("RUNEBENDER_PRETRACE_BOTTOM", validated.bottom.to_string())
-        .env("RUNEBENDER_PRETRACE_LEFT", validated.left.to_string())
-        .env("RUNEBENDER_GLYPHLAB_REPOSITORY", &current.repository)
-        .args(["-c", CALIBRATED_LAUNCHER, "--png"])
+        .args(["-m", "glyphlab.sketch2glyph", "--png"])
         .arg(&image)
         .args(["--glyph", &request.glyph, "--master", "regular", "--width"])
         .arg(request.advance.to_string())
-        .args(["--target-height", &validated.height.to_string()])
-        .args(["--y-offset", &validated.bottom.to_string()])
-        .args(["--lsb", &validated.left.to_string(), "--run"])
+        .args(["--target-height", &model_input.height.to_string()])
+        .args(["--y-offset", &model_input.bottom.to_string()])
+        .args(["--lsb", &model_input.left.to_string(), "--run"])
         .arg(&current.checkpoint)
         .args(["--k", &request.candidates.to_string()])
         .args(["--temperature", &request.temperature.to_string()])
@@ -390,6 +359,10 @@ pub fn run(
 
 struct ValidatedPlacement {
     image_size: [u32; 2],
+}
+
+struct ModelInput {
+    png: Vec<u8>,
     height: i64,
     bottom: i64,
     left: i64,
@@ -475,100 +448,64 @@ fn validate_request(request: &SketchRequest) -> Result<ValidatedPlacement, Strin
     {
         return Err("sketch pixel-to-font calibration is invalid".into());
     }
-    let scale = calibration.font_units_per_pixel;
-    let height_units = f64::from(bottom - top) * scale;
-    let bottom_units =
-        calibration.font_baseline_y + (calibration.pixel_baseline_y - f64::from(bottom)) * scale;
-    let left_units = calibration.font_x_at_left + f64::from(left) * scale;
     Ok(ValidatedPlacement {
         image_size: [width, height],
-        height: exact_cli_integer(height_units, 1, 10_000)?,
-        bottom: exact_cli_integer(bottom_units, -1_000_000, 1_000_000)?,
-        left: exact_cli_integer(left_units, -1_000_000, 1_000_000)?,
     })
 }
 
-/// Preserve the calibrated full-image geometry in the model's `RecordingPen` grammar.
-///
-/// This uses the installed training trace's Clean profile and two-unit grid, but places the
-/// original padded image by its declared pixel transform instead of fitting its canvas to ink.
-fn calibrated_model_input(
+/// Match `RuneBender` Web's eight-unit padded crop before the model's own img2bez trace.
+fn web_compatible_crop(
     request: &SketchRequest,
     image_size: [u32; 2],
-) -> Result<Vec<u8>, String> {
-    use img2bez::PointKind;
-
+) -> Result<ModelInput, String> {
     let calibration = request.placement.calibration;
-    let mut options = img2bez::TraceOptions::for_profile(img2bez::Profile::Clean);
-    options.verbose = false;
-    options.grid = 2;
-    options.invert = false;
-    options.em_height = f64::from(image_size[1]) * calibration.font_units_per_pixel;
-    let outline = img2bez::trace(&request.png, &options)
-        .map_err(|error| format!("calibrated model pretrace: {error}"))?;
-    let vertical_offset = calibration.font_baseline_y
-        + (calibration.pixel_baseline_y - f64::from(image_size[1]))
-            * calibration.font_units_per_pixel;
-    let outline = outline.translated(calibration.font_x_at_left, vertical_offset);
-    let mut operations: Vec<(&'static str, Vec<[f64; 2]>)> = Vec::new();
-    for contour in &outline.contours {
-        let points = &contour.points;
-        let start = points
-            .iter()
-            .position(|point| point.kind != PointKind::OffCurve)
-            .ok_or("calibrated pretrace contour has no on-curve point")?;
-        if points[start].kind == PointKind::Move {
-            return Err("open calibrated pretrace contours are unsupported by the model".into());
-        }
-        for point in points {
-            if !point.x.is_finite()
-                || !point.y.is_finite()
-                || !(MODEL_COORD_MIN..=MODEL_COORD_MAX).contains(&point.x)
-                || !(MODEL_COORD_MIN..=MODEL_COORD_MAX).contains(&point.y)
-            {
-                return Err("calibrated pretrace exceeds the model's coordinate vocabulary".into());
-            }
-        }
-        let first = [points[start].x, points[start].y];
-        operations.push(("moveTo", vec![first]));
-        let mut controls = Vec::with_capacity(2);
-        for (index, point) in points
-            .iter()
-            .cycle()
-            .skip(start + 1)
-            .take(points.len())
-            .enumerate()
-        {
-            let closing = index + 1 == points.len();
-            let at = [point.x, point.y];
-            match point.kind {
-                PointKind::OffCurve => controls.push(at),
-                PointKind::Line if controls.is_empty() => {
-                    if !closing {
-                        operations.push(("lineTo", vec![at]));
-                    }
-                }
-                PointKind::Curve if controls.len() == 2 => {
-                    controls.push(at);
-                    operations.push(("curveTo", std::mem::take(&mut controls)));
-                }
-                PointKind::Line | PointKind::Curve | PointKind::Move | PointKind::QCurve => {
-                    return Err("calibrated pretrace has unsupported segment structure".into());
-                }
-            }
-            if operations.len() > MAX_MODEL_OPS {
-                return Err("calibrated pretrace exceeds the model input operation bound".into());
-            }
-        }
-        if !controls.is_empty() {
-            return Err("calibrated pretrace has dangling curve controls".into());
-        }
-        operations.push(("closePath", Vec::new()));
+    let scale = exact_cli_integer(calibration.font_units_per_pixel, 1, 4)?;
+    let scale = u32::try_from(scale).map_err(|error| error.to_string())?;
+    let [left, top, right, bottom] = request.placement.ink_box_px;
+    let width = image_size[0] * scale;
+    let height = image_size[1] * scale;
+    let crop_left = (left * scale).saturating_sub(8);
+    let crop_top = (top * scale).saturating_sub(8);
+    let crop_right = (right * scale + 8).min(width);
+    let crop_bottom = (bottom * scale + 8).min(height);
+    let decoded = image::load_from_memory_with_format(&request.png, image::ImageFormat::Png)
+        .map_err(|error| format!("sketch PNG decode: {error}"))?
+        .to_luma8();
+    let scaled = image::imageops::resize(
+        &decoded,
+        width,
+        height,
+        image::imageops::FilterType::Nearest,
+    );
+    let crop = image::imageops::crop_imm(
+        &scaled,
+        crop_left,
+        crop_top,
+        crop_right - crop_left,
+        crop_bottom - crop_top,
+    )
+    .to_image();
+    let mut png = Vec::new();
+    crop.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .map_err(|error| format!("model crop PNG: {error}"))?;
+    if png.len() > MAX_PNG_BYTES {
+        return Err("model crop exceeds the four-megabyte input bound".into());
     }
-    if operations.is_empty() || operations.len() > MAX_MODEL_OPS {
-        return Err("calibrated pretrace has no bounded model input".into());
-    }
-    serde_json::to_vec(&operations).map_err(|error| format!("calibrated model input: {error}"))
+    Ok(ModelInput {
+        png,
+        height: i64::from(crop_bottom - crop_top),
+        bottom: exact_cli_integer(
+            calibration.font_baseline_y + calibration.pixel_baseline_y * f64::from(scale)
+                - f64::from(crop_bottom),
+            -1_000_000,
+            1_000_000,
+        )?,
+        left: exact_cli_integer(
+            calibration.font_x_at_left + f64::from(crop_left),
+            -1_000_000,
+            1_000_000,
+        )?,
+    })
 }
 
 fn exact_cli_integer(value: f64, minimum: i64, maximum: i64) -> Result<i64, String> {
@@ -688,7 +625,8 @@ mod tests {
         )
         .unwrap();
         let script = format!(
-            "#!/bin/sh\nfor argument in \"$@\"; do\n  if [ \"$argument\" = --install ]; then exit 44; fi\ndone\ncase \"$*\" in\n  *\"--target-height 20 --y-offset 8 --lsb 18\"*) ;;\n  *) exit 45;;\nesac\nprintf '%s\\n' \"$@\" > \"$RUNEBENDER_GLYPHLAB_REPOSITORY/captured-model-args.txt\" || exit 47\ncp \"$RUNEBENDER_PRETRACE_OPS\" \"$RUNEBENDER_GLYPHLAB_REPOSITORY/captured-model-input.json\" || exit 46\nprintf '%s\\n' '{response}'\n"
+            "#!/bin/sh\nfor argument in \"$@\"; do\n  if [ \"$argument\" = --install ]; then exit 44; fi\n  if [ \"$previous\" = --png ]; then cp \"$argument\" '{root}/captured-model-input.png' || exit 46; fi\n  previous=$argument\ndone\ncase \"$*\" in\n  *\"-m glyphlab.sketch2glyph --png\"*\"--target-height 36 --y-offset 0 --lsb 10\"*) ;;\n  *) exit 45;;\nesac\nprintf '%s\\n' \"$@\" > '{root}/captured-model-args.txt' || exit 47\nprintf '%s\\n' '{response}'\n",
+            root = root.path.display(),
         );
         fs::write(&python_target, script).unwrap();
         fs::set_permissions(&python_target, fs::Permissions::from_mode(0o700)).unwrap();
@@ -740,7 +678,9 @@ mod tests {
             vec![
                 norad::ContourPoint::new(20.0, 0.0, norad::PointType::Line, false, None, None),
                 norad::ContourPoint::new(80.0, 0.0, norad::PointType::Line, false, None, None),
-                norad::ContourPoint::new(80.0, 100.0, norad::PointType::Line, false, None, None),
+                norad::ContourPoint::new(90.0, 20.0, norad::PointType::OffCurve, false, None, None),
+                norad::ContourPoint::new(90.0, 80.0, norad::PointType::OffCurve, false, None, None),
+                norad::ContourPoint::new(80.0, 100.0, norad::PointType::Curve, false, None, None),
                 norad::ContourPoint::new(20.0, 100.0, norad::PointType::Line, false, None, None),
             ],
             None,
@@ -781,41 +721,33 @@ mod tests {
             candidate.model_input_sha256,
             format!(
                 "sha256:{:x}",
-                Sha256::digest(fs::read(root.path.join("captured-model-input.json")).unwrap())
+                Sha256::digest(fs::read(root.path.join("captured-model-input.png")).unwrap())
             )
         );
-        let operations: Vec<(String, Vec<[f64; 2]>)> =
-            serde_json::from_slice(&fs::read(root.path.join("captured-model-input.json")).unwrap())
-                .unwrap();
-        assert_eq!(operations.first().unwrap().0, "moveTo");
-        assert_eq!(operations.last().unwrap().0, "closePath");
-        let coords = operations
-            .iter()
-            .flat_map(|(_, points)| points.iter())
-            .copied()
-            .collect::<Vec<_>>();
-        let min_x = coords
-            .iter()
-            .map(|point| point[0])
-            .fold(f64::INFINITY, f64::min);
-        let max_x = coords
-            .iter()
-            .map(|point| point[0])
-            .fold(f64::NEG_INFINITY, f64::max);
-        let min_y = coords
-            .iter()
-            .map(|point| point[1])
-            .fold(f64::INFINITY, f64::min);
-        let max_y = coords
-            .iter()
-            .map(|point| point[1])
-            .fold(f64::NEG_INFINITY, f64::max);
-        assert!((16.0..=22.0).contains(&min_x), "padded x origin: {min_x}");
-        assert!((5.0..=12.0).contains(&min_y), "padded baseline: {min_y}");
-        assert!(max_x - min_x >= 14.0, "ink was fit to the wrong canvas");
-        assert!(max_y - min_y >= 14.0, "ink was fit to the wrong canvas");
+        let crop = image::open(root.path.join("captured-model-input.png"))
+            .unwrap()
+            .to_luma8();
+        assert_eq!(crop.dimensions(), (36, 36));
+        assert_eq!(crop.get_pixel(0, 0)[0], 255);
+        assert_eq!(crop.get_pixel(8, 12)[0], 0);
+        assert_eq!(crop.get_pixel(27, 27)[0], 0);
+        assert_eq!(crop.get_pixel(28, 28)[0], 255);
         assert_eq!(candidate.contours.len(), 1);
-        assert_eq!(candidate.contours[0].points.len(), 4);
+        assert_eq!(candidate.contours[0].points.len(), 6);
+        assert_eq!(
+            candidate.contours[0]
+                .points
+                .iter()
+                .filter(|point| point.kind == DrawingPointType::Offcurve)
+                .count(),
+            2
+        );
+        assert!(
+            candidate.contours[0]
+                .points
+                .iter()
+                .any(|point| point.kind == DrawingPointType::Curve)
+        );
         assert_eq!(candidate.contours[0].points[0].x, 20.0);
     }
 
@@ -860,74 +792,11 @@ mod tests {
         request.placement.calibration.font_x_at_left = 10.5;
         assert!(run(&runtime, &pinned, &request, &ProcessCancellation::default()).is_err());
         request.placement.calibration.font_x_at_left = 10.0;
-        request.placement.calibration.font_x_at_left = 2_000.0;
-        let error = run(&runtime, &pinned, &request, &ProcessCancellation::default()).unwrap_err();
-        assert!(error.contains("coordinate vocabulary"), "{error}");
+        request.placement.calibration.font_x_at_left = 1.5;
+        assert!(run(&runtime, &pinned, &request, &ProcessCancellation::default()).is_err());
         request.placement.calibration.font_x_at_left = 10.0;
         fs::write(runtime.checkpoint.join("vocab.txt"), b"changed checkpoint").unwrap();
         assert!(run(&runtime, &pinned, &request, &ProcessCancellation::default()).is_err());
-    }
-
-    #[test]
-    fn private_launcher_injects_only_the_pinned_trace_slot_without_a_model() {
-        let root = Scratch::new().unwrap();
-        let package = root.path.join("glyphlab");
-        fs::create_dir(&package).unwrap();
-        fs::write(package.join("__init__.py"), b"").unwrap();
-        fs::write(
-            package.join("sketch2glyph.py"),
-            b"import argparse, json\ndef trace(*args):\n    raise RuntimeError('legacy tracer ran')\ndef main():\n    p = argparse.ArgumentParser()\n    p.add_argument('--png')\n    p.add_argument('--glyph')\n    p.add_argument('--width', type=float)\n    p.add_argument('--target-height', type=float)\n    p.add_argument('--y-offset', type=float)\n    p.add_argument('--lsb', type=float)\n    a = p.parse_args()\n    print(json.dumps(trace(a.png, a.glyph, a.width, a.target_height, a.lsb, a.y_offset)))\n",
-        )
-        .unwrap();
-        let operations = serde_json::json!([
-            ["moveTo", [[18.0, 28.0]]],
-            ["lineTo", [[38.0, 28.0]]],
-            ["closePath", []]
-        ]);
-        let body = serde_json::to_vec(&operations).unwrap();
-        let ops_path = root.path.join("ops.json");
-        let png_path = root.path.join("input.png");
-        fs::write(&ops_path, &body).unwrap();
-        fs::write(&png_path, b"offline input path").unwrap();
-        let output = Command::new("python3")
-            .args(["-c", CALIBRATED_LAUNCHER, "--png"])
-            .arg(&png_path)
-            .args([
-                "--glyph",
-                "demo",
-                "--width",
-                "400",
-                "--target-height",
-                "20",
-                "--y-offset",
-                "8",
-                "--lsb",
-                "18",
-            ])
-            .env("PYTHONDONTWRITEBYTECODE", "1")
-            .env("RUNEBENDER_PRETRACE_OPS", &ops_path)
-            .env(
-                "RUNEBENDER_PRETRACE_SHA256",
-                format!("sha256:{:x}", Sha256::digest(&body)),
-            )
-            .env("RUNEBENDER_PRETRACE_PNG", &png_path)
-            .env("RUNEBENDER_PRETRACE_GLYPH", "demo")
-            .env("RUNEBENDER_PRETRACE_ADVANCE", "400")
-            .env("RUNEBENDER_PRETRACE_HEIGHT", "20")
-            .env("RUNEBENDER_PRETRACE_BOTTOM", "8")
-            .env("RUNEBENDER_PRETRACE_LEFT", "18")
-            .env("RUNEBENDER_GLYPHLAB_REPOSITORY", &root.path)
-            .output()
-            .unwrap();
-        assert!(
-            output.status.success(),
-            "{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        assert_eq!(
-            serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
-            operations
-        );
     }
 
     #[test]
