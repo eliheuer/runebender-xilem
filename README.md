@@ -11,6 +11,12 @@ For documentation and installation instructions, see [runebender.org](https://ru
 
 ![Runebender Nodes workflow](https://runebender.org/images/runebender-xilem-nodes.png)
 
+## Local sketch models
+
+The native Brush panel can draft with an installed Virtua model and compare the result before applying it.
+Put compatible model packages in `~/runebender/models`; see [Local models](LOCAL-MODELS.md) for the package layout and runtime requirements.
+Use the [scratch-font testing guide](VIRTUA-REGULAR-TESTING.md) for the first Arabic trial.
+
 ## Persistent local chat
 
 The native Chat panel can reuse an already running `font-ml serve` model through its loopback HTTP endpoint.

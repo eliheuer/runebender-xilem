@@ -93,6 +93,9 @@ pub struct NodesTraceRequest {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct NodesLocalSketchSettings {
+    /// Installed model package ID; absent uses the configured default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
     /// Half-open dark-ink box in the full source image, including its padding.
     pub ink_box_px: [u32; 4],
     /// Unicode scalar conditioning the intended contextual form, if one is known.
@@ -101,6 +104,10 @@ pub struct NodesLocalSketchSettings {
     pub candidates: u8,
     /// Finite sampling temperature from zero through two.
     pub temperature: f64,
+    /// Optional classifier-free letter identity strength from zero through 1.5.
+    /// Absence preserves the installed script's conditioned decoding path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<f64>,
     /// Deterministic sampling seed.
     pub seed: u32,
     /// Maximum worker time from one through 120 seconds.
@@ -323,6 +330,12 @@ impl NodesTraceRequest {
             let [left, top, right, bottom] = sketch.ink_box_px;
             if left >= right || top >= bottom || right > 1_024 || bottom > 1_024 {
                 return Err("local sketch ink box is invalid or exceeds 1024 pixels".into());
+            }
+            if sketch
+                .identity
+                .is_some_and(|value| !value.is_finite() || !(0.0..=1.5).contains(&value))
+            {
+                return Err("local sketch identity must be finite from zero through 1.5".into());
             }
             if sketch
                 .codepoint
@@ -616,6 +629,7 @@ pub fn tools() -> Vec<Tool> {
                             "codepoint":{"type":["integer","null"],"minimum":0,"maximum":1114111},
                             "candidates":{"type":"integer","minimum":1,"maximum":3},
                             "temperature":{"type":"number","minimum":0,"maximum":2},
+                            "identity":{"type":["number","null"],"minimum":0,"maximum":1.5},
                             "seed":{"type":"integer","minimum":0},
                             "timeout_seconds":{"type":"integer","minimum":1,"maximum":120}
                         }}
@@ -796,7 +810,12 @@ mod tests {
         });
         let selected: NodesTraceRequest = serde_json::from_value(request.clone()).unwrap();
         assert!(selected.validate().is_ok());
-        assert!(selected.local_sketch.is_some());
+        assert_eq!(selected.local_sketch.as_ref().unwrap().identity, None);
+        assert_eq!(serde_json::to_value(&selected).unwrap(), request);
+        request["local_sketch"]["identity"] = json!(1.5);
+        let selected: NodesTraceRequest = serde_json::from_value(request.clone()).unwrap();
+        assert!(selected.validate().is_ok());
+        assert_eq!(selected.local_sketch.as_ref().unwrap().identity, Some(1.5));
         let mut invalid = request.clone();
         invalid["invert"] = json!(true);
         assert!(
@@ -813,6 +832,14 @@ mod tests {
                 .validate()
                 .is_err()
         );
+        for identity in [json!(-0.1), json!(1.6), json!("NaN")] {
+            let mut invalid = request.clone();
+            invalid["local_sketch"]["identity"] = identity;
+            assert!(
+                serde_json::from_value::<NodesTraceRequest>(invalid)
+                    .map_or(true, |request| request.validate().is_err())
+            );
+        }
         request["local_sketch"]["temperature"] = json!("unbounded");
         assert!(serde_json::from_value::<NodesTraceRequest>(request).is_err());
     }

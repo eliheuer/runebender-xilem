@@ -8,6 +8,7 @@ use crate::application::view::design::{Region, TextSize, column as xcolumn, row 
 use crate::application::view::theme::Palette;
 use crate::application::view::{label, recipes};
 use crate::application::workspace::Workspace;
+use masonry::layout::Length;
 use xilem::WidgetView;
 use xilem::style::Style;
 
@@ -74,16 +75,27 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 |app: &mut Workspace, value| app.sketch_reference_rationale = value,
             ),
             retained.is_none().then(|| {
-                recipes::action(
-                    pal,
-                    "Trace to draft in Nodes".into(),
-                    |app: &mut Workspace| app.trace_sketch_to_draft(),
+                xcolumn(
+                    Region::Form,
+                    (
+                        recipes::action(pal, "Trace to draft".into(), |app: &mut Workspace| {
+                            app.trace_sketch_to_draft();
+                        }),
+                        recipes::action(pal, "Draft with Virtua".into(), |app: &mut Workspace| {
+                            app.draft_sketch_with_virtua();
+                        }),
+                    ),
                 )
             }),
             retained.map(|trace| {
-                label(format!("Trace {} · {}", trace.handle, trace.phase))
-                    .text_size(TextSize::Caption.px())
-                    .color(pal.text)
+                label(format!(
+                    "{} {} · {}",
+                    trace.backend.label(),
+                    trace.handle,
+                    trace.phase
+                ))
+                .text_size(TextSize::Caption.px())
+                .color(pal.text)
             }),
             retained
                 .and_then(|trace| trace.error.as_ref())
@@ -123,7 +135,105 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 })
             }),
             (!has_ink && retained.is_none()).then(|| {
-                label("Draw here before tracing")
+                label("Draw here before tracing or drafting")
+                    .text_size(TextSize::Caption.px())
+                    .color(pal.text_muted)
+            }),
+            model_controls(app),
+        ),
+    )
+}
+
+fn model_controls(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    let pal = &app.palette;
+    let selected = app.sketch_selected_model.clone();
+    let model_rows: Vec<_> = app
+        .sketch_models
+        .iter()
+        .map(|model| {
+            let id = model.id.clone();
+            let ready = model.ready;
+            let status = model.status.clone();
+            let name = if model.name.chars().count() > 20 {
+                format!("{}…", model.name.chars().take(19).collect::<String>())
+            } else {
+                model.name.clone()
+            };
+            recipes::toggle(pal, name, id == selected, move |app: &mut Workspace| {
+                if ready {
+                    app.sketch_selected_model.clone_from(&id);
+                } else {
+                    app.note = status.clone();
+                }
+            })
+        })
+        .collect();
+    let selected_status: String = app
+        .sketch_models
+        .iter()
+        .find(|model| model.id == selected)
+        .map_or_else(
+            || "No model · Refresh or open folder".into(),
+            |model| {
+                if model.ready {
+                    "Ready · Virtua sketch".into()
+                } else {
+                    "Unavailable · click model for details".into()
+                }
+            },
+        );
+    let identity = app.sketch_identity;
+    xcolumn(
+        Region::Form,
+        (
+            label("Local Virtua model").color(pal.text),
+            xcolumn(Region::List, model_rows),
+            label(selected_status)
+                .text_size(TextSize::Caption.px())
+                .color(pal.text_muted),
+            xrow(
+                Region::Inline,
+                (
+                    recipes::action(pal, "Refresh".into(), |app: &mut Workspace| {
+                        app.sketch_models = crate::application::local_models::discover();
+                        app.note = "Local Virtua models refreshed".into();
+                    }),
+                    recipes::action(pal, "Open folder".into(), |app: &mut Workspace| {
+                        app.note = crate::application::local_models::open_folder()
+                            .map(|()| "Opened local models folder".to_owned())
+                            .unwrap_or_else(|error| error);
+                    }),
+                ),
+            ),
+            xcolumn(
+                Region::Form,
+                (
+                    label(format!("Letter identity {identity:.1}"))
+                        .text_size(TextSize::Caption.px())
+                        .color(pal.text_muted),
+                    recipes::neutral_slider(
+                        pal,
+                        0.0,
+                        1.5,
+                        identity,
+                        |app: &mut Workspace, value| {
+                            app.sketch_identity = (value * 10.0).round() / 10.0;
+                        },
+                    )
+                    .width(Length::px(200.0)),
+                ),
+            ),
+            recipes::field(
+                pal,
+                "Codepoint (optional U+hex)",
+                app.sketch_codepoint_buf.clone(),
+                |app: &mut Workspace, value| app.sketch_codepoint_buf = value,
+            ),
+            label("Blank: use glyph name only")
+                .text_size(TextSize::Caption.px())
+                .color(pal.text_muted),
+            (app.session.glyph_name == "kaf-ar.medi").then(|| {
+                label("Kaf: U+0643 if intended")
                     .text_size(TextSize::Caption.px())
                     .color(pal.text_muted)
             }),

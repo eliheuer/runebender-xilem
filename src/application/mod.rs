@@ -18,6 +18,7 @@ pub(crate) mod editor;
 pub(crate) mod font_model;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod launch;
+pub(crate) mod local_models;
 pub(crate) mod platform;
 pub(crate) mod view;
 pub(crate) mod widgets;

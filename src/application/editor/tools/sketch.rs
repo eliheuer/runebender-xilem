@@ -18,7 +18,7 @@ use runebender::automation::agent::ToolCall;
 #[cfg(unix)]
 use runebender::automation::agent_edit::AgentLayerGuard;
 #[cfg(unix)]
-use runebender::automation::agent_nodes::NodesTraceRequest;
+use runebender::automation::agent_nodes::{NodesLocalSketchSettings, NodesTraceRequest};
 #[cfg(unix)]
 use runebender::automation::glyph_grading::GradingReferenceRequest;
 #[cfg(unix)]
@@ -48,9 +48,26 @@ static NEXT_SKETCH_SUBMISSION: AtomicU64 = AtomicU64::new(1);
 /// Native presentation of one retained candidate in the existing live Nodes session.
 pub(crate) struct SketchTraceUi {
     pub(crate) handle: u64,
+    pub(crate) backend: SketchBackend,
     pub(crate) identity: GraphIdentity,
     pub(crate) phase: String,
     pub(crate) error: Option<String>,
+}
+
+/// The selected candidate generator for one retained brush request.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SketchBackend {
+    Trace,
+    Virtua,
+}
+
+impl SketchBackend {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Trace => "Trace",
+            Self::Virtua => "Virtua draft",
+        }
+    }
 }
 
 impl SketchTraceUi {
@@ -78,6 +95,8 @@ pub(crate) struct SketchLayer {
 pub(crate) struct SketchExport {
     pub(crate) png: Vec<u8>,
     pub(crate) calibration: TraceCalibration,
+    /// Half-open bounds of the dark ink within the complete padded image.
+    pub(crate) ink_box_px: [u32; 4],
 }
 
 impl SketchLayer {
@@ -241,6 +260,17 @@ impl SketchLayer {
         }
         let image = image::GrayImage::from_raw(EDGE, EDGE, self.ink.clone())
             .ok_or("sketch mask dimensions changed")?;
+        let mut ink_box_px = [EDGE, EDGE, 0, 0];
+        for y in 0..EDGE {
+            for x in 0..EDGE {
+                if self.ink[(y * EDGE + x) as usize] == 0 {
+                    ink_box_px[0] = ink_box_px[0].min(x);
+                    ink_box_px[1] = ink_box_px[1].min(y);
+                    ink_box_px[2] = ink_box_px[2].max(x + 1);
+                    ink_box_px[3] = ink_box_px[3].max(y + 1);
+                }
+            }
+        }
         let mut png = Cursor::new(Vec::new());
         image::DynamicImage::ImageLuma8(image)
             .write_to(&mut png, image::ImageFormat::Png)
@@ -253,6 +283,7 @@ impl SketchLayer {
                 font_x_at_left: self.left,
                 font_baseline_y: 0.0,
             },
+            ink_box_px,
         })
     }
 }
@@ -262,7 +293,7 @@ impl Workspace {
     pub(crate) fn trace_sketch_to_draft(&mut self) {
         #[cfg(unix)]
         {
-            self.note = match self.submit_sketch_trace() {
+            self.note = match self.submit_sketch_trace(SketchBackend::Trace) {
                 Ok(handle) => format!("Brush trace {handle} queued; check its status here"),
                 Err(error) => error,
             };
@@ -270,6 +301,21 @@ impl Workspace {
         #[cfg(not(unix))]
         {
             self.note = "Brush tracing is available in the native editor on Unix".into();
+        }
+    }
+
+    /// Submit the same guarded scratch ink to the explicitly selected local Virtua model.
+    pub(crate) fn draft_sketch_with_virtua(&mut self) {
+        #[cfg(unix)]
+        {
+            self.note = match self.submit_sketch_trace(SketchBackend::Virtua) {
+                Ok(handle) => format!("Virtua draft {handle} queued; check its status here"),
+                Err(error) => error,
+            };
+        }
+        #[cfg(not(unix))]
+        {
+            self.note = "Local Virtua drafting is available in the native editor on Unix".into();
         }
     }
 
@@ -336,9 +382,13 @@ impl Workspace {
     pub(crate) fn retry_sketch_trace(&mut self) {
         #[cfg(unix)]
         {
+            let Some(backend) = self.sketch_trace.as_ref().map(|trace| trace.backend) else {
+                self.note = "No retained brush candidate to retry".into();
+                return;
+            };
             self.note = match self.release_sketch_trace_result() {
-                Ok(()) => match self.submit_sketch_trace() {
-                    Ok(handle) => format!("Brush trace {handle} queued; check its status here"),
+                Ok(()) => match self.submit_sketch_trace(backend) {
+                    Ok(handle) => format!("Brush candidate {handle} queued; check its status here"),
                     Err(error) => error,
                 },
                 Err(error) => error,
@@ -414,7 +464,7 @@ impl Workspace {
     }
 
     #[cfg(unix)]
-    fn submit_sketch_trace(&mut self) -> Result<u64, String> {
+    fn submit_sketch_trace(&mut self, backend: SketchBackend) -> Result<u64, String> {
         if self.sketch_trace.is_some() {
             return Err("Release the retained brush trace before submitting another".into());
         }
@@ -440,6 +490,37 @@ impl Workspace {
                 return Err("brush ink belongs to another glyph or source; draw here first".into());
             }
             sketch.export()?
+        };
+        let local_sketch = if backend == SketchBackend::Virtua {
+            let selected = self.sketch_selected_model.trim();
+            if selected.is_empty() {
+                return Err("Choose an installed Virtua model before drafting".into());
+            }
+            if !self
+                .sketch_models
+                .iter()
+                .any(|entry| entry.id == selected && entry.ready)
+            {
+                return Err(
+                    "Selected Virtua model is unavailable; refresh models and choose a ready one"
+                        .into(),
+                );
+            }
+            if !self.sketch_identity.is_finite() || !(0.0..=1.5).contains(&self.sketch_identity) {
+                return Err("Virtua identity must be between 0 and 1.5".into());
+            }
+            Some(NodesLocalSketchSettings {
+                model: Some(selected.into()),
+                ink_box_px: export.ink_box_px,
+                codepoint: parse_optional_codepoint(&self.sketch_codepoint_buf)?,
+                candidates: 3,
+                temperature: 0.5,
+                identity: Some(self.sketch_identity),
+                seed: 0,
+                timeout_seconds: 120,
+            })
+        } else {
+            None
         };
         let source_layer = self
             .font
@@ -493,7 +574,7 @@ impl Workspace {
             image_base64: base64::engine::general_purpose::STANDARD.encode(export.png),
             calibration: export.calibration,
             invert: false,
-            local_sketch: None,
+            local_sketch,
         };
         let response = self
             .call_agent_nodes(&ToolCall {
@@ -512,6 +593,7 @@ impl Workspace {
             .ok_or("trace worker did not return a handle")?;
         self.sketch_trace = Some(SketchTraceUi {
             handle,
+            backend,
             identity: snapshot.identity,
             phase: response["phase"].as_str().unwrap_or("queued").into(),
             error: None,
@@ -685,6 +767,28 @@ fn is_arabic_character(character: char) -> bool {
 }
 
 #[cfg(unix)]
+fn parse_optional_codepoint(input: &str) -> Result<Option<u32>, String> {
+    let text = input.trim();
+    if text.is_empty() {
+        return Ok(None);
+    }
+    let hex = text
+        .strip_prefix("U+")
+        .or_else(|| text.strip_prefix("u+"))
+        .or_else(|| text.strip_prefix("0x"))
+        .unwrap_or(text);
+    if hex.is_empty() || hex.len() > 6 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("Enter an optional codepoint as U+XXXX, or leave it blank".into());
+    }
+    let value = u32::from_str_radix(hex, 16)
+        .map_err(|_| "Enter an optional codepoint as U+XXXX, or leave it blank")?;
+    if char::from_u32(value).is_none() {
+        return Err("The explicit codepoint is not a Unicode scalar".into());
+    }
+    Ok(Some(value))
+}
+
+#[cfg(unix)]
 fn same_sketch_context(left: &CompiledProofRecipe, right: &CompiledProofRecipe) -> bool {
     left.text == right.text
         && left.normalized_location == right.normalized_location
@@ -723,6 +827,7 @@ mod tests {
         sketch.brush_units = 16;
         assert!(sketch.stroke((0.0, 0.0), (0.0, 0.0)));
         let export = sketch.export().unwrap();
+        assert_eq!(export.ink_box_px, [50, 396, 58, 404]);
         let png = image::load_from_memory_with_format(&export.png, image::ImageFormat::Png)
             .unwrap()
             .to_luma8();
@@ -804,6 +909,7 @@ mod tests {
     fn retained_trace_requires_a_terminal_phase_before_release() {
         let mut trace = SketchTraceUi {
             handle: 1,
+            backend: SketchBackend::Virtua,
             identity: GraphIdentity {
                 session_id: "graph".into(),
                 document_epoch: "epoch".into(),
@@ -815,6 +921,17 @@ mod tests {
         for phase in ["completed", "failed", "cancelled", "stale"] {
             trace.phase = phase.into();
             assert!(trace.terminal());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn optional_model_codepoint_requires_explicit_hex_scalar() {
+        assert_eq!(parse_optional_codepoint(" ").unwrap(), None);
+        assert_eq!(parse_optional_codepoint("U+0643").unwrap(), Some(0x0643));
+        assert_eq!(parse_optional_codepoint("fedc").unwrap(), Some(0xfedc));
+        for invalid in ["Arabic kaf", "U+", "U+D800", "U+110000", "U+1234567"] {
+            assert!(parse_optional_codepoint(invalid).is_err());
         }
     }
 }

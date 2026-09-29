@@ -1,12 +1,18 @@
 # Virtua Regular AI workflow checklist
 
-Status: B1-B3 and C1-C3 validated; D1 validated; D2 real local inference completed but drawing failed visual inspection; connected local candidate transport pending.
-Created: 2026-09-28.
-Coordinator: this Codex task, with Astra owning architecture and integration review.
-Worktree: /Users/eli/.codex/worktrees/virtua-regular-ai/runebender-xilem.
-Branch: codex/virtua-regular-ai.
-Starting commit: c9cb462db20e02c4908d4278fbe3737b296f8760.
-Automation: runebender-ai-architecture-pass, repurposed exclusively for this checklist at a 20-minute interval.
+Status: promoted baseline on main; local Virtua Brush hookup and model library in progress.
+Working checkout: /Users/eli/GH/repos/runebender-xilem, main.
+Automation: paused; current work is an explicitly requested interactive implementation.
+The historical campaign log below retains earlier gates and evidence.
+
+Current priority (Eli): copy Web's clean1 checkpoint into Runebender's model library, expose discovery and selection, connect Draft with Virtua, validate real inference, and deliver a runnable native testing build.
+Do not expand MCP, train or download replacement models during this patch.
+Record model failures alongside input, checkpoint, settings and remaining correction work; plan future training only from repeatable evidence.
+- [x] L1. Copied checkpoint with exact hashes, separate from FontGarden's working checkpoint.
+- [x] L2. Visible model selection/readiness, Refresh and Open Models Folder.
+- [x] L3. Brush Draft with Virtua, identity/codepoint controls, backend-preserving Retry and existing guarded comparison.
+- [x] L4. Actual copied-checkpoint inference through calibrated native adapter, with retained output and honest quality assessment.
+- [x] L5. Validated runnable build and concise hands-on instructions.
 
 ## Outcome and scope
 
@@ -637,3 +643,30 @@ The retained executable and unrelated main invert.glif icon edit both match thei
 Original font sources, installed models and scratch proof/diagnosis artifacts were preserved.
 The recurring coordinator is PAUSED for user testing; the former integration worktree path no longer exists and must not be reused on a future resume.
 Use main and VIRTUA-REGULAR-TESTING.md for the next hands-on session; remaining S2/S3/model-quality and visual gates stay open honestly.
+
+## Local Virtua hookup evidence (interactive follow-up)
+
+User-selected library: `~/runebender/models`, with copied `virtua-clean1` config, vocabulary and weights.
+The source checkpoint remains `/Users/eli/GH/repos/font-garden-lab/runs/clean1`; Web's `runs/sketch1` alias resolves there.
+The copied weights SHA-256 is `4ba0ceaf34da472f73e9863b97f64170ab7bac3d0c30cbe1bfe5889e008f28f5`.
+Runtime dependencies still use FontGarden's installed environment via host runtime.json; automatic runtime installation is not implemented.
+Discovery, selection, Refresh/Open folder, explicit identity/codepoint, measured ink bounds, local Draft, status/cancellation and backend-preserving Retry now connect to guarded candidate review.
+Seven local-sketch tests and five agent-nodes contract tests passed.
+Native application tests passed 291 with four existing model-dependent tests ignored after permitting test sockets.
+All-target Clippy passed with warnings denied.
+Gray 1440x1000 and Light 1100x720 headless panels were inspected; a clipped hint was shortened.
+Actual trials use copied sources and never install a glyph:
+- `clean1-calibrated-native` in `/private/tmp/runebender-kaf-trial-sjiv0m10`: medial kaf, one greedy sample, identity1, U+0643, seed20260928; returned two contours/14 points but lost the shape, rejected visually.
+- `clean1-latin-control` in the same packet: saved Cairo e sketch from FontGarden's generalize SVG, unknown glyph name/U+0065, three samples, temperature0.5, identity1, seed0; returned two contours/28 points and a recognizable simplified e.
+The second trial is a control, not evidence of Arabic quality or exact reproduction of the earlier Web results.
+Brush defaults use three samples, temperature0.5 and seed0; the retained script score is not approval.
+Inputs, outputs, runtime hashes and settings are retained for future diagnosis/training planning.
+No training, model downloads, original-font edits or automatic grading occurred.
+
+Browser release build passed after keeping native model discovery behind the Unix application boundary.
+Browser quality.cjs passed at 1x with real headless input/rendering checks; the temporary port4337 server was stopped.
+Native pointer interaction and aesthetic approval remain for Eli's hands-on session.
+
+Final focused checks: seven Brush tests and three model-library tests passed after the directory/platform changes; all-target warning-denied Clippy and formatting passed.
+Runnable artifact: `/private/tmp/runebender-kaf-trial-sjiv0m10/runebender-virtua`, launched with the adjacent `Start Virtua Trial.command`.
+The model library is `~/runebender/models/virtua-clean1`; FontGarden's runtime remains required.

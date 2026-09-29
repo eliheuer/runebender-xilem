@@ -111,6 +111,9 @@ pub struct SketchRequest {
     pub candidates: u8,
     /// Finite sampling temperature from zero through two.
     pub temperature: f64,
+    /// Optional classifier-free letter identity strength from zero through 1.5.
+    /// None preserves the installed script's conditioned decoding path.
+    pub identity: Option<f64>,
     /// Deterministic local sampling seed.
     pub seed: u32,
     /// Wall-clock limit, from one second through ten minutes.
@@ -134,6 +137,8 @@ pub struct SketchCandidate {
     pub candidates: u8,
     /// Sampling temperature sent to the model.
     pub temperature: f64,
+    /// Optional classifier-free strength sent to the model, or None for legacy decoding.
+    pub identity: Option<f64>,
     /// Deterministic sampling seed sent to the model.
     pub seed: u32,
     /// Score reported by the script; not a visual-quality judgment.
@@ -165,9 +170,6 @@ pub fn inspect_runtime(runtime: &SketchRuntime) -> Result<SketchRuntimeIdentity,
         .checkpoint
         .canonicalize()
         .map_err(|error| format!("checkpoint path: {error}"))?;
-    if !checkpoint.starts_with(repository.join("runs")) {
-        return Err("checkpoint must be a concrete run under the installed repository".into());
-    }
     let python_resolved_path = runtime
         .python
         .canonicalize()
@@ -287,6 +289,9 @@ pub fn run(
     if let Some(codepoint) = request.codepoint {
         command.args(["--unicode", &format!("{codepoint:04X}")]);
     }
+    if let Some(identity) = request.identity {
+        command.arg("--identity").arg(identity.to_string());
+    }
     let output = process::run(
         &mut command,
         &[],
@@ -374,6 +379,7 @@ pub fn run(
         codepoint: request.codepoint,
         candidates: request.candidates,
         temperature: request.temperature,
+        identity: request.identity,
         seed: request.seed,
         script_score: score,
         model_input_sha256,
@@ -390,6 +396,12 @@ struct ValidatedPlacement {
 }
 
 fn validate_request(request: &SketchRequest) -> Result<ValidatedPlacement, String> {
+    if request
+        .identity
+        .is_some_and(|value| !value.is_finite() || !(0.0..=1.5).contains(&value))
+    {
+        return Err("sketch identity must be finite from zero through 1.5".into());
+    }
     if request.png.is_empty() || request.png.len() > MAX_PNG_BYTES {
         return Err("sketch PNG exceeds the four-megabyte input bound".into());
     }
@@ -676,7 +688,7 @@ mod tests {
         )
         .unwrap();
         let script = format!(
-            "#!/bin/sh\nfor argument in \"$@\"; do\n  if [ \"$argument\" = --install ]; then exit 44; fi\ndone\ncase \"$*\" in\n  *\"--target-height 20 --y-offset 8 --lsb 18\"*) ;;\n  *) exit 45;;\nesac\ncp \"$RUNEBENDER_PRETRACE_OPS\" \"$RUNEBENDER_GLYPHLAB_REPOSITORY/captured-model-input.json\" || exit 46\nprintf '%s\\n' '{response}'\n"
+            "#!/bin/sh\nfor argument in \"$@\"; do\n  if [ \"$argument\" = --install ]; then exit 44; fi\ndone\ncase \"$*\" in\n  *\"--target-height 20 --y-offset 8 --lsb 18\"*) ;;\n  *) exit 45;;\nesac\nprintf '%s\\n' \"$@\" > \"$RUNEBENDER_GLYPHLAB_REPOSITORY/captured-model-args.txt\" || exit 47\ncp \"$RUNEBENDER_PRETRACE_OPS\" \"$RUNEBENDER_GLYPHLAB_REPOSITORY/captured-model-input.json\" || exit 46\nprintf '%s\\n' '{response}'\n"
         );
         fs::write(&python_target, script).unwrap();
         fs::set_permissions(&python_target, fs::Permissions::from_mode(0o700)).unwrap();
@@ -713,6 +725,7 @@ mod tests {
             },
             candidates: 1,
             temperature: 0.0,
+            identity: None,
             seed: 7,
             timeout: Duration::from_secs(5),
         };
@@ -756,6 +769,13 @@ mod tests {
         assert_eq!(candidate.image_size_px, [32, 32]);
         assert_eq!(candidate.placement.ink_box_px, [4, 6, 14, 16]);
         assert_eq!(candidate.script_score, 123.5);
+        assert_eq!(candidate.identity, None);
+        assert!(
+            !fs::read_to_string(root.path.join("captured-model-args.txt"))
+                .unwrap()
+                .lines()
+                .any(|argument| argument == "--identity")
+        );
         assert_eq!(candidate.model_input_tracer, MODEL_INPUT_TRACER);
         assert_eq!(
             candidate.model_input_sha256,
@@ -797,6 +817,32 @@ mod tests {
         assert_eq!(candidate.contours.len(), 1);
         assert_eq!(candidate.contours[0].points.len(), 4);
         assert_eq!(candidate.contours[0].points[0].x, 20.0);
+    }
+
+    #[test]
+    fn explicit_identity_reaches_the_pinned_runner_and_candidate_receipt() {
+        let (root, runtime, mut request) = fixture(&glif_result());
+        let pinned = inspect_runtime(&runtime).unwrap();
+        request.identity = Some(1.5);
+        let candidate = run(&runtime, &pinned, &request, &ProcessCancellation::default()).unwrap();
+        assert_eq!(candidate.identity, Some(1.5));
+        let arguments = fs::read_to_string(root.path.join("captured-model-args.txt")).unwrap();
+        assert!(arguments.contains("--identity\n1.5\n"), "{arguments}");
+        for invalid in [f64::NAN, f64::INFINITY, -0.1, 1.6] {
+            request.identity = Some(invalid);
+            assert!(validate_request(&request).is_err());
+        }
+    }
+
+    #[test]
+    fn copied_checkpoint_outside_runtime_is_pinned_and_detects_drift() {
+        let (root, mut runtime, _) = fixture("{}");
+        let copy = root.path.join("model-library");
+        fs::rename(&runtime.checkpoint, &copy).unwrap();
+        runtime.checkpoint = copy;
+        let pinned = inspect_runtime(&runtime).unwrap();
+        fs::write(runtime.checkpoint.join("vocab.txt"), b"changed").unwrap();
+        assert_ne!(pinned, inspect_runtime(&runtime).unwrap());
     }
 
     #[test]

@@ -7,7 +7,6 @@
 //! Workspace retains only one candidate receipt per graph session. A finished draft becomes graph
 //! intent only after the captured document, source, layer and graph guards are checked again.
 
-use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError};
@@ -62,7 +61,7 @@ enum TraceWorkBackend {
         invert: bool,
     },
     LocalSketch {
-        runtime: SketchRuntime,
+        runtime: Box<SketchRuntime>,
         settings: NodesLocalSketchSettings,
         glyph: String,
         advance: f64,
@@ -127,6 +126,7 @@ fn worker() -> &'static SyncSender<TraceWork> {
                                         },
                                         candidates: settings.candidates,
                                         temperature: settings.temperature,
+                                        identity: settings.identity,
                                         seed: settings.seed,
                                         timeout: Duration::from_secs(settings.timeout_seconds),
                                     },
@@ -267,25 +267,6 @@ impl TraceSession {
             root_changed: false,
         }
     }
-}
-
-fn host_sketch_runtime() -> Result<SketchRuntime, String> {
-    let repository = std::env::var_os("RUNEBENDER_SKETCH_REPOSITORY")
-        .filter(|value| !value.is_empty())
-        .ok_or("configure RUNEBENDER_SKETCH_REPOSITORY for local sketch inference")?;
-    let checkpoint = std::env::var_os("RUNEBENDER_SKETCH_CHECKPOINT")
-        .filter(|value| !value.is_empty())
-        .ok_or("configure a concrete RUNEBENDER_SKETCH_CHECKPOINT")?;
-    let script_home = std::env::var_os("HOME")
-        .filter(|value| !value.is_empty())
-        .ok_or("HOME is unavailable for the installed img2bez helper")?;
-    let repository = PathBuf::from(repository);
-    Ok(SketchRuntime {
-        python: repository.join(".venv/bin/python"),
-        repository,
-        checkpoint: PathBuf::from(checkpoint),
-        script_home: PathBuf::from(script_home),
-    })
 }
 
 fn request_digest(request: &NodesTraceRequest) -> Result<String, String> {
@@ -429,7 +410,9 @@ impl Workspace {
                 }
                 let worker_backend = match request.local_sketch {
                     Some(settings) => TraceWorkBackend::LocalSketch {
-                        runtime: host_sketch_runtime()?,
+                        runtime: Box::new(crate::application::local_models::resolve(
+                            settings.model.as_deref(),
+                        )?),
                         settings,
                         glyph: intent.target.glyph.clone(),
                         advance: intent.grading.target.advance,
@@ -617,7 +600,7 @@ fn publish_trace(
         ),
         TraceOutput::LocalSketch(candidate) => {
             let contours = candidate.contours.clone();
-            let value = json!({
+            let mut value = json!({
                 "image_sha256": candidate.image_sha256,
                 "image_size_px": candidate.image_size_px,
                 "calibration": candidate.placement.calibration,
@@ -632,6 +615,9 @@ fn publish_trace(
                 "model_input_tracer": candidate.model_input_tracer,
                 "contours": candidate.contours,
             });
+            if let Some(identity) = candidate.identity {
+                value["identity"] = json!(identity);
+            }
             (
                 AgentEditOperation::ReplaceContours { contours },
                 "local_sketch",
@@ -861,6 +847,7 @@ mod tests {
             codepoint: None,
             candidates: 1,
             temperature: 0.0,
+            identity: None,
             seed: 7,
             script_score: -17.0,
             model_input_sha256: "sha256:pretrace".into(),
@@ -891,6 +878,7 @@ mod tests {
         assert_eq!(model["runtime"]["launcher_sha256"], "sha256:launcher");
         assert_eq!(model["model_input_sha256"], "sha256:pretrace");
         assert_eq!(model["script_score_not_visual_approval"], -17.0);
+        assert!(model.get("identity").is_none());
         assert_eq!(model["target"]["glyph"], "A");
         assert_eq!(model["grading"]["references"][0]["layer"]["grade"], "green");
         assert!(node.values["parameters"].get("calibrated_trace").is_none());
@@ -903,6 +891,24 @@ mod tests {
         );
         assert!(retry.unwrap_err().0);
         assert_eq!(session.snapshot(), graph);
+    }
+
+    #[test]
+    fn local_sketch_identity_is_retained_in_candidate_recipe() {
+        let (project, mut session, intent, trace) = fixture();
+        let mut candidate = sketch_candidate(trace);
+        candidate.identity = Some(0.8);
+        publish_trace(
+            &project,
+            Some("test-epoch"),
+            &mut session,
+            &intent,
+            TraceOutput::LocalSketch(Box::new(candidate)),
+        )
+        .unwrap();
+        let graph = session.snapshot();
+        let node = graph.graph.node(intent.node).unwrap();
+        assert_eq!(node.values["parameters"]["local_sketch"]["identity"], 0.8);
     }
 
     #[test]
