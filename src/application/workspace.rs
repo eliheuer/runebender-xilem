@@ -34,6 +34,18 @@ pub(crate) enum Sel {
     Filter(usize),
 }
 
+/// One bounded, session-only UI command receipt for live diagnostics.
+#[derive(serde::Serialize)]
+pub(crate) struct UiActionRecord {
+    pub(crate) sequence: u64,
+    pub(crate) surface: &'static str,
+    pub(crate) action: String,
+    pub(crate) message: Option<String>,
+    pub(crate) message_changed: bool,
+    pub(crate) document_revision_before: u64,
+    pub(crate) document_revision_after: u64,
+}
+
 /// The active editor tool.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Tool {
@@ -209,6 +221,9 @@ pub(crate) struct Workspace {
     /// Hash of the source tree at open or last successful save.
     pub(crate) source_fingerprint: u64,
     pub(crate) note: String,
+    /// Recent menu/shortcut and shared panel-button receipts; never saved with the font.
+    pub(crate) ui_actions: Vec<UiActionRecord>,
+    pub(crate) ui_action_sequence: u64,
     /// Which analysis overlays the editor draws.
     pub(crate) view: canvas::editor::ViewOptions,
     /// What the text tool starts with, from `RUNEBENDER_TEXT`.
@@ -313,6 +328,29 @@ pub(crate) struct Workspace {
 }
 
 impl Workspace {
+    /// Retain a small receipt after a shared UI action, without interpreting success from a click.
+    pub(crate) fn record_ui_action(
+        &mut self,
+        surface: &'static str,
+        action: String,
+        previous_message: &str,
+        document_revision_before: u64,
+    ) {
+        self.ui_action_sequence = self.ui_action_sequence.wrapping_add(1);
+        if self.ui_actions.len() == 16 {
+            self.ui_actions.remove(0);
+        }
+        self.ui_actions.push(UiActionRecord {
+            sequence: self.ui_action_sequence,
+            surface,
+            action: action.chars().take(96).collect(),
+            message: (!self.note.is_empty()).then(|| self.note.chars().take(512).collect()),
+            message_changed: self.note != previous_message,
+            document_revision_before,
+            document_revision_after: self.font.project.document_revision(),
+        });
+    }
+
     /// Borrow the single shared recipe queue without draining another workflow's jobs.
     pub(crate) fn script_job_queue(&self) -> Option<&script_jobs::ScriptJobQueue> {
         self.script_jobs.as_ref()

@@ -209,10 +209,56 @@ impl Workspace {
                 .map(|(axis, value)| json!({"tag":axis.tag.as_ref(),"user":value})).collect::<Vec<_>>(),
         });
         let revision = format!("{:x}", Sha256::digest(context.to_string().as_bytes()));
+        // Volatile UI feedback is intentionally outside context_revision: reading a diagnostic
+        // must not invalidate a previously captured font-edit guard.
+        let preview = if self.has_text_session {
+            match self.font.preview_font() {
+                Ok(Some(_)) => json!({"state":"ready"}),
+                Ok(None) => json!({"state":"compiling"}),
+                Err(error) => json!({"state":"error", "message":error}),
+            }
+        } else {
+            json!({"state":"inactive"})
+        };
+        let ink_present = self.sketch.lock().ok().map(|sketch| sketch.has_ink());
+        let model = self
+            .sketch_models
+            .iter()
+            .find(|entry| entry.id == self.sketch_selected_model);
+        let text_selection = self.text_proof_selection.as_ref().map(|capture| {
+            json!({
+                "source_id":capture.source.map(|source| source.0),
+                "current_revision":capture.document_revision == project.document_revision(),
+                "glyph":capture.selection.as_ref().ok().map(|selection| &selection.glyph_name),
+                "error":capture.selection.as_ref().err(),
+            })
+        });
+        let diagnostics = json!({
+            "message":self.note,
+            "recent_actions":self.ui_actions,
+            "preview":preview,
+            "brush":{
+                "ink_present":ink_present,
+                "reference":self.reference_buf,
+                "reference_reason_present":!self.sketch_reference_rationale.trim().is_empty(),
+                "selected_model":self.sketch_selected_model,
+                "model_ready":model.is_some_and(|entry| entry.ready),
+                "model_status":model.map(|entry| &entry.status),
+                "codepoint_input":self.sketch_codepoint_buf,
+                "trace":self.sketch_trace.as_ref().map(|trace| json!({
+                    "handle":trace.handle,
+                    "backend":trace.backend.label(),
+                    "phase":trace.phase,
+                    "error":trace.error,
+                })),
+                "text_selection":text_selection,
+            },
+        });
         json!({
             "ok":true, "live":true, "saved":false,
             "document_revision":project.document_revision(),
             "context_revision":revision, "context":context,
+            "diagnostics":diagnostics,
             "capabilities":{
                 "atomic_edits":true,
                 "operation_receipts":true,
@@ -229,6 +275,7 @@ impl Workspace {
                 "max_agent_actors":super::live_edits::MAX_ACTORS,
                 "receipts_per_actor":super::live_edits::RECEIPTS_PER_ACTOR,
                 "application_context":true,
+                "ui_action_diagnostics":true,
                 "glyph_navigation":true,
                 "widget_text_ranges":false,
                 "auxiliary_layer_canvas_selection":false,
@@ -442,6 +489,30 @@ mod tests {
         let repeated = socket_call(&mut app, "editor_context", json!({}));
         let stable = socket_call(&mut app, "editor_context", json!({}));
         assert_eq!(repeated["context_revision"], stable["context_revision"]);
+        let previous_message = app.note.clone();
+        let revision = app.font.project.document_revision();
+        app.note = "draft rejected before queueing".into();
+        app.record_ui_action(
+            "panel_button",
+            "Draft with Virtua".into(),
+            &previous_message,
+            revision,
+        );
+        let diagnosed = socket_call(&mut app, "editor_context", json!({}));
+        assert_eq!(diagnosed["context_revision"], stable["context_revision"]);
+        assert_eq!(
+            diagnosed["diagnostics"]["message"],
+            "draft rejected before queueing"
+        );
+        assert_eq!(
+            diagnosed["diagnostics"]["recent_actions"][0]["action"],
+            "Draft with Virtua"
+        );
+        assert_eq!(
+            diagnosed["diagnostics"]["recent_actions"][0]["message_changed"],
+            true
+        );
+        assert_eq!(diagnosed["capabilities"]["ui_action_diagnostics"], true);
         app.text_language = Some("he".into());
         let changed = socket_call(&mut app, "editor_context", json!({}));
         assert_ne!(changed["context_revision"], stable["context_revision"]);

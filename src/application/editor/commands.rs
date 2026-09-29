@@ -1001,6 +1001,18 @@ impl Workspace {
     }
 
     pub(crate) fn dispatch(&mut self, action: shortcuts::AppAction) {
+        let previous_message = self.note.clone();
+        let revision = self.font.project.document_revision();
+        self.dispatch_inner(action);
+        self.record_ui_action(
+            "menu_or_shortcut",
+            format!("{action:?}"),
+            &previous_message,
+            revision,
+        );
+    }
+
+    fn dispatch_inner(&mut self, action: shortcuts::AppAction) {
         #[cfg(target_arch = "wasm32")]
         if crate::application::browser::desktop_action(action) {
             self.note =

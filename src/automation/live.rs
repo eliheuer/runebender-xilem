@@ -74,7 +74,7 @@ pub fn tools() -> Vec<agent::Tool> {
         .collect();
     result.push(agent::Tool {
         name: "editor_context".into(),
-        description: "Read one coherent application context: active stable source/layer/glyph, selection identities, text, features, axis values and gesture state. Widget-owned caret ranges are currently unavailable. Context never supplies implicit edit targets.".into(),
+        description: "Read one coherent application context plus session-only UI diagnostics: recent menu/shortcut and shared panel-button actions, status messages, preview state and Brush request state. Diagnostics are outside the edit context revision, do not include ink pixels or widget-owned caret ranges, and never supply implicit edit targets.".into(),
         parameters: json!({"type":"object", "properties":{}, "additionalProperties":false}),
     });
     result.push(agent::Tool {

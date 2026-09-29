@@ -379,10 +379,21 @@ pub(crate) fn action<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     text: String,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
+    let action_name = text.clone();
     sized_box(
         button(
             label(text).text_size(TextSize::Body.px()).color(pal.text),
-            move |app: &mut Workspace| on_click(app),
+            move |app: &mut Workspace| {
+                let previous_message = app.note.clone();
+                let revision = app.font.project.document_revision();
+                on_click(app);
+                app.record_ui_action(
+                    "panel_button",
+                    action_name.clone(),
+                    &previous_message,
+                    revision,
+                );
+            },
         )
         .background_color(pal.button)
         .border_color(pal.outline)
@@ -399,10 +410,21 @@ pub(crate) fn action_sized<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     size: ControlSize,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
+    let action_name = text.clone();
     sized_box(
         button(
             label(text).text_size(TextSize::Body.px()).color(pal.text),
-            move |app: &mut Workspace| on_click(app),
+            move |app: &mut Workspace| {
+                let previous_message = app.note.clone();
+                let revision = app.font.project.document_revision();
+                on_click(app);
+                app.record_ui_action(
+                    "panel_button",
+                    action_name.clone(),
+                    &previous_message,
+                    revision,
+                );
+            },
         )
         .padding(Space::Sm)
         .background_color(pal.button)

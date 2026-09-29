@@ -314,6 +314,8 @@ impl Workspace {
             source_roots,
             source_fingerprint,
             note: String::new(),
+            ui_actions: Vec::new(),
+            ui_action_sequence: 0,
             view,
             initial_text,
             has_text_session,
