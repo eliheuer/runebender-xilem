@@ -9,7 +9,7 @@
 //! a text area.
 
 use crate::application::view::design::{
-    ControlSize, Radius, Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
+    ControlSize, Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
 };
 use crate::application::view::recipes::button;
 use crate::application::view::theme::Palette;
@@ -117,6 +117,7 @@ fn styled_chip<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     };
     sized_box(
         button(
+            pal,
             label(text).text_size(TextSize::Body.px()).color(ink),
             move |app: &mut Workspace| on_click(app),
         )
@@ -124,7 +125,7 @@ fn styled_chip<F: Fn(&mut Workspace) + Send + Sync + 'static>(
         .background_color(pal.panel)
         .border_color(pal.outline)
         .border_width(Stroke::Hairline.length())
-        .corner_radius(Radius::None.length()),
+        .corner_radius(Length::px(pal.control_radius)),
     )
     .dims(Dimensions::new(Dim::Auto, Dim::Fixed(Length::px(height))))
 }
@@ -223,6 +224,7 @@ pub(crate) fn kerning_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                 Region::Inline,
                 (
                     button(
+                        pal,
                         xrow(
                             Region::Inline,
                             (
@@ -249,6 +251,7 @@ pub(crate) fn kerning_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                     .padding(Space::None)
                     .flex(1.0),
                     button(
+                        pal,
                         icon_paint::view("close", "Delete kerning pair", pal.text_muted, 12.0),
                         move |app: &mut Workspace| app.delete_kern_pair(&f2, &s2),
                     )
@@ -562,13 +565,13 @@ pub(crate) fn features_section(app: &Workspace) -> impl WidgetView<Workspace> + 
                     .background_color(pal.field())
                     .border_color(pal.field_outline)
                     .border_width(Stroke::Hairline.length())
-                    .corner_radius(Radius::Sm.length()),
+                    .corner_radius(Length::px(pal.corner_radius)),
                 ))
                 .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(260.0))))
                 .background_color(pal.field())
                 .border_color(pal.field_outline)
                 .border_width(Stroke::Hairline.length())
-                .corner_radius(Radius::Sm.length()),
+                .corner_radius(Length::px(pal.corner_radius)),
                 xrow(
                     Region::Inline,
                     (

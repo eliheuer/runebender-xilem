@@ -4,7 +4,7 @@
 //! The info panel: which sections show for the grid and for a glyph.
 
 use crate::application::view::design::{
-    ControlSize, Radius, Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
+    ControlSize, Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
 };
 use crate::application::view::panels::editor_info::{
     compare_section, dimensions_section, features_section, groups_section, kerning_section,
@@ -319,7 +319,7 @@ where
                     .background_color(pal.field())
                     .border_color(pal.outline)
                     .border_width(Stroke::Hairline.length())
-                    .corner_radius(Radius::None.length()),
+                    .corner_radius(Length::px(pal.control_radius)),
             ))
             .dims(Dimensions::new(
                 Dim::Stretch,

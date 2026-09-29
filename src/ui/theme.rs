@@ -1141,8 +1141,11 @@ mod geometry_tests {
     }
 
     #[test]
-    fn gray_overrides_the_default() {
-        let gray = load_theme("gray").expect("gray");
+    fn explicit_square_geometry_overrides_the_default() {
+        let source = include_str!("../../assets/themes/default/gray.theme.toml");
+        let colors = source.split("[geometry]").next().expect("theme colors");
+        let fixture = format!("{colors}\n[geometry]\nradius = 0.0\nradiusControl = 0.0\n");
+        let gray = parse_theme(&fixture).expect("square geometry fixture");
         assert_eq!(gray.geometry.radius, 0.0);
         assert_eq!(gray.geometry.radius_control, 0.0);
         assert_ne!(gray.geometry, Geometry::default());

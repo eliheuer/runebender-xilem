@@ -547,16 +547,19 @@ impl Widget for GridWidget {
                 } else {
                     GRID_CELL_SHADOW_OFFSET
                 };
-                painter
-                    .fill(
-                        rect + kurbo::Vec2::new(-shadow_offset, shadow_offset),
-                        pal.cell_shadow(),
-                    )
-                    .draw();
-                // The reference cells are square. Encoding the square as a
-                // zero-radius `RoundedRect` made Vello CPU lose later
-                // same-colour outline/text draws in the Gray theme.
-                painter.fill(rect, bg).draw();
+                let radius = pal.corner_radius.min(rect.width().min(rect.height()) / 2.0);
+                let shadow = rect + kurbo::Vec2::new(-shadow_offset, shadow_offset);
+                if radius > 0.0 {
+                    painter
+                        .fill(shadow.to_rounded_rect(radius), pal.cell_shadow())
+                        .draw();
+                    painter.fill(rect.to_rounded_rect(radius), bg).draw();
+                } else {
+                    painter.fill(shadow, pal.cell_shadow()).draw();
+                    painter.fill(rect, bg).draw();
+                }
+                // Square themes retain the rectangle path: a zero-radius
+                // RoundedRect can lose later same-color draws in Vello CPU.
                 let border = if picked {
                     pal.selected_bg()
                 } else if cell.mark.is_some() {
@@ -574,7 +577,17 @@ impl Widget for GridWidget {
                     rect.x1 - half,
                     rect.y1 - half,
                 );
-                painter.stroke(keyline, &Stroke::new(width), border).draw();
+                if radius > half {
+                    painter
+                        .stroke(
+                            keyline.to_rounded_rect(radius - half),
+                            &Stroke::new(width),
+                            border,
+                        )
+                        .draw();
+                } else {
+                    painter.stroke(keyline, &Stroke::new(width), border).draw();
+                }
 
                 // The label block is sized from what it draws: under 34px wide a cell is a thumbnail
                 // with no text, under 90px it carries its name only, and
@@ -956,6 +969,38 @@ mod thumbnail_tests {
             size: Size::new(246.0, 538.0),
             hovered: false,
         }
+    }
+
+    #[test]
+    fn theme_radius_rounds_tile_corners_without_changing_the_face() {
+        use masonry::core::NewWidget;
+        use masonry_testing::TestHarness;
+
+        let render = |radius| {
+            let mut grid = rail();
+            Arc::get_mut(&mut grid.palette)
+                .expect("unique test palette")
+                .corner_radius = radius;
+            let x = u32::try_from(round_units(grid.inset_x())).expect("positive inset");
+            let y = u32::try_from(round_units(grid.inset_y())).expect("positive inset");
+            let mut harness = TestHarness::create_with_size(
+                crate::application::view::default_property_set(),
+                NewWidget::new(grid),
+                (246, 538),
+            );
+            (harness.render(), x, y)
+        };
+        let (square, x, y) = render(0.0);
+        let (rounded, _, _) = render(8.0);
+        assert_ne!(
+            square.get_pixel(x + 1, y + 1),
+            rounded.get_pixel(x + 1, y + 1)
+        );
+        assert_eq!(rounded.get_pixel(x + 1, y + 1), rounded.get_pixel(1, 1));
+        assert_eq!(
+            square.get_pixel(x + 20, y + 20),
+            rounded.get_pixel(x + 20, y + 20)
+        );
     }
 
     #[test]

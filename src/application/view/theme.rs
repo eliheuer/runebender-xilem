@@ -27,8 +27,10 @@ pub(crate) struct Palette {
     pub header: Color,
     /// The high-contrast ink used exclusively on the header band.
     pub header_ink: Color,
-    /// Corner radius for small popups, supplied by the active theme.
-    pub popup_radius: f64,
+    /// Corner radius for glyph tiles and small popups, supplied by the active theme.
+    pub corner_radius: f64,
+    /// Corner radius for pressable controls and fields.
+    pub control_radius: f64,
     pub control: Color,
     pub button: Color,
     pub canvas: Color,
@@ -39,6 +41,7 @@ pub(crate) struct Palette {
     slider_track_color: Color,
     pub text: Color,
     pub text_muted: Color,
+    pub text_subdued: Color,
     /// Neutral control-handle lines from the shared secondary text token.
     pub handle_line: Color,
     /// The rule around a panel and a grid cell: the keyline.
@@ -78,7 +81,8 @@ impl Palette {
             inactive_tab: color(t.surface("inactiveTab")),
             header: color(t.surface("header")),
             header_ink: color(t.text("headerInk")),
-            popup_radius: f64::from(t.geometry.radius),
+            corner_radius: f64::from(t.geometry.radius),
+            control_radius: f64::from(t.geometry.radius_control),
             control: color(t.surface("control")),
             button: color(t.surface("button")),
             canvas: color(t.surface("canvas")),
@@ -89,6 +93,7 @@ impl Palette {
             slider_track_color: color(t.surface("sliderTrack")),
             text,
             text_muted: color(t.text("muted")),
+            text_subdued: color(t.text("subdued")),
             handle_line: color(t.text("secondary")),
             outline: color(t.surface("outline")),
             field_outline: color(t.surface("fieldOutline")),

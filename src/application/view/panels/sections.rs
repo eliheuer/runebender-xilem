@@ -6,8 +6,7 @@
 use crate::application::editor::session::Session;
 use crate::application::view::chrome::direction_chips;
 use crate::application::view::design::{
-    ButtonShape, ControlSize, Radius, Region, Space, Stroke, TextSize, column as xcolumn,
-    row as xrow,
+    ButtonShape, ControlSize, Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
 };
 use crate::application::view::panels::tabs::tab_chip;
 use crate::application::view::recipes::button;
@@ -47,6 +46,7 @@ pub(crate) fn layers_section(app: &Workspace) -> Option<impl WidgetView<Workspac
             };
             sized_box(
                 button(
+                    pal,
                     xrow(
                         Region::Inline,
                         (
@@ -151,6 +151,7 @@ pub(crate) fn masters_section(app: &Workspace) -> Option<impl WidgetView<Workspa
             };
             sized_box(
                 button(
+                    pal,
                     label(name).text_size(TextSize::Body.px()).color(fg),
                     move |app: &mut Workspace| app.set_master(i),
                 )
@@ -162,7 +163,7 @@ pub(crate) fn masters_section(app: &Workspace) -> Option<impl WidgetView<Workspa
                 } else {
                     Stroke::None.length()
                 })
-                .corner_radius(Radius::None.length()),
+                .corner_radius(Length::px(pal.control_radius)),
             )
             .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Icon)))
         })
@@ -420,6 +421,7 @@ pub(crate) fn transformations_section(app: &Workspace) -> impl WidgetView<Worksp
             hbg,
             move |app: &mut Workspace| app.apply_op(f),
         )
+        .corner_radius(pal.control_radius)
         .icon_size(design::TRANSFORM_ICON_SIZE)
         .tile_size(design::TRANSFORM_TILE_SIZE)
     };
@@ -672,6 +674,7 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
         };
         sized_box(
             button(
+                pal,
                 icon_paint::view(icon, label, color, ControlSize::Dot.px()),
                 move |app: &mut Workspace| {
                     app.coord_quadrant = q;
@@ -736,7 +739,7 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
                     .background_color(pal.field())
                     .border_color(pal.field_outline)
                     .border_width(Stroke::Hairline.length())
-                    .corner_radius(Radius::None.length()),
+                    .corner_radius(Length::px(pal.control_radius)),
                 )
                 .dims(Dimensions::new(
                     Dim::Stretch,
@@ -1024,7 +1027,7 @@ pub(crate) fn mark_section(app: &Workspace) -> impl WidgetView<Workspace> + use<
     let pal = &app.palette;
     let swatch = |mark_label: Option<String>, color: xilem::Color| {
         sized_box(
-            button(label(""), move |app: &mut Workspace| {
+            button(pal, label(""), move |app: &mut Workspace| {
                 app.set_mark(mark_label.clone());
             })
             .background_color(color)

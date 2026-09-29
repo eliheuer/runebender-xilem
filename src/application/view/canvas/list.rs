@@ -6,7 +6,7 @@
 //! LSB, RSB, the two kerning groups, and the category.
 
 use crate::application::view::design::{
-    Radius, Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
+    Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
 };
 use crate::application::view::label;
 use crate::application::view::recipes::button;
@@ -99,9 +99,10 @@ pub(crate) fn glyph_list(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                 .background_color(mark_bg)
                 .border_color(mark_border)
                 .border_width(Stroke::Hairline.length())
-                .corner_radius(Radius::Sm.length());
+                .corner_radius(Length::px(pal.corner_radius));
             sized_box(
                 button(
+                    pal,
                     xrow(
                         Region::Inline,
                         (

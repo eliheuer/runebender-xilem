@@ -86,6 +86,13 @@ syn = { version = "2.0.119", features = ["full", "visit"] }
 lto = "thin"
 codegen-units = 1
 
+# Optimized local builds without release's whole-program optimization cost.
+[profile.fast]
+inherits = "release"
+lto = "off"
+codegen-units = 16
+incremental = true
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 

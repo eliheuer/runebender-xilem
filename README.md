@@ -11,6 +11,26 @@ For documentation and installation instructions, see [runebender.org](https://ru
 
 ![Runebender Nodes workflow](https://runebender.org/images/runebender-xilem-nodes.png)
 
+## Local native builds
+
+For UI development, use an optimized build with incremental compilation:
+
+```sh
+cargo run --profile fast --locked -- path/to/Font.designspace
+```
+
+Cargo builds when needed, then launches the editor with the supplied font.
+To build without launching:
+
+```sh
+cargo build --profile fast --locked
+```
+
+The executable is `target/fast/runebender`.
+This profile keeps release's optimization level and disabled debug assertions, while disabling LTO and using 16 code-generation units to favor shorter rebuilds.
+Its first build fills a separate cache; later source changes reuse incremental compilation data.
+Use `cargo build --release --locked` for final release builds and performance comparisons.
+
 ## Local sketch models
 
 The native Brush panel can draft with an installed Virtua model and compare the result before applying it.

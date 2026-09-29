@@ -17,7 +17,7 @@ use runebender::ui::icons::icons;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
-use crate::application::view::design::{RAIL_TAB_ICON, RAIL_TAB_RADIUS};
+use crate::application::view::design::RAIL_TAB_ICON;
 use crate::application::widgets::icon_paint;
 
 const TILE: f64 = 24.0;
@@ -33,9 +33,10 @@ pub(crate) struct IconWidget {
     fg_active: Color,
     active_bg: Color,
     hover_bg: Color,
-    rail: Option<(Color, Color, f64)>,
+    rail: Option<(Color, Color, f64, f64)>,
     icon_size: Option<f64>,
     tile_size: f64,
+    corner_radius: f64,
     focus_target: Option<Arc<Mutex<Option<WidgetId>>>>,
     size: Size,
     hovered: bool,
@@ -68,9 +69,11 @@ impl Widget for IconWidget {
         painter: &mut Painter<'_>,
     ) {
         let rect = self.size.to_rect();
-        if let Some((background, border, _)) = self.rail {
+        if let Some((background, border, _, radius)) = self.rail {
             // Open at the bottom when selected, joining the panel below.
-            let r = RAIL_TAB_RADIUS;
+            let r = radius
+                .max(0.5)
+                .min(self.size.width.min(self.size.height) / 2.0);
             let w = self.size.width;
             let h = self.size.height;
             if self.active {
@@ -83,21 +86,30 @@ impl Widget for IconWidget {
                 face.line_to((w - 0.5, h));
                 painter.fill(&face, background).draw();
                 painter.stroke(&face, &Stroke::new(1.0), border).draw();
-            } else {
+            } else if radius > 0.0 {
                 let face = rect.inset(-0.5).to_rounded_rect(r);
+                painter.fill(face, background).draw();
+                painter.stroke(face, &Stroke::new(1.0), border).draw();
+            } else {
+                let face = rect.inset(-0.5);
                 painter.fill(face, background).draw();
                 painter.stroke(face, &Stroke::new(1.0), border).draw();
             }
         }
 
-        if self.rail.is_none() && self.active {
-            painter
-                .fill(rect.to_rounded_rect(6.0), self.active_bg)
-                .draw();
-        } else if self.rail.is_none() && self.hovered {
-            painter
-                .fill(rect.to_rounded_rect(6.0), self.hover_bg)
-                .draw();
+        if self.rail.is_none() && (self.active || self.hovered) {
+            let fill = if self.active {
+                self.active_bg
+            } else {
+                self.hover_bg
+            };
+            if self.corner_radius > 0.0 {
+                painter
+                    .fill(rect.to_rounded_rect(self.corner_radius), fill)
+                    .draw();
+            } else {
+                painter.fill(rect, fill).draw();
+            }
         }
         let color = if self.active || (self.rail.is_some() && self.hovered) {
             self.fg_active
@@ -120,7 +132,7 @@ impl Widget for IconWidget {
         let dx = (self.size.width - vb.width() * scale) / 2.0;
         let dy = (self.size.height - vb.height() * scale) / 2.0
             - if self.rail.is_some() && self.active {
-                self.rail.map(|(_, _, rise)| rise).unwrap_or_default()
+                self.rail.map(|(_, _, rise, _)| rise).unwrap_or_default()
             } else {
                 0.0
             };
@@ -191,9 +203,10 @@ pub(crate) struct IconView<F> {
     fg_active: Color,
     active_bg: Color,
     hover_bg: Color,
-    rail: Option<(Color, Color, f64)>,
+    rail: Option<(Color, Color, f64, f64)>,
     icon_size: Option<f64>,
     tile_size: f64,
+    corner_radius: f64,
     focus_target: Option<Arc<Mutex<Option<WidgetId>>>>,
     on_click: F,
 }
@@ -218,6 +231,7 @@ pub(crate) fn icon_button<State: 'static, F: Fn(&mut State) + 'static>(
         rail: None,
         icon_size: None,
         tile_size: TILE,
+        corner_radius: 0.0,
         focus_target: None,
         on_click,
     }
@@ -245,12 +259,19 @@ pub(crate) fn named_icon_button<State: 'static, F: Fn(&mut State) + 'static>(
         rail: None,
         icon_size: None,
         tile_size: TILE,
+        corner_radius: 0.0,
         focus_target: None,
         on_click,
     }
 }
 
 impl<F> IconView<F> {
+    /// Apply the active theme to the control background.
+    pub(crate) fn corner_radius(mut self, radius: f64) -> Self {
+        self.corner_radius = radius;
+        self
+    }
+
     /// Set the icon's maximum ink extent in logical pixels, clamped to its tile.
     /// Rail tabs continue to use the rail's own icon-size token.
     pub(crate) fn icon_size(mut self, size: f64) -> Self {
@@ -271,8 +292,14 @@ impl<F> IconView<F> {
     }
 
     /// Paint a GPUI-style rail tab around the icon.
-    pub(crate) fn rail_tab(mut self, background: Color, border: Color, icon_rise: f64) -> Self {
-        self.rail = Some((background, border, icon_rise));
+    pub(crate) fn rail_tab(
+        mut self,
+        background: Color,
+        border: Color,
+        icon_rise: f64,
+        radius: f64,
+    ) -> Self {
+        self.rail = Some((background, border, icon_rise, radius));
         self
     }
 }
@@ -294,6 +321,7 @@ impl<State: 'static, F: Fn(&mut State) + 'static> View<State, (), ViewCtx> for I
             rail: self.rail,
             icon_size: self.icon_size,
             tile_size: self.tile_size,
+            corner_radius: self.corner_radius,
             focus_target: self.focus_target.clone(),
             size: Size::ZERO,
             hovered: false,
@@ -317,6 +345,7 @@ impl<State: 'static, F: Fn(&mut State) + 'static> View<State, (), ViewCtx> for I
             || self.active_bg != prev.active_bg
             || self.hover_bg != prev.hover_bg
             || self.icon_size != prev.icon_size
+            || self.corner_radius != prev.corner_radius
             || self.tile_size != prev.tile_size
         {
             el.widget.icon = self.icon;
@@ -324,6 +353,7 @@ impl<State: 'static, F: Fn(&mut State) + 'static> View<State, (), ViewCtx> for I
             el.widget.rail = self.rail;
             el.widget.icon_size = self.icon_size;
             el.widget.tile_size = self.tile_size;
+            el.widget.corner_radius = self.corner_radius;
             el.widget.fg = self.fg;
             el.widget.fg_active = self.fg_active;
             el.widget.active_bg = self.active_bg;
@@ -377,6 +407,7 @@ mod tests {
             rail: None,
             icon_size: None,
             tile_size: TILE,
+            corner_radius: 0.0,
             focus_target: Some(target),
             size: Size::ZERO,
             hovered: false,

@@ -150,9 +150,18 @@ impl Widget for ContextMenu {
     ) {
         let pal = &self.palette;
         let frame = self.size.to_rect();
-        painter.fill(frame.to_rounded_rect(6.0), pal.panel).draw();
         painter
-            .stroke(frame.to_rounded_rect(6.0), &Stroke::new(1.0), pal.outline)
+            .fill(
+                crate::application::view::design::rounded_rect_path(frame, pal.corner_radius),
+                pal.panel,
+            )
+            .draw();
+        painter
+            .stroke(
+                crate::application::view::design::rounded_rect_path(frame, pal.corner_radius),
+                &Stroke::new(1.0),
+                pal.outline,
+            )
             .draw();
         for (index, row) in self.rows.iter().enumerate() {
             let top = PAD + index as f64 * ROW;
@@ -160,7 +169,10 @@ impl Widget for ContextMenu {
             if self.hovered == Some(index) {
                 painter
                     .fill(
-                        rect.to_rounded_rect(4.0),
+                        crate::application::view::design::rounded_rect_path(
+                            rect,
+                            pal.control_radius,
+                        ),
                         pal.selected_bg().with_alpha(0.25),
                     )
                     .draw();

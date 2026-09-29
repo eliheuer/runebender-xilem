@@ -1,5 +1,6 @@
 # OKLCH order: lightness (0–1), chroma (0+, no fixed maximum), hue (0–360 degrees).
 # Ten Base UI stops, 00–09, progress from darkest to lightest.
+# Gray uses equal 0.06 lightness steps, from 0.30 to 0.84.
 # Rainbow names carry the same mark meaning across themes.
 # See https://runebender.org/docs/themes.html for the full format.
 formatVersion = 1
@@ -14,16 +15,16 @@ pointOutline = "baseUi.00"
 pointHalo = false
 
 [baseUi]
-"00" = "oklch(0.31 0 255)"
-"01" = "oklch(0.37 0 255)"
-"02" = "oklch(0.43 0 255)"
-"03" = "oklch(0.52 0 255)"
-"04" = "oklch(0.6 0 255)"
-"05" = "oklch(0.65 0 255)"
-"06" = "oklch(0.71 0 255)"
-"07" = "oklch(0.76 0 255)"
-"08" = "oklch(0.81 0 255)"
-"09" = "oklch(0.91 0 255)"
+"00" = "oklch(0.30 0 0)"
+"01" = "oklch(0.36 0 0)"
+"02" = "oklch(0.42 0 0)"
+"03" = "oklch(0.48 0 0)"
+"04" = "oklch(0.54 0 0)"
+"05" = "oklch(0.60 0 0)"
+"06" = "oklch(0.66 0 0)"
+"07" = "oklch(0.72 0 0)"
+"08" = "oklch(0.78 0 0)"
+"09" = "oklch(0.84 0 0)"
 
 [rainbow]
 marks = ["red", "orange", "yellow", "green", "blue", "purple", "pink"]
@@ -118,7 +119,7 @@ popcount3 = "#FF990F"
 popcount4 = "#FF4A3D"
 
 [geometry]
-radius = 0.0
-radiusControl = 0.0
+radius = 4.0
+radiusControl = 4.0
 stroke = 1.0
 strokeEmphasis = 2.0

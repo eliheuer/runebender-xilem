@@ -15,7 +15,7 @@ use crate::application::widgets::icon_paint;
 use crate::application::widgets::input_typography;
 
 use crate::application::view::design::{
-    ButtonShape, ControlSize, ROW_MARKER_SIZE, Radius, Region, Space, Stroke, TextSize,
+    ControlSize, ROW_MARKER_SIZE, Region, Space, Stroke, TextSize,
 };
 use crate::application::view::design::{column, row};
 use crate::application::view::{label, text_input};
@@ -30,11 +30,10 @@ use crate::application::workspace::Workspace;
 
 /// The application's base button.
 ///
-/// Xilem's stock button is rounded. Runebender panel controls are square so
-/// their keylines can join neighboring rows and controls. View modules import
-/// this factory directly; deliberately circular controls override the radius
-/// with [`ButtonShape::Circular`].
+/// Panel controls use the active theme's control radius.
+/// Deliberately circular controls override it at their use site.
 pub(crate) fn button<V, F>(
+    pal: &Palette,
     child: V,
     on_click: F,
 ) -> impl WidgetView<Workspace, Widget = masonry::widgets::Button> + use<V, F>
@@ -42,7 +41,7 @@ where
     V: WidgetView<Workspace>,
     F: Fn(&mut Workspace) + Send + Sync + 'static,
 {
-    xilem_button(child, on_click).corner_radius(ButtonShape::Square.radius())
+    xilem_button(child, on_click).corner_radius(Length::px(pal.control_radius))
 }
 
 /// A section header that collapses its section.
@@ -78,6 +77,7 @@ where
     // with the rows it heads.
     sized_box(
         button(
+            pal,
             row(
                 Region::Inline,
                 (
@@ -130,8 +130,6 @@ pub(crate) fn kv(pal: &Palette, name: String, value: String) -> impl WidgetView<
             label(name).text_size(TextSize::Body.px()).color(muted),
             FlexSpacer::Flex(1.0),
             label(value).text_size(TextSize::Body.px()).color(text),
-            // Clear of the scroll bar, as in the list rows above.
-            FlexSpacer::Fixed(Space::Sm.length()),
         ),
     ))
     .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row)))
@@ -159,7 +157,7 @@ where
             .background_color(pal.field())
             .border_color(pal.field_outline)
             .border_width(Stroke::Hairline.length())
-            .corner_radius(Radius::None.length()),
+            .corner_radius(Length::px(pal.control_radius)),
     ))
     .dims(Dimensions::new(
         Dim::Stretch,
@@ -190,7 +188,7 @@ where
                     .background_color(pal.field())
                     .border_color(pal.field_outline)
                     .border_width(Stroke::Hairline.length())
-                    .corner_radius(Radius::None.length()),
+                    .corner_radius(Length::px(pal.control_radius)),
             ))
             .dims(Dimensions::new(
                 Dim::Stretch,
@@ -232,7 +230,7 @@ where
                     .background_color(pal.field())
                     .border_color(pal.field_outline)
                     .border_width(Stroke::Hairline.length())
-                    .corner_radius(Radius::None.length()),
+                    .corner_radius(Length::px(pal.control_radius)),
             ))
             .dims(Dimensions::new(
                 Dim::Stretch,
@@ -310,6 +308,7 @@ pub(crate) fn list_row_marked<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     };
     sized_box(
         button(
+            pal,
             row(
                 Region::Inline,
                 (
@@ -338,7 +337,7 @@ pub(crate) fn list_row_marked<F: Fn(&mut Workspace) + Send + Sync + 'static>(
             }
             .length(),
         )
-        .corner_radius(Radius::None.length()),
+        .corner_radius(Length::px(pal.control_radius)),
     )
     .dims(Dimensions::new(
         Dim::Stretch,
@@ -361,6 +360,7 @@ pub(crate) fn toggle<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     };
     sized_box(
         button(
+            pal,
             label(text).text_size(TextSize::Body.px()).color(fg),
             move |app: &mut Workspace| on_click(app),
         )
@@ -368,7 +368,7 @@ pub(crate) fn toggle<F: Fn(&mut Workspace) + Send + Sync + 'static>(
         .background_color(bg)
         .border_color(border)
         .border_width(Stroke::Hairline.length())
-        .corner_radius(Radius::None.length()),
+        .corner_radius(Length::px(pal.control_radius)),
     )
     .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Control)))
 }
@@ -382,6 +382,7 @@ pub(crate) fn action<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     let action_name = text.clone();
     sized_box(
         button(
+            pal,
             label(text).text_size(TextSize::Body.px()).color(pal.text),
             move |app: &mut Workspace| {
                 let previous_message = app.note.clone();
@@ -398,7 +399,7 @@ pub(crate) fn action<F: Fn(&mut Workspace) + Send + Sync + 'static>(
         .background_color(pal.button)
         .border_color(pal.outline)
         .border_width(Stroke::Hairline.length())
-        .corner_radius(Radius::None.length()),
+        .corner_radius(Length::px(pal.control_radius)),
     )
     .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Control)))
 }
@@ -413,6 +414,7 @@ pub(crate) fn action_sized<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     let action_name = text.clone();
     sized_box(
         button(
+            pal,
             label(text).text_size(TextSize::Body.px()).color(pal.text),
             move |app: &mut Workspace| {
                 let previous_message = app.note.clone();
@@ -430,7 +432,7 @@ pub(crate) fn action_sized<F: Fn(&mut Workspace) + Send + Sync + 'static>(
         .background_color(pal.button)
         .border_color(pal.outline)
         .border_width(Stroke::Hairline.length())
-        .corner_radius(Radius::None.length()),
+        .corner_radius(Length::px(pal.control_radius)),
     )
     .dims(Dimensions::new(Dim::Auto, Dim::from(size)))
 }

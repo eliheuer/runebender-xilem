@@ -140,27 +140,29 @@ where
     B: WidgetView<State>,
     C: WidgetView<State>,
 {
-    use crate::application::view::design::{CENTER_MIN_WIDTH, DOCK_MIN_WIDTH, SPLITTER_HIT_WIDTH};
+    use crate::application::view::design::{
+        CENTER_MIN_WIDTH, SIDEBAR_SPLITTER_HIT_WIDTH, SPLITTER_HIT_WIDTH,
+    };
     let left = edge_keyline(left, KeylineEdge::Right, outline);
     let columns = xilem::view::split(left, middle)
         .split_point_from_start(Length::px(if collapsed { 0.0 } else { DOCK_WIDTH }))
         .min_lengths(
-            Length::px(if collapsed { 0.0 } else { DOCK_MIN_WIDTH }),
+            Length::px(if collapsed { 0.0 } else { DOCK_WIDTH }),
             Length::px(CENTER_MIN_WIDTH),
         )
         // Split keeps the generous hit target and all native resize behavior;
         // the visible rule is our palette keyline above, not its hard-coded
         // bluish-gray bar.
         .bar_thickness(Length::ZERO)
-        .min_bar_area(Length::px(SPLITTER_HIT_WIDTH))
+        .min_bar_area(Length::px(SIDEBAR_SPLITTER_HIT_WIDTH))
         .solid_bar(false)
         .draggable(!collapsed);
     let right = edge_keyline(right, KeylineEdge::Left, outline);
     let columns = xilem::view::split(columns, right)
         .split_point_from_end(Length::px(DOCK_WIDTH))
         .min_lengths(
-            Length::px(CENTER_MIN_WIDTH + if collapsed { 0.0 } else { DOCK_MIN_WIDTH } + 1.0),
-            Length::px(DOCK_MIN_WIDTH),
+            Length::px(CENTER_MIN_WIDTH + if collapsed { 0.0 } else { DOCK_WIDTH } + 1.0),
+            Length::px(DOCK_WIDTH),
         )
         .bar_thickness(Length::ZERO)
         .min_bar_area(Length::px(SPLITTER_HIT_WIDTH))
@@ -952,10 +954,10 @@ mod panel_resize_tests {
             )
         }
         assert_eq!(widths(&h), (246.0, 788.0, 246.0));
-        // Start two pixels beside the visible line, within its wider hit target.
-        h.mouse_move(Point::new(244.5, 100.0));
+        // Six pixels beside the visible line, outside the old hit target.
+        h.mouse_move(Point::new(239.5, 100.0));
         h.mouse_button_press(None);
-        h.mouse_move(Point::new(324.5, 100.0));
+        h.mouse_move(Point::new(319.5, 100.0));
         h.mouse_button_release(None);
         assert_eq!(widths(&h), (326.0, 708.0, 246.0));
         h.mouse_move(Point::new(1033.5, 100.0));
@@ -972,10 +974,13 @@ mod panel_resize_tests {
         h.mouse_button_press(None);
         h.mouse_move(Point::new(20.0, 100.0));
         h.mouse_button_release(None);
-        assert_eq!(
-            widths(&h).0,
-            crate::application::view::design::DOCK_MIN_WIDTH
-        );
+        assert_eq!(widths(&h).0, crate::application::view::design::DOCK_WIDTH);
+        let right_divider = 1100.0 - widths(&h).2;
+        h.mouse_move(Point::new(right_divider, 100.0));
+        h.mouse_button_press(None);
+        h.mouse_move(Point::new(1090.0, 100.0));
+        h.mouse_button_release(None);
+        assert_eq!(widths(&h).2, crate::application::view::design::DOCK_WIDTH);
     }
 
     #[test]

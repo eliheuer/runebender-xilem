@@ -6,8 +6,7 @@
 
 use crate::application::view::canvas::grid::{GridEvent, grid};
 use crate::application::view::design::{
-    ButtonShape, ControlSize, Radius, Region, Space, Stroke, TextSize, column as xcolumn,
-    row as xrow,
+    ButtonShape, ControlSize, Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
 };
 use crate::application::view::design::{
     RAIL_TAB_ACTIVE_HEIGHT, RAIL_TAB_HEIGHT, RAIL_TAB_INACTIVE_HEIGHT,
@@ -57,6 +56,7 @@ fn glyph_search(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let toggle = |text: String, active: bool, f: fn(&mut Workspace)| {
         sized_box(
             button(
+                pal,
                 label(text).text_size(TextSize::Body.px()).color(if active {
                     pal.selected_ink()
                 } else {
@@ -68,7 +68,7 @@ fn glyph_search(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             .background_color(if active { pal.selected_bg() } else { pal.panel })
             .border_color(pal.outline)
             .border_width(Stroke::Hairline.length())
-            .corner_radius(Radius::None.length()),
+            .corner_radius(Length::px(pal.control_radius)),
         )
         .dims(Dimensions::fixed(
             Length::px(design::SEARCH_TOGGLE_WIDTH),
@@ -91,7 +91,7 @@ fn glyph_search(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 .background_color(pal.field())
                 .border_color(pal.outline)
                 .border_width(Stroke::Hairline.length())
-                .corner_radius(Radius::None.length())
+                .corner_radius(Length::px(pal.control_radius))
                 .dims(Dimensions::new(
                     Dim::Stretch,
                     Dim::from(ControlSize::Control),
@@ -185,7 +185,7 @@ fn shapes_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         .background_color(pal.field())
                         .border_color(pal.field_outline)
                         .border_width(Stroke::Hairline.length())
-                        .corner_radius(Radius::None.length())
+                        .corner_radius(Length::px(pal.control_radius))
                         .dims(Dimensions::new(
                             Dim::Stretch,
                             Dim::from(ControlSize::Control),
@@ -248,6 +248,7 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
                 if active { pal.panel } else { pal.inactive_tab },
                 pal.outline,
                 design::RAIL_TAB_ICON_RISE,
+                pal.control_radius,
             ),
         )
         .dims(Dimensions::new(
@@ -435,13 +436,14 @@ where
     };
     sized_box(
         button(
+            pal,
             label(text).text_size(TextSize::Body.px()).color(fg),
             move |app: &mut Workspace| on_click(app),
         )
         .background_color(bg)
         .border_color(border)
         .border_width(Stroke::Hairline.length())
-        .corner_radius(Radius::None.length())
+        .corner_radius(Length::px(pal.control_radius))
         // The stock button's padding is sized for a form button, not
         // for a chip in a title bar. GPUI writes `px_2`.
         .padding(Space::Md),
@@ -477,6 +479,7 @@ where
     };
     sized_box(
         button(
+            pal,
             label(text).text_size(TextSize::Body.px()).color(fg),
             move |app: &mut Workspace| on_click(app),
         )
@@ -486,7 +489,7 @@ where
         .corner_radius(if circular {
             ButtonShape::Circular.radius()
         } else {
-            ButtonShape::Square.radius()
+            Length::px(pal.control_radius)
         })
         .padding(Space::Md),
     )
@@ -506,6 +509,7 @@ where
 {
     sized_box(
         button(
+            pal,
             icon_paint::view(icon, label, pal.header_ink.with_alpha(0.7), 12.0),
             on_click,
         )
@@ -515,7 +519,7 @@ where
         .corner_radius(if circular {
             ButtonShape::Circular.radius()
         } else {
-            ButtonShape::Square.radius()
+            Length::px(pal.control_radius)
         })
         .padding(Space::Md),
     )

@@ -342,17 +342,20 @@ impl Widget for ToolMenu {
             MENU_SHADOW + MENU_WIDTH,
             self.size.height - MENU_SHADOW,
         );
-        let shape = frame.to_rounded_rect(self.palette.popup_radius);
+        let shape =
+            crate::application::view::design::rounded_rect_path(frame, self.palette.corner_radius);
         painter
             .fill(
-                (frame + Vec2::new(-MENU_SHADOW, MENU_SHADOW))
-                    .to_rounded_rect(self.palette.popup_radius),
+                crate::application::view::design::rounded_rect_path(
+                    frame + Vec2::new(-MENU_SHADOW, MENU_SHADOW),
+                    self.palette.corner_radius,
+                ),
                 self.palette.cell_shadow().with_alpha(0.5),
             )
             .draw();
-        painter.fill(shape, self.palette.header).draw();
+        painter.fill(&shape, self.palette.header).draw();
         painter
-            .stroke(shape, &Stroke::new(1.0), self.palette.outline)
+            .stroke(&shape, &Stroke::new(1.0), self.palette.outline)
             .draw();
         for (index, choice) in self.group.choices().iter().enumerate() {
             let top = MENU_PAD + index as f64 * ROW_HEIGHT;
@@ -360,13 +363,15 @@ impl Widget for ToolMenu {
             if selected {
                 painter
                     .fill(
-                        Rect::new(
-                            MENU_SHADOW + MENU_PAD,
-                            top,
-                            MENU_SHADOW + MENU_WIDTH - MENU_PAD,
-                            top + ROW_HEIGHT,
-                        )
-                        .to_rounded_rect(self.palette.popup_radius),
+                        crate::application::view::design::rounded_rect_path(
+                            Rect::new(
+                                MENU_SHADOW + MENU_PAD,
+                                top,
+                                MENU_SHADOW + MENU_WIDTH - MENU_PAD,
+                                top + ROW_HEIGHT,
+                            ),
+                            self.palette.control_radius,
+                        ),
                         self.palette.header_ink.with_alpha(0.18),
                     )
                     .draw();

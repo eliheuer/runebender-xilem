@@ -163,6 +163,7 @@ pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<
                 app.select_tool(tool);
             },
         )
+        .corner_radius(pal.control_radius)
         .tile_size(ControlSize::Icon.px());
         if tool == Tool::Text {
             button.focus_target(editor_focus.clone())
@@ -250,11 +251,13 @@ pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 ControlSize::Swatch.length(),
                 ControlSize::Swatch.length(),
             ));
-            button(face, move |app: &mut Workspace| app.set_mark(mark.clone()))
-                .padding(Space::None)
-                .border_width(Space::None.length())
-                .corner_radius(ButtonShape::Circular.radius())
-                .background_color(Color::TRANSPARENT)
+            button(pal, face, move |app: &mut Workspace| {
+                app.set_mark(mark.clone());
+            })
+            .padding(Space::None)
+            .border_width(Space::None.length())
+            .corner_radius(ButtonShape::Circular.radius())
+            .background_color(Color::TRANSPARENT)
         })
         .collect::<Vec<_>>();
     sized_box(
@@ -344,6 +347,7 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                                     "Add glyph",
                                     "plus",
                                     false,
+                                    pal.editor_control_ink(),
                                     |app: &mut Workspace| app.new_glyph(),
                                 ),
                                 overview_status_button(
@@ -351,6 +355,7 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                                     "Remove glyph",
                                     "minus",
                                     false,
+                                    pal.editor_control_ink(),
                                     |app: &mut Workspace| {
                                         app.note =
                                             "Remove glyph: not built in this shell yet".into();
@@ -385,6 +390,7 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                                     "Grid view",
                                     "grid",
                                     !app.list,
+                                    pal.text_subdued,
                                     |app: &mut Workspace| app.list = false,
                                 ),
                                 overview_status_button(
@@ -392,6 +398,7 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                                     "List view",
                                     "list",
                                     app.list,
+                                    pal.text_subdued,
                                     |app: &mut Workspace| app.list = true,
                                 ),
                                 recipes::neutral_slider(
@@ -421,12 +428,13 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     ))
 }
 
-/// One compact control using the same ink and rounded treatment as the sidebar toggle.
+/// One compact footer control, with selection expressed through its ink.
 fn overview_status_button<F>(
     pal: &Palette,
     label: &'static str,
     icon: &'static str,
     active: bool,
+    inactive_ink: Color,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F>
 where
@@ -436,12 +444,13 @@ where
         label,
         icon,
         active,
+        inactive_ink,
         pal.editor_control_ink(),
-        pal.editor_control_ink(),
-        pal.control,
-        pal.control,
+        Color::TRANSPARENT,
+        Color::TRANSPARENT,
         on_click,
     )
+    .corner_radius(pal.control_radius)
     .icon_size(STATUS_ICON_SIZE)
     .tile_size(STATUS_ICON_SIZE)
 }
@@ -472,6 +481,7 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
                             Color::TRANSPARENT,
                             |app: &mut Workspace| app.preview_visible = !app.preview_visible,
                         )
+                        .corner_radius(pal.control_radius)
                         .icon_size(16.0)
                         .tile_size(16.0),
                         named_icon_button(
@@ -484,6 +494,7 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
                             Color::TRANSPARENT,
                             |app: &mut Workspace| app.preview_invert = !app.preview_invert,
                         )
+                        .corner_radius(pal.control_radius)
                         .icon_size(16.0)
                         .tile_size(16.0),
                     ),
@@ -534,6 +545,7 @@ fn sidebar_toggle(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         pal.control,
         |app: &mut Workspace| app.left_collapsed = !app.left_collapsed,
     )
+    .corner_radius(pal.control_radius)
     .icon_size(STATUS_ICON_SIZE)
     .tile_size(STATUS_ICON_SIZE)
 }

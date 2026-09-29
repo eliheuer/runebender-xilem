@@ -72,10 +72,22 @@ pub(crate) fn point_marker_scale(zoom: f64) -> f64 {
     }
 }
 
-/// Initial dock width shared by the glyph rail and inspector.
+/// Initial and minimum dock width shared by the glyph rail and inspector.
 pub(crate) const DOCK_WIDTH: f64 = 246.0;
-/// Resizable panel bounds retain usable controls and a visible canvas.
-pub(crate) const DOCK_MIN_WIDTH: f64 = 220.0;
+/// Default native window dimensions, in logical pixels and on an eight-pixel grid.
+pub(crate) const DEFAULT_WINDOW_WIDTH: f64 = 1336.0;
+pub(crate) const DEFAULT_WINDOW_HEIGHT: f64 = 840.0;
+
+/// A themed surface path, retaining a true rectangle when its radius is zero.
+pub(crate) fn rounded_rect_path(rect: kurbo::Rect, radius: f64) -> kurbo::BezPath {
+    use kurbo::Shape;
+    if radius > 0.0 {
+        rect.to_rounded_rect(radius).to_path(0.1)
+    } else {
+        rect.to_path(0.1)
+    }
+}
+/// Resizable panel bounds retain a visible canvas.
 pub(crate) const CENTER_MIN_WIDTH: f64 = 280.0;
 pub(crate) const EDITOR_MIN_HEIGHT: f64 = 160.0;
 pub(crate) const PROOF_MIN_HEIGHT: f64 = 64.0;
@@ -85,6 +97,8 @@ pub(crate) const OVERVIEW_GLYPH_PREVIEW_FILL: f64 = 0.88;
 pub(crate) const INSPECTOR_PREVIEW_MIN_READABLE_HEIGHT: f64 = 120.0;
 /// Wide pointer target around the one-pixel divider.
 pub(crate) const SPLITTER_HIT_WIDTH: f64 = 8.0;
+/// Easier pointer target for resizing the left sidebar without widening its rule.
+pub(crate) const SIDEBAR_SPLITTER_HIT_WIDTH: f64 = 16.0;
 /// Vertical inset shared by the overview category, script and filter sections.
 pub(crate) const SIDEBAR_SECTION_VERTICAL_INSET: f64 = 6.0;
 /// GPUI category rows inset their marker and count by 14 logical pixels.
@@ -107,7 +121,6 @@ pub(crate) const GRID_CELL_SHADOW_OFFSET: f64 = 2.0;
 /// Selected glyph-grid tiles sit one pixel farther above the grid ground.
 pub(crate) const GRID_CELL_SELECTED_SHADOW_OFFSET: f64 = 3.0;
 pub(crate) const RAIL_TAB_ICON: f64 = 18.0;
-pub(crate) const RAIL_TAB_RADIUS: f64 = 6.0;
 pub(crate) const RAIL_TAB_ICON_RISE: f64 = 2.0;
 /// Initial proof drawing height, excluding its single top divider.
 /// Proof appearance controls live in the footer; text and shaping in the inspector.

@@ -12,7 +12,7 @@ use crate::application::view::{label, recipes};
 use crate::application::widgets::scroll_viewport::portal;
 use crate::application::widgets::selectable_text::selectable_text;
 use crate::application::workspace::Workspace;
-use masonry::layout::Dim;
+use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
 use xilem::Color;
 use xilem::WidgetView;
@@ -70,7 +70,7 @@ fn script_artifact_row(
     .background_color(pal.control)
     .border_color(pal.field_outline)
     .border_width(Stroke::Hairline.length())
-    .corner_radius(Radius::Sm.length())
+    .corner_radius(Length::px(pal.corner_radius))
     .boxed()
 }
 
@@ -166,7 +166,11 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                 } else {
                     Stroke::Hairline.length()
                 })
-                .corner_radius(radius.length())
+                .corner_radius(Length::px(if matches!(radius, Radius::None) {
+                    0.0
+                } else {
+                    pal.corner_radius
+                }))
                 .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
                 .boxed()
             }

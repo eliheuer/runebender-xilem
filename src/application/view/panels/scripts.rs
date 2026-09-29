@@ -48,7 +48,7 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
                 .background_color(pal.field())
                 .border_color(pal.field_outline)
                 .border_width(Stroke::Hairline.length())
-                .corner_radius(crate::application::view::design::Radius::None.length()),
+                .corner_radius(Length::px(pal.control_radius)),
                 sized_box(
                     portal(
                         source_text_area(draft.content, |app: &mut Workspace, value| {
@@ -63,7 +63,7 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
                 .background_color(pal.field())
                 .border_color(pal.field_outline)
                 .border_width(Stroke::Hairline.length())
-                .corner_radius(crate::application::view::design::Radius::None.length()),
+                .corner_radius(Length::px(pal.control_radius)),
                 label("Parameters · JSON object")
                     .text_size(TextSize::Caption.px())
                     .color(pal.text_muted),
@@ -84,7 +84,7 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
                 .background_color(pal.field())
                 .border_color(pal.field_outline)
                 .border_width(Stroke::Hairline.length())
-                .corner_radius(crate::application::view::design::Radius::None.length()),
+                .corner_radius(Length::px(pal.control_radius)),
                 selectable_text::<Workspace, ()>(app.script_scope_label())
                     .text_size(TextSize::Body.px())
                     .color(pal.text_muted),
