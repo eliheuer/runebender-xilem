@@ -227,6 +227,17 @@ fn grade(layer: LayerView<'_>) -> GlyphGrade {
     }
 }
 
+/// Read a layer's existing human grade without changing it or inferring approval from hue alone.
+pub fn document_layer_grade(project: &Project, source: SourceId, glyph: &str) -> GlyphGrade {
+    let Some(layer) = project
+        .document_source(source)
+        .and_then(|source| project.document_layer(glyph, &source.default_layer()))
+    else {
+        return GlyphGrade::Unknown;
+    };
+    grade(layer)
+}
+
 fn legacy_green_color() -> MarkColor {
     MarkColor::parse(LEGACY_GREEN_UFO_RGBA).expect("checked legacy green palette value")
 }

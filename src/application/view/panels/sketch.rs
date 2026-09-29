@@ -3,9 +3,7 @@
 
 //! Brush controls for session-only ink and explicit guarded trace submission.
 
-use crate::application::editor::tools::sketch::BRUSH_WIDTHS;
 use crate::application::view::design::{Region, TextSize, column as xcolumn, row as xrow};
-use crate::application::view::theme::Palette;
 use crate::application::view::{label, recipes};
 use crate::application::workspace::Workspace;
 use masonry::layout::Length;
@@ -25,23 +23,21 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         Region::Form,
         (
             label("Brush sketch").color(pal.text),
-            label("Ink only · width in font units")
+            label(format!("Brush size · {width} units"))
                 .text_size(TextSize::Caption.px())
                 .color(pal.text_muted),
-            xrow(
-                Region::Inline,
-                BRUSH_WIDTHS[..4]
-                    .iter()
-                    .map(|&units| width_button(pal, units, width))
-                    .collect::<Vec<_>>(),
-            ),
-            xrow(
-                Region::Inline,
-                BRUSH_WIDTHS[4..]
-                    .iter()
-                    .map(|&units| width_button(pal, units, width))
-                    .collect::<Vec<_>>(),
-            ),
+            recipes::neutral_slider(pal, 16.0, 200.0, f64::from(width), |app, value| {
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "slider is bounded to 16..=200"
+                )]
+                let units = ((value / 8.0).round() * 8.0).clamp(16.0, 200.0) as u16;
+                if let Ok(mut sketch) = app.sketch.lock() {
+                    sketch.brush_units = units;
+                    sketch.erase = false;
+                }
+            })
+            .width(Length::px(200.0)),
             xrow(
                 Region::Inline,
                 (
@@ -63,18 +59,16 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     }),
                 ),
             ),
-            recipes::field(
-                pal,
-                "Approved reference glyph",
-                app.reference_buf.clone(),
-                |app: &mut Workspace, value| app.reference_buf = value,
-            ),
-            recipes::field(
-                pal,
-                "Why this reference fits",
-                app.sketch_reference_rationale.clone(),
-                |app: &mut Workspace, value| app.sketch_reference_rationale = value,
-            ),
+            label(format!(
+                "Green references: {}",
+                match app.sketch_reference_names().as_slice() {
+                    [] => "none found".into(),
+                    names => names.join(", "),
+                }
+            ))
+            .text_size(TextSize::Caption.px())
+            .line_break_mode(LineBreaking::WordWrap)
+            .color(pal.text_muted),
             retained.is_none().then(|| {
                 xcolumn(
                     Region::Form,
@@ -230,37 +224,6 @@ fn model_controls(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     .width(Length::px(200.0)),
                 ),
             ),
-            recipes::field(
-                pal,
-                "Codepoint (optional U+hex)",
-                app.sketch_codepoint_buf.clone(),
-                |app: &mut Workspace, value| app.sketch_codepoint_buf = value,
-            ),
-            label("Blank: use glyph name only")
-                .text_size(TextSize::Caption.px())
-                .color(pal.text_muted),
-            (app.session.glyph_name == "kaf-ar.medi").then(|| {
-                label("Kaf: U+0643 if intended")
-                    .text_size(TextSize::Caption.px())
-                    .color(pal.text_muted)
-            }),
         ),
-    )
-}
-
-fn width_button(pal: &Palette, units: u16, selected: u16) -> impl WidgetView<Workspace> + use<> {
-    recipes::action(
-        pal,
-        if units == selected {
-            format!("[{units}]")
-        } else {
-            format!("{units}")
-        },
-        move |app: &mut Workspace| {
-            if let Ok(mut sketch) = app.sketch.lock() {
-                sketch.brush_units = units;
-                sketch.erase = false;
-            }
-        },
     )
 }

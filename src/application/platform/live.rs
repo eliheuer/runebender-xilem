@@ -239,12 +239,10 @@ impl Workspace {
             "preview":preview,
             "brush":{
                 "ink_present":ink_present,
-                "reference":self.reference_buf,
-                "reference_reason_present":!self.sketch_reference_rationale.trim().is_empty(),
+                "references":self.sketch_reference_names(),
                 "selected_model":self.sketch_selected_model,
                 "model_ready":model.is_some_and(|entry| entry.ready),
                 "model_status":model.map(|entry| &entry.status),
-                "codepoint_input":self.sketch_codepoint_buf,
                 "trace":self.sketch_trace.as_ref().map(|trace| json!({
                     "handle":trace.handle,
                     "backend":trace.backend.label(),

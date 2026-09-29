@@ -202,16 +202,12 @@ pub(crate) struct Workspace {
     pub(crate) tool_before_space_pan: Option<Tool>,
     /// Session-only brush raster; never serialized into the font.
     pub(crate) sketch: Arc<std::sync::Mutex<sketch::SketchLayer>>,
-    /// The user's explicit design reason for the reference shown in the inspector.
-    pub(crate) sketch_reference_rationale: String,
     /// Installed local sketch models presented by the Brush inspector.
     pub(crate) sketch_models: Vec<crate::application::local_models::ModelEntry>,
     /// Explicit model choice for new Virtua draft requests.
     pub(crate) sketch_selected_model: String,
     /// Session-only classifier-free letter identity strength, zero through 1.5.
     pub(crate) sketch_identity: f64,
-    /// Optional user-entered Unicode scalar for model conditioning.
-    pub(crate) sketch_codepoint_buf: String,
     /// The live edit canvas. Toolbar controls use this to transfer native
     /// keyboard/IME focus without making the view-owned text buffer `Send`.
     pub(crate) editor_focus: Arc<std::sync::Mutex<Option<masonry::core::WidgetId>>>,

@@ -85,31 +85,11 @@ impl Workspace {
         if self.live_nodes.is_some() {
             return Ok(());
         }
-        let epoch = self
-            .live
-            .as_ref()
-            .ok_or("native live endpoint is unavailable")?
-            .document_epoch()
-            .to_owned();
         let source = self
             .font
             .project
             .source_id(self.font.active())
             .ok_or("active source is unavailable")?;
-        let source_location = self
-            .font
-            .project
-            .document_source(source)
-            .ok_or("selected source is unavailable")?
-            .location();
-        let normalized_location: Vec<f64> = self
-            .font
-            .project
-            .axes
-            .iter()
-            .map(|axis| source_location.get(&axis.name).copied().unwrap_or(0.0))
-            .collect();
-        let mut graph = nodes_live::comparison_starter(source);
         let selected_recipe = if self.has_text_session {
             let captured = self
                 .text_proof_selection
@@ -159,6 +139,53 @@ impl Workspace {
         } else {
             None
         };
+        self.create_live_graph(source, selected_recipe)
+    }
+
+    /// Seed a Brush comparison from the validated selected occurrence.
+    ///
+    /// Brush candidates may be generated after an unrelated document edit. The proof runner
+    /// checks the captured occurrence against the current compiled font before any comparison.
+    pub(crate) fn ensure_live_graph_for_sketch(
+        &mut self,
+        recipe: CompiledProofRecipe,
+    ) -> Result<(), String> {
+        if self.live_nodes.is_some() {
+            return Ok(());
+        }
+        let source = self
+            .font
+            .project
+            .source_id(self.font.active())
+            .ok_or("active source is unavailable")?;
+        self.create_live_graph(source, Some(recipe))
+    }
+
+    fn create_live_graph(
+        &mut self,
+        source: SourceId,
+        selected_recipe: Option<CompiledProofRecipe>,
+    ) -> Result<(), String> {
+        let epoch = self
+            .live
+            .as_ref()
+            .ok_or("native live endpoint is unavailable")?
+            .document_epoch()
+            .to_owned();
+        let source_location = self
+            .font
+            .project
+            .document_source(source)
+            .ok_or("selected source is unavailable")?
+            .location();
+        let normalized_location: Vec<f64> = self
+            .font
+            .project
+            .axes
+            .iter()
+            .map(|axis| source_location.get(&axis.name).copied().unwrap_or(0.0))
+            .collect();
+        let mut graph = nodes_live::comparison_starter(source);
         let selected_recipe = selected_recipe
             .map(|recipe| serde_json::to_value(recipe).map_err(|error| error.to_string()))
             .transpose()?;

@@ -21,6 +21,7 @@ use runebender::automation::agent_edit::AgentLayerGuard;
 use runebender::automation::agent_nodes::{NodesLocalSketchSettings, NodesTraceRequest};
 #[cfg(unix)]
 use runebender::automation::glyph_grading::GradingReferenceRequest;
+use runebender::automation::glyph_grading::{GlyphGrade, document_layer_grade};
 #[cfg(unix)]
 use runebender::font::compiler::proof::CompiledProofRecipe;
 #[cfg(unix)]
@@ -38,9 +39,6 @@ use crate::application::workspace::Workspace;
 const EDGE: u32 = 512;
 const PIXEL_UNITS: f64 = 2.0;
 const BASELINE_PIXEL: f64 = 400.0;
-
-/// The old web brush's Regular design-unit widths, including its fine construction pen.
-pub(crate) const BRUSH_WIDTHS: [u16; 8] = [16, 80, 96, 104, 152, 168, 192, 200];
 
 #[cfg(unix)]
 static NEXT_SKETCH_SUBMISSION: AtomicU64 = AtomicU64::new(1);
@@ -476,14 +474,7 @@ impl Workspace {
             .source_id(source_index)
             .ok_or("active source is unavailable")?;
         let expected_recipe = self.selected_arabic_recipe(&glyph, source)?;
-        let reference = self.reference_buf.trim().to_owned();
-        if reference.is_empty() || reference == glyph {
-            return Err("choose a separate approved reference glyph before tracing".into());
-        }
-        let rationale = self.sketch_reference_rationale.trim().to_owned();
-        if rationale.is_empty() {
-            return Err("explain why the selected reference is relevant before tracing".into());
-        }
+        let references = self.inferred_sketch_references(&glyph, source)?;
         let export = {
             let sketch = self.sketch.lock().map_err(|_| "brush ink is unavailable")?;
             if !sketch.matches(&glyph, source_index) {
@@ -512,7 +503,13 @@ impl Workspace {
             Some(NodesLocalSketchSettings {
                 model: Some(selected.into()),
                 ink_box_px: export.ink_box_px,
-                codepoint: parse_optional_codepoint(&self.sketch_codepoint_buf)?,
+                codepoint: expected_recipe
+                    .target
+                    .as_ref()
+                    .and_then(|target| usize::try_from(target.cluster).ok())
+                    .and_then(|cluster| expected_recipe.text.get(cluster..))
+                    .and_then(|text| text.chars().next())
+                    .map(u32::from),
                 candidates: 3,
                 temperature: 0.5,
                 identity: Some(self.sketch_identity),
@@ -529,8 +526,7 @@ impl Workspace {
             .ok_or("active source is unavailable")?
             .default_layer();
         let target = self.sketch_layer_guard(&glyph, source, &source_layer.name)?;
-        let reference_guard = self.sketch_layer_guard(&reference, source, &source_layer.name)?;
-        self.ensure_live_graph()?;
+        self.ensure_live_graph_for_sketch(expected_recipe.clone())?;
         let snapshot = self
             .live_graph_session()
             .ok_or("live Nodes graph is unavailable")?
@@ -567,10 +563,7 @@ impl Workspace {
             node: *node,
             source: source_index,
             target,
-            references: vec![GradingReferenceRequest {
-                guard: reference_guard,
-                rationale,
-            }],
+            references,
             image_base64: base64::engine::general_purpose::STANDARD.encode(export.png),
             calibration: export.calibration,
             invert: false,
@@ -610,19 +603,17 @@ impl Workspace {
         glyph: &str,
         source: SourceId,
     ) -> Result<CompiledProofRecipe, String> {
-        let instruction =
-            "Select the shaped Arabic target in the Text tool before tracing this brush sketch";
+        let instruction = "Click the Arabic letter you want to draft in the Text tool, then return to Brush. Your sketch will stay here";
         if !self.has_text_session {
             return Err(instruction.into());
         }
         let capture = self.text_proof_selection.as_ref().ok_or(instruction)?;
         if capture.context != self.text_context_id()
             || capture.source != Some(source)
-            || capture.document_revision != self.font.project.document_revision()
             || capture.axis_values != self.axis_values
         {
             return Err(format!(
-                "{instruction}; the previous text selection is stale"
+                "The text selection belongs to another tab, source or location. {instruction}"
             ));
         }
         let selection = capture
@@ -650,7 +641,7 @@ impl Workspace {
             })
         {
             return Err(format!(
-                "{instruction}; text settings changed after selection"
+                "The text settings changed after you selected the letter. {instruction}"
             ));
         }
         if selection.glyph_name != glyph
@@ -658,7 +649,7 @@ impl Workspace {
             || !selection.text.chars().any(is_arabic_character)
         {
             return Err(format!(
-                "{instruction}; selected form must be {glyph} in a right-to-left Arabic line"
+                "Select {glyph} in a right-to-left Arabic line. Your sketch will stay here"
             ));
         }
         CompiledProofRecipe::from_text_selection(selection)
@@ -756,6 +747,104 @@ impl Workspace {
             expected_revision: canonical_glyph_revision(snapshot.view())?,
         })
     }
+
+    /// Suggest frozen green Arabic references from this source, preferring the same letter.
+    pub(crate) fn sketch_reference_names(&self) -> Vec<String> {
+        let Some(source) = self.font.project.source_id(self.font.active()) else {
+            return Vec::new();
+        };
+        let glyph = &self.session.glyph_name;
+        let family = glyph.split('.').next().unwrap_or(glyph);
+        let form = glyph.rsplit_once('.').map(|(_, form)| form);
+        let layer = self
+            .font
+            .project
+            .document_source(source)
+            .map(|source| source.default_layer());
+        let target_width = layer
+            .as_ref()
+            .and_then(|layer| self.font.project.document_layer(glyph, layer))
+            .map_or(0.0, |layer| layer.width());
+        let mut same_letter = Vec::new();
+        let mut same_form = Vec::new();
+        for name in self.font.project.glyph_names() {
+            if name == glyph || !name.contains("-ar") {
+                continue;
+            }
+            if document_layer_grade(&self.font.project, source, name) != GlyphGrade::Green {
+                continue;
+            }
+            let Some(reference_layer) = layer
+                .as_ref()
+                .and_then(|layer| self.font.project.document_layer(name, layer))
+            else {
+                continue;
+            };
+            if reference_layer.contours().next().is_none()
+                && reference_layer.components().next().is_none()
+            {
+                continue;
+            }
+            if name == family || name.starts_with(&format!("{family}.")) {
+                same_letter.push(name.to_owned());
+            } else if form.is_some_and(|form| name.ends_with(&format!(".{form}"))) {
+                same_form.push((
+                    (reference_layer.width() - target_width).abs(),
+                    name.to_owned(),
+                ));
+            }
+        }
+        if !same_letter.is_empty() {
+            same_letter.sort();
+            same_letter.truncate(3);
+            return same_letter;
+        }
+        same_form.sort_by(|left, right| {
+            left.0
+                .total_cmp(&right.0)
+                .then_with(|| left.1.cmp(&right.1))
+        });
+        same_form
+            .into_iter()
+            .take(2)
+            .map(|(_, name)| name)
+            .collect()
+    }
+
+    #[cfg(unix)]
+    fn inferred_sketch_references(
+        &self,
+        glyph: &str,
+        source: SourceId,
+    ) -> Result<Vec<GradingReferenceRequest>, String> {
+        let layer = self
+            .font
+            .project
+            .document_source(source)
+            .ok_or("active source is unavailable")?
+            .default_layer();
+        let family = glyph.split('.').next().unwrap_or(glyph);
+        let names = self.sketch_reference_names();
+        if names.is_empty() {
+            return Err(format!(
+                "No green Arabic reference is available for {glyph} in this source"
+            ));
+        }
+        names
+            .into_iter()
+            .map(|name| {
+                let same_letter = name == family || name.starts_with(&format!("{family}."));
+                Ok(GradingReferenceRequest {
+                    guard: self.sketch_layer_guard(&name, source, &layer.name)?,
+                    rationale: if same_letter {
+                        "Same Arabic letter, graded green; reference for its stroke weight, terminals and joining behavior".into()
+                    } else {
+                        "Graded green Arabic glyph in the same positional form with similar advance; reference for stroke weight and joining, not letter skeleton".into()
+                    },
+                })
+            })
+            .collect()
+    }
 }
 
 #[cfg(unix)]
@@ -767,27 +856,6 @@ fn is_arabic_character(character: char) -> bool {
 }
 
 #[cfg(unix)]
-fn parse_optional_codepoint(input: &str) -> Result<Option<u32>, String> {
-    let text = input.trim();
-    if text.is_empty() {
-        return Ok(None);
-    }
-    let hex = text
-        .strip_prefix("U+")
-        .or_else(|| text.strip_prefix("u+"))
-        .or_else(|| text.strip_prefix("0x"))
-        .unwrap_or(text);
-    if hex.is_empty() || hex.len() > 6 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err("Enter an optional codepoint as U+XXXX, or leave it blank".into());
-    }
-    let value = u32::from_str_radix(hex, 16)
-        .map_err(|_| "Enter an optional codepoint as U+XXXX, or leave it blank")?;
-    if char::from_u32(value).is_none() {
-        return Err("The explicit codepoint is not a Unicode scalar".into());
-    }
-    Ok(Some(value))
-}
-
 #[cfg(unix)]
 fn same_sketch_context(left: &CompiledProofRecipe, right: &CompiledProofRecipe) -> bool {
     left.text == right.text
@@ -905,6 +973,100 @@ mod tests {
         assert!(!same_sketch_context(&reading, &detail));
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn brush_keeps_selected_arabic_occurrence_after_document_revision_changes() {
+        use crate::application::font_model::FontModel;
+        use crate::application::workspace::TextProofCapture;
+        use runebender::font::project::Project;
+        use runebender::text::buffer::TextProofSelection;
+
+        let project = Project::new_font(std::env::temp_dir().join("brush-stale-selection.ufo"));
+        let source = project.source_id(0).unwrap();
+        let mut app = Workspace::from_model(FontModel::from_project(project)).unwrap();
+        app.has_text_session = true;
+        app.initial_text = "مكتبة".into();
+        app.text_proof_selection = Some(TextProofCapture {
+            context: app.text_context_id(),
+            source: Some(source),
+            document_revision: app.font.project.document_revision().wrapping_add(1),
+            axis_values: app.axis_values.clone(),
+            selection: Ok(TextProofSelection {
+                text: "مكتبة".into(),
+                normalized_location: Vec::new(),
+                right_to_left: true,
+                features: Vec::new(),
+                script: None,
+                language: None,
+                glyph_name: "kaf-ar.medi".into(),
+                cluster: 2,
+                occurrence: 0,
+                reference_pen_x: 320.0,
+            }),
+        });
+        let recipe = app.selected_arabic_recipe("kaf-ar.medi", source).unwrap();
+        assert_eq!(recipe.target.as_ref().unwrap().glyph_name, "kaf-ar.medi");
+        assert!(app.selected_arabic_recipe("beh-ar.medi", source).is_err());
+        app.ensure_live_graph_for_sketch(recipe.clone()).unwrap();
+        let graph = app.live_graph_session().unwrap().snapshot().graph;
+        let proof_recipes: Vec<CompiledProofRecipe> = graph
+            .nodes
+            .iter()
+            .filter(|node| node.type_name == "live.proof")
+            .map(|node| serde_json::from_value(node.values["recipe"].clone()).unwrap())
+            .collect();
+        assert_eq!(proof_recipes, vec![recipe.clone(), recipe]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn brush_infers_green_reference_from_the_same_arabic_letter() {
+        use crate::application::font_model::FontModel;
+        use runebender::automation::glyph_grading::capture_replacement_context;
+        use runebender::font::model::glyph_metadata::MarkColor;
+        use runebender::font::project::Project;
+
+        let mut project = Project::new_font(std::env::temp_dir().join("brush-green-reference.ufo"));
+        let source = project.source_id(0).unwrap();
+        let layer = project.document_source(source).unwrap().default_layer();
+        for (name, label) in [
+            ("kaf-ar.init", "green"),
+            ("kaf-ar.medi", "red"),
+            ("kaf-ar.fina", "yellow"),
+            ("beh-ar.medi", "green"),
+        ] {
+            project.add_document_glyph(name, 600.0, None).unwrap();
+            let color =
+                MarkColor::parse(&runebender::ui::theme::ufo_rgba_for_label(label).unwrap())
+                    .unwrap();
+            project
+                .edit_document_layer(name, &layer, |draft| {
+                    draft.set_mark(Some(label), Some(color))?;
+                    if label == "green" {
+                        draft
+                            .add_shape_contour(kurbo::Rect::new(20.0, 0.0, 300.0, 500.0), false)?;
+                    }
+                    Ok(())
+                })
+                .unwrap();
+        }
+        let mut app = Workspace::from_model(FontModel::from_project(project)).unwrap();
+        app.edit_text_sort_glyph(
+            app.font.index_of("kaf-ar.medi").unwrap(),
+            crate::application::workspace::Tool::Sketch,
+        );
+        assert_eq!(app.sketch_reference_names(), vec!["kaf-ar.init"]);
+        let references = app
+            .inferred_sketch_references("kaf-ar.medi", source)
+            .unwrap();
+        let target = app
+            .sketch_layer_guard("kaf-ar.medi", source, &layer.name)
+            .unwrap();
+        let grading =
+            capture_replacement_context(&app.font.project, source, &target, &references).unwrap();
+        assert_eq!(grading.references[0].layer.glyph, "kaf-ar.init");
+    }
+
     #[test]
     fn retained_trace_requires_a_terminal_phase_before_release() {
         let mut trace = SketchTraceUi {
@@ -921,17 +1083,6 @@ mod tests {
         for phase in ["completed", "failed", "cancelled", "stale"] {
             trace.phase = phase.into();
             assert!(trace.terminal());
-        }
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn optional_model_codepoint_requires_explicit_hex_scalar() {
-        assert_eq!(parse_optional_codepoint(" ").unwrap(), None);
-        assert_eq!(parse_optional_codepoint("U+0643").unwrap(), Some(0x0643));
-        assert_eq!(parse_optional_codepoint("fedc").unwrap(), Some(0xfedc));
-        for invalid in ["Arabic kaf", "U+", "U+D800", "U+110000", "U+1234567"] {
-            assert!(parse_optional_codepoint(invalid).is_err());
         }
     }
 }
