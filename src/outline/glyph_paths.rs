@@ -19,6 +19,67 @@ use crate::font::model::smart_components::{
     SmartComponentPole, SmartComponentValues,
 };
 use crate::font::{ComponentView, ContourView, LayerPointType, LayerShapeView, LayerView};
+use crate::outline::drawing::{self, DrawingContour};
+
+/// Render a validated, detached drawing without installing it in a font.
+pub fn drawing_contours_to_bezpath(contours: &[DrawingContour]) -> Result<BezPath, String> {
+    drawing::validate(contours)?;
+    let mut path = BezPath::new();
+    for contour in contours {
+        append_canonical_points(
+            &mut path,
+            contour.points.iter().map(|point| {
+                (
+                    Point::new(point.x, point.y),
+                    LayerPointType::from(point.kind),
+                )
+            }),
+            contour.points[0].kind != drawing::DrawingPointType::Move,
+        );
+    }
+    Ok(path)
+}
+
+#[cfg(test)]
+mod detached_drawing_tests {
+    use super::*;
+    use kurbo::Shape as _;
+    use serde_json::json;
+
+    #[test]
+    fn previews_closed_drawing_without_a_font() {
+        let contours: Vec<DrawingContour> = serde_json::from_value(json!([{
+            "points": [
+                {"x": 10.0, "y": 20.0, "type": "line"},
+                {"x": 110.0, "y": 20.0, "type": "line"},
+                {"x": 110.0, "y": 120.0, "type": "line"},
+                {"x": 10.0, "y": 120.0, "type": "line"}
+            ]
+        }]))
+        .unwrap();
+        let path = drawing_contours_to_bezpath(&contours).unwrap();
+        assert_eq!(
+            path.bounding_box(),
+            kurbo::Rect::new(10.0, 20.0, 110.0, 120.0)
+        );
+        assert!(matches!(
+            path.elements().last(),
+            Some(kurbo::PathEl::ClosePath)
+        ));
+    }
+
+    #[test]
+    fn rejects_invalid_detached_drawing() {
+        let contours: Vec<DrawingContour> = serde_json::from_value(json!([{
+            "points": [
+                {"x": 10.0, "y": 20.0, "type": "move"},
+                {"x": 20.0, "y": 30.0, "type": "offcurve"}
+            ]
+        }]))
+        .unwrap();
+        assert!(drawing_contours_to_bezpath(&contours).is_err());
+    }
+}
 
 /// Why canonical component resolution could not produce an outline.
 #[derive(Clone, Debug, PartialEq, Eq)]

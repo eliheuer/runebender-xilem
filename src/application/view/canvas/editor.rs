@@ -1208,6 +1208,15 @@ impl Widget for EditorWidget {
                 )
                 .draw();
         }
+        if let Some(candidate) = &self.underlay.brush_candidate {
+            let path = affine * (**candidate).clone();
+            painter
+                .fill(&path, pal.role("warning").with_alpha(0.35))
+                .draw();
+            painter
+                .stroke(&path, &Stroke::new(2.0), pal.role("warning"))
+                .draw();
+        }
 
         // Interpolation ghosts: the other masters' outlines, faint.
         for ghost in self.ghosts.iter() {
@@ -1821,9 +1830,15 @@ impl Widget for EditorWidget {
                 .unwrap_or_else(|error| error.into_inner());
             if sketch.matches(&self.session.glyph_name, self.sketch_source) && sketch.has_ink() {
                 let image = ImageData {
-                    data: Blob::new(Arc::new(
-                        sketch.display_rgba(pal.tool_feedback().with_alpha(0.55)),
-                    )),
+                    data: Blob::new(Arc::new(sketch.display_rgba(
+                        pal.tool_feedback().with_alpha(
+                            if self.underlay.brush_candidate.is_some() {
+                                0.18
+                            } else {
+                                0.55
+                            },
+                        ),
+                    ))),
                     format: ImageFormat::Rgba8,
                     alpha_type: ImageAlphaType::Alpha,
                     width: 512,
@@ -2945,6 +2960,8 @@ pub(crate) struct Underlay {
     pub mark_cloud: Vec<Arc<kurbo::BezPath>>,
     /// A waiting proposal for this glyph, shown in warm amber.
     pub proposal: Option<Arc<kurbo::BezPath>>,
+    /// A completed, unapplied Brush draft rendered without compiling the font.
+    pub brush_candidate: Option<Arc<kurbo::BezPath>>,
 }
 
 impl<F> ViewMarker for EditorView<F> {}

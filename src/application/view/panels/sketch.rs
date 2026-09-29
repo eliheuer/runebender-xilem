@@ -19,6 +19,7 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let retained = app.sketch_trace.as_ref();
     let terminal = retained.is_some_and(|trace| trace.terminal());
     let completed = retained.is_some_and(|trace| trace.phase == "completed");
+    let proof_unavailable = completed && app.font.preview_font().is_err();
     xcolumn(
         Region::Form,
         (
@@ -118,7 +119,7 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                             })
                         }),
                         terminal.then(|| {
-                            recipes::action(pal, "Release".into(), |app: &mut Workspace| {
+                            recipes::action(pal, "Dismiss preview".into(), |app: &mut Workspace| {
                                 app.release_sketch_trace();
                             })
                         }),
@@ -130,10 +131,20 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     app.retry_sketch_trace();
                 })
             }),
-            completed.then(|| {
-                recipes::action(pal, "Open comparison".into(), |app: &mut Workspace| {
-                    app.open_sketch_comparison();
-                })
+            proof_unavailable.then(|| {
+                label("Text proof is unavailable because the font preview cannot compile. The draft is still visible on the canvas.")
+                    .text_size(TextSize::Caption.px())
+                    .line_break_mode(LineBreaking::WordWrap)
+                    .color(pal.text_muted)
+            }),
+            (completed && !proof_unavailable).then(|| {
+                recipes::action(
+                    pal,
+                    "Open proof comparison".into(),
+                    |app: &mut Workspace| {
+                        app.open_sketch_comparison();
+                    },
+                )
             }),
             (!has_ink && retained.is_none()).then(|| {
                 label("Draw here before tracing or drafting")

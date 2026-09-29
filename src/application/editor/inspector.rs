@@ -8,6 +8,8 @@ use crate::application::font_model::FontModel;
 use crate::application::view::canvas;
 use crate::application::view::canvas::grid::cells_of;
 use crate::application::view::panels::sections::metric_bufs;
+#[cfg(unix)]
+use crate::application::workspace::Tool;
 use crate::application::workspace::{MetadataEdit, Mode, OverviewEditBatch, Workspace};
 use runebender::font::CanonicalSourceMetadataSnapshot;
 use runebender::font::canonical_metadata::{KerningParticipant, KerningSide};
@@ -129,6 +131,13 @@ impl Workspace {
                 .then(|| self.font.glyph_outline(name))
                 .flatten()
         };
+        #[cfg(unix)]
+        let brush_candidate = (self.tool == Tool::Sketch)
+            .then(|| self.brush_candidate_outline())
+            .flatten()
+            .map(Arc::new);
+        #[cfg(not(unix))]
+        let brush_candidate = None;
         let proposal = self
             .ai
             .preview_task
@@ -145,6 +154,7 @@ impl Workspace {
             reference,
             mark_cloud,
             proposal,
+            brush_candidate,
         }
     }
 

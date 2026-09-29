@@ -30,6 +30,8 @@ use runebender::automation::glyph_grading::{
 use runebender::font::edit_batch::canonical_glyph_revision;
 use runebender::font::variable::{GlyphLayerAddress, LayerId, SourceId};
 use runebender::formats::image_trace::{CalibratedTrace, TraceCalibration, trace_image_calibrated};
+use runebender::outline::drawing::DrawingContour;
+use runebender::outline::glyph_paths::drawing_contours_to_bezpath;
 use runebender::workflows::local_sketch::{
     SketchCandidate, SketchPlacement, SketchRequest, SketchRuntime, SketchRuntimeIdentity,
     inspect_runtime, run as run_local_sketch,
@@ -302,6 +304,43 @@ fn validate_target(
 }
 
 impl Workspace {
+    /// Show a completed brush candidate without requiring a compilable whole-font proof.
+    pub(crate) fn brush_candidate_outline(&self) -> Option<kurbo::BezPath> {
+        let brush = self.sketch_trace.as_ref()?;
+        let state = self.live_nodes.as_ref()?;
+        let trace = state.trace.as_ref()?;
+        let mutation = trace.mutation.as_ref()?;
+        if brush.phase != "completed"
+            || trace.phase != NodesTracePhase::Completed
+            || brush.handle != trace.handle
+            || brush.identity != trace.intent.graph.identity
+            || trace.intent.target.glyph != self.session.glyph_name
+            || trace.intent.source != self.font.active()
+            || trace.intent.document_revision != self.font.project.document_revision()
+            || self.live.as_ref().map(|live| live.document_epoch())
+                != Some(trace.intent.epoch.as_str())
+        {
+            return None;
+        }
+        let snapshot = state.session.snapshot();
+        if snapshot.revision != mutation.receipt.snapshot.revision
+            || snapshot.identity != mutation.receipt.snapshot.identity
+        {
+            return None;
+        }
+        let parameters = snapshot
+            .graph
+            .node(trace.intent.node)?
+            .values
+            .get("parameters")?;
+        let contours = parameters
+            .get("local_sketch")
+            .or_else(|| parameters.get("calibrated_trace"))?
+            .get("contours")?;
+        let contours: Vec<DrawingContour> = serde_json::from_value(contours.clone()).ok()?;
+        drawing_contours_to_bezpath(&contours).ok()
+    }
+
     pub(super) fn handle_trace_call(&mut self, call: &ToolCall) -> Result<Value, String> {
         match call.name.as_str() {
             "nodes_trace" => {
@@ -576,7 +615,7 @@ impl Workspace {
                         }
                     },
                     NodesTracePhase::Completed => {
-                        "Draft ready for comparison; your font is unchanged".into()
+                        "Draft preview is on the canvas; your font is unchanged".into()
                     }
                     NodesTracePhase::Failed => "Draft failed; see the error below".into(),
                     NodesTracePhase::Stale => {
