@@ -1,113 +1,116 @@
-# Ten Base UI stops, 01–10, progress from darkest to lightest.
-# Glyph Grid names carry the same mark meaning across themes.
+# OKLCH order: lightness (0–1), chroma (0+, no fixed maximum), hue (0–360 degrees).
+# Ten Base UI stops, 00–09, progress from darkest to lightest.
+# Rainbow names carry the same mark meaning across themes.
 # See https://runebender.org/docs/themes.html for the full format.
 formatVersion = 1
 id = "dark"
 name = "Dark"
 markStep = "bright"
 markStyle = "fill"
-markOutline = "baseUi.01"
-markInk = "baseUi.01"
+markOutline = "baseUi.00"
+markInk = "baseUi.00"
 pointStyle = "ring"
 pointHalo = true
 
 [baseUi]
-"01" = "oklch(0.15 0 255)"
-"02" = "oklch(0.18 0 255)"
-"03" = "oklch(0.23 0 255)"
-"04" = "oklch(0.31 0 255)"
-"05" = "oklch(0.37 0 255)"
-"06" = "oklch(0.43 0 255)"
-"07" = "oklch(0.55 0 255)"
-"08" = "oklch(0.6 0 255)"
-"09" = "oklch(0.65 0 255)"
-"10" = "oklch(0.81 0 255)"
+"00" = "oklch(0.15 0 255)"
+"01" = "oklch(0.18 0 255)"
+"02" = "oklch(0.23 0 255)"
+"03" = "oklch(0.31 0 255)"
+"04" = "oklch(0.37 0 255)"
+"05" = "oklch(0.43 0 255)"
+"06" = "oklch(0.55 0 255)"
+"07" = "oklch(0.6 0 255)"
+"08" = "oklch(0.65 0 255)"
+"09" = "oklch(0.81 0 255)"
 
-[glyphGrid]
+[rainbow]
 marks = ["red", "orange", "yellow", "green", "blue", "purple", "pink"]
 
-[glyphGrid.hues]
-red = { hue = 27, lightness = 0.61, chroma = 0.167 }
-orange = { hue = 46, lightness = 0.68, chroma = 0.15 }
-yellow = { hue = 96, lightness = 0.82, chroma = 0.135 }
-green = { hue = 152, lightness = 0.69, chroma = 0.126 }
-teal = { hue = 186, lightness = 0.7, chroma = 0.095 }
-blue = { hue = 248, lightness = 0.64, chroma = 0.119 }
-purple = { hue = 292, lightness = 0.61, chroma = 0.15 }
-pink = { hue = 350, lightness = 0.68, chroma = 0.15 }
+[rainbow.hues]
+red = "oklch(0.61 0.167 27)"
+orange = "oklch(0.68 0.15 46)"
+yellow = "oklch(0.82 0.135 96)"
+green = "oklch(0.69 0.126 152)"
+teal = "oklch(0.7 0.095 186)"
+blue = "oklch(0.64 0.119 248)"
+purple = "oklch(0.61 0.15 292)"
+pink = "oklch(0.68 0.15 350)"
 
-[glyphGrid.steps]
-dim = { lightness = -0.17, chroma = -0.02 }
-base = { lightness = 0.0, chroma = 0.0 }
-bright = { lightness = 0.13, chroma = -0.03 }
-deep = { lightness = -0.26, chroma = 0.0 }
+# Steps are signed OKLCH offsets added to each rainbow hue, not complete colors.
+# The final 0 keeps the hue unchanged; base adds no offsets.
+[rainbow.steps]
+dim = "oklch(-0.17 -0.02 0)"
+base = "oklch(0.0 0.0 0)"
+bright = "oklch(0.13 -0.03 0)"
+deep = "oklch(-0.26 0.0 0)"
 
 [surfaces]
-app = "baseUi.01"
-panel = "baseUi.02"
-titlebar = "baseUi.01"
-control = "baseUi.04"
-button = "baseUi.03"
-buttonHover = "baseUi.03"
-field = "baseUi.02"
-outline = "baseUi.05"
-fieldOutline = "baseUi.03"
-divider = "baseUi.03"
-canvas = "baseUi.01"
-tabRail = "baseUi.01"
-inactiveTab = "baseUi.01"
-header = "baseUi.01"
-gridBackground = "baseUi.03"
-cellShadow = "baseUi.06"
-floatingPaneHeader = "baseUi.02"
-sliderTrack = "baseUi.06"
+app = "baseUi.00"
+panel = "baseUi.01"
+titlebar = "baseUi.00"
+control = "baseUi.03"
+button = "baseUi.02"
+buttonHover = "baseUi.02"
+field = "baseUi.01"
+outline = "baseUi.04"
+fieldOutline = "baseUi.02"
+divider = "baseUi.02"
+canvas = "baseUi.00"
+tabRail = "baseUi.00"
+inactiveTab = "baseUi.00"
+header = "baseUi.00"
+gridBackground = "baseUi.02"
+cellShadow = "baseUi.05"
+floatingPaneHeader = "baseUi.01"
+sliderTrack = "baseUi.05"
 
 [text]
-primary = "baseUi.09"
-secondary = "baseUi.08"
-muted = "baseUi.08"
-subdued = "baseUi.06"
-overlay = "baseUi.10"
-glyph = "baseUi.08"
-headerInk = "baseUi.09"
+primary = "baseUi.08"
+secondary = "baseUi.07"
+muted = "baseUi.07"
+subdued = "baseUi.05"
+overlay = "baseUi.09"
+glyph = "baseUi.07"
+headerInk = "baseUi.08"
 
 [roles]
-gridSelected = "baseUi.10"
-cellSelectedFill = "baseUi.03"
-cellSelectedInk = "baseUi.10"
-controlSelected = "baseUi.09"
-controlSelectedInk = "baseUi.02"
-designGridFine = "baseUi.04"
-designGridCoarse = "baseUi.05"
-accent = "glyphGrid.green.base"
-warning = "glyphGrid.yellow.base"
-danger = "glyphGrid.red.base"
-selection = "glyphGrid.orange.base"
-component = "glyphGrid.purple.base"
-componentSelected = "glyphGrid.pink.base"
-pointSmooth = "glyphGrid.blue.base"
-pointCorner = "glyphGrid.green.base"
-pointOffcurve = "glyphGrid.purple.base"
-pointHyper = "glyphGrid.teal.base"
-pointSelected = "glyphGrid.yellow.bright"
-pointInner = "baseUi.02"
-startNode = "glyphGrid.orange.base"
-textCursor = "glyphGrid.orange.base"
-kernActive = "glyphGrid.teal.base"
-kernPrevious = "glyphGrid.orange.base"
-pathStroke = "baseUi.10"
-previewFill = "baseUi.08"
-background = "baseUi.05"
-reference = "baseUi.03"
-halo = "baseUi.01"
-metricQuiet = "baseUi.03"
-outlineFill = "baseUi.04"
-metricsLine = "baseUi.05"
-readonlyPoint = "baseUi.08"
-continuityG2 = "glyphGrid.teal.base"
-continuityG1 = "glyphGrid.yellow.base"
-continuityLine = "baseUi.07"
-continuityKink = "glyphGrid.red.base"
+gridSelected = "baseUi.09"
+cellSelectedFill = "baseUi.02"
+cellSelectedInk = "baseUi.09"
+controlSelected = "baseUi.08"
+controlSelectedInk = "baseUi.01"
+designGridFine = "baseUi.03"
+designGridCoarse = "baseUi.04"
+accent = "rainbow.green.base"
+warning = "rainbow.yellow.base"
+danger = "rainbow.red.base"
+selection = "rainbow.orange.base"
+component = "rainbow.purple.base"
+componentSelected = "rainbow.pink.base"
+pointSmooth = "rainbow.blue.base"
+pointCorner = "rainbow.green.base"
+pointOffcurve = "rainbow.purple.base"
+pointHyper = "rainbow.teal.base"
+pointSelected = "rainbow.yellow.bright"
+pointInner = "baseUi.01"
+startNode = "rainbow.orange.base"
+textCursor = "rainbow.orange.base"
+kernActive = "rainbow.teal.base"
+kernPrevious = "rainbow.orange.base"
+pathStroke = "baseUi.09"
+previewFill = "baseUi.07"
+background = "baseUi.04"
+reference = "baseUi.02"
+halo = "baseUi.00"
+metricQuiet = "baseUi.02"
+outlineFill = "baseUi.03"
+metricsLine = "baseUi.04"
+readonlyPoint = "baseUi.07"
+continuityG2 = "rainbow.teal.base"
+continuityG1 = "rainbow.yellow.base"
+continuityLine = "baseUi.06"
+continuityKink = "rainbow.red.base"
 popcount1 = "#17B870"
 popcount2 = "#FFDB33"
 popcount3 = "#FF990F"

@@ -83,7 +83,7 @@ pub fn oklch_to_rgb(l: f64, c: f64, h: f64) -> ColorRgba {
 // ---- token file structures ----
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "OklchValue")]
 struct HueDef {
     hue: f64,
     lightness: f64,
@@ -91,15 +91,70 @@ struct HueDef {
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "OklchValue")]
 struct StepDef {
     lightness: f64,
     chroma: f64,
 }
 
+/// Read uniform OKLCH strings while retaining older component tables.
+#[derive(Deserialize)]
+#[serde(untagged, deny_unknown_fields)]
+enum OklchValue {
+    Color(String),
+    Components {
+        lightness: f64,
+        chroma: f64,
+        hue: Option<f64>,
+    },
+}
+
+impl OklchValue {
+    fn components(self, default_hue: Option<f64>) -> Result<[f64; 3], String> {
+        match self {
+            Self::Color(value) => parse_oklch_components(&value)
+                .ok_or_else(|| format!("expected oklch(lightness chroma hue), got '{value}'")),
+            Self::Components {
+                lightness,
+                chroma,
+                hue,
+            } => Ok([
+                lightness,
+                chroma,
+                hue.or(default_hue).ok_or("missing OKLCH hue")?,
+            ]),
+        }
+    }
+}
+
+impl TryFrom<OklchValue> for HueDef {
+    type Error = String;
+
+    fn try_from(value: OklchValue) -> Result<Self, Self::Error> {
+        let [lightness, chroma, hue] = value.components(None)?;
+        Ok(Self {
+            hue,
+            lightness,
+            chroma,
+        })
+    }
+}
+
+impl TryFrom<OklchValue> for StepDef {
+    type Error = String;
+
+    fn try_from(value: OklchValue) -> Result<Self, Self::Error> {
+        let [lightness, chroma, hue] = value.components(Some(0.0))?;
+        if hue != 0.0 {
+            return Err("rainbow steps must use a zero hue offset".into());
+        }
+        Ok(Self { lightness, chroma })
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct GlyphGridDef {
+struct RainbowDef {
     hues: HashMap<String, HueDef>,
     steps: HashMap<String, StepDef>,
     marks: Vec<String>,
@@ -116,8 +171,8 @@ struct ThemeFile {
     name: String,
     #[serde(rename = "baseUi")]
     base_ui: HashMap<String, String>,
-    #[serde(rename = "glyphGrid")]
-    glyph_grid: GlyphGridDef,
+    #[serde(alias = "glyphGrid")]
+    rainbow: RainbowDef,
     surfaces: HashMap<String, String>,
     text: HashMap<String, String>,
     roles: HashMap<String, String>,
@@ -277,7 +332,7 @@ pub fn ufo_rgba_for_label(label: &str) -> Option<String> {
 }
 
 // UFO mark values use normalized RGBA channels. Keep them simple and fixed;
-// display colors belong to each theme's Glyph Grid palette.
+// display colors belong to each theme's Rainbow palette.
 const MARK_UFO_COLORS: &[(&str, &str)] = &[
     ("red", "1,0,0,1"),
     ("orange", "1,0.5,0,1"),
@@ -373,20 +428,22 @@ fn parse_color(value: &str) -> Option<ColorRgba> {
             _ => None,
         };
     }
+    let [lightness, chroma, hue] = parse_oklch_components(value)?;
+    if !(0.0..=1.0).contains(&lightness) || !chroma.is_finite() || chroma < 0.0 || !hue.is_finite()
+    {
+        return None;
+    }
+    Some(oklch_to_rgb(lightness, chroma, hue))
+}
+
+fn parse_oklch_components(value: &str) -> Option<[f64; 3]> {
     let contents = value.strip_prefix("oklch(")?.strip_suffix(')')?;
     let components: Vec<f64> = contents
         .split_whitespace()
         .map(str::parse)
         .collect::<Result<_, _>>()
         .ok()?;
-    let &[lightness, chroma, hue] = components.as_slice() else {
-        return None;
-    };
-    if !(0.0..=1.0).contains(&lightness) || !chroma.is_finite() || chroma < 0.0 || !hue.is_finite()
-    {
-        return None;
-    }
-    Some(oklch_to_rgb(lightness, chroma, hue))
+    components.try_into().ok()
 }
 
 fn resolve_token(file: &ThemeFile, token: &str) -> Option<ColorRgba> {
@@ -396,9 +453,9 @@ fn resolve_token(file: &ThemeFile, token: &str) -> Option<ColorRgba> {
     let mut parts = token.split('.');
     match (parts.next()?, parts.next(), parts.next(), parts.next()) {
         ("baseUi", Some(step), None, None) => parse_color(file.base_ui.get(step)?),
-        ("glyphGrid", Some(name), Some(step), None) => {
-            let hue = file.glyph_grid.hues.get(name)?;
-            let offsets = file.glyph_grid.steps.get(step)?;
+        ("rainbow" | "glyphGrid", Some(name), Some(step), None) => {
+            let hue = file.rainbow.hues.get(name)?;
+            let offsets = file.rainbow.steps.get(step)?;
             // Preserve the original palette's chroma-reducing gamut recipe.
             Some(oklch_to_rgb(
                 (hue.lightness + offsets.lightness).clamp(0.08, 0.93),
@@ -486,21 +543,21 @@ pub fn parse_theme(source: &str) -> Result<Theme, String> {
             ));
         }
     }
-    for (name, hue) in &file.glyph_grid.hues {
+    for (name, hue) in &file.rainbow.hues {
         if !(0.0..=1.0).contains(&hue.lightness)
             || !hue.chroma.is_finite()
             || hue.chroma < 0.0
             || !hue.hue.is_finite()
         {
             return Err(format!(
-                "theme '{theme_id}' glyphGrid.hues.{name} has invalid OKLCH"
+                "theme '{theme_id}' rainbow.hues.{name} has invalid OKLCH"
             ));
         }
     }
-    for (name, step) in &file.glyph_grid.steps {
+    for (name, step) in &file.rainbow.steps {
         if !step.lightness.is_finite() || !step.chroma.is_finite() {
             return Err(format!(
-                "theme '{theme_id}' glyphGrid.steps.{name} has invalid offsets"
+                "theme '{theme_id}' rainbow.steps.{name} has invalid offsets"
             ));
         }
     }
@@ -515,28 +572,28 @@ pub fn parse_theme(source: &str) -> Result<Theme, String> {
     let roles = resolve_map(&file, theme_id, "roles", &file.roles, REQUIRED_ROLES)?;
     let mark_step = file.mark_step.as_deref().unwrap_or("base");
     let marks = file
-        .glyph_grid
+        .rainbow
         .marks
         .iter()
         .map(|mark| {
-            let token = format!("glyphGrid.{mark}.{mark_step}");
+            let token = format!("rainbow.{mark}.{mark_step}");
             resolve_token(&file, &token)
                 .map(|color| (mark.clone(), color))
                 .ok_or_else(|| {
-                    format!("theme '{theme_id}' glyphGrid.marks.{mark} has unknown color '{token}'")
+                    format!("theme '{theme_id}' rainbow.marks.{mark} has unknown color '{token}'")
                 })
         })
         .collect::<Result<Vec<_>, _>>()?;
     for label in MARK_LABELS {
         if marks.iter().filter(|(name, _)| name == label).count() != 1 {
             return Err(format!(
-                "theme '{theme_id}' must name glyphGrid mark '{label}' once"
+                "theme '{theme_id}' must name rainbow mark '{label}' once"
             ));
         }
     }
     if marks.len() != MARK_LABELS.len() {
         return Err(format!(
-            "theme '{theme_id}' has an unknown or duplicate glyphGrid mark"
+            "theme '{theme_id}' has an unknown or duplicate rainbow mark"
         ));
     }
     let own = file.geometry.unwrap_or_default();
@@ -785,7 +842,7 @@ mod tests {
             let file: toml::Value = toml::from_str(builtin_theme_source(id).unwrap()).unwrap();
             let base = file["baseUi"].as_table().unwrap();
             assert_eq!(base.len(), 10, "{id} has ten Base UI stops");
-            for step in 1..=10 {
+            for step in 0..10 {
                 assert!(base.contains_key(&format!("{step:02}")));
             }
             for section in ["surfaces", "text"] {
@@ -805,8 +862,8 @@ mod tests {
         let mut file: toml::Value = toml::from_str(source).expect("built-in TOML");
         file["id"] = "custom".into();
         file["name"] = "Custom".into();
-        file["baseUi"]["08"] = "#AABBCC".into();
-        file["glyphGrid"]["hues"]["red"]["hue"] = 200.into();
+        file["baseUi"]["07"] = "#AABBCC".into();
+        file["rainbow"]["hues"]["red"] = "oklch(0.61 0.167 200)".into();
         let theme =
             parse_theme(&toml::to_string(&file).expect("custom TOML")).expect("custom theme");
 
@@ -840,11 +897,11 @@ mod tests {
         file["roles"]
             .as_table_mut()
             .expect("roles")
-            .insert("pointSmooth".into(), "glyphGrid.blue.missing".into());
+            .insert("pointSmooth".into(), "rainbow.blue.missing".into());
         let edited = toml::to_string(&file).expect("edited TOML");
         assert_eq!(
             parse_theme(&edited).unwrap_err(),
-            "theme 'gray' roles.pointSmooth has unknown color 'glyphGrid.blue.missing'"
+            "theme 'gray' roles.pointSmooth has unknown color 'rainbow.blue.missing'"
         );
     }
 
@@ -859,7 +916,7 @@ mod tests {
             "theme 'gray' pointOutline has unknown color 'baseUi.nope'"
         );
 
-        file["pointOutline"] = "baseUi.05".into();
+        file["pointOutline"] = "baseUi.04".into();
         file["pointStyle"] = "circle".into();
         let edited = toml::to_string(&file).expect("edited TOML");
         assert_eq!(
@@ -875,7 +932,7 @@ mod tests {
         file["roles"]
             .as_table_mut()
             .expect("roles")
-            .insert("pointSmoth".into(), "glyphGrid.blue.base".into());
+            .insert("pointSmoth".into(), "rainbow.blue.base".into());
         let edited = toml::to_string(&file).expect("edited TOML");
         assert_eq!(
             parse_theme(&edited).unwrap_err(),
@@ -899,9 +956,47 @@ mod tests {
         let toml: toml::Value = toml::from_str(builtin_theme_source("gray").unwrap()).unwrap();
         let mut json = serde_json::to_value(&toml).unwrap();
         json["$comment"] = serde_json::json!(["Existing JSON comments remain valid."]);
-        let json = serde_json::to_string(&json).unwrap();
+        let json = serde_json::to_string(&json)
+            .unwrap()
+            .replace("rainbow", "glyphGrid");
         let theme = parse_theme(&json).expect("existing JSON theme");
         assert_eq!(theme.id, "gray");
+        assert_eq!(theme.marks, load_theme("gray").unwrap().marks);
+    }
+
+    #[test]
+    fn legacy_glyph_grid_tokens_preserve_rainbow_colors() {
+        let source = builtin_theme_source("gray").unwrap();
+        let mut file: toml::Value = toml::from_str(source).unwrap();
+        for section in ["hues", "steps"] {
+            for (_, value) in file["rainbow"][section].as_table_mut().unwrap().iter_mut() {
+                let [lightness, chroma, hue] =
+                    parse_oklch_components(value.as_str().unwrap()).unwrap();
+                let mut components = toml::Table::new();
+                components.insert("lightness".into(), lightness.into());
+                components.insert("chroma".into(), chroma.into());
+                if section == "hues" {
+                    components.insert("hue".into(), hue.into());
+                }
+                *value = toml::Value::Table(components);
+            }
+        }
+        let legacy_source = toml::to_string(&file)
+            .unwrap()
+            .replace("rainbow", "glyphGrid");
+        let legacy = parse_theme(&legacy_source).unwrap();
+        let current = parse_theme(source).unwrap();
+        assert_eq!(legacy.marks, current.marks);
+        assert_eq!(legacy.roles, current.roles);
+    }
+
+    #[test]
+    fn rainbow_step_strings_reject_hue_changes_and_malformed_offsets() {
+        let mut file: toml::Value = toml::from_str(builtin_theme_source("gray").unwrap()).unwrap();
+        for value in ["oklch(0.13 -0.03 1)", "oklch(0.13 -0.03)"] {
+            file["rainbow"]["steps"]["bright"] = value.into();
+            assert!(parse_theme(&toml::to_string(&file).unwrap()).is_err());
+        }
     }
 
     fn hex(c: ColorRgba) -> String {

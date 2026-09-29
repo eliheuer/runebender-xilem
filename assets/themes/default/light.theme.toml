@@ -1,113 +1,116 @@
-# Ten Base UI stops, 01–10, progress from darkest to lightest.
-# Glyph Grid names carry the same mark meaning across themes.
+# OKLCH order: lightness (0–1), chroma (0+, no fixed maximum), hue (0–360 degrees).
+# Ten Base UI stops, 00–09, progress from darkest to lightest.
+# Rainbow names carry the same mark meaning across themes.
 # See https://runebender.org/docs/themes.html for the full format.
 formatVersion = 1
 id = "light"
 name = "Light"
 markStep = "base"
 markStyle = "fill"
-markOutline = "baseUi.02"
-markInk = "baseUi.01"
+markOutline = "baseUi.01"
+markInk = "baseUi.00"
 pointStyle = "ring"
 pointHalo = true
 
 [baseUi]
-"01" = "oklch(0.18 0 255)"
-"02" = "oklch(0.31 0 255)"
-"03" = "oklch(0.43 0 255)"
-"04" = "oklch(0.55 0 255)"
-"05" = "oklch(0.65 0 255)"
-"06" = "oklch(0.76 0 255)"
-"07" = "oklch(0.81 0 255)"
-"08" = "oklch(0.86 0 255)"
-"09" = "oklch(0.91 0 255)"
-"10" = "oklch(0.96 0 255)"
+"00" = "oklch(0.18 0 255)"
+"01" = "oklch(0.31 0 255)"
+"02" = "oklch(0.43 0 255)"
+"03" = "oklch(0.55 0 255)"
+"04" = "oklch(0.65 0 255)"
+"05" = "oklch(0.76 0 255)"
+"06" = "oklch(0.81 0 255)"
+"07" = "oklch(0.86 0 255)"
+"08" = "oklch(0.91 0 255)"
+"09" = "oklch(0.96 0 255)"
 
-[glyphGrid]
+[rainbow]
 marks = ["red", "orange", "yellow", "green", "blue", "purple", "pink"]
 
-[glyphGrid.hues]
-red = { hue = 27, lightness = 0.61, chroma = 0.167 }
-orange = { hue = 46, lightness = 0.68, chroma = 0.15 }
-yellow = { hue = 96, lightness = 0.82, chroma = 0.135 }
-green = { hue = 152, lightness = 0.69, chroma = 0.126 }
-teal = { hue = 186, lightness = 0.7, chroma = 0.095 }
-blue = { hue = 248, lightness = 0.64, chroma = 0.119 }
-purple = { hue = 292, lightness = 0.61, chroma = 0.15 }
-pink = { hue = 350, lightness = 0.68, chroma = 0.15 }
+[rainbow.hues]
+red = "oklch(0.61 0.167 27)"
+orange = "oklch(0.68 0.15 46)"
+yellow = "oklch(0.82 0.135 96)"
+green = "oklch(0.69 0.126 152)"
+teal = "oklch(0.7 0.095 186)"
+blue = "oklch(0.64 0.119 248)"
+purple = "oklch(0.61 0.15 292)"
+pink = "oklch(0.68 0.15 350)"
 
-[glyphGrid.steps]
-dim = { lightness = -0.17, chroma = -0.02 }
-base = { lightness = 0.0, chroma = 0.0 }
-bright = { lightness = 0.13, chroma = -0.03 }
-deep = { lightness = -0.26, chroma = 0.0 }
+# Steps are signed OKLCH offsets added to each rainbow hue, not complete colors.
+# The final 0 keeps the hue unchanged; base adds no offsets.
+[rainbow.steps]
+dim = "oklch(-0.17 -0.02 0)"
+base = "oklch(0.0 0.0 0)"
+bright = "oklch(0.13 -0.03 0)"
+deep = "oklch(-0.26 0.0 0)"
 
 [surfaces]
-app = "baseUi.09"
-panel = "baseUi.10"
-titlebar = "baseUi.08"
-control = "baseUi.09"
-button = "baseUi.10"
-buttonHover = "baseUi.09"
-field = "baseUi.10"
-outline = "baseUi.06"
-fieldOutline = "baseUi.09"
-divider = "baseUi.07"
-canvas = "baseUi.10"
-tabRail = "baseUi.08"
-inactiveTab = "baseUi.09"
-header = "baseUi.01"
-gridBackground = "baseUi.07"
-cellShadow = "baseUi.04"
-floatingPaneHeader = "baseUi.09"
-sliderTrack = "baseUi.05"
+app = "baseUi.08"
+panel = "baseUi.09"
+titlebar = "baseUi.07"
+control = "baseUi.08"
+button = "baseUi.09"
+buttonHover = "baseUi.08"
+field = "baseUi.09"
+outline = "baseUi.05"
+fieldOutline = "baseUi.08"
+divider = "baseUi.06"
+canvas = "baseUi.09"
+tabRail = "baseUi.07"
+inactiveTab = "baseUi.08"
+header = "baseUi.00"
+gridBackground = "baseUi.06"
+cellShadow = "baseUi.03"
+floatingPaneHeader = "baseUi.08"
+sliderTrack = "baseUi.04"
 
 [text]
-primary = "baseUi.02"
-secondary = "baseUi.03"
-muted = "baseUi.03"
-subdued = "baseUi.04"
-overlay = "baseUi.01"
-glyph = "baseUi.02"
-headerInk = "baseUi.10"
+primary = "baseUi.01"
+secondary = "baseUi.02"
+muted = "baseUi.02"
+subdued = "baseUi.03"
+overlay = "baseUi.00"
+glyph = "baseUi.01"
+headerInk = "baseUi.09"
 
 [roles]
-gridSelected = "baseUi.02"
-cellSelectedFill = "baseUi.02"
-cellSelectedInk = "baseUi.10"
-controlSelected = "baseUi.02"
-controlSelectedInk = "baseUi.10"
-designGridFine = "baseUi.08"
-designGridCoarse = "baseUi.07"
-accent = "glyphGrid.green.dim"
-warning = "glyphGrid.orange.dim"
-danger = "glyphGrid.red.dim"
-selection = "glyphGrid.orange.dim"
-component = "glyphGrid.purple.dim"
-componentSelected = "glyphGrid.pink.dim"
-pointSmooth = "glyphGrid.blue.dim"
-pointCorner = "glyphGrid.green.dim"
-pointOffcurve = "glyphGrid.purple.dim"
-pointHyper = "glyphGrid.teal.dim"
-pointSelected = "glyphGrid.orange.dim"
-pointInner = "baseUi.10"
-startNode = "glyphGrid.orange.dim"
-textCursor = "glyphGrid.orange.dim"
-kernActive = "glyphGrid.teal.dim"
-kernPrevious = "glyphGrid.orange.dim"
-pathStroke = "baseUi.02"
-previewFill = "baseUi.03"
-background = "baseUi.04"
-reference = "baseUi.07"
-halo = "baseUi.10"
-metricQuiet = "baseUi.07"
-outlineFill = "baseUi.06"
-metricsLine = "baseUi.06"
-readonlyPoint = "baseUi.04"
-continuityG2 = "glyphGrid.teal.dim"
-continuityG1 = "glyphGrid.yellow.dim"
-continuityLine = "baseUi.04"
-continuityKink = "glyphGrid.red.dim"
+gridSelected = "baseUi.01"
+cellSelectedFill = "baseUi.01"
+cellSelectedInk = "baseUi.09"
+controlSelected = "baseUi.01"
+controlSelectedInk = "baseUi.09"
+designGridFine = "baseUi.07"
+designGridCoarse = "baseUi.06"
+accent = "rainbow.green.dim"
+warning = "rainbow.orange.dim"
+danger = "rainbow.red.dim"
+selection = "rainbow.orange.dim"
+component = "rainbow.purple.dim"
+componentSelected = "rainbow.pink.dim"
+pointSmooth = "rainbow.blue.dim"
+pointCorner = "rainbow.green.dim"
+pointOffcurve = "rainbow.purple.dim"
+pointHyper = "rainbow.teal.dim"
+pointSelected = "rainbow.orange.dim"
+pointInner = "baseUi.09"
+startNode = "rainbow.orange.dim"
+textCursor = "rainbow.orange.dim"
+kernActive = "rainbow.teal.dim"
+kernPrevious = "rainbow.orange.dim"
+pathStroke = "baseUi.01"
+previewFill = "baseUi.02"
+background = "baseUi.03"
+reference = "baseUi.06"
+halo = "baseUi.09"
+metricQuiet = "baseUi.06"
+outlineFill = "baseUi.05"
+metricsLine = "baseUi.05"
+readonlyPoint = "baseUi.03"
+continuityG2 = "rainbow.teal.dim"
+continuityG1 = "rainbow.yellow.dim"
+continuityLine = "baseUi.03"
+continuityKink = "rainbow.red.dim"
 popcount1 = "#17B870"
 popcount2 = "#FFDB33"
 popcount3 = "#FF990F"
