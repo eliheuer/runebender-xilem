@@ -306,7 +306,7 @@ impl Workspace {
             sketch,
             sketch_reference_rationale: String::new(),
             sketch_models: crate::application::local_models::discover(),
-            sketch_selected_model: "virtua-clean1".into(),
+            sketch_selected_model: "virtua-12m-v1".into(),
             sketch_identity: 1.0,
             sketch_codepoint_buf: String::new(),
             editor_focus: Arc::new(std::sync::Mutex::new(None)),

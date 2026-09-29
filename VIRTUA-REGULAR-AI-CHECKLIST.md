@@ -646,7 +646,7 @@ Use main and VIRTUA-REGULAR-TESTING.md for the next hands-on session; remaining 
 
 ## Local Virtua hookup evidence (interactive follow-up)
 
-User-selected library: `~/runebender/models`, with copied `virtua-clean1` config, vocabulary and weights.
+User-selected library: `~/runebender/models`, with copied `virtua-12m-v1` config, vocabulary and weights.
 The source checkpoint remains `/Users/eli/GH/repos/font-garden-lab/runs/clean1`; Web's `runs/sketch1` alias resolves there.
 The copied weights SHA-256 is `4ba0ceaf34da472f73e9863b97f64170ab7bac3d0c30cbe1bfe5889e008f28f5`.
 Runtime dependencies still use FontGarden's installed environment via host runtime.json; automatic runtime installation is not implemented.
@@ -669,4 +669,4 @@ Native pointer interaction and aesthetic approval remain for Eli's hands-on sess
 
 Final focused checks: seven Brush tests and three model-library tests passed after the directory/platform changes; all-target warning-denied Clippy and formatting passed.
 Runnable artifact: `/private/tmp/runebender-kaf-trial-sjiv0m10/runebender-virtua`, launched with the adjacent `Start Virtua Trial.command`.
-The model library is `~/runebender/models/virtua-clean1`; FontGarden's runtime remains required.
+The model library is `~/runebender/models/virtua-12m-v1`; FontGarden's runtime remains required.

@@ -11,7 +11,7 @@ Each model gets its own folder, named with letters, digits, hyphens or underscor
 ```text
 models/
   runtime.json
-  virtua-clean1/
+  virtua-12m-v1/
     manifest.json
     config.json
     vocab.txt
@@ -21,9 +21,10 @@ models/
 The manifest identifies the supported adapter:
 
 ```json
-{"name":"Virtua Clean1", "format":"virtua-sketch-v1"}
+{"name":"Virtua 12M v1", "format":"virtua-sketch-v1"}
 ```
 
+`Virtua 12M v1` is the name of this installed package; its copied training checkpoint is recorded as FontGarden `clean1` in `source-receipt.json`.
 Copy the three checkpoint files together from the same trained run.
 Do not mix vocabularies, configurations and weights from different runs.
 The current adapter supports the installed Virtua sketch architecture and tokenizer, not arbitrary Hugging Face weights.

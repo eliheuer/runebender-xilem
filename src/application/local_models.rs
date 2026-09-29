@@ -32,7 +32,7 @@ mod native {
     use runebender::workflows::local_sketch::SketchRuntime;
     use serde::Deserialize;
 
-    const DEFAULT_MODEL: &str = "virtua-clean1";
+    const DEFAULT_MODEL: &str = "virtua-12m-v1";
     const FILES: [&str; 3] = ["config.json", "vocab.txt", "weights.safetensors"];
 
     #[derive(Deserialize)]
@@ -223,7 +223,7 @@ mod native {
             for id in ["", "../clean1", "/tmp/model", "a/b", "."] {
                 assert!(!valid_id(id));
             }
-            assert!(valid_id("virtua-clean1"));
+            assert!(valid_id("virtua-12m-v1"));
         }
 
         #[test]

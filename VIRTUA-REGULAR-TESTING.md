@@ -23,7 +23,7 @@ RUNEBENDER_TOOL=text RUNEBENDER_GLYPH=kaf-ar.medi RUNEBENDER_TEXT='مكتبة' R
    Widths are font units; Erase and Clear ink affect only the temporary sketch.
 3. Enter `kaf-ar.init` as the approved reference and explain its relevance, for example `Approved kaf entry stroke and upper arm`.
 4. For deterministic tracing choose **Trace to draft**.
-   For local inference, choose Virtua Clean1 in the model controls, enter `U+0643` as the explicit kaf conditioning hint, leave identity at 1.0 initially, and choose **Draft with Virtua**.
+   For local inference, choose Virtua 12M v1 in the model controls, enter `U+0643` as the explicit kaf conditioning hint, leave identity at 1.0 initially, and choose **Draft with Virtua**.
    Then choose **Check status**.
    Inspect any error; Cancel stops a pending trace, while Release or Retry becomes available after it settles.
 5. Choose **Open comparison**, then **Run** to produce unchanged and changed proofs.
