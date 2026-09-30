@@ -125,12 +125,14 @@ where
     State: 'static,
     V: WidgetView<State>,
 {
-    let ground = pal.app;
     let radius = pal.panel_radius;
     sized_box(xilem::view::zstack((
-        clip_split(sized_box(content).background_color(pal.panel)).alignment(UnitPoint::TOP_LEFT),
+        crate::application::widgets::rounded_clip::rounded_clip(
+            clip_split(sized_box(content).background_color(pal.panel)),
+            radius,
+        )
+        .alignment(UnitPoint::TOP_LEFT),
         crate::application::widgets::panel_frame::panel_frame(
-            ground,
             pal.outline,
             radius,
             pal.panel_shadow,
@@ -178,7 +180,7 @@ where
         right: Length::px(panel_gutter),
         ..Default::default()
     });
-    let columns = xilem::view::split(left, middle)
+    let columns = crate::application::widgets::quiet_split::split(left, middle)
         .split_point_from_start(Length::px(left_width))
         .min_lengths(
             Length::px(left_width),
@@ -190,7 +192,7 @@ where
         .min_bar_area(Length::px(SIDEBAR_SPLITTER_HIT_WIDTH))
         .solid_bar(false)
         .draggable(!collapsed);
-    let columns = xilem::view::split(columns, right)
+    let columns = crate::application::widgets::quiet_split::split(columns, right)
         .split_point_from_end(Length::px(panel_width))
         .min_lengths(
             Length::px(CENTER_MIN_WIDTH + shadow_extent + panel_gutter + left_width),
@@ -226,16 +228,17 @@ where
     A: WidgetView<State>,
     B: WidgetView<State>,
 {
-    let split = xilem::view::split(editor, top_keyline(proof, outline))
-        .split_axis(kurbo::Axis::Vertical)
-        .split_point_from_end(Length::px(PROOF_STRIP_HEIGHT))
-        .min_lengths(
-            Length::px(design::EDITOR_MIN_HEIGHT),
-            Length::px(design::PROOF_MIN_HEIGHT),
-        )
-        .bar_thickness(Length::ZERO)
-        .min_bar_area(Length::px(design::SPLITTER_HIT_WIDTH))
-        .solid_bar(false);
+    let split =
+        crate::application::widgets::quiet_split::split(editor, top_keyline(proof, outline))
+            .split_axis(kurbo::Axis::Vertical)
+            .split_point_from_end(Length::px(PROOF_STRIP_HEIGHT))
+            .min_lengths(
+                Length::px(design::EDITOR_MIN_HEIGHT),
+                Length::px(design::PROOF_MIN_HEIGHT),
+            )
+            .bar_thickness(Length::ZERO)
+            .min_bar_area(Length::px(design::SPLITTER_HIT_WIDTH))
+            .solid_bar(false);
     clip_split(split)
 }
 
@@ -343,7 +346,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(Space::None)
-    .background_color(pal.app);
+    .background_color(pal.app_background());
     // Erase the chrome before the async pumps add their own generic layers;
     // otherwise the macOS linker receives multi-megabyte symbol names.
     let content = content.boxed();
@@ -468,7 +471,7 @@ fn welcome(app: &mut AppState) -> impl WidgetView<AppState> + use<> {
         .gap(Space::Md),
     )
     .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
-    .background_color(palette.app)
+    .background_color(palette.app_background())
 }
 
 /// Drain streamed local-chat events while its child process is running.
@@ -957,6 +960,219 @@ mod panel_resize_tests {
         )
     }
 
+    #[test]
+    fn center_footer_icons_and_slider_share_edge_clearance_in_both_modes() {
+        use crate::application::view::design::{FOOTER_HEIGHT, FOOTER_INSET, STATUS_ICON_SIZE};
+        use crate::application::widgets::gesture_slider::GestureSliderWidget;
+        use crate::application::widgets::icon_button::IconWidget;
+        use masonry::core::{Widget, WidgetRef};
+        use masonry::kurbo::Rect;
+        use xilem::core::View;
+        use xilem::style::Style;
+        fn controls(
+            widget: WidgetRef<'_, dyn Widget>,
+            icons: &mut Vec<Rect>,
+            sliders: &mut Vec<Rect>,
+        ) {
+            let rect = widget
+                .ctx()
+                .window_transform()
+                .transform_rect_bbox(widget.ctx().border_box());
+            if widget.downcast::<IconWidget>().is_some() {
+                icons.push(rect);
+            }
+            if widget.downcast::<GestureSliderWidget>().is_some() {
+                sliders.push(rect);
+            }
+            for child in widget.children() {
+                controls(child, icons, sliders);
+            }
+        }
+        for mode in [super::Mode::Overview, super::Mode::Editor(0)] {
+            let mut app = super::tab_tests::app();
+            app.mode = mode;
+            app.note = "A long status message that should yield its width to the controls".into();
+            let view =
+                xilem::view::flex_col((super::status(&app), xilem::view::FlexSpacer::Flex(1.0)))
+                    .gap(super::Space::None);
+            let mut ctx = context();
+            let (pod, _) = view.build(&mut ctx, &mut app);
+            let mut harness = TestHarness::create_with_size(
+                crate::application::view::default_property_set(),
+                pod.new_widget,
+                (320, 100),
+            );
+            for width in [320, 997] {
+                harness.process_window_event(WindowEvent::Resize(PhysicalSize::new(width, 100)));
+                let footer = harness.root_widget().children()[0];
+                assert_eq!(footer.ctx().border_box().height(), FOOTER_HEIGHT);
+                let mut icons = Vec::new();
+                let mut sliders = Vec::new();
+                controls(footer, &mut icons, &mut sliders);
+                assert!(!icons.is_empty());
+                assert_eq!(icons[0].x0, FOOTER_INSET);
+                for icon in icons {
+                    assert_eq!(icon.height(), STATUS_ICON_SIZE);
+                    assert_eq!(icon.y0, (FOOTER_HEIGHT - STATUS_ICON_SIZE) / 2.0);
+                    assert_eq!(
+                        FOOTER_HEIGHT - icon.y1,
+                        (FOOTER_HEIGHT - STATUS_ICON_SIZE) / 2.0
+                    );
+                }
+                assert_eq!(sliders.len(), 1);
+                assert_eq!(f64::from(width) - sliders[0].x1, FOOTER_INSET);
+                assert_eq!((sliders[0].y0 + sliders[0].y1) / 2.0, FOOTER_HEIGHT / 2.0);
+            }
+        }
+    }
+
+    #[test]
+    fn palette_circles_have_equal_outer_and_inner_gaps_when_the_dock_grows() {
+        use xilem::core::View;
+        use xilem::style::Style;
+        let mut app = super::tab_tests::app();
+        let view =
+            xilem::view::flex_col((super::marks_bar(&app), xilem::view::FlexSpacer::Flex(1.0)))
+                .gap(super::Space::None);
+        let mut ctx = context();
+        let (pod, _) = view.build(&mut ctx, &mut app);
+        let mut harness = TestHarness::create_with_size(
+            crate::application::view::default_property_set(),
+            pod.new_widget,
+            (246, 100),
+        );
+        for width in [246, 384] {
+            harness.process_window_event(WindowEvent::Resize(PhysicalSize::new(width, 100)));
+            let root = harness.root_widget();
+            let strip = root.children()[0].children()[0].children()[1];
+            let row = strip.children()[0];
+            let buttons = row.children();
+            let gap = super::design::MARK_SWATCH_GAP;
+            let diameter = (f64::from(width) - 9.0 * gap) / 8.0;
+            assert_eq!(buttons.len(), 8);
+            for (i, button) in buttons.iter().enumerate() {
+                let rect = button.ctx().border_box();
+                assert!(
+                    (rect.width() - diameter).abs() <= 1.0,
+                    "width {width}: {rect:?}, expected {diameter}"
+                );
+                assert!((rect.height() - diameter).abs() <= 1.0);
+                let origin = button.ctx().window_transform() * Point::ORIGIN;
+                assert!((origin.x - (gap + i as f64 * (diameter + gap))).abs() <= 1.0);
+                assert!((origin.y - (1.0 + gap)).abs() <= 1.0);
+            }
+        }
+    }
+
+    #[test]
+    fn panel_groups_keep_equal_side_and_bottom_insets_at_the_divider() {
+        use crate::application::view::recipes;
+        use crate::application::view::theme::Palette;
+        use masonry::layout::{Dim, Length};
+        use masonry::properties::Dimensions;
+        use xilem::core::View;
+        use xilem::style::Style;
+        use xilem::view::{label, sized_box};
+
+        let palette = Palette::load("gray");
+        let group = || {
+            recipes::panel_group(
+                &palette,
+                sized_box(label(""))
+                    .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(20.0))))
+                    .background_color(palette.field()),
+            )
+        };
+        let view =
+            sized_box(recipes::panel_stack((group(), group()))).background_color(palette.panel);
+        let mut ctx = context();
+        let (pod, _) = view.build(&mut ctx, &mut ());
+        let mut harness = TestHarness::create_with_size(
+            crate::application::view::default_property_set(),
+            pod.new_widget,
+            (100, 74),
+        );
+        let image = harness.render();
+        let ground = image.get_pixel(0, 0);
+        let face = image.get_pixel(8, 8);
+        assert_ne!(face, ground);
+        for section_y in [0, 37] {
+            assert_eq!(image.get_pixel(8, section_y + 8), face);
+            assert_eq!(image.get_pixel(91, section_y + 27), face);
+            for inset in 0..8 {
+                assert_eq!(image.get_pixel(inset, section_y + 18), ground, "left inset");
+                assert_eq!(
+                    image.get_pixel(99 - inset, section_y + 18),
+                    ground,
+                    "right inset"
+                );
+                assert_eq!(image.get_pixel(50, section_y + inset), ground, "top inset");
+                assert_eq!(
+                    image.get_pixel(50, section_y + 28 + inset),
+                    ground,
+                    "bottom inset"
+                );
+            }
+            assert_ne!(
+                image.get_pixel(50, section_y + 36),
+                ground,
+                "the divider follows the bottom inset"
+            );
+        }
+    }
+
+    #[test]
+    fn panel_field_columns_fit_the_minimum_dock_and_grow_evenly() {
+        use crate::application::view::{design, recipes};
+        use xilem::core::View;
+        use xilem::view::sized_box;
+
+        for count in [2, 3] {
+            let mut app = super::tab_tests::app();
+            let fields = (0..count)
+                .map(|_| {
+                    recipes::field_column(recipes::field(
+                        &app.palette,
+                        "Width",
+                        "A value longer than the available column".into(),
+                        |_: &mut super::Workspace, _| {},
+                    ))
+                })
+                .collect::<Vec<_>>();
+            let view = sized_box(recipes::panel_group(
+                &app.palette,
+                design::row(design::Region::Form, fields),
+            ));
+            let mut ctx = context();
+            let (pod, _) = view.build(&mut ctx, &mut app);
+            let mut harness = TestHarness::create_with_size(
+                crate::application::view::default_property_set(),
+                pod.new_widget,
+                (246, 100),
+            );
+            for width in [246, 384] {
+                harness.process_window_event(WindowEvent::Resize(PhysicalSize::new(width, 100)));
+                let row = harness.root_widget().children()[0].children()[0].children()[0];
+                let content_width = f64::from(width) - 2.0 * design::PANEL_SECTION_INSET.px();
+                let expected = (content_width
+                    - f64::from(count - 1) * design::Region::Form.gap().px())
+                    / f64::from(count);
+                assert_eq!(row.ctx().border_box().width(), content_width);
+                assert_eq!(row.children().len(), usize::try_from(count).unwrap());
+                let mut used_width = f64::from(count - 1) * design::Region::Form.gap().px();
+                for column in row.children() {
+                    let actual = column.ctx().border_box().width();
+                    assert!(
+                        (actual - expected).abs() <= 1.0,
+                        "column width {actual} should equal {expected} within pixel rounding"
+                    );
+                    used_width += actual;
+                }
+                assert!((used_width - content_width).abs() < 0.01);
+            }
+        }
+    }
+
     #[cfg(target_os = "macos")]
     #[test]
     fn fullscreen_header_removes_and_restores_window_controls_inset() {
@@ -1132,6 +1348,69 @@ mod panel_resize_tests {
         harness
             .edit_root_widget(|root| off_again.rebuild(&on, &mut state, &mut ctx, root, &mut ()));
         assert_eq!(*harness.render().get_pixel(40, 71), ground);
+    }
+
+    #[test]
+    fn rounded_panel_corners_reveal_the_actual_background() {
+        use masonry::imaging::Painter;
+        use masonry::kurbo::Rect;
+        use masonry::layout::Length;
+        use xilem::Color;
+        use xilem::core::View;
+        use xilem::style::Style;
+        use xilem::view::{canvas, label, sized_box};
+
+        let mut palette = crate::application::view::theme::Palette::load("gray");
+        palette.panel_shadow = None;
+        palette.panel_radius = 16.0;
+        let logic = |pal: &crate::application::view::theme::Palette| {
+            xilem::view::zstack((
+                canvas(|_: &mut (), _, scene, size| {
+                    let mut painter = Painter::new(scene);
+                    painter
+                        .fill(size.to_rect(), Color::from_rgb8(220, 0, 180))
+                        .draw();
+                    painter
+                        .fill(
+                            Rect::new(size.width / 2.0, 0.0, size.width, size.height),
+                            Color::from_rgb8(0, 180, 220),
+                        )
+                        .draw();
+                }),
+                sized_box(floating_panel(label(""), pal)).padding(Length::px(8.0)),
+            ))
+        };
+        let mut ctx = context();
+        let rounded = logic(&palette);
+        let (pod, mut state) = rounded.build(&mut ctx, &mut ());
+        let mut harness = TestHarness::create_with_size(
+            crate::application::view::default_property_set(),
+            pod.new_widget,
+            (96, 96),
+        );
+        let image = harness.render();
+        for (corner_x, background_x) in [(10, 0), (87, 95)] {
+            for y in [8, 85] {
+                assert_eq!(
+                    image.get_pixel(corner_x, y),
+                    image.get_pixel(background_x, y),
+                    "rounded corners must reveal either backdrop color without a flat mask"
+                );
+            }
+        }
+        assert_ne!(image.get_pixel(48, 48), image.get_pixel(95, 48));
+
+        palette.panel_radius = 0.0;
+        let square = logic(&palette);
+        harness.edit_root_widget(|root| {
+            square.rebuild(&rounded, &mut state, &mut ctx, root, &mut ());
+        });
+        let image = harness.render();
+        assert_ne!(
+            image.get_pixel(11, 9),
+            image.get_pixel(0, 9),
+            "changing the theme radius must update the panel clip"
+        );
     }
 
     #[test]
@@ -1339,7 +1618,7 @@ mod panel_resize_tests {
     }
 
     #[test]
-    fn splitter_focus_never_paints_end_caps_outside_the_panels() {
+    fn splitter_hover_drag_and_focus_never_paint_visual_indicators() {
         use masonry::layout::{Dim, Length};
         use masonry::properties::Dimensions;
         use xilem::core::View;
@@ -1370,8 +1649,15 @@ mod panel_resize_tests {
             );
             let baseline = h.render();
             h.mouse_move(start);
+            assert_eq!(h.render(), baseline, "{name} changed its paint on hover");
+            let resize_cursor = if name == "dock" {
+                masonry::core::CursorIcon::EwResize
+            } else {
+                masonry::core::CursorIcon::NsResize
+            };
             h.mouse_button_press(None);
             h.mouse_move(end);
+            assert_eq!(h.cursor_icon(), resize_cursor);
             for phase in ["dragging", "released", "pointer-away", "blurred"] {
                 match phase {
                     "released" => h.mouse_button_release(None),
@@ -1392,16 +1678,7 @@ mod panel_resize_tests {
                         .save(dir.join(format!("{name}-{phase}.png")))
                         .unwrap();
                 }
-                assert!(
-                    rendered
-                        .enumerate_pixels()
-                        .filter(|(x, y, _)| *x < 8
-                            || *x >= size.0 - 8
-                            || *y < 8
-                            || *y >= size.1 - 8)
-                        .all(|(x, y, pixel)| pixel == baseline.get_pixel(x, y)),
-                    "{name} painted outside its panels while {phase}"
-                );
+                assert_eq!(rendered, baseline, "{name} changed its paint while {phase}");
             }
         }
         check(

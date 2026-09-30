@@ -38,8 +38,10 @@ application = [
 workspace = true
 
 [dependencies]
-xilem = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a", optional = true }
-masonry = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a", optional = true }
+# Temporary Metal premultiplication workaround for gfx-rs/wgpu#9922.
+# Based on upstream Xilem 271a27a; return upstream when a compatible wgpu includes the fix.
+xilem = { git = "https://github.com/eliheuer/xilem", rev = "881d2daef6bf9fb353c04f25e6374767480e869a", optional = true }
+masonry = { git = "https://github.com/eliheuer/xilem", rev = "881d2daef6bf9fb353c04f25e6374767480e869a", optional = true }
 clap = { version = "4", features = ["derive"], optional = true }
 base64 = { version = "0.22.1", optional = true }
 norad = "0.18"
@@ -80,10 +82,10 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 muda = { version = "0.19", optional = true }
 objc2 = { version = "0.6.4", optional = true }
-objc2-app-kit = { version = "0.3.2", optional = true, default-features = false, features = ["std", "NSApplication", "NSWindow"] }
+objc2-app-kit = { version = "0.3.2", optional = true, default-features = false, features = ["std", "NSApplication", "NSWindow", "NSView", "NSVisualEffectView", "NSGraphics", "NSButton", "NSWorkspace", "NSAccessibility", "NSAppearance"] }
 
 [dev-dependencies]
-masonry_testing = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a" }
+masonry_testing = { git = "https://github.com/eliheuer/xilem", rev = "881d2daef6bf9fb353c04f25e6374767480e869a" }
 syn = { version = "2.0.119", features = ["full", "visit"] }
 
 [profile.release]

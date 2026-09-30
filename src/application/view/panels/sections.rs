@@ -68,29 +68,17 @@ pub(crate) fn layers_section(app: &Workspace) -> Option<impl WidgetView<Workspac
             ))
         })
         .collect();
-    Some(xcolumn(
-        Region::Section,
-        (
-            recipes::section_toggle(
-                pal,
-                "Layers",
-                !app.collapsed.contains("Layers"),
-                move |app: &mut Workspace| {
-                    if !app.collapsed.remove("Layers") {
-                        app.collapsed.insert("Layers");
-                    }
-                },
+    Some(recipes::section(
+        app,
+        "Layers",
+        "Layers",
+        xcolumn(
+            Region::List,
+            (
+                xcolumn(Region::List, rows),
+                app.can_manage_glyph_layers()
+                    .then(|| glyph_layer_controls(app)),
             ),
-            (!app.collapsed.contains("Layers")).then(|| {
-                xcolumn(
-                    Region::List,
-                    (
-                        xcolumn(Region::List, rows),
-                        app.can_manage_glyph_layers()
-                            .then(|| glyph_layer_controls(app)),
-                    ),
-                )
-            }),
         ),
     ))
 }
@@ -168,72 +156,60 @@ pub(crate) fn masters_section(app: &Workspace) -> Option<impl WidgetView<Workspa
             .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Icon)))
         })
         .collect();
-    Some(xcolumn(
-        Region::Section,
-        (
-            recipes::section_toggle(
-                pal,
-                "Masters",
-                !app.collapsed.contains("Masters"),
-                move |app: &mut Workspace| {
-                    if !app.collapsed.remove("Masters") {
-                        app.collapsed.insert("Masters");
-                    }
-                },
-            ),
-            (!app.collapsed.contains("Masters")).then(|| {
-                xcolumn(
-                    Region::List,
+    Some(recipes::section(
+        app,
+        "Masters",
+        "Masters",
+        xcolumn(
+            Region::List,
+            (
+                xcolumn(Region::List, rows),
+                label("Source name")
+                    .text_size(TextSize::Body.px())
+                    .color(pal.text_muted),
+                text_input(app.source_name_buf.clone(), |app: &mut Workspace, value| {
+                    app.source_name_buf = value;
+                })
+                .text_color(pal.text)
+                .background_color(pal.field()),
+                label("Uses the axis sliders below")
+                    .text_size(TextSize::Body.px())
+                    .color(pal.text_muted),
+                xrow(
+                    Region::Inline,
                     (
-                        xcolumn(Region::List, rows),
-                        label("Source name")
-                            .text_size(TextSize::Body.px())
-                            .color(pal.text_muted),
-                        text_input(app.source_name_buf.clone(), |app: &mut Workspace, value| {
-                            app.source_name_buf = value;
-                        })
-                        .text_color(pal.text)
-                        .background_color(pal.field()),
-                        label("Uses the axis sliders below")
-                            .text_size(TextSize::Body.px())
-                            .color(pal.text_muted),
-                        xrow(
-                            Region::Inline,
-                            (
-                                recipes::action(pal, "Add source".into(), |app| {
-                                    app.change_sources("add");
-                                }),
-                                recipes::action(pal, "Apply".into(), |app| {
-                                    app.change_sources("update");
-                                }),
-                            ),
-                        ),
-                        xrow(
-                            Region::Inline,
-                            (
-                                recipes::action(pal, "Up".into(), |app| app.change_sources("up")),
-                                recipes::action(pal, "Down".into(), |app| {
-                                    app.change_sources("down");
-                                }),
-                                recipes::action(pal, "Remove".into(), |app| {
-                                    app.change_sources("remove");
-                                }),
-                            ),
-                        ),
-                        xrow(
-                            Region::Inline,
-                            (
-                                recipes::action(pal, "Undo sources".into(), |app| {
-                                    app.change_sources("undo");
-                                }),
-                                recipes::action(pal, "Redo".into(), |app| {
-                                    app.change_sources("redo");
-                                }),
-                            ),
-                        ),
+                        recipes::action(pal, "Add source".into(), |app| {
+                            app.change_sources("add");
+                        }),
+                        recipes::action(pal, "Apply".into(), |app| {
+                            app.change_sources("update");
+                        }),
                     ),
-                )
-            }),
+                ),
+                xrow(
+                    Region::Inline,
+                    (
+                        recipes::action(pal, "Up".into(), |app| app.change_sources("up")),
+                        recipes::action(pal, "Down".into(), |app| {
+                            app.change_sources("down");
+                        }),
+                        recipes::action(pal, "Remove".into(), |app| {
+                            app.change_sources("remove");
+                        }),
+                    ),
+                ),
+                xrow(
+                    Region::Inline,
+                    (
+                        recipes::action(pal, "Undo sources".into(), |app| {
+                            app.change_sources("undo");
+                        }),
+                        recipes::action(pal, "Redo".into(), |app| {
+                            app.change_sources("redo");
+                        }),
+                    ),
+                ),
+            ),
         ),
     ))
 }
@@ -303,22 +279,11 @@ pub(crate) fn axes_section(app: &Workspace) -> Option<impl WidgetView<Workspace>
             ),
         )
     });
-    Some(xcolumn(
-        Region::Section,
-        (
-            recipes::section_toggle(
-                pal,
-                "Axes",
-                !app.collapsed.contains("Axes"),
-                move |app: &mut Workspace| {
-                    if !app.collapsed.remove("Axes") {
-                        app.collapsed.insert("Axes");
-                    }
-                },
-            ),
-            (!app.collapsed.contains("Axes")).then(|| xcolumn(Region::Form, rows)),
-            (!app.collapsed.contains("Axes")).then_some(hint),
-        ),
+    Some(recipes::section(
+        app,
+        "Axes",
+        "Axes",
+        xcolumn(Region::Form, (xcolumn(Region::Form, rows), hint)),
     ))
 }
 
@@ -354,51 +319,39 @@ pub(crate) fn shaping_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                 },
             )
         };
-    xcolumn(
-        Region::Section,
-        (
-            recipes::section_toggle(
-                pal,
-                "Shaping",
-                !app.collapsed.contains("Shaping"),
-                move |app: &mut Workspace| {
-                    if !app.collapsed.remove("Shaping") {
-                        app.collapsed.insert("Shaping");
-                    }
-                },
-            ),
-            (!app.collapsed.contains("Shaping")).then(|| {
+    recipes::section(
+        app,
+        "Shaping",
+        "Shaping",
+        xcolumn(
+            Region::Form,
+            (
+                recipes::field(
+                    pal,
+                    "Preview text",
+                    app.preview_text.clone(),
+                    |app: &mut Workspace, value| app.preview_text = value,
+                ),
+                direction_chips(app),
                 xcolumn(
-                    Region::Form,
+                    Region::List,
                     (
-                        recipes::field(
-                            pal,
-                            "Preview text",
-                            app.preview_text.clone(),
-                            |app: &mut Workspace, value| app.preview_text = value,
-                        ),
-                        direction_chips(app),
-                        xcolumn(
-                            Region::List,
-                            (
-                                xrow(
-                                    Region::Inline,
-                                    (feature("liga"), feature("rlig"), feature("kern")),
-                                ),
-                                xrow(Region::Inline, (feature("mark"), feature("mkmk"))),
-                            ),
-                        ),
                         xrow(
                             Region::Inline,
-                            (
-                                locale("Auto", None, None),
-                                locale("Arabic", Some("arab"), Some("ar")),
-                                locale("Urdu", Some("arab"), Some("ur")),
-                            ),
+                            (feature("liga"), feature("rlig"), feature("kern")),
                         ),
+                        xrow(Region::Inline, (feature("mark"), feature("mkmk"))),
                     ),
-                )
-            }),
+                ),
+                xrow(
+                    Region::Inline,
+                    (
+                        locale("Auto", None, None),
+                        locale("Arabic", Some("arab"), Some("ar")),
+                        locale("Urdu", Some("arab"), Some("ur")),
+                    ),
+                ),
+            ),
         ),
     )
 }
@@ -425,85 +378,60 @@ pub(crate) fn transformations_section(app: &Workspace) -> impl WidgetView<Worksp
         .icon_size(design::TRANSFORM_ICON_SIZE)
         .tile_size(design::TRANSFORM_TILE_SIZE)
     };
-    xcolumn(
-        Region::Section,
-        (
-            recipes::section_toggle(
-                pal,
-                "Transformations",
-                !app.collapsed.contains("Transformations"),
-                move |app: &mut Workspace| {
-                    if !app.collapsed.remove("Transformations") {
-                        app.collapsed.insert("Transformations");
-                    }
-                },
-            ),
-            (!app.collapsed.contains("Transformations")).then(|| {
-                xcolumn(
-                    Region::Section,
+    recipes::section(
+        app,
+        "Transformations",
+        "Transformations",
+        xcolumn(
+            Region::Section,
+            (
+                xrow(
+                    Region::List,
                     (
-                        xrow(
-                            Region::List,
-                            (
-                                FlexSpacer::Flex(1.0),
-                                op("flip-h", |s| s.flip_horizontal()),
-                                FlexSpacer::Flex(1.0),
-                                op("flip-v", |s| s.flip_vertical()),
-                                FlexSpacer::Flex(1.0),
-                                op("rot-ccw", |s| s.rotate_90()),
-                                FlexSpacer::Flex(1.0),
-                                op("rot-cw", |s| s.rotate_90_clockwise()),
-                                FlexSpacer::Flex(1.0),
-                                op("duplicate", |s| s.duplicate()),
-                                FlexSpacer::Flex(1.0),
-                            ),
-                        ),
-                        xrow(
-                            Region::List,
-                            (
-                                FlexSpacer::Flex(1.0),
-                                op("duplicate-repeat", |s| s.duplicate_repeat()),
-                                FlexSpacer::Flex(1.0),
-                                op("union", |s| s.remove_overlap()),
-                                FlexSpacer::Flex(1.0),
-                                op("subtract", |s| s.boolean(BoolOp::Subtract)),
-                                FlexSpacer::Flex(1.0),
-                                op("intersect", |s| s.boolean(BoolOp::Intersect)),
-                                FlexSpacer::Flex(1.0),
-                                op("exclude", |s| s.boolean(BoolOp::Exclude)),
-                                FlexSpacer::Flex(1.0),
-                            ),
-                        ),
+                        FlexSpacer::Flex(1.0),
+                        op("flip-h", |s| s.flip_horizontal()),
+                        FlexSpacer::Flex(1.0),
+                        op("flip-v", |s| s.flip_vertical()),
+                        FlexSpacer::Flex(1.0),
+                        op("rot-ccw", |s| s.rotate_90()),
+                        FlexSpacer::Flex(1.0),
+                        op("rot-cw", |s| s.rotate_90_clockwise()),
+                        FlexSpacer::Flex(1.0),
+                        op("duplicate", |s| s.duplicate()),
+                        FlexSpacer::Flex(1.0),
                     ),
-                )
-                .gap(Space::Md)
-            }),
-        ),
+                ),
+                xrow(
+                    Region::List,
+                    (
+                        FlexSpacer::Flex(1.0),
+                        op("duplicate-repeat", |s| s.duplicate_repeat()),
+                        FlexSpacer::Flex(1.0),
+                        op("union", |s| s.remove_overlap()),
+                        FlexSpacer::Flex(1.0),
+                        op("subtract", |s| s.boolean(BoolOp::Subtract)),
+                        FlexSpacer::Flex(1.0),
+                        op("intersect", |s| s.boolean(BoolOp::Intersect)),
+                        FlexSpacer::Flex(1.0),
+                        op("exclude", |s| s.boolean(BoolOp::Exclude)),
+                        FlexSpacer::Flex(1.0),
+                    ),
+                ),
+            ),
+        )
+        .gap(Space::Md),
     )
-    .gap(Length::px(design::TRANSFORM_CONTROLS_GAP))
 }
 
 /// Curve and outline operations follow GPUI in their own disclosure below
 /// geometric transformations.
 pub(crate) fn path_operations_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
-    let pal = &app.palette;
-    xcolumn(
-        Region::Section,
-        (
-            recipes::section_toggle(
-                pal,
-                "Path Operations",
-                !app.collapsed.contains("Path Operations"),
-                move |app: &mut Workspace| {
-                    if !app.collapsed.remove("Path Operations") {
-                        app.collapsed.insert("Path Operations");
-                    }
-                },
-            ),
-            (!app.collapsed.contains("Path Operations")).then(|| path_operations_controls(app)),
-        ),
+    recipes::section(
+        app,
+        "Path Operations",
+        "Path Operations",
+        path_operations_controls(app),
     )
-    .gap(Length::px(design::TRANSFORM_CONTROLS_GAP))
 }
 
 /// A transformation parameter shares one row with its label; Enter applies it.
@@ -750,100 +678,74 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
         )
         .gap(Space::Sm)
     };
-    xcolumn(
-        Region::Section,
-        (
-            recipes::section_toggle(
-                pal,
-                "Coordinates",
-                !app.collapsed.contains("Coordinates"),
-                move |app: &mut Workspace| {
-                    if !app.collapsed.remove("Coordinates") {
-                        app.collapsed.insert("Coordinates");
-                    }
-                },
-            ),
-            (!app.collapsed.contains("Coordinates")).then(|| {
-                xrow(
-                    Region::Inline,
+    recipes::section(
+        app,
+        "Coordinates",
+        "Coordinates",
+        xrow(
+            Region::Inline,
+            (
+                picker,
+                xcolumn(
+                    Region::List,
                     (
-                        picker,
-                        xcolumn(
-                            Region::List,
+                        xrow(
+                            Region::Inline,
                             (
-                                xrow(
-                                    Region::Inline,
-                                    (
-                                        field("X", app.coord_x_buf.clone(), 0).flex(1.0),
-                                        field("W", app.coord_w_buf.clone(), 2).flex(1.0),
-                                    ),
-                                )
-                                .gap(Space::Md),
-                                xrow(
-                                    Region::Inline,
-                                    (
-                                        field("Y", app.coord_y_buf.clone(), 1).flex(1.0),
-                                        field("H", app.coord_h_buf.clone(), 3).flex(1.0),
-                                    ),
-                                )
-                                .gap(Space::Md),
+                                field("X", app.coord_x_buf.clone(), 0).flex(1.0),
+                                field("W", app.coord_w_buf.clone(), 2).flex(1.0),
                             ),
                         )
-                        .gap(Space::Sm)
-                        .flex(1.0),
+                        .gap(Space::Md),
+                        xrow(
+                            Region::Inline,
+                            (
+                                field("Y", app.coord_y_buf.clone(), 1).flex(1.0),
+                                field("H", app.coord_h_buf.clone(), 3).flex(1.0),
+                            ),
+                        )
+                        .gap(Space::Md),
                     ),
                 )
-                .gap(Space::Md)
-            }),
-        ),
+                .gap(Space::Sm)
+                .flex(1.0),
+            ),
+        )
+        .gap(Space::Md),
     )
-    .gap(Space::Sm)
 }
 
 pub(crate) fn curves_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     let view = app.view;
-    xcolumn(
-        Region::Section,
-        (
-            recipes::section_toggle(
-                pal,
-                "Curves",
-                !app.collapsed.contains("Curves"),
-                move |app: &mut Workspace| {
-                    if !app.collapsed.remove("Curves") {
-                        app.collapsed.insert("Curves");
-                    }
-                },
-            ),
-            (!app.collapsed.contains("Curves")).then(|| {
-                xrow(
-                    Region::Inline,
-                    (
-                        recipes::toggle(
-                            pal,
-                            "Curvature Comb".into(),
-                            view.comb,
-                            |app: &mut Workspace| {
-                                app.view.comb = !app.view.comb;
-                            },
-                        )
-                        .flex(1.0),
-                        recipes::toggle(
-                            pal,
-                            "Continuity".into(),
-                            view.continuity,
-                            |app: &mut Workspace| {
-                                app.view.continuity = !app.view.continuity;
-                            },
-                        )
-                        .flex(1.0),
-                    ),
+    recipes::section(
+        app,
+        "Curves",
+        "Curves",
+        xrow(
+            Region::Inline,
+            (
+                recipes::toggle(
+                    pal,
+                    "Curvature Comb".into(),
+                    view.comb,
+                    |app: &mut Workspace| {
+                        app.view.comb = !app.view.comb;
+                    },
                 )
-            }),
+                .flex(1.0),
+                recipes::toggle(
+                    pal,
+                    "Continuity".into(),
+                    view.continuity,
+                    |app: &mut Workspace| {
+                        app.view.continuity = !app.view.continuity;
+                    },
+                )
+                .flex(1.0),
+            ),
         ),
     )
-    .gap(Space::Sm)
 }
 
 /// Measure: the option toggles the Measure tool works through. Picking
@@ -852,20 +754,13 @@ pub(crate) fn curves_section(app: &Workspace) -> impl WidgetView<Workspace> + us
 pub(crate) fn measure_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     let view = app.view;
-    xcolumn(
-        Region::Section,
-        (
-            recipes::section_toggle(
-                pal,
-                "Measure",
-                !app.collapsed.contains("Measure"),
-                move |app: &mut Workspace| {
-                    if !app.collapsed.remove("Measure") {
-                        app.collapsed.insert("Measure");
-                    }
-                },
-            ),
-            (!app.collapsed.contains("Measure")).then(|| {
+    recipes::section(
+        app,
+        "Measure",
+        "Measure",
+        xcolumn(
+            Region::Form,
+            (
                 xrow(
                     Region::Inline,
                     (
@@ -886,9 +781,7 @@ pub(crate) fn measure_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                             },
                         ),
                     ),
-                )
-            }),
-            (!app.collapsed.contains("Measure")).then(|| {
+                ),
                 xrow(
                     Region::Inline,
                     (
@@ -909,11 +802,9 @@ pub(crate) fn measure_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                             },
                         ),
                     ),
-                )
-            }),
-            // Lengths as sums of powers of two: 96 reads as 64+32. The
-            // web editor's habit, and the reason for the tier colors.
-            (!app.collapsed.contains("Measure")).then(|| {
+                ),
+                // Lengths as sums of powers of two: 96 reads as 64+32. The
+                // web editor's habit, and the reason for the tier colors.
                 recipes::toggle(
                     pal,
                     "Popcount sums".into(),
@@ -921,8 +812,8 @@ pub(crate) fn measure_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                     |app: &mut Workspace| {
                         app.view.popcount = !app.view.popcount;
                     },
-                )
-            }),
+                ),
+            ),
         ),
     )
 }
@@ -932,95 +823,78 @@ pub(crate) fn measure_section(app: &Workspace) -> impl WidgetView<Workspace> + u
 /// selected.
 pub(crate) fn background_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
-    xcolumn(
-        Region::Section,
-        (
-            recipes::section_toggle(
-                pal,
-                "Background",
-                !app.collapsed.contains("Background"),
-                move |app: &mut Workspace| {
-                    if !app.collapsed.remove("Background") {
-                        app.collapsed.insert("Background");
-                    }
-                },
-            ),
-            (!app.collapsed.contains("Background")).then(|| {
-                xcolumn(
+    recipes::section(
+        app,
+        "Background",
+        "Background",
+        xcolumn(
+            Region::Inline,
+            (
+                xrow(
                     Region::Inline,
                     (
-                        xrow(
-                            Region::Inline,
-                            (
-                                recipes::toggle(
-                                    pal,
-                                    "Background".into(),
-                                    app.show_background,
-                                    |app: &mut Workspace| {
-                                        app.show_background = !app.show_background;
-                                    },
-                                )
-                                .flex(1.0),
-                                recipes::toggle(
-                                    pal,
-                                    "Mark cloud".into(),
-                                    app.show_mark_cloud,
-                                    |app: &mut Workspace| {
-                                        app.show_mark_cloud = !app.show_mark_cloud;
-                                    },
-                                )
-                                .flex(1.0),
-                            ),
-                        ),
-                        xrow(
-                            Region::Inline,
-                            (recipes::action(
-                                pal,
-                                "Send to background".into(),
-                                |app: &mut Workspace| {
-                                    app.send_to_background();
-                                },
-                            )
-                            .flex(1.0),),
-                        ),
-                        xrow(
-                            Region::Inline,
-                            (
-                                recipes::action(pal, "Swap".into(), |app: &mut Workspace| {
-                                    app.swap_background();
-                                })
-                                .flex(1.0),
-                                recipes::action(pal, "Clear".into(), |app: &mut Workspace| {
-                                    app.clear_background();
-                                })
-                                .flex(1.0),
-                            ),
-                        ),
-                        xrow(
-                            Region::Inline,
-                            (
-                                sized_box(label("Reference").color(pal.text_muted)).dims(
-                                    Dimensions::new(
-                                        Dim::Fixed(Length::px(design::TRANSFORM_LABEL_WIDTH)),
-                                        Dim::Auto,
-                                    ),
-                                ),
-                                recipes::field_bare(
-                                    pal,
-                                    "glyph name",
-                                    app.reference_buf.clone(),
-                                    |app, value| app.reference_buf = value,
-                                    |app, value| app.reference_buf = value,
-                                )
-                                .flex(1.0),
-                            ),
-                        ),
+                        recipes::toggle(
+                            pal,
+                            "Background".into(),
+                            app.show_background,
+                            |app: &mut Workspace| {
+                                app.show_background = !app.show_background;
+                            },
+                        )
+                        .flex(1.0),
+                        recipes::toggle(
+                            pal,
+                            "Mark cloud".into(),
+                            app.show_mark_cloud,
+                            |app: &mut Workspace| {
+                                app.show_mark_cloud = !app.show_mark_cloud;
+                            },
+                        )
+                        .flex(1.0),
                     ),
-                )
-            }),
+                ),
+                xrow(
+                    Region::Inline,
+                    (
+                        recipes::action(pal, "Send to background".into(), |app: &mut Workspace| {
+                            app.send_to_background();
+                        })
+                        .flex(1.0),
+                    ),
+                ),
+                xrow(
+                    Region::Inline,
+                    (
+                        recipes::action(pal, "Swap".into(), |app: &mut Workspace| {
+                            app.swap_background();
+                        })
+                        .flex(1.0),
+                        recipes::action(pal, "Clear".into(), |app: &mut Workspace| {
+                            app.clear_background();
+                        })
+                        .flex(1.0),
+                    ),
+                ),
+                xrow(
+                    Region::Inline,
+                    (
+                        sized_box(label("Reference").color(pal.text_muted)).dims(Dimensions::new(
+                            Dim::Fixed(Length::px(design::TRANSFORM_LABEL_WIDTH)),
+                            Dim::Auto,
+                        )),
+                        recipes::field_bare(
+                            pal,
+                            "glyph name",
+                            app.reference_buf.clone(),
+                            |app, value| app.reference_buf = value,
+                            |app, value| app.reference_buf = value,
+                        )
+                        .flex(1.0),
+                    ),
+                ),
+            ),
         ),
     )
-    .gap(Space::Sm)
 }
 
 pub(crate) fn mark_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
@@ -1044,22 +918,16 @@ pub(crate) fn mark_section(app: &Workspace) -> impl WidgetView<Workspace> + use<
         .into_iter()
         .map(|(name, color)| swatch(Some(name), color))
         .collect();
-    xcolumn(
-        Region::Section,
-        (
-            recipes::section_toggle(
-                pal,
-                "Color",
-                !app.collapsed.contains("Mark"),
-                move |app: &mut Workspace| {
-                    if !app.collapsed.remove("Mark") {
-                        app.collapsed.insert("Mark");
-                    }
-                },
+    recipes::section(
+        app,
+        "Mark",
+        "Color",
+        xcolumn(
+            Region::Form,
+            (
+                xrow(Region::Inline, (swatch(None, pal.control),)),
+                xrow(Region::List, marks),
             ),
-            (!app.collapsed.contains("Mark"))
-                .then(|| xrow(Region::Inline, (swatch(None, pal.control),))),
-            (!app.collapsed.contains("Mark")).then(|| xrow(Region::List, marks)),
         ),
     )
 }
@@ -1076,26 +944,16 @@ pub(crate) fn font_info_section(app: &Workspace) -> impl WidgetView<Workspace> +
         .take(8)
         .map(|(name, value)| recipes::kv(pal, name.to_string(), value))
         .collect();
-    xcolumn(
-        Region::Section,
-        (
-            recipes::section_toggle_height(
-                pal,
-                "Font info",
-                !app.collapsed.contains("Font info"),
-                if matches!(app.mode, Mode::Nodes) && app.collapsed.contains("Font info") {
-                    design::NODE_VIEW_SECTION_HEADER_HEIGHT
-                } else {
-                    ControlSize::Row.px()
-                },
-                move |app: &mut Workspace| {
-                    if !app.collapsed.remove("Font info") {
-                        app.collapsed.insert("Font info");
-                    }
-                },
-            ),
-            (!app.collapsed.contains("Font info")).then(|| xcolumn(Region::List, rows)),
-        ),
+    recipes::section_with_header_height(
+        app,
+        "Font info",
+        "Font info",
+        xcolumn(Region::List, rows),
+        if matches!(app.mode, Mode::Nodes) && app.collapsed.contains("Font info") {
+            design::NODE_VIEW_SECTION_HEADER_HEIGHT
+        } else {
+            ControlSize::Row.px()
+        },
     )
 }
 
@@ -1110,20 +968,5 @@ pub(crate) fn font_advanced_section(app: &Workspace) -> impl WidgetView<Workspac
         .skip(8)
         .map(|(name, value)| recipes::kv(pal, name.to_string(), value))
         .collect();
-    xcolumn(
-        Region::Section,
-        (
-            recipes::section_toggle(
-                pal,
-                "Advanced",
-                !app.collapsed.contains("Advanced"),
-                move |app: &mut Workspace| {
-                    if !app.collapsed.remove("Advanced") {
-                        app.collapsed.insert("Advanced");
-                    }
-                },
-            ),
-            (!app.collapsed.contains("Advanced")).then(|| xcolumn(Region::List, rows)),
-        ),
-    )
+    recipes::section(app, "Advanced", "Advanced", xcolumn(Region::List, rows))
 }

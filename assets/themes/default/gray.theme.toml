@@ -107,10 +107,10 @@ floatingPaneHeader = "baseUi.06"
 # Slider rail behind its draggable handle; Gray uses two steps lighter than text.secondary.
 # The knob outline uses text.secondary.
 sliderTrack = "baseUi.03"
-# Normal slider knob fill: two steps darker than the panel at 07.
-sliderThumb = "baseUi.05"
+# Normal slider knob fill: one step darker than the panel at 07.
+sliderThumb = "baseUi.06"
 # Focused or dragged slider knob fill: one step brighter than its normal fill.
-sliderThumbActive = "baseUi.06"
+sliderThumbActive = "baseUi.07"
 
 # Text and icon colors; kept separate from surface colors for contrast.
 [text]
@@ -217,6 +217,18 @@ popcount2 = "#FFDB33"
 popcount3 = "#FF990F"
 # Popcount diagnostic tier: four or more set bits.
 popcount4 = "#FF4A3D"
+
+[window]
+# Native macOS wallpaper blur works; disabled while text and panel-edge artifacts remain.
+# See src/application/platform/window.rs and Xilem issue #1852 for the integration evidence.
+# false (or omission) keeps the solid surfaces.app/header colors (baseUi.02 in Gray).
+# Changing native window transparency requires restarting the application.
+# Linux, browser, and headless proofs always use flat colors.
+blurBackground = false
+# Ground tint opacity from 0 (more visible blur) to 1 (solid theme color).
+# Diagnostic only; this affects macOS when the experimental blurBackground is enabled.
+# Keep the zero-overlay setting confirmed in the full editor on 2026-09-30.
+blurTintOpacity = 0.0
 
 # Shape settings, separate from colors. All dimensions are logical pixels.
 # The three radii are independent; rendering caps them to fit the actual shape.

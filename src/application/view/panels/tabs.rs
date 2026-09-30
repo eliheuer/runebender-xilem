@@ -374,26 +374,18 @@ fn editor_glyph_rail(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
 }
 
 pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
-    // Keep non-glyph panels' normal padding, while the grid fills the rail.
-    let content = if app.rail == Rail::Glyphs {
-        xilem::core::one_of::Either::A(editor_glyph_rail(app))
-    } else {
-        xilem::core::one_of::Either::B(
-            xcolumn(
-                Region::Panel,
-                (
-                    (app.rail == Rail::Axes)
-                        .then(|| axes_section(app))
-                        .flatten(),
-                    (app.rail == Rail::LocalAi).then(|| local_ai_panel(app)),
-                    (app.rail == Rail::Shapes).then(|| shapes_panel(app)),
-                    (app.rail == Rail::Chat).then(|| chat_panel(app)),
-                    (app.rail == Rail::Scripts).then(|| scripts_panel(app)),
-                ),
-            )
-            .padding(Space::Md)
-            .gap(Space::Md),
-        )
+    // Each pane owns its inset: the grid fills the rail, Axes uses the section
+    // recipe, and standalone tool panes retain their own Region::Panel inset.
+    let content = match app.rail {
+        Rail::Glyphs => editor_glyph_rail(app).boxed(),
+        Rail::Axes => recipes::panel_stack((
+            axes_section(app).map(|body| recipes::panel_group(&app.palette, body)),
+        ))
+        .boxed(),
+        Rail::LocalAi => local_ai_panel(app).boxed(),
+        Rail::Shapes => shapes_panel(app).boxed(),
+        Rail::Chat => chat_panel(app).boxed(),
+        Rail::Scripts => scripts_panel(app).boxed(),
     };
     flex_col((rail_tabs(app, true), content.flex(1.0)))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
@@ -473,7 +465,7 @@ where
             label(text).text_size(TextSize::Body.px()).color(fg),
             move |app: &mut Workspace| on_click(app),
         )
-        .background_color(pal.header)
+        .background_color(pal.header_background())
         .border_color(border)
         .border_width(Stroke::Hairline.length())
         .corner_radius(Length::px(pal.control_radius))
@@ -503,7 +495,7 @@ where
             icon_paint::view(icon, label, pal.header_inactive_ink(0.7), 12.0),
             on_click,
         )
-        .background_color(pal.header)
+        .background_color(pal.header_background())
         .border_color(pal.header_inactive_ink(0.5))
         .border_width(Stroke::Hairline.length())
         .corner_radius(Length::px(pal.control_radius))
@@ -593,39 +585,15 @@ pub(crate) fn sidebar_group<V>(
 where
     V: WidgetView<Workspace> + 'static,
 {
-    let open = !app.collapsed.contains(title);
-    let rule = app.palette.outline;
-    flex_col((
-        xcolumn(
-            Region::Section,
-            (
-                recipes::section_toggle(&app.palette, title, open, move |app: &mut Workspace| {
-                    if !app.collapsed.remove(title) {
-                        app.collapsed.insert(title);
-                    }
-                }),
-                open.then(|| xcolumn(Region::List, rows).gap(Space::None)),
-            ),
-        )
-        .padding(masonry::properties::Padding::from_vh(
-            Length::px(design::SIDEBAR_SECTION_VERTICAL_INSET),
-            Space::Md.length(),
-        ))
-        .gap(Space::Sm),
-        sized_box(label(""))
-            .dims(Dimensions::new(
-                Dim::Stretch,
-                Dim::Fixed(Stroke::Hairline.length()),
-            ))
-            .background_color(rule),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Stretch)
-    .gap(Space::None)
+    recipes::panel_section(app, title, title, xcolumn(Region::List, rows))
 }
 
 pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let content = match app.rail {
-        Rail::Axes if !app.font.axes.is_empty() => flex_col((axes_section(app),)).boxed(),
+        Rail::Axes if !app.font.axes.is_empty() => recipes::panel_stack((
+            axes_section(app).map(|body| recipes::panel_group(&app.palette, body)),
+        ))
+        .boxed(),
         Rail::LocalAi => local_ai_panel(app).boxed(),
         Rail::Chat => chat_panel(app).boxed(),
         Rail::Scripts => scripts_panel(app).boxed(),
@@ -819,15 +787,12 @@ fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 Dim::Fixed(Stroke::Hairline.length()),
             ))
             .background_color(pal.outline),
-        portal(
-            flex_col((
-                sidebar_group(app, "Categories", cat_rows),
-                (!lang_rows.is_empty()).then(|| sidebar_group(app, "Global Scripts", lang_rows)),
-                sidebar_group(app, "Filters", filters),
-            ))
-            .cross_axis_alignment(CrossAxisAlignment::Stretch)
-            .gap(Space::None),
-        )
+        portal(recipes::panel_stack((
+            sidebar_group(app, "Categories", cat_rows),
+            (!lang_rows.is_empty()).then(|| sidebar_group(app, "Global Scripts", lang_rows)),
+            sidebar_group(app, "Filters", filters),
+        )))
+        .trailing_rule_clearance(design::PANEL_SECTION_INSET.px())
         .constrain_horizontal(true)
         .flex(1.0),
     ))

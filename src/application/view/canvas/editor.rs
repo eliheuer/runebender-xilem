@@ -661,23 +661,27 @@ impl EditorWidget {
         };
         let width = PANEL_WIDTH;
         let frame = Rect::new(left, top, left + width, top + PANEL_HEIGHT);
+        let rounded = crate::application::view::design::rounded_rect_path;
+        let radius = pal.corner_radius;
         painter
             .fill(
-                frame + kurbo::Vec2::new(-4.0, 4.0),
+                rounded(frame + kurbo::Vec2::new(-4.0, 4.0), radius),
                 pal.cell_shadow().with_alpha(0.5),
             )
             .draw();
-        painter.fill(frame, pal.panel).draw();
+        painter.fill(rounded(frame, radius), pal.panel).draw();
         let header_bg = self.mark.unwrap_or_else(|| pal.floating_pane_header_bg());
-        painter
-            .fill(
-                Rect::new(left, top, left + width, top + PANEL_HEADER),
-                header_bg,
-            )
-            .draw();
+        painter.with_fill_clip(rounded(frame, radius), |painter| {
+            painter
+                .fill(
+                    Rect::new(left, top, left + width, top + PANEL_HEADER),
+                    header_bg,
+                )
+                .draw();
+        });
         painter
             .stroke(
-                frame,
+                rounded(frame, radius),
                 &Stroke::new(DesignStroke::Hairline.px()),
                 pal.outline,
             )
@@ -747,16 +751,21 @@ impl EditorWidget {
                 (group_box(0.0), &self.groups.0),
                 (group_box(4.0), &self.groups.1),
             ] {
-                painter.fill(rect, pal.field()).draw();
+                painter
+                    .fill(rounded(rect, pal.control_radius), pal.field())
+                    .draw();
                 let line = DesignStroke::Hairline.px();
                 let half = line / 2.0;
                 painter
                     .stroke(
-                        Rect::new(
-                            rect.x0 + half,
-                            rect.y0 + half,
-                            rect.x1 - half,
-                            rect.y1 - half,
+                        rounded(
+                            Rect::new(
+                                rect.x0 + half,
+                                rect.y0 + half,
+                                rect.x1 - half,
+                                rect.y1 - half,
+                            ),
+                            (pal.control_radius - half).max(0.0),
                         ),
                         &Stroke::new(line),
                         pal.field_outline,
@@ -787,7 +796,9 @@ impl EditorWidget {
                     }
                 };
                 let border = if focused { pal.text } else { pal.field_outline };
-                painter.fill(rect, pal.field()).draw();
+                painter
+                    .fill(rounded(rect, pal.control_radius), pal.field())
+                    .draw();
                 // Like the native inputs, the field's keyline stays inside
                 // its bounds. A centered exterior stroke blurs the edge.
                 let width = DesignStroke::Hairline.px();
@@ -798,7 +809,13 @@ impl EditorWidget {
                     rect.x1 - half,
                     rect.y1 - half,
                 );
-                painter.stroke(keyline, &Stroke::new(width), border).draw();
+                painter
+                    .stroke(
+                        rounded(keyline, (pal.control_radius - half).max(0.0)),
+                        &Stroke::new(width),
+                        border,
+                    )
+                    .draw();
                 let baseline = rect.center().y;
                 text_label::draw(
                     painter,

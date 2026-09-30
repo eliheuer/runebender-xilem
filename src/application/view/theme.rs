@@ -18,6 +18,10 @@ fn color(c: ColorRgba) -> Color {
 /// A resolved palette: named surfaces, text, roles, and mark colors.
 pub(crate) struct Palette {
     pub app: Color,
+    /// Whether the theme requests the optional macOS backdrop.
+    pub blur_background: bool,
+    /// Opacity of the theme's ground tint over the native backdrop.
+    blur_tint_opacity: f32,
     /// Text on the window ground; custom themes can supply the optional `appInk` token.
     pub app_ink: Color,
     pub panel: Color,
@@ -88,6 +92,8 @@ impl Palette {
         let text = color(t.text("primary"));
         Self {
             app: color(t.surface("app")),
+            blur_background: t.window.blur_background,
+            blur_tint_opacity: t.window.blur_tint_opacity,
             app_ink: color(t.text("appInk")),
             panel,
             tab_rail: color(t.surface("tabRail")),
@@ -139,6 +145,39 @@ impl Palette {
 
     pub(crate) fn field(&self) -> Color {
         self.field
+    }
+
+    /// Tint the native backdrop once, beneath the opaque floating panels.
+    pub(crate) fn app_background(&self) -> Color {
+        if self.native_backdrop_active() {
+            // Keep the theme's ground dominant over AppKit's own material tint.
+            self.app.with_alpha(self.blur_tint_opacity)
+        } else {
+            self.app
+        }
+    }
+
+    /// Let the title bar show the same ground rather than apply a second tint.
+    pub(crate) fn header_background(&self) -> Color {
+        if self.native_backdrop_active() {
+            Color::TRANSPARENT
+        } else {
+            self.header
+        }
+    }
+
+    fn native_backdrop_active(&self) -> bool {
+        if !self.blur_background {
+            return false;
+        }
+        #[cfg(target_os = "macos")]
+        {
+            crate::application::platform::window::backdrop_active()
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            false
+        }
     }
 
     /// Use the theme's inactive header ink, preserving opacity in older themes.

@@ -3,9 +3,7 @@
 
 //! The info panel: which sections show for the grid and for a glyph.
 
-use crate::application::view::design::{
-    ControlSize, Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
-};
+use crate::application::view::design::{ControlSize, Region, column as xcolumn, row as xrow};
 use crate::application::view::panels::editor_info::{
     compare_section, dimensions_section, features_section, groups_section, kerning_section,
     related_section,
@@ -15,17 +13,11 @@ use crate::application::view::panels::sections::{
     font_info_section, layers_section, mark_section, masters_section, measure_section,
     path_operations_section, shaping_section, transformations_section,
 };
-use crate::application::view::theme::Palette;
-use crate::application::view::{design, label, recipes, text_input};
-use crate::application::widgets::input_typography;
+use crate::application::view::{design, recipes};
 use crate::application::workspace::{Mode, Tool, Workspace};
-use masonry::layout::{Dim, Length};
-use masonry::properties::Dimensions;
 use runebender::outline::glyph_paths::round_units;
 use xilem::WidgetView;
 use xilem::style::Style;
-use xilem::view::FlexExt as _;
-use xilem::view::sized_box;
 
 pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
@@ -54,27 +46,24 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
     let nodes = matches!(app.mode, Mode::Nodes);
     // Width, LSB, and RSB share one row. Each field commits
     // live; LSB shifts the glyph, RSB changes the advance.
-    let field_bg = pal.field();
-    let _ = field_bg;
     let advance_field = editing.then(|| {
         xrow(
             Region::Form,
             (
-                // Fixed widths: three flexed fields ask for more than the
-                // column has and push the whole inspector wide.
-                third(recipes::field(
+                // Equal columns constrain field contents to the available dock width.
+                recipes::field_column(recipes::field(
                     pal,
                     "Width",
                     app.advance_buf.clone(),
                     |app: &mut Workspace, v| app.set_advance_from_buf(v),
                 )),
-                third(recipes::field(
+                recipes::field_column(recipes::field(
                     pal,
                     "LSB",
                     app.lsb_buf.clone(),
                     |app: &mut Workspace, v| app.set_lsb_from_buf(v),
                 )),
-                third(recipes::field(
+                recipes::field_column(recipes::field(
                     pal,
                     "RSB",
                     app.rsb_buf.clone(),
@@ -83,9 +72,6 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             ),
         )
     });
-    fn third<V: WidgetView<Workspace> + 'static>(v: V) -> impl WidgetView<Workspace> + use<V> {
-        sized_box(v).dims(Dimensions::new(Dim::Fixed(Length::px(72.0)), Dim::Auto))
-    }
     let name_field = editing.then(|| {
         xcolumn(
             Region::Form,
@@ -113,29 +99,26 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                 // panel has them. Empty takes the glyph out of the group,
                 // and the write lands in every master, because a
                 // designspace's masters have to agree about groups.
-                label("Kerning Groups (L \u{00b7} R)")
-                    .text_size(TextSize::Caption.px())
-                    .color(pal.text_muted),
-                // Fixed widths: a group name is long enough that letting
-                // the inputs size to their content pushes the whole
-                // inspector past its column.
-                xrow(
-                    Region::Form,
-                    (
-                        sized_box(recipes::field(
-                            pal,
-                            "",
-                            app.kern1_buf.clone(),
-                            |app: &mut Workspace, v| app.set_kern_group(true, v),
-                        ))
-                        .dims(Dimensions::new(Dim::Fixed(Length::px(105.0)), Dim::Auto)),
-                        sized_box(recipes::field(
-                            pal,
-                            "",
-                            app.kern2_buf.clone(),
-                            |app: &mut Workspace, v| app.set_kern_group(false, v),
-                        ))
-                        .dims(Dimensions::new(Dim::Fixed(Length::px(105.0)), Dim::Auto)),
+                recipes::labeled_control(
+                    pal,
+                    "Kerning Groups (L \u{00b7} R)",
+                    // Group names scroll inside equal columns rather than widening the dock.
+                    xrow(
+                        Region::Form,
+                        (
+                            recipes::field_column(recipes::field(
+                                pal,
+                                "",
+                                app.kern1_buf.clone(),
+                                |app: &mut Workspace, v| app.set_kern_group(true, v),
+                            )),
+                            recipes::field_column(recipes::field(
+                                pal,
+                                "",
+                                app.kern2_buf.clone(),
+                                |app: &mut Workspace, v| app.set_kern_group(false, v),
+                            )),
+                        ),
                     ),
                 ),
             ),
@@ -148,7 +131,7 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         xcolumn(
             Region::Form,
             (
-                overview_identity_field(
+                recipes::field_enter(
                     pal,
                     "Glyph name",
                     app.name_buf.clone(),
@@ -158,173 +141,105 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                 xrow(
                     Region::Form,
                     (
-                        overview_identity_field(
+                        recipes::field_column(recipes::field_enter(
                             pal,
                             "Width",
                             app.advance_buf.clone(),
                             |app: &mut Workspace, v| app.overview_set_advance(v),
                             |_: &mut Workspace, _| {},
-                        )
-                        .flex(1.0),
-                        overview_identity_field(
+                        )),
+                        recipes::field_column(recipes::field_enter(
                             pal,
                             "Unicode",
                             app.unicode_buf.clone(),
                             |app: &mut Workspace, v| app.overview_set_unicode(v),
                             |_: &mut Workspace, _| {},
-                        )
-                        .flex(1.0),
+                        )),
                     ),
                 ),
             ),
         )
     });
     let show_multi_mark = !editing && !app.multi_selected.is_empty();
-    let glyph_section = xcolumn(
-        Region::Section,
+    let glyph_body = xcolumn(
+        Region::Form,
         (
-            recipes::section_toggle_height(
-                pal,
-                "Glyph",
-                !app.collapsed.contains("Glyph"),
-                if nodes && app.collapsed.contains("Glyph") {
-                    design::NODE_VIEW_SECTION_HEADER_HEIGHT
-                } else {
-                    ControlSize::Row.px()
-                },
-                move |app: &mut Workspace| {
-                    if !app.collapsed.remove("Glyph") {
-                        app.collapsed.insert("Glyph");
-                    }
-                },
-            ),
-            (!app.collapsed.contains("Glyph") && (show_multi_mark || !pts.is_empty() || editing))
-                .then(|| {
-                    xcolumn(
-                        Region::List,
-                        (
-                            show_multi_mark.then(|| {
-                                row("Selected".into(), format!("{}", app.multi_selected.len()))
-                            }),
-                            (!pts.is_empty()).then(|| row("Points".into(), pts)),
-                            editing.then(|| {
-                                row("Selected".into(), format!("{}", app.selected_points))
-                            }),
-                        ),
-                    )
-                }),
-            (!app.collapsed.contains("Glyph")).then(|| show_multi_mark.then(|| mark_section(app))),
-            (!app.collapsed.contains("Glyph")).then_some(name_field),
-            (!app.collapsed.contains("Glyph")).then_some(advance_field),
-            (!app.collapsed.contains("Glyph")).then_some(overview_fields),
-        ),
-    )
-    .gap(if editing { Space::Md } else { Space::Sm });
-    xcolumn(
-        Region::List,
-        (
-            // GPUI leads edit mode with selection geometry and its tools;
-            // the overview still begins with glyph identity because these
-            // optional edit groups disappear there.
-            xcolumn(
-                Region::List,
-                (
-                    (editing && app.tool == Tool::Metaball)
-                        .then(|| recipes::inspector_group(pal, super::metaballs::panel(app))),
-                    (editing && app.tool == Tool::Sketch)
-                        .then(|| recipes::inspector_group(pal, super::sketch::panel(app))),
-                    editing.then(|| recipes::inspector_group(pal, coordinates_section(app))),
-                ),
-            ),
-            editing.then(|| recipes::inspector_group(pal, transformations_section(app))),
-            editing.then(|| recipes::inspector_group(pal, curves_section(app))),
-            editing.then(|| recipes::inspector_group(pal, path_operations_section(app))),
-            recipes::inspector_group(pal, glyph_section),
-            editing.then(|| recipes::inspector_group(pal, background_section(app))),
-            editing.then(|| {
+            (show_multi_mark || !pts.is_empty() || editing).then(|| {
                 xcolumn(
                     Region::List,
                     (
-                        recipes::inspector_group(pal, mark_section(app)),
-                        recipes::inspector_group(pal, shaping_section(app)),
+                        show_multi_mark.then(|| {
+                            row("Selected".into(), format!("{}", app.multi_selected.len()))
+                        }),
+                        (!pts.is_empty()).then(|| row("Points".into(), pts)),
+                        editing.then(|| row("Selected".into(), format!("{}", app.selected_points))),
                     ),
                 )
-                .gap(Space::None)
             }),
-            editing.then(|| recipes::inspector_group(pal, related_section(app))),
-            // One column for three sections: the panel's tuple is at
-            // Xilem's sixteen-child limit, so the overview's first
-            // three sections share a slot. Same region as the panel,
-            // so the gap between them is the panel's own.
-            (!editing).then(|| {
-                xcolumn(
-                    Region::List,
-                    (
-                        recipes::inspector_group(pal, font_info_section(app)),
-                        recipes::inspector_group(pal, dimensions_section(app)),
-                        recipes::inspector_group(pal, font_advanced_section(app)),
-                    ),
-                )
-                .gap(Space::None)
-            }),
-            (!editing).then(|| recipes::inspector_group(pal, kerning_section(app))),
-            (!editing).then(|| recipes::inspector_group(pal, groups_section(app))),
-            (!editing).then(|| recipes::inspector_group(pal, compare_section(app))),
-            (!editing).then(|| recipes::inspector_group(pal, features_section(app))),
-            layers_section(app).map(|body| recipes::inspector_group(pal, body)),
-            xcolumn(
-                Region::List,
-                (
-                    masters_section(app).map(|body| recipes::inspector_group(pal, body)),
-                    editing
-                        .then(|| axes_section(app))
-                        .flatten()
-                        .map(|body| recipes::inspector_group(pal, body)),
-                ),
-            )
-            .gap(Space::None),
-            editing.then(|| recipes::inspector_group(pal, measure_section(app))),
+            show_multi_mark.then(|| mark_section(app)),
+            name_field,
+            advance_field,
+            overview_fields,
         ),
-    )
-    .gap(Space::None)
-    .padding(Space::None)
-    .background_color(pal.panel)
-}
-
-/// Overview identity fields use the reference's fixed label line box.
-/// Existing callbacks retain their commit rules: rename on Enter, other edits on change.
-fn overview_identity_field<F, G>(
-    pal: &Palette,
-    name: &'static str,
-    value: String,
-    on_change: F,
-    on_enter: G,
-) -> impl WidgetView<Workspace> + use<F, G>
-where
-    F: Fn(&mut Workspace, String) + Send + Sync + 'static,
-    G: Fn(&mut Workspace, String) + Send + Sync + 'static,
-{
-    xcolumn(
-        Region::List,
-        (
-            label(name)
-                .text_size(TextSize::Body.px())
-                .color(pal.outline)
-                .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row))),
-            sized_box(input_typography::input_typography(
-                text_input(value, on_change)
-                    .on_enter(on_enter)
-                    .text_color(pal.text)
-                    .placeholder_color(pal.text_muted)
-                    .background_color(pal.field())
-                    .border_color(pal.outline)
-                    .border_width(Stroke::Hairline.length())
-                    .corner_radius(Length::px(pal.control_radius)),
+    );
+    let glyph_section = recipes::section_with_header_height(
+        app,
+        "Glyph",
+        "Glyph",
+        glyph_body,
+        if nodes && app.collapsed.contains("Glyph") {
+            design::NODE_VIEW_SECTION_HEADER_HEIGHT
+        } else {
+            ControlSize::Row.px()
+        },
+    );
+    recipes::panel_stack((
+        // GPUI leads edit mode with selection geometry and its tools;
+        // the overview still begins with glyph identity because these
+        // optional edit groups disappear there.
+        recipes::panel_stack((
+            (editing && app.tool == Tool::Metaball)
+                .then(|| recipes::panel_group(pal, super::metaballs::panel(app))),
+            (editing && app.tool == Tool::Sketch)
+                .then(|| recipes::panel_group(pal, super::sketch::panel(app))),
+            editing.then(|| recipes::panel_group(pal, coordinates_section(app))),
+        )),
+        editing.then(|| recipes::panel_group(pal, transformations_section(app))),
+        editing.then(|| recipes::panel_group(pal, curves_section(app))),
+        editing.then(|| recipes::panel_group(pal, path_operations_section(app))),
+        recipes::panel_group(pal, glyph_section),
+        editing.then(|| recipes::panel_group(pal, background_section(app))),
+        editing.then(|| {
+            recipes::panel_stack((
+                recipes::panel_group(pal, mark_section(app)),
+                recipes::panel_group(pal, shaping_section(app)),
             ))
-            .dims(Dimensions::new(
-                Dim::Stretch,
-                Dim::from(ControlSize::Control),
-            )),
-        ),
-    )
+        }),
+        editing.then(|| recipes::panel_group(pal, related_section(app))),
+        // One column for three sections: the panel's tuple is at
+        // Xilem's sixteen-child limit, so the overview's first
+        // three sections share a slot. Same region as the panel,
+        // so the gap between them is the panel's own.
+        (!editing).then(|| {
+            recipes::panel_stack((
+                recipes::panel_group(pal, font_info_section(app)),
+                recipes::panel_group(pal, dimensions_section(app)),
+                recipes::panel_group(pal, font_advanced_section(app)),
+            ))
+        }),
+        (!editing).then(|| recipes::panel_group(pal, kerning_section(app))),
+        (!editing).then(|| recipes::panel_group(pal, groups_section(app))),
+        (!editing).then(|| recipes::panel_group(pal, compare_section(app))),
+        (!editing).then(|| recipes::panel_group(pal, features_section(app))),
+        layers_section(app).map(|body| recipes::panel_group(pal, body)),
+        recipes::panel_stack((
+            masters_section(app).map(|body| recipes::panel_group(pal, body)),
+            editing
+                .then(|| axes_section(app))
+                .flatten()
+                .map(|body| recipes::panel_group(pal, body)),
+        )),
+        editing.then(|| recipes::panel_group(pal, measure_section(app))),
+    ))
+    .background_color(pal.panel)
 }

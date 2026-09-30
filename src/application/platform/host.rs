@@ -240,13 +240,12 @@ impl Workspace {
                                 .collect()
                         })
                         .unwrap_or_default();
-                // Start with the compact, scan-friendly inspector that the
-                // GPUI shell presents: overview sections are headers until
-                // requested, while the edit-mode coordinate and transform
-                // sections remain immediately useful. This is state only;
+                // Start with Glyph open for immediate identity edits; the
+                // other overview sections remain compact until requested.
+                // Edit-mode coordinate and transform sections stay open too.
+                // This is state only;
                 // every header still toggles its existing accessible panel.
                 set.extend([
-                    "Glyph",
                     "Font info",
                     "Dimensions",
                     "Advanced",
@@ -777,12 +776,11 @@ mod tests {
         let mut workspace = Workspace::open(&path).expect("an empty UFO opens");
         let document_id = workspace.document_id;
         assert!(matches!(workspace.mode, Mode::Overview));
-        for title in ["Coordinates", "Transformations", "Curves"] {
+        for title in ["Coordinates", "Transformations", "Curves", "Glyph"] {
             assert!(!workspace.collapsed.contains(title));
         }
         for title in [
             "Path Operations",
-            "Glyph",
             "Background",
             "Masters",
             "Axes",

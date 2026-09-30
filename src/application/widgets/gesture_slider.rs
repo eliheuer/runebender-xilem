@@ -11,12 +11,14 @@ use masonry::core::{
 };
 use masonry::kurbo::{Axis, Circle, Point, Size, Stroke};
 use masonry::layout::{LenReq, Length};
-use masonry::properties::{BorderColor, ThumbColor, ThumbRadius, TrackColor};
+use masonry::properties::{BorderColor, ThumbColor, ThumbRadius, TrackColor, TrackThickness};
 use masonry::widgets::{Slider, SliderMoved};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
-use crate::application::view::design::SLIDER_THUMB_RADIUS;
+use crate::application::view::design::{
+    SLIDER_THUMB_RADIUS, SLIDER_THUMB_STROKE, SLIDER_TRACK_THICKNESS,
+};
 use crate::application::view::theme::Palette;
 use crate::application::workspace::Workspace;
 
@@ -92,7 +94,7 @@ impl Widget for GestureSliderWidget {
         let thumb_x = SLIDER_THUMB_RADIUS + progress * (width - SLIDER_THUMB_RADIUS * 2.0).max(0.0);
         let thumb = Circle::new(
             (thumb_x, ctx.content_box().height() / 2.0),
-            SLIDER_THUMB_RADIUS - 1.0,
+            SLIDER_THUMB_RADIUS - SLIDER_THUMB_STROKE / 2.0,
         );
         let outline = if ctx.is_disabled() {
             self.thumb_outline.with_alpha(0.4)
@@ -113,7 +115,9 @@ impl Widget for GestureSliderWidget {
         painter
             .fill(Circle::new(thumb.center, SLIDER_THUMB_RADIUS), fill)
             .draw();
-        painter.stroke(thumb, &Stroke::new(2.0), outline).draw();
+        painter
+            .stroke(thumb, &Stroke::new(SLIDER_THUMB_STROKE), outline)
+            .draw();
     }
 
     fn on_pointer_event(
@@ -283,6 +287,7 @@ where
             active: self.track,
             inactive: self.track,
         });
+        props.insert(TrackThickness(Length::px(SLIDER_TRACK_THICKNESS)));
         props.insert(ThumbColor(self.thumb));
         props.insert(ThumbRadius(Length::px(SLIDER_THUMB_RADIUS)));
         props.insert(BorderColor {

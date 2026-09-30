@@ -18,11 +18,10 @@ use masonry::properties::{Gap, Padding};
 use xilem::style::Style;
 use xilem::view::{Flex, FlexSequence, Prop, flex_col, flex_row};
 
-/// GPUI mark controls: 24px slots, 18px circles, and a uniform 6px gutter.
-pub(crate) const MARK_SWATCH_DIAMETER: f64 = 18.0;
+/// One gutter around and between width-fitted palette circles.
 pub(crate) const MARK_SWATCH_GAP: f64 = 6.0;
-/// Keep the selected ring clear of its 24px swatch slot on every edge.
-pub(crate) const MARK_SELECTED_RING_INSET: f64 = 1.0;
+/// Place the selection ring inside the face so it does not consume its gutter.
+pub(crate) const MARK_SELECTED_RING_INSET: f64 = 2.0;
 
 /// Shared single-line input inset. Virtua's line box needs a one-pixel
 /// downward optical correction to balance the visible capitals/descenders.
@@ -103,8 +102,10 @@ pub(crate) const INSPECTOR_PREVIEW_MIN_READABLE_HEIGHT: f64 = 120.0;
 pub(crate) const SPLITTER_HIT_WIDTH: f64 = 8.0;
 /// Easier pointer target for resizing the left sidebar without widening its rule.
 pub(crate) const SIDEBAR_SPLITTER_HIT_WIDTH: f64 = 16.0;
-/// Vertical inset shared by the overview category, script and filter sections.
-pub(crate) const SIDEBAR_SECTION_VERTICAL_INSET: f64 = 6.0;
+/// Equal outer padding for section contents in either side panel.
+pub(crate) const PANEL_SECTION_INSET: Space = Space::Md;
+/// Standard space between a folding section header and its contents.
+pub(crate) const PANEL_SECTION_BODY_GAP: Space = Space::Sm;
 /// GPUI category rows inset their marker and count by 14 logical pixels.
 pub(crate) const SIDEBAR_ROW_INSET: f64 = 14.0;
 /// Painted sidebar marker geometry, shared with the GPUI reference.
@@ -135,12 +136,20 @@ pub(crate) const SEARCH_TOGGLE_WIDTH: f64 = 24.0;
 pub(crate) const STATUS_SLIDER_WIDTH: f64 = 96.0;
 /// Radius shared by stock sliders and the separate thumb keyline drawn over them.
 pub(crate) const SLIDER_THUMB_RADIUS: f64 = 7.0;
+/// Fixed knob outline width in logical pixels, including while dragging.
+pub(crate) const SLIDER_THUMB_STROKE: f64 = 1.0;
+/// Thickness of neutral slider tracks, independent of thumb size and hit area.
+pub(crate) const SLIDER_TRACK_THICKNESS: f64 = 2.0;
 /// Square size shared by the overview footer's five icon controls.
 pub(crate) const STATUS_ICON_SIZE: f64 = 16.0;
-/// Compact native title bar: 19px tabs and 20px tools sit on one 30px centerline.
+/// Center-panel footers share one height and centered compact controls.
+pub(crate) const FOOTER_HEIGHT: f64 = ControlSize::Control.px();
+/// Extra horizontal clearance balances the curved panel corners around footer controls.
+pub(crate) const FOOTER_INSET: f64 = 10.0;
+/// Compact native title bar: 19px tabs and 20px tools sit centered in a 34px bar.
 /// On macOS this balances the fixed traffic-light inset above and below;
 /// the floating panels start at its bottom edge without a second top gutter.
-pub(crate) const TITLEBAR_HEIGHT: f64 = 30.0;
+pub(crate) const TITLEBAR_HEIGHT: f64 = 34.0;
 /// Compact title-bar tabs leave clearance above and below their outlines.
 pub(crate) const HEADER_TAB_HEIGHT: f64 = 19.0;
 /// Horizontal breathing room around title-bar tab labels.
@@ -152,9 +161,6 @@ pub(crate) const HEADER_TAB_ICON_WIDTH: f64 = 24.0;
 pub(crate) const TRANSFORM_ICON_SIZE: f64 = 22.0;
 /// Five transformation actions share each inspector row on control-size targets.
 pub(crate) const TRANSFORM_TILE_SIZE: f64 = ControlSize::Control.px();
-/// Six pixels separate the transformation icon rows from the parameter form.
-pub(crate) const TRANSFORM_CONTROLS_GAP: f64 = 6.0;
-
 /// Shared label width for the inspector's single-line transformation parameters.
 pub(crate) const TRANSFORM_LABEL_WIDTH: f64 = 88.0;
 
@@ -173,8 +179,6 @@ pub(crate) const COORD_PICKER_INSET: f64 = 3.0;
 pub(crate) const COORD_PICKER_GAP: f64 =
     (COORD_PICKER_EDGE - COORD_PICKER_INSET * 2.0 - ControlSize::Dot.px() * 3.0) / 2.0;
 pub(crate) const COORD_LABEL_WIDTH: f64 = 10.0;
-/// Compact inspector groups retain the wider horizontal control inset.
-pub(crate) const INSPECTOR_VERTICAL_INSET: f64 = 6.0;
 
 /// Floating metrics-card geometry, measured against the Gray reference capture.
 pub(crate) const METRICS_CARD_WIDTH: f64 = 320.0;

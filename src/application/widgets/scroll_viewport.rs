@@ -30,6 +30,7 @@ where
         constrain_horizontal: false,
         constrain_vertical: false,
         must_fill: false,
+        trailing_rule_clearance: None,
         phantom: PhantomData,
     }
 }
@@ -41,6 +42,7 @@ pub(crate) struct Portal<V, State, Action> {
     constrain_horizontal: bool,
     constrain_vertical: bool,
     must_fill: bool,
+    trailing_rule_clearance: Option<f64>,
     phantom: PhantomData<fn(State) -> Action>,
 }
 
@@ -55,6 +57,13 @@ impl<V, State, Action> Portal<V, State, Action> {
     ///   the mouse wheel can't be used to horizontally scroll either.
     pub(crate) fn constrain_horizontal(mut self, constrain_horizontal: bool) -> Self {
         self.constrain_horizontal = constrain_horizontal;
+        self
+    }
+
+    /// Hide the final one-pixel rule when natural content nearly touches the footer.
+    /// Shorter, collapsed content retains its closing rule.
+    pub(crate) fn trailing_rule_clearance(mut self, clearance: f64) -> Self {
+        self.trailing_rule_clearance = Some(clearance);
         self
     }
 
@@ -79,12 +88,14 @@ where
         // The Portal `View` doesn't get any messages directly (yet - scroll events?), so doesn't need to
         // use ctx.with_id.
         let (child, child_state) = self.child.build(ctx, app_state);
-        let widget_pod = ctx.create_pod(ScrollViewport::new(
+        let mut viewport = ScrollViewport::new(
             widgets::Portal::new(child.new_widget)
                 .constrain_horizontal(self.constrain_horizontal)
                 .constrain_vertical(self.constrain_vertical)
                 .content_must_fill(self.must_fill),
-        ));
+        );
+        viewport.trailing_rule_clearance = self.trailing_rule_clearance;
+        let widget_pod = ctx.create_pod(viewport);
         (widget_pod, child_state)
     }
 
@@ -96,6 +107,10 @@ where
         mut element: Mut<'_, Self::Element>,
         app_state: &mut State,
     ) {
+        if self.trailing_rule_clearance != prev.trailing_rule_clearance {
+            element.widget.trailing_rule_clearance = self.trailing_rule_clearance;
+            element.ctx.request_layout();
+        }
         let mut element = ScrollViewport::portal_mut(&mut element);
         if self.constrain_horizontal != prev.constrain_horizontal {
             widgets::Portal::set_constrain_horizontal(&mut element, self.constrain_horizontal);
@@ -143,17 +158,19 @@ use masonry::core::{
     WidgetMut, WidgetPod,
 };
 use masonry::imaging::Painter;
-use masonry::kurbo::{Affine, Axis, Point, Size};
+use masonry::kurbo::{Affine, Axis, Point, Rect, Size};
 use masonry::layout::{LenReq, Length};
 
 pub(crate) struct ScrollViewport<W: Widget + masonry::core::FromDynWidget + ?Sized> {
     inner: WidgetPod<widgets::Portal<W>>,
+    trailing_rule_clearance: Option<f64>,
 }
 
 impl<W: Widget + masonry::core::FromDynWidget + ?Sized> ScrollViewport<W> {
     pub(crate) fn new(portal: widgets::Portal<W>) -> Self {
         Self {
             inner: WidgetPod::new(portal),
+            trailing_rule_clearance: None,
         }
     }
 
@@ -186,6 +203,21 @@ impl<W: Widget + masonry::core::FromDynWidget + ?Sized> Widget for ScrollViewpor
         ctx.run_layout(&mut self.inner, size);
         ctx.place_child(&mut self.inner, Point::ORIGIN);
         ctx.derive_baselines(&self.inner);
+        if let Some(clearance) = self.trailing_rule_clearance {
+            let content_height = ctx
+                .compute_length(
+                    &mut self.inner,
+                    masonry::layout::LenDef::MaxContent,
+                    size.into(),
+                    Axis::Vertical,
+                    Some(Length::px(size.width)),
+                )
+                .get();
+            let bottom = trailing_rule_clip(size.height, content_height, clearance);
+            ctx.set_clip_path(Rect::new(0.0, 0.0, size.width, bottom));
+        } else {
+            ctx.clear_clip_path();
+        }
         // Even tiny viewports must clear the cursor's minimum length and stroke.
         let clearance = masonry::theme::SCROLLBAR_MIN_SIZE
             + masonry::theme::SCROLLBAR_WIDTH
@@ -213,6 +245,19 @@ impl<W: Widget + masonry::core::FromDynWidget + ?Sized> Widget for ScrollViewpor
     }
 }
 
+/// Only the trailing rule is clipped; the group's bottom padding and rows remain intact.
+fn trailing_rule_clip(viewport: f64, content: f64, clearance: f64) -> f64 {
+    if content > viewport {
+        // At the final scroll position the trailing rule lands on the last
+        // viewport pixel. Reserve that pixel for the footer's own keyline.
+        (viewport - 1.0).max(0.0)
+    } else if (0.0..clearance).contains(&(viewport - content)) {
+        (content - 1.0).max(0.0)
+    } else {
+        viewport
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,6 +268,80 @@ mod tests {
     use masonry::properties::Background;
     use masonry::widgets::SizedBox;
     use masonry_testing::TestHarness;
+
+    #[test]
+    fn trailing_rule_disappears_only_within_the_footer_clearance() {
+        let ground = masonry::peniko::Color::from_rgb8(160, 160, 160);
+        let line = masonry::peniko::Color::from_rgb8(40, 40, 40);
+        for (height, hidden) in [(100, true), (104, true), (108, false), (150, false)] {
+            let content = widgets::Flex::column()
+                .with_fixed(
+                    SizedBox::empty()
+                        .size(200.px(), 99.px())
+                        .prepare()
+                        .with_props(Background::Color(ground)),
+                )
+                .with_fixed(
+                    SizedBox::empty()
+                        .size(200.px(), 1.px())
+                        .prepare()
+                        .with_props(Background::Color(line)),
+                )
+                .prepare()
+                .with_props(masonry::properties::Gap::new(0.px()));
+            let mut viewport = ScrollViewport::new(widgets::Portal::new(content));
+            viewport.trailing_rule_clearance = Some(8.0);
+            let mut harness = TestHarness::create_with_size(
+                crate::application::view::default_property_set(),
+                SizedBox::new(viewport.prepare())
+                    .prepare()
+                    .with_props(Background::Color(ground)),
+                (200, height),
+            );
+            let image = harness.render();
+            assert_eq!(
+                image.get_pixel(50, 99) == image.get_pixel(50, 90),
+                hidden,
+                "height {height}"
+            );
+        }
+    }
+
+    #[test]
+    fn overflowing_sections_do_not_duplicate_the_footer_rule_at_scroll_end() {
+        let ground = masonry::peniko::Color::from_rgb8(160, 160, 160);
+        let line = masonry::peniko::Color::from_rgb8(40, 40, 40);
+        let content = widgets::Flex::column()
+            .with_fixed(
+                SizedBox::empty()
+                    .size(200.px(), 99.px())
+                    .prepare()
+                    .with_props(Background::Color(ground)),
+            )
+            .with_fixed(
+                SizedBox::empty()
+                    .size(200.px(), 1.px())
+                    .prepare()
+                    .with_props(Background::Color(line)),
+            )
+            .prepare()
+            .with_props(masonry::properties::Gap::new(0.px()));
+        let mut viewport = ScrollViewport::new(widgets::Portal::new(content));
+        viewport.trailing_rule_clearance = Some(8.0);
+        let mut harness = TestHarness::create_with_size(
+            crate::application::view::default_property_set(),
+            viewport.prepare().with_props(Background::Color(ground)),
+            (200, 80),
+        );
+        harness.edit_root_widget(|mut root| {
+            widgets::Portal::set_viewport_pos(
+                &mut ScrollViewport::portal_mut(&mut root),
+                Point::new(0.0, 20.0),
+            );
+        });
+        let image = harness.render();
+        assert_eq!(image.get_pixel(50, 79), image.get_pixel(50, 70));
+    }
 
     #[test]
     fn active_scroll_and_resize_never_paint_bars() {

@@ -91,13 +91,26 @@ pub(crate) fn run(
         event_loop
     };
     let initial_background = app.background();
+    #[cfg(target_os = "macos")]
+    let initial_transparency = app.palette.blur_background;
     let window_id = xilem::WindowId::next();
     Xilem::new(app, move |app| {
         #[cfg(target_os = "macos")]
         if let Some(workspace) = app.workspace.as_mut() {
             workspace.fullscreen = crate::application::platform::window::is_fullscreen();
         }
+        #[cfg(target_os = "macos")]
+        crate::application::platform::window::set_backdrop(
+            app.palette.blur_background,
+            app.palette.app,
+        );
         let background = app.background();
+        #[cfg(target_os = "macos")]
+        let background = if crate::application::platform::window::backdrop_active() {
+            xilem::Color::TRANSPARENT
+        } else {
+            background
+        };
         let content = root_logic(app);
         #[cfg(target_os = "macos")]
         let content = xilem::view::resize_observer(
@@ -105,8 +118,17 @@ pub(crate) fn run(
                 if let Some(workspace) = app.workspace.as_mut() {
                     workspace.fullscreen = crate::application::platform::window::is_fullscreen();
                 }
+                crate::application::platform::window::set_backdrop(
+                    app.palette.blur_background,
+                    app.palette.app,
+                );
             },
             content,
+        );
+        #[cfg(target_os = "macos")]
+        let content = crate::application::platform::window::with_backdrop(
+            content,
+            app.palette.blur_background,
         );
         let view = xilem::window(window_id, "Runebender", content)
             .with_options(|options| {
@@ -122,6 +144,10 @@ pub(crate) fn run(
                 let options = {
                     use xilem::WindowOptionsExtMacOS as _;
                     options
+                        // Preserve the opaque native window while blur is disabled.
+                        // This option applies at creation; enabling the experiment
+                        // from an opaque window requires restarting the application.
+                        .with_transparent(initial_transparency)
                         .with_titlebar_transparent(true)
                         .with_fullsize_content_view(true)
                         .with_title_hidden(true)

@@ -80,6 +80,24 @@ fn column_span(name: &str, advance: f64, upm: f64) -> usize {
     name_span.max(width_span)
 }
 
+fn detail_caption(codepoint: Option<char>, advance: f64) -> String {
+    let category = codepoint
+        .map(|c| runebender::analysis::category::GlyphCategory::from_codepoint(c).display_name())
+        .unwrap_or("Unencoded");
+    format!("{category} \u{00b7} {advance:.0}")
+}
+
+/// Measure once when cells refresh, rather than shaping every label during scrolling or hit tests.
+fn caption_widths(name: &str, codepoint: Option<char>, advance: f64) -> [f64; 3] {
+    [
+        text_label::width(name, 13.0),
+        codepoint.map_or(0.0, |cp| {
+            text_label::width(&format!("U+{:04X}", cp as u32), 13.0)
+        }),
+        text_label::width(&detail_caption(codepoint, advance), 13.0),
+    ]
+}
+
 /// Pack (cell-index, span) items into rows of `cols` columns; the last cell
 /// of each row grows to fill the remainder (matches gpui `pack_spans`).
 fn pack_spans(spans: &[(usize, usize)], cols: usize) -> Vec<Vec<(usize, usize)>> {
@@ -121,6 +139,7 @@ pub(crate) struct Cell {
     pub outline: Arc<kurbo::BezPath>,
     pub advance: f64,
     pub mark: Option<Color>,
+    caption_widths: [f64; 3],
 }
 
 /// The vertical metrics the cell preview is scaled against.
@@ -158,6 +177,7 @@ pub(crate) fn cells_of(font: &FontModel, palette: &Palette) -> Vec<Cell> {
             outline: g.outline.clone(),
             advance: g.advance,
             mark: g.mark.as_deref().and_then(|m| palette.mark(m)),
+            caption_widths: caption_widths(&g.name, g.codepoint, g.advance),
         })
         .collect()
 }
@@ -222,13 +242,36 @@ impl GridWidget {
 
     /// Packed rows of (cell-index-in-self.cells, span).
     fn packed(&self) -> Vec<Vec<(usize, usize)>> {
+        let columns = self.columns();
+        let lines = cell_label_metrics(
+            self.cell_width(1),
+            self.metrics.captions_below,
+            self.metrics.detail,
+        )
+        .1;
         let spans: Vec<(usize, usize)> = self
             .cells
             .iter()
             .enumerate()
-            .map(|(i, c)| (i, column_span(&c.name, c.advance, self.metrics.upm)))
+            .map(|(i, c)| {
+                let label_width = c.caption_widths[..lines]
+                    .iter()
+                    .copied()
+                    .fold(0.0, f64::max);
+                let label_span = if lines == 0 {
+                    1
+                } else {
+                    (1..=columns)
+                        .find(|&span| self.cell_width(span) >= label_width + 2.0 * LABEL_TOP)
+                        .unwrap_or(columns)
+                };
+                (
+                    i,
+                    column_span(&c.name, c.advance, self.metrics.upm).max(label_span),
+                )
+            })
             .collect();
-        pack_spans(&spans, self.columns())
+        pack_spans(&spans, columns)
     }
 
     fn row_pitch(&self) -> f64 {
@@ -238,7 +281,7 @@ impl GridWidget {
     /// The overview reserves its two-line name/codepoint caption below
     /// the thumbnail, as GPUI's grid fit does. The editor rail is a
     /// thumbnail index, so its short cells do not carry that band.
-    fn cell_height(&self) -> f64 {
+    fn fitted_row_count(&self) -> usize {
         let caption = cell_label_metrics(
             self.cell_width(1),
             self.metrics.captions_below,
@@ -246,7 +289,7 @@ impl GridWidget {
         )
         .2;
         let target = self.cell_width(1) + caption;
-        let available = (self.size.height - 2.0 * self.metrics.padding_y).max(target);
+        let available = (self.size.height - 2.0 * self.metrics.padding_y).max(1.0);
         let ideal_rows = (available + GAP) / (target + GAP);
         let rows = if self.metrics.captions_below {
             ideal_rows.floor()
@@ -254,7 +297,15 @@ impl GridWidget {
             ideal_rows.round()
         }
         .max(1.0);
-        ((available - GAP * (rows - 1.0)) / rows).floor().max(1.0)
+        usize::try_from(round_units(rows)).unwrap_or(1).max(1)
+    }
+
+    fn cell_height(&self) -> f64 {
+        let rows = self.fitted_row_count() as f64;
+        let available = (self.size.height - 2.0 * self.metrics.padding_y).max(1.0);
+        // Keep the fractional remainder: flooring every row leaves enough
+        // spare pixels at small slider sizes to expose the next row.
+        ((available - GAP * (rows - 1.0)) / rows).max(1.0)
     }
 
     fn inset_x(&self) -> f64 {
@@ -266,15 +317,7 @@ impl GridWidget {
     }
 
     fn inset_y(&self) -> f64 {
-        if self.metrics.captions_below {
-            return self.metrics.padding_y;
-        }
-        let rows = ((self.size.height - 2.0 * self.metrics.padding_y + GAP) / self.row_pitch())
-            .round()
-            .max(1.0);
-        ((self.size.height - (rows * self.row_pitch() - GAP)) / 2.0)
-            .floor()
-            .max(0.0)
+        self.metrics.padding_y
     }
 
     fn content_height(&self, rows: usize) -> f64 {
@@ -282,10 +325,19 @@ impl GridWidget {
     }
 
     fn visible_rows(&self) -> usize {
-        let available = (self.size.height - 2.0 * self.inset_y()).max(0.0);
-        usize::try_from(round_units(((available + GAP) / self.row_pitch()).floor()))
-            .unwrap_or(1)
-            .max(1)
+        self.fitted_row_count()
+    }
+
+    /// The same complete rows are painted and available to pointer hit testing.
+    fn visible_row_range(&self) -> std::ops::Range<usize> {
+        let first = self.scroll_row();
+        first..first.saturating_add(self.visible_rows())
+    }
+
+    /// Snap each fitted row's edges together so painting and pointer bounds agree.
+    fn row_bounds(&self, row: usize) -> (f64, f64) {
+        let top = self.inset_y() + row as f64 * self.row_pitch() - self.scroll;
+        (top.round(), (top + self.cell_height()).round())
     }
 
     fn scroll_row(&self) -> usize {
@@ -419,15 +471,20 @@ impl GridWidget {
             return None;
         }
         let pitch = self.row_pitch();
-        let r = ((p.y + self.scroll - self.inset_y()) / pitch).floor();
+        // Edges snap by at most half a pixel; admit the snapped top edge,
+        // then reject the gap using the same bounds as painting.
+        let r = ((p.y + self.scroll - self.inset_y() + 0.5) / pitch).floor();
         if r < 0.0 {
             return None;
         }
         let rows = self.packed();
         let row_index = usize::try_from(round_units(r)).ok()?;
+        if !self.visible_row_range().contains(&row_index) {
+            return None;
+        }
         let row = rows.get(row_index)?;
-        let row_y = self.inset_y() + r * pitch - self.scroll;
-        if p.y > row_y + self.cell_height() {
+        let (row_top, row_bottom) = self.row_bounds(row_index);
+        if p.y < row_top || p.y > row_bottom {
             return None;
         }
         let mut x = self.inset_x();
@@ -500,7 +557,6 @@ impl Widget for GridWidget {
                 .max(inset),
         ));
 
-        let pitch = self.row_pitch();
         // A marked cell is filled with its mark and keylined; its glyph and labels are drawn in the
         // theme's mark ink. A selected cell inverts.
         let cell_border = pal.outline;
@@ -508,15 +564,20 @@ impl Widget for GridWidget {
         let mark_outline = pal.mark_outline.unwrap_or(cell_border);
         let mark_ink = pal.mark_ink.unwrap_or(glyph_fill);
 
-        for (r, row) in rows.iter().enumerate() {
-            let y = self.inset_y() + r as f64 * pitch - self.scroll;
-            if y + self.cell_height() < 0.0 || y > self.size.height {
-                continue;
-            }
+        // Pixel rounding can leave room for the top edge of another row in
+        // the bottom gutter. Only complete fitted rows belong to this viewport.
+        let visible = self.visible_row_range();
+        for (r, row) in rows
+            .iter()
+            .enumerate()
+            .skip(visible.start)
+            .take(visible.len())
+        {
+            let (y, bottom) = self.row_bounds(r);
             let mut x = self.inset_x();
             for &(ci, span) in row {
                 let w = self.cell_width(span);
-                let rect = Rect::new(x, y, x + w, y + self.cell_height());
+                let rect = Rect::new(x, y, x + w, bottom);
                 x += w + GAP;
                 let Some(cell) = self.cells.get(ci) else {
                     continue;
@@ -650,17 +711,10 @@ impl Widget for GridWidget {
                     );
                 }
                 if label_lines > 2 {
-                    let category = cell
-                        .codepoint
-                        .map(|c| {
-                            runebender::analysis::category::GlyphCategory::from_codepoint(c)
-                                .display_name()
-                        })
-                        .unwrap_or("Unencoded");
                     text_label::draw(
                         painter,
                         Point::new(rect.x0 + LABEL_TOP, baseline(2.0)),
-                        &format!("{category} \u{00b7} {:.0}", cell.advance),
+                        &detail_caption(cell.codepoint, cell.advance),
                         px32(label_size),
                         muted,
                         Anchor::Start,
@@ -948,6 +1002,7 @@ mod thumbnail_tests {
                         outline: Arc::new(kurbo::BezPath::new()),
                         advance: 500.0,
                         mark: None,
+                        caption_widths: caption_widths(&format!("glyph{index}"), None, 500.0),
                     })
                     .collect(),
             ),
@@ -1008,8 +1063,8 @@ mod thumbnail_tests {
         let grid = rail();
         assert_eq!(grid.columns(), 5);
         assert_eq!(grid.cell_width(1), 40.0);
-        assert_eq!(grid.row_pitch(), 48.0);
-        assert_eq!((grid.inset_x(), grid.inset_y()), (7.0, 9.0));
+        assert!((grid.row_pitch() - (526.0 + GAP) / 11.0).abs() < 1e-9);
+        assert_eq!((grid.inset_x(), grid.inset_y()), (7.0, 6.0));
         for row in 0..11 {
             for col in 0..5 {
                 let p = Point::new(27.0 + f64::from(col) * 48.0, 29.0 + f64::from(row) * 48.0);
@@ -1037,6 +1092,81 @@ mod thumbnail_tests {
                     Some(ci)
                 );
                 x += width + GAP;
+            }
+        }
+    }
+
+    #[test]
+    fn every_slider_size_fits_complete_rows_at_each_scroll_position() {
+        let mut grid = rail();
+        grid.cells = Arc::new(grid.cells.iter().cloned().cycle().take(2000).collect());
+        for captions in [false, true] {
+            grid.metrics.captions_below = captions;
+            grid.metrics.padding = if captions { 8.0 } else { 6.0 };
+            grid.metrics.padding_y = grid.metrics.padding;
+            for width in [246.0, 997.0] {
+                for height in [317.0, 671.0, 843.0] {
+                    grid.size = Size::new(width, height);
+                    for target in [24.0, 32.0, 48.0, 64.0, 96.0, 160.0, 192.0] {
+                        grid.metrics.cell = target;
+                        let rows = grid.packed();
+                        let last_scroll = grid.max_scroll_row(rows.len());
+                        for scroll in [0, last_scroll / 2, last_scroll] {
+                            grid.set_scroll_row(scroll, rows.len());
+                            let visible = grid.visible_row_range();
+                            let (top, _) = grid.row_bounds(visible.start);
+                            let (last_top, bottom) = grid.row_bounds(visible.end - 1);
+                            assert_eq!(top, grid.metrics.padding_y);
+                            assert_eq!(bottom, height - grid.metrics.padding_y);
+                            let x = grid.inset_x() + grid.cell_width(1) / 2.0;
+                            let ci = rows[visible.end - 1][0].0;
+                            assert_eq!(
+                                grid.cell_index_at(Point::new(x, last_top + 0.1)),
+                                Some(grid.cells[ci].index),
+                                "the snapped top edge must remain clickable"
+                            );
+                            assert_eq!(grid.cell_index_at(Point::new(x, bottom + 1.0)), None);
+                            assert!(grid.row_bounds(visible.end).0 >= height);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn small_tiles_leave_only_ground_below_the_last_complete_row() {
+        for captions in [false, true] {
+            let mut grid = rail();
+            grid.cells = Arc::new(grid.cells.iter().cloned().cycle().take(2000).collect());
+            grid.metrics.captions_below = captions;
+            grid.metrics.cell = 32.0;
+            grid.metrics.padding = if captions { 8.0 } else { 6.0 };
+            grid.metrics.padding_y = grid.metrics.padding;
+            grid.size = Size::new(246.0, 843.0);
+            grid.set_scroll_row(7, grid.packed().len());
+            let bottom = grid.row_bounds(grid.visible_row_range().end - 1).1;
+            let x = u32::try_from(round_units(grid.inset_x() + grid.cell_width(1) / 2.0)).unwrap();
+            let from = u32::try_from(round_units(bottom + GRID_CELL_SELECTED_SHADOW_OFFSET + 1.0))
+                .unwrap();
+            let mut harness = masonry_testing::TestHarness::create_with_size(
+                crate::application::view::default_property_set(),
+                masonry::core::NewWidget::new(grid),
+                (246, 843),
+            );
+            let image = harness.render();
+            for y in from..843 {
+                assert_eq!(
+                    image.get_pixel(x, y),
+                    image.get_pixel(1, 1),
+                    "next row leaked into the bottom gutter"
+                );
+            }
+            if let Ok(dir) = std::env::var("RUNEBENDER_GRID_FIT_PROOFS") {
+                let name = if captions { "overview" } else { "rail" };
+                image
+                    .save(format!("{dir}/grid-fit-{name}.png"))
+                    .expect("save grid fit proof");
             }
         }
     }
@@ -1264,6 +1394,59 @@ mod thumbnail_tests {
         assert_eq!(cell_label_metrics(90.0, true, false), (13.0, 2, 40.0));
         assert_eq!(cell_label_metrics(90.0, true, true), (13.0, 3, 55.0));
         assert_eq!(cell_label_metrics(200.0, false, true), (0.0, 0, 0.0));
+    }
+
+    #[test]
+    fn visible_names_expand_tiles_by_measured_width_as_the_grid_shrinks() {
+        let mut grid = rail();
+        let first = &mut Arc::make_mut(&mut grid.cells)[0];
+        first.name = Arc::from("bracketright");
+        first.caption_widths = caption_widths(&first.name, None, first.advance);
+        grid.metrics.captions_below = true;
+        grid.metrics.cell = 64.0;
+        grid.size = Size::new(300.0, 400.0);
+        let span = grid.packed()[0][0].1;
+        assert_eq!(span, 2, "a narrow drawing still needs room for its name");
+        assert!(grid.cell_width(span) >= text_label::width("bracketright", 13.0) + 2.0 * LABEL_TOP);
+
+        grid.metrics.cell = 140.0;
+        grid.size.width = 600.0;
+        assert_eq!(
+            grid.packed()[0][0].1,
+            1,
+            "larger tiles already fit the name"
+        );
+        grid.metrics.cell = 64.0;
+        grid.size.width = 300.0;
+        let first = &mut Arc::make_mut(&mut grid.cells)[0];
+        first.name = Arc::from("iiiiiiiiiii");
+        first.caption_widths = caption_widths(&first.name, None, first.advance);
+        assert_eq!(
+            grid.packed()[0][0].1,
+            1,
+            "equal character counts can have different widths"
+        );
+        let first = &mut Arc::make_mut(&mut grid.cells)[0];
+        first.name = Arc::from("bracketright");
+        first.caption_widths = caption_widths(&first.name, None, first.advance);
+        grid.metrics.captions_below = false;
+        assert_eq!(
+            grid.packed()[0][0].1,
+            1,
+            "hidden captions need no extra width"
+        );
+        grid.metrics.captions_below = true;
+        if let Ok(path) = std::env::var("RUNEBENDER_GRID_LABEL_PROOF") {
+            let mut harness = masonry_testing::TestHarness::create_with_size(
+                crate::application::view::default_property_set(),
+                masonry::core::NewWidget::new(grid),
+                (300, 400),
+            );
+            harness
+                .render()
+                .save(path)
+                .expect("save the grid label proof");
+        }
     }
 
     #[test]

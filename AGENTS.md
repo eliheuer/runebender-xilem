@@ -70,6 +70,7 @@ Do not add local path patches to a committed Cargo configuration.
 
 Read [the design principles](https://runebender.org/docs/design-principles.html) before changing a view.
 Use `view::theme` for colors, `view::design` for measurements, and `view::recipes` for repeated controls.
+For panel sections, follow [the shared panel layout contract](UI-DESIGN.md) and start with `recipes::panel_section` rather than local padding.
 Read [the theme guide](https://runebender.org/docs/themes.html) before changing colors; it names the Base UI and Rainbow palettes and traces their tokens through the editor.
 Views read workspace state; commands own intent; the font engine owns font behavior.
 

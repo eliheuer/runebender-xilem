@@ -12,6 +12,7 @@ pub(crate) mod icon_paint;
 pub(crate) mod menu_shell;
 pub(crate) mod panel_frame;
 pub(crate) mod quadrant_picker;
+pub(crate) mod rounded_clip;
 pub(crate) mod shortcuts;
 pub(crate) mod source_text_area;
 pub(crate) mod text_label;
@@ -24,3 +25,8 @@ pub(crate) mod scroll_viewport;
 pub(crate) mod selectable_text;
 
 pub(crate) mod input_typography;
+
+pub(crate) mod swatch_strip;
+
+pub(crate) mod quiet_split;
+mod quiet_split_widget;

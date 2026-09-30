@@ -34,18 +34,7 @@ fn section<V>(
 where
     V: WidgetView<Workspace> + 'static,
 {
-    let open = !app.collapsed.contains(title);
-    xcolumn(
-        Region::Section,
-        (
-            recipes::section_toggle(&app.palette, title, open, move |app: &mut Workspace| {
-                if !app.collapsed.remove(title) {
-                    app.collapsed.insert(title);
-                }
-            }),
-            open.then_some(body),
-        ),
-    )
+    recipes::section(app, title, title, body)
 }
 
 /// Group shelves use square, full-line chips; other chip consumers retain
@@ -182,7 +171,6 @@ pub(crate) fn dimensions_section(app: &Workspace) -> impl WidgetView<Workspace> 
         "Dimensions",
         xcolumn(Region::List, (xcolumn(Region::List, rows), empty)),
     )
-    .gap(Space::Sm)
 }
 
 /// Kerning: a filter, an editor row (first, second, value; Enter
@@ -343,7 +331,6 @@ pub(crate) fn kerning_section(app: &Workspace) -> impl WidgetView<Workspace> + u
             ),
         ),
     )
-    .gap(Space::Sm)
 }
 
 /// Groups: a name field, then each kerning group as chips. A chip
@@ -429,7 +416,6 @@ pub(crate) fn groups_section(app: &Workspace) -> impl WidgetView<Workspace> + us
             ),
         ),
     )
-    .gap(Space::Sm)
 }
 
 /// One vertical metric off canonical source information.
@@ -461,8 +447,7 @@ pub(crate) fn compare_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                 "One master \u{00b7} nothing to compare".into(),
                 pal.text_muted,
             )),
-        )
-        .gap(Space::Sm);
+        );
     }
     let active = app.font.active();
     let reference_info = app
@@ -542,7 +527,6 @@ pub(crate) fn compare_section(app: &Workspace) -> impl WidgetView<Workspace> + u
             ),
         )),
     )
-    .gap(Space::Sm)
 }
 
 /// Features: an editable `features.fea` draft, with explicit Apply/Revert and

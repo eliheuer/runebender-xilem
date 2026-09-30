@@ -8,12 +8,10 @@ use crate::application::view::design::{
     ButtonShape, ControlSize, Region, Space, Stroke, TextSize, row as xrow,
 };
 use crate::application::view::design::{
-    MARK_SELECTED_RING_INSET, MARK_SWATCH_DIAMETER, MARK_SWATCH_GAP, STATUS_ICON_SIZE,
-    TITLEBAR_HEIGHT,
+    MARK_SELECTED_RING_INSET, MARK_SWATCH_GAP, STATUS_ICON_SIZE, TITLEBAR_HEIGHT,
 };
 use crate::application::view::panels::tabs::{tab_chip, tab_strip};
 use crate::application::view::recipes::button;
-use crate::application::view::render::top_keyline;
 use crate::application::view::theme::Palette;
 use crate::application::view::{label, recipes};
 use crate::application::widgets::drag_region::drag_region;
@@ -103,7 +101,7 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         // of vertical padding lets its fixed height center those controls;
         // horizontal padding retains the established leading/trailing inset.
         .padding(Padding::horizontal(Space::Md.length()))
-        .background_color(pal.header),
+        .background_color(pal.header_background()),
     )
     .dims(Dimensions::new(
         Dim::Stretch,
@@ -191,7 +189,7 @@ pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<
 
 /// The marks bar at the foot of the sidebar: round swatches, the
 /// clear mark last.
-pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace, Widget: Sized> + use<> {
     let pal = &app.palette;
     let current = app
         .selected
@@ -206,23 +204,22 @@ pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let outline = pal.mark_outline.unwrap_or(pal.outline);
     let selected_ring = pal.outline;
     let clear_ink = pal.editor_control_ink();
+    let count = marks.len();
     let swatches = marks
         .into_iter()
         .map(|(mark, color)| {
             let selected = mark == current;
             let clear = mark.is_none();
-            let face = sized_box(canvas(move |_: &mut Workspace, _, scene, _| {
+            let face = sized_box(canvas(move |_: &mut Workspace, _, scene, size| {
                 use masonry::imaging::Painter;
                 use masonry::kurbo::{Circle, Rect, Stroke as Pen};
                 let mut painter = Painter::new(scene);
-                let half = ControlSize::Swatch.px() / 2.0;
+                let half = size.width.min(size.height) / 2.0;
                 let center = (half, half);
-                painter
-                    .fill(Circle::new(center, MARK_SWATCH_DIAMETER / 2.0), color)
-                    .draw();
+                painter.fill(Circle::new(center, half), color).draw();
                 painter
                     .stroke(
-                        Circle::new(center, (MARK_SWATCH_DIAMETER - Stroke::Hairline.px()) / 2.0),
+                        Circle::new(center, half - Stroke::Hairline.px() / 2.0),
                         &Pen::new(Stroke::Hairline.px()),
                         outline,
                     )
@@ -248,17 +245,20 @@ pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     );
                 }
             }))
-            .dims(Dimensions::fixed(
-                ControlSize::Swatch.length(),
-                ControlSize::Swatch.length(),
-            ));
-            button(pal, face, move |app: &mut Workspace| {
-                app.set_mark(mark.clone());
-            })
+            .dims(Dimensions::new(Dim::Stretch, Dim::Stretch));
+            button(
+                pal,
+                crate::application::widgets::swatch_strip::swatch_face(face),
+                move |app: &mut Workspace| {
+                    app.set_mark(mark.clone());
+                },
+            )
             .padding(Space::None)
             .border_width(Space::None.length())
             .corner_radius(ButtonShape::Circular.radius())
             .background_color(Color::TRANSPARENT)
+            .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
+            .flex(1.0)
         })
         .collect::<Vec<_>>();
     sized_box(
@@ -269,18 +269,18 @@ pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     Dim::Fixed(Stroke::Hairline.length()),
                 ))
                 .background_color(outline),
-            flex_row(swatches)
-                .gap(Length::px(MARK_SWATCH_GAP))
-                .padding(Padding::horizontal(Length::px(MARK_SWATCH_GAP)))
-                .flex(1.0),
+            crate::application::widgets::swatch_strip::swatch_strip(
+                flex_row(swatches)
+                    .cross_axis_alignment(CrossAxisAlignment::Stretch)
+                    .gap(Length::px(MARK_SWATCH_GAP))
+                    .padding(Length::px(MARK_SWATCH_GAP)),
+                count,
+            ),
         ))
         .gap(Space::None)
         .background_color(pal.panel),
     )
-    .dims(Dimensions::new(
-        Dim::Stretch,
-        Dim::from(ControlSize::Control),
-    ))
+    .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
 }
 
 /// The bar under the middle column: add and remove glyph at the
@@ -331,101 +331,90 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     };
     let editing = matches!(app.mode, Mode::Editor(_));
     if editing {
-        return Either::A(top_keyline(editor_status(app, text), pal.outline));
+        return Either::A(editor_status(app, text));
     }
-    Either::B(top_keyline(
-        sized_box(
-            xrow(
-                Region::Inline,
-                (
-                    sidebar_toggle(app),
-                    matches!(app.mode, Mode::Overview).then(|| {
-                        xrow(
-                            Region::Inline,
-                            (
-                                overview_status_button(
-                                    pal,
-                                    "Add glyph",
-                                    "plus",
-                                    false,
-                                    pal.editor_control_ink(),
-                                    |app: &mut Workspace| app.new_glyph(),
-                                ),
-                                overview_status_button(
-                                    pal,
-                                    "Remove glyph",
-                                    "minus",
-                                    false,
-                                    pal.editor_control_ink(),
-                                    |app: &mut Workspace| {
-                                        app.note =
-                                            "Remove glyph: not built in this shell yet".into();
-                                    },
-                                ),
-                            ),
-                        )
-                    }),
-                    label(text)
-                        .text_size(TextSize::Body.px())
-                        .text_alignment(masonry::TextAlign::Center)
-                        .color(pal.text_muted)
-                        .prop(masonry::properties::LineBreaking::Clip)
-                        .dims(Dimensions::new(Dim::Fixed(Length::ZERO), Dim::Auto))
-                        .flex(1.0),
-                    matches!(app.mode, Mode::Nodes).then(|| {
-                        recipes::action_sized(
+    Either::B(recipes::panel_footer(
+        pal,
+        (
+            sidebar_toggle(app),
+            matches!(app.mode, Mode::Overview).then(|| {
+                xrow(
+                    Region::Inline,
+                    (
+                        overview_status_button(
                             pal,
-                            "Fit graph".into(),
-                            ControlSize::Icon,
+                            "Add glyph",
+                            "plus",
+                            false,
+                            pal.editor_control_ink(),
+                            |app: &mut Workspace| app.new_glyph(),
+                        ),
+                        overview_status_button(
+                            pal,
+                            "Remove glyph",
+                            "minus",
+                            false,
+                            pal.editor_control_ink(),
                             |app: &mut Workspace| {
-                                app.nodes.fit_request = app.nodes.fit_request.wrapping_add(1);
+                                app.note = "Remove glyph: not built in this shell yet".into();
+                            },
+                        ),
+                    ),
+                )
+            }),
+            label(text)
+                .text_size(TextSize::Body.px())
+                .text_alignment(masonry::TextAlign::Center)
+                .color(pal.text_muted)
+                .prop(masonry::properties::LineBreaking::Clip)
+                .dims(Dimensions::new(Dim::Fixed(Length::ZERO), Dim::Auto))
+                .flex(1.0),
+            matches!(app.mode, Mode::Nodes).then(|| {
+                recipes::action_sized(
+                    pal,
+                    "Fit graph".into(),
+                    ControlSize::Icon,
+                    |app: &mut Workspace| {
+                        app.nodes.fit_request = app.nodes.fit_request.wrapping_add(1);
+                    },
+                )
+            }),
+            matches!(app.mode, Mode::Overview).then(|| {
+                xrow(
+                    Region::Inline,
+                    (
+                        overview_status_button(
+                            pal,
+                            "Grid view",
+                            "grid",
+                            !app.list,
+                            pal.text_subdued,
+                            |app: &mut Workspace| app.list = false,
+                        ),
+                        overview_status_button(
+                            pal,
+                            "List view",
+                            "list",
+                            app.list,
+                            pal.text_subdued,
+                            |app: &mut Workspace| app.list = true,
+                        ),
+                        recipes::neutral_slider(
+                            &app.palette,
+                            48.0,
+                            200.0,
+                            app.cell_size,
+                            |app: &mut Workspace, v| {
+                                app.cell_size = v;
                             },
                         )
-                    }),
-                    matches!(app.mode, Mode::Overview).then(|| {
-                        xrow(
-                            Region::Inline,
-                            (
-                                overview_status_button(
-                                    pal,
-                                    "Grid view",
-                                    "grid",
-                                    !app.list,
-                                    pal.text_subdued,
-                                    |app: &mut Workspace| app.list = false,
-                                ),
-                                overview_status_button(
-                                    pal,
-                                    "List view",
-                                    "list",
-                                    app.list,
-                                    pal.text_subdued,
-                                    |app: &mut Workspace| app.list = true,
-                                ),
-                                recipes::neutral_slider(
-                                    &app.palette,
-                                    48.0,
-                                    200.0,
-                                    app.cell_size,
-                                    |app: &mut Workspace, v| {
-                                        app.cell_size = v;
-                                    },
-                                )
-                                .width(Length::px(96.0)),
-                            ),
-                        )
-                    }),
-                ),
-            )
-            .padding(Padding::horizontal(Space::Sm.length()))
-            .gap(Space::Sm)
-            .background_color(pal.panel),
-        )
-        .dims(Dimensions::new(
-            Dim::Stretch,
-            Dim::from(ControlSize::Control),
-        )),
-        pal.outline,
+                        .width(Length::px(
+                            crate::application::view::design::STATUS_SLIDER_WIDTH,
+                        )),
+                    ),
+                )
+            }),
+        ),
     ))
 }
 
@@ -460,73 +449,65 @@ where
 fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + use<> {
     use crate::application::view::design::STATUS_SLIDER_WIDTH;
     let pal = &app.palette;
-    sized_box(
-        xrow(
-            Region::Inline,
-            (
-                xrow(
-                    Region::Inline,
-                    (
-                        sidebar_toggle(app),
-                        named_icon_button(
-                            "Show proof",
-                            if app.preview_visible {
-                                "eye-open"
-                            } else {
-                                "eye-closed"
-                            },
-                            app.preview_visible,
-                            pal.editor_control_ink(),
-                            pal.editor_control_ink(),
-                            Color::TRANSPARENT,
-                            Color::TRANSPARENT,
-                            |app: &mut Workspace| app.preview_visible = !app.preview_visible,
-                        )
-                        .corner_radius(pal.control_radius)
-                        .icon_size(16.0)
-                        .tile_size(16.0),
-                        named_icon_button(
-                            "Invert proof",
-                            "invert",
-                            app.preview_invert,
-                            pal.editor_control_ink(),
-                            pal.editor_control_ink(),
-                            Color::TRANSPARENT,
-                            Color::TRANSPARENT,
-                            |app: &mut Workspace| app.preview_invert = !app.preview_invert,
-                        )
-                        .corner_radius(pal.control_radius)
-                        .icon_size(16.0)
-                        .tile_size(16.0),
-                    ),
-                )
-                .gap(Space::Sm),
-                // The readout yields width to controls; Flex still gives it
-                // the remaining space during layout. Its intrinsic text width
-                // must not widen the whole center dock in a narrow window.
-                label(text)
-                    .color(pal.text_muted)
-                    .prop(masonry::properties::LineBreaking::Clip)
-                    .dims(Dimensions::new(Dim::Fixed(Length::ZERO), Dim::Auto))
-                    .flex(1.0),
-                label("blur").color(pal.text_muted),
-                recipes::neutral_slider(
-                    pal,
-                    0.0,
-                    8.0,
-                    app.preview_blur,
-                    |app: &mut Workspace, value| app.preview_blur = value,
-                )
-                .width(Length::px(STATUS_SLIDER_WIDTH)),
-            ),
-        )
-        .padding(Padding::horizontal(Space::Md.length())),
+    recipes::panel_footer(
+        pal,
+        (
+            xrow(
+                Region::Inline,
+                (
+                    sidebar_toggle(app),
+                    named_icon_button(
+                        "Show proof",
+                        if app.preview_visible {
+                            "eye-open"
+                        } else {
+                            "eye-closed"
+                        },
+                        app.preview_visible,
+                        pal.editor_control_ink(),
+                        pal.editor_control_ink(),
+                        Color::TRANSPARENT,
+                        Color::TRANSPARENT,
+                        |app: &mut Workspace| app.preview_visible = !app.preview_visible,
+                    )
+                    .corner_radius(pal.control_radius)
+                    .icon_size(STATUS_ICON_SIZE)
+                    .tile_size(STATUS_ICON_SIZE),
+                    named_icon_button(
+                        "Invert proof",
+                        "invert",
+                        app.preview_invert,
+                        pal.editor_control_ink(),
+                        pal.editor_control_ink(),
+                        Color::TRANSPARENT,
+                        Color::TRANSPARENT,
+                        |app: &mut Workspace| app.preview_invert = !app.preview_invert,
+                    )
+                    .corner_radius(pal.control_radius)
+                    .icon_size(STATUS_ICON_SIZE)
+                    .tile_size(STATUS_ICON_SIZE),
+                ),
+            )
+            .gap(Space::Sm),
+            // The readout yields width to controls; Flex still gives it
+            // the remaining space during layout. Its intrinsic text width
+            // must not widen the whole center dock in a narrow window.
+            label(text)
+                .color(pal.text_muted)
+                .prop(masonry::properties::LineBreaking::Clip)
+                .dims(Dimensions::new(Dim::Fixed(Length::ZERO), Dim::Auto))
+                .flex(1.0),
+            label("blur").color(pal.text_muted),
+            recipes::neutral_slider(
+                pal,
+                0.0,
+                8.0,
+                app.preview_blur,
+                |app: &mut Workspace, value| app.preview_blur = value,
+            )
+            .width(Length::px(STATUS_SLIDER_WIDTH)),
+        ),
     )
-    .dims(Dimensions::new(
-        Dim::Stretch,
-        Dim::from(ControlSize::Control),
-    ))
-    .background_color(pal.panel)
 }
 
 /// One stable footer control for hiding and restoring the left dock in every mode.

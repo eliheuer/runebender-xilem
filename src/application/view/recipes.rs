@@ -3,13 +3,12 @@
 
 //! The recipes this application repeats.
 //!
-//! The scale and the containers both live in the framework now:
-//! measurements are `xilem::kernel` steps, and a container states its
-//! `Region` instead of its gap and inset. What is left here is the small
-//! set of compositions a font editor uses over and over (a section, a
-//! key/value row, a labeled field, a list row, a toggle, a button), which
-//! are candidates for the framework's parts list. Each graduates when a
-//! second application needs the same one.
+//! Measurements come from `view::design`; colors and corner radii come from `view::theme`.
+//! [`panel_section`] is the default for a new folding panel section: it owns the
+//! header, collapse state, symmetric inset, body gap, and full-width divider.
+//! [`panel_stack`] composes sections without duplicating their spacing.
+//! Body layouts use `Region::Form`, `Region::Inline`, or `Region::List` without
+//! adding another outer inset. See `UI-DESIGN.md` for a complete contributor example.
 
 use crate::application::widgets::icon_paint;
 use crate::application::widgets::input_typography;
@@ -23,6 +22,7 @@ use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
 use xilem::WidgetView;
 use xilem::style::Style;
+use xilem::view::FlexExt as _;
 use xilem::view::{FlexSpacer, button as xilem_button, canvas, sized_box};
 
 use crate::application::view::theme::Palette;
@@ -42,22 +42,6 @@ where
     F: Fn(&mut Workspace) + Send + Sync + 'static,
 {
     xilem_button(child, on_click).corner_radius(Length::px(pal.control_radius))
-}
-
-/// A section header that collapses its section.
-///
-/// Sidebar groups fold because four filter groups and a language list would
-/// otherwise become one undifferentiated scroll of rows.
-pub(crate) fn section_toggle<F>(
-    pal: &Palette,
-    text: &'static str,
-    open: bool,
-    on_click: F,
-) -> impl WidgetView<Workspace> + use<F>
-where
-    F: Fn(&mut Workspace) + Send + Sync + 'static,
-{
-    section_toggle_height(pal, text, open, ControlSize::Row.px(), on_click)
 }
 
 /// A section header with an explicit tokenized content height.
@@ -98,18 +82,46 @@ where
     ))
 }
 
-/// An inspector group with a full-width dividing rule and a shared inset.
-pub(crate) fn inspector_group<V>(pal: &Palette, body: V) -> impl WidgetView<Workspace> + use<V>
+/// A center-panel footer with a shared height, balanced edge clearance and upper divider.
+/// Supply compact controls and inline groups without their own outer padding.
+/// The centered control row and its side inset use the same geometry in every mode.
+pub(crate) fn panel_footer<State, Seq>(
+    pal: &Palette,
+    controls: Seq,
+) -> impl WidgetView<State, Widget: Sized> + use<State, Seq>
 where
-    V: WidgetView<Workspace> + 'static,
+    State: 'static,
+    Seq: xilem::view::FlexSequence<State, ()> + Send + Sync,
+{
+    use crate::application::view::design::{FOOTER_HEIGHT, FOOTER_INSET};
+    crate::application::view::render::top_keyline(
+        sized_box(
+            row(Region::Inline, controls).padding(masonry::properties::Padding::horizontal(
+                Length::px(FOOTER_INSET),
+            )),
+        )
+        .dims(Dimensions::new(
+            Dim::Stretch,
+            Dim::Fixed(Length::px(FOOTER_HEIGHT)),
+        ))
+        .background_color(pal.panel),
+        pal.outline,
+    )
+}
+
+/// A panel group with equal padding on every edge and a full-width dividing rule.
+pub(crate) fn panel_group<State, V>(
+    pal: &Palette,
+    body: V,
+) -> impl WidgetView<State> + use<State, V>
+where
+    State: 'static,
+    V: WidgetView<State> + 'static,
 {
     column(
         Region::List,
         (
-            sized_box(body).padding(masonry::properties::Padding::from_vh(
-                Length::px(crate::application::view::design::INSPECTOR_VERTICAL_INSET),
-                Space::Md.length(),
-            )),
+            sized_box(body).padding(crate::application::view::design::PANEL_SECTION_INSET),
             sized_box(label(""))
                 .dims(Dimensions::new(
                     Dim::Stretch,
@@ -119,6 +131,77 @@ where
         ),
     )
     .gap(Space::None)
+}
+
+/// Stack complete panel sections without adding another inset or gap beside their dividers.
+pub(crate) fn panel_stack<State, Seq>(
+    sections: Seq,
+) -> impl WidgetView<State, Widget = masonry::widgets::Flex> + use<State, Seq>
+where
+    State: 'static,
+    Seq: xilem::view::FlexSequence<State, ()> + Send + Sync,
+{
+    column(Region::List, sections).gap(Space::None)
+}
+
+/// Folding section contents; the surrounding [`panel_group`] owns the outer inset and divider.
+/// Use [`panel_section`] when the caller does not already provide that surrounding group.
+pub(crate) fn section<V>(
+    app: &Workspace,
+    key: &'static str,
+    title: &'static str,
+    body: V,
+) -> impl WidgetView<Workspace, Widget = masonry::widgets::Flex> + use<V>
+where
+    V: WidgetView<Workspace> + 'static,
+{
+    section_with_header_height(app, key, title, body, ControlSize::Row.px())
+}
+
+/// Folding contents with a tokenized header-height exception for compact node inspectors.
+pub(crate) fn section_with_header_height<V>(
+    app: &Workspace,
+    key: &'static str,
+    title: &'static str,
+    body: V,
+    height: f64,
+) -> impl WidgetView<Workspace, Widget = masonry::widgets::Flex> + use<V>
+where
+    V: WidgetView<Workspace> + 'static,
+{
+    let open = !app.collapsed.contains(key);
+    column(
+        Region::Section,
+        (
+            section_toggle_height(
+                &app.palette,
+                title,
+                open,
+                height,
+                move |app: &mut Workspace| {
+                    if !app.collapsed.remove(key) {
+                        app.collapsed.insert(key);
+                    }
+                },
+            ),
+            open.then_some(body),
+        ),
+    )
+    .gap(crate::application::view::design::PANEL_SECTION_BODY_GAP)
+}
+
+/// A complete folding section with the shared padding, header, body spacing, and divider.
+/// Supply only unpadded content; wrapping this in [`panel_group`] would double its inset.
+pub(crate) fn panel_section<V>(
+    app: &Workspace,
+    key: &'static str,
+    title: &'static str,
+    body: V,
+) -> impl WidgetView<Workspace> + use<V>
+where
+    V: WidgetView<Workspace> + 'static,
+{
+    panel_group(&app.palette, section(app, key, title, body))
 }
 
 /// A read-only label/value row: name left, value right, one row tall.
@@ -165,6 +248,29 @@ where
     ))
 }
 
+/// A caption and its control or control row, using the standard field typography and gap.
+/// An empty caption adds no label or extra space.
+pub(crate) fn labeled_control<V>(
+    pal: &Palette,
+    name: &'static str,
+    control: V,
+) -> impl WidgetView<Workspace> + use<V>
+where
+    V: WidgetView<Workspace> + 'static,
+{
+    column(
+        Region::List,
+        (
+            (!name.is_empty()).then(|| {
+                label(name)
+                    .text_size(TextSize::Caption.px())
+                    .color(pal.text_muted)
+            }),
+            control,
+        ),
+    )
+}
+
 /// A labeled text field: caption over a control-height input.
 pub(crate) fn field<F>(
     pal: &Palette,
@@ -175,27 +281,34 @@ pub(crate) fn field<F>(
 where
     F: Fn(&mut Workspace, String) + Send + Sync + 'static,
 {
-    column(
-        Region::List,
-        (
-            label(name)
-                .text_size(TextSize::Caption.px())
-                .color(pal.text_muted),
-            sized_box(input_typography::input_typography(
-                text_input(value, move |app: &mut Workspace, v| on_change(app, v))
-                    .text_color(pal.text)
-                    .placeholder_color(pal.text_muted)
-                    .background_color(pal.field())
-                    .border_color(pal.field_outline)
-                    .border_width(Stroke::Hairline.length())
-                    .corner_radius(Length::px(pal.control_radius)),
-            ))
-            .dims(Dimensions::new(
-                Dim::Stretch,
-                Dim::from(ControlSize::Control),
-            )),
-        ),
+    labeled_control(
+        pal,
+        name,
+        sized_box(input_typography::input_typography(
+            text_input(value, move |app: &mut Workspace, v| on_change(app, v))
+                .text_color(pal.text)
+                .placeholder_color(pal.text_muted)
+                .background_color(pal.field())
+                .border_color(pal.field_outline)
+                .border_width(Stroke::Hairline.length())
+                .corner_radius(Length::px(pal.control_radius)),
+        ))
+        .dims(Dimensions::new(
+            Dim::Stretch,
+            Dim::from(ControlSize::Control),
+        )),
     )
+}
+
+/// An equal-width field column that fits its row and grows with the dock.
+/// Pair with `row(Region::Form, ...)`; the row divides the available width after its gaps.
+pub(crate) fn field_column<V>(body: V) -> impl xilem::view::FlexSequence<Workspace, ()> + use<V>
+where
+    V: WidgetView<Workspace> + 'static,
+{
+    sized_box(body)
+        .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
+        .flex(1.0)
 }
 
 /// A field that commits on Enter as well as reporting every keystroke.
@@ -216,28 +329,7 @@ where
     F: Fn(&mut Workspace, String) + Send + Sync + 'static,
     G: Fn(&mut Workspace, String) + Send + Sync + 'static,
 {
-    column(
-        Region::List,
-        (
-            label(name)
-                .text_size(TextSize::Caption.px())
-                .color(pal.text_muted),
-            sized_box(input_typography::input_typography(
-                text_input(value, move |app: &mut Workspace, v| on_change(app, v))
-                    .on_enter(move |app: &mut Workspace, v| on_enter(app, v))
-                    .text_color(pal.text)
-                    .placeholder_color(pal.text_muted)
-                    .background_color(pal.field())
-                    .border_color(pal.field_outline)
-                    .border_width(Stroke::Hairline.length())
-                    .corner_radius(Length::px(pal.control_radius)),
-            ))
-            .dims(Dimensions::new(
-                Dim::Stretch,
-                Dim::from(ControlSize::Control),
-            )),
-        ),
-    )
+    labeled_control(pal, name, field_bare(pal, "", value, on_change, on_enter))
 }
 
 /// A plain filter row: label left, trailing text right, keylined when active.

@@ -192,6 +192,29 @@ struct ThemeFile {
     point_halo: Option<bool>,
     #[serde(default)]
     geometry: Option<GeometryDef>,
+    #[serde(default)]
+    window: WindowStyle,
+}
+
+/// Optional native window effects; unsupported hosts keep flat theme colors.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct WindowStyle {
+    /// Blur the content behind the macOS window; disabled when omitted.
+    #[serde(rename = "blurBackground")]
+    pub blur_background: bool,
+    /// Opacity of the theme's ground over native blur, from 0 (clear) to 1 (solid).
+    #[serde(rename = "blurTintOpacity")]
+    pub blur_tint_opacity: f32,
+}
+
+impl Default for WindowStyle {
+    fn default() -> Self {
+        Self {
+            blur_background: false,
+            blur_tint_opacity: 0.8,
+        }
+    }
 }
 
 /// Shape tokens. Every field is optional in the file: a theme names
@@ -285,6 +308,8 @@ pub struct Theme {
     pub marks: Vec<(String, ColorRgba)>,
     /// Corner radii and stroke width for this theme.
     pub geometry: Geometry,
+    /// Native window appearance, separate from shape and color tokens.
+    pub window: WindowStyle,
     /// How marks are drawn.
     pub mark_style: MarkStyle,
     /// Keyline around a filled mark.
@@ -530,6 +555,11 @@ pub fn parse_theme(source: &str) -> Result<Theme, String> {
     };
     let theme_id = file.id.as_str();
     validate_theme_id(theme_id)?;
+    if !(0.0..=1.0).contains(&file.window.blur_tint_opacity) {
+        return Err(format!(
+            "theme '{theme_id}' window.blurTintOpacity must be between 0 and 1"
+        ));
+    }
     if file.format_version != 1 {
         return Err(format!(
             "theme '{}' uses unsupported formatVersion {}",
@@ -698,6 +728,7 @@ pub fn parse_theme(source: &str) -> Result<Theme, String> {
         id: file.id,
         name: file.name,
         geometry,
+        window: file.window,
         mark_style,
         mark_outline,
         mark_ink,
@@ -1259,6 +1290,60 @@ mod geometry_tests {
                 .unwrap_err()
                 .contains("geometry.radiusPanel")
         );
+    }
+
+    #[test]
+    fn window_blur_is_optional_and_requires_a_boolean() {
+        let source = include_str!("../../assets/themes/default/gray.theme.toml")
+            .replace("blurBackground = false", "blurBackground = true");
+        assert!(
+            parse_theme(&source)
+                .expect("Gray window style")
+                .window
+                .blur_background
+        );
+        let disabled = source.replace("blurBackground = true", "blurBackground = false");
+        assert!(
+            !parse_theme(&disabled)
+                .expect("flat window")
+                .window
+                .blur_background
+        );
+        let legacy = source
+            .replace("blurBackground = true\n", "")
+            .replace("blurTintOpacity = 0.0\n", "");
+        assert_eq!(
+            parse_theme(&legacy).expect("optional backdrop").window,
+            WindowStyle::default()
+        );
+        let invalid = source.replace("blurBackground = true", "blurBackground = 0.5");
+        assert!(parse_theme(&invalid).is_err());
+    }
+
+    #[test]
+    fn window_blur_tint_accepts_only_finite_opacity() {
+        let source = include_str!("../../assets/themes/default/gray.theme.toml");
+        for value in ["0.0", "0.65", "1.0"] {
+            let edited = source.replace(
+                "blurTintOpacity = 0.0",
+                &format!("blurTintOpacity = {value}"),
+            );
+            assert!(parse_theme(&edited).is_ok(), "valid opacity {value}");
+        }
+        for value in ["-0.1", "1.1", "nan", "inf"] {
+            let edited = source.replace(
+                "blurTintOpacity = 0.0",
+                &format!("blurTintOpacity = {value}"),
+            );
+            assert!(
+                parse_theme(&edited)
+                    .unwrap_err()
+                    .contains("window.blurTintOpacity"),
+                "invalid opacity {value}"
+            );
+        }
+        let legacy = source.replace("blurTintOpacity = 0.0\n", "");
+        assert_eq!(parse_theme(&legacy).unwrap().window.blur_tint_opacity, 0.8);
     }
 
     #[test]

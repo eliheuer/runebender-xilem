@@ -16,7 +16,6 @@ use xilem::{Color, Pod, ViewCtx};
 use crate::application::view::design;
 
 pub(crate) struct PanelFrameWidget {
-    ground: Color,
     outline: Color,
     radius: f64,
     shadow: Option<Color>,
@@ -68,15 +67,6 @@ impl Widget for PanelFrameWidget {
         let radius = self
             .radius
             .clamp(0.0, rect.width().min(rect.height()) / 2.0);
-        if radius > 0.0 {
-            // Remove the rectangular child corners while preserving the face beneath.
-            let mut corners = rect.to_path(0.1);
-            corners.extend(rect.to_rounded_rect(radius).path_elements(0.1));
-            painter
-                .fill(&corners, self.ground)
-                .fill_rule(masonry::peniko::Fill::EvenOdd)
-                .draw();
-        }
         if let Some(shadow) = self.shadow {
             let offset = design::PANEL_SHADOW_OFFSET;
             let mut outside =
@@ -119,22 +109,15 @@ impl Widget for PanelFrameWidget {
     }
 }
 
-/// An input-transparent overlay that masks a panel's corners with the window ground.
+/// An input-transparent outline and shadow outside a separately clipped panel.
 pub(crate) struct PanelFrame {
-    ground: Color,
     outline: Color,
     radius: f64,
     shadow: Option<Color>,
 }
 
-pub(crate) fn panel_frame(
-    ground: Color,
-    outline: Color,
-    radius: f64,
-    shadow: Option<Color>,
-) -> PanelFrame {
+pub(crate) fn panel_frame(outline: Color, radius: f64, shadow: Option<Color>) -> PanelFrame {
     PanelFrame {
-        ground,
         outline,
         radius,
         shadow,
@@ -150,7 +133,6 @@ impl<State: 'static> View<State, (), ViewCtx> for PanelFrame {
     fn build(&self, ctx: &mut ViewCtx, _: &mut State) -> (Self::Element, Self::ViewState) {
         (
             ctx.create_pod(PanelFrameWidget {
-                ground: self.ground,
                 outline: self.outline,
                 radius: self.radius,
                 shadow: self.shadow,
@@ -167,12 +149,8 @@ impl<State: 'static> View<State, (), ViewCtx> for PanelFrame {
         mut element: Mut<'_, Self::Element>,
         _: &mut State,
     ) {
-        if self.ground != prev.ground
-            || self.outline != prev.outline
-            || self.radius != prev.radius
-            || self.shadow != prev.shadow
+        if self.outline != prev.outline || self.radius != prev.radius || self.shadow != prev.shadow
         {
-            element.widget.ground = self.ground;
             element.widget.outline = self.outline;
             element.widget.radius = self.radius;
             element.widget.shadow = self.shadow;
