@@ -35,13 +35,13 @@
 
 // Cargo enables package features for both targets. These anonymous imports stop the library's
 // dependency lint from flagging dependencies used only by the application executable.
-#[cfg(all(feature = "application", target_os = "macos"))]
-use muda as _;
 #[cfg(feature = "application")]
 use {
     base64 as _, clap as _, copypasta as _, image as _, imaging_vello_cpu as _, masonry as _,
     notify as _, regex as _, rfd as _, tokio as _, winit as _, xilem as _,
 };
+#[cfg(all(feature = "application", target_os = "macos"))]
+use {muda as _, objc2 as _, objc2_app_kit as _};
 
 // These modules form the public, domain-oriented font-engine API.
 pub mod analysis;

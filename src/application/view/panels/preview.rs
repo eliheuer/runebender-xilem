@@ -251,7 +251,7 @@ pub(crate) fn glyph_preview(app: &Workspace) -> impl WidgetView<Workspace> + use
                     let (fill, border) = if pal.points_filled {
                         (hue, pal.point_outline.unwrap_or(pal.text))
                     } else {
-                        (pal.app, hue)
+                        (pal.canvas, hue)
                     };
                     let radius = if off || *smooth {
                         design::POINT_CURVE_RADIUS

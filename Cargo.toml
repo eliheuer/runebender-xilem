@@ -25,6 +25,8 @@ application = [
     "dep:masonry",
     "dep:muda",
     "dep:notify",
+    "dep:objc2",
+    "dep:objc2-app-kit",
     "dep:regex",
     "dep:rfd",
     "dep:tokio",
@@ -77,6 +79,8 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 muda = { version = "0.19", optional = true }
+objc2 = { version = "0.6.4", optional = true }
+objc2-app-kit = { version = "0.3.2", optional = true, default-features = false, features = ["std", "NSApplication", "NSWindow"] }
 
 [dev-dependencies]
 masonry_testing = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a" }

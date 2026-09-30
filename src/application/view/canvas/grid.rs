@@ -561,7 +561,7 @@ impl Widget for GridWidget {
                 // Square themes retain the rectangle path: a zero-radius
                 // RoundedRect can lose later same-color draws in Vello CPU.
                 let border = if picked {
-                    pal.selected_bg()
+                    pal.outline
                 } else if cell.mark.is_some() {
                     mark_outline
                 } else {

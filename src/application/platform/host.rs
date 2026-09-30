@@ -192,6 +192,7 @@ impl Workspace {
             session.advance(),
         )));
         let mut app = Self {
+            fullscreen: false,
             document_id: NEXT_DOCUMENT_ID.fetch_add(1, Ordering::Relaxed),
             font,
             palette,

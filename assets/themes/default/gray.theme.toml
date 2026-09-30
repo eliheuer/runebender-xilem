@@ -3,17 +3,31 @@
 # Gray uses equal 0.06 lightness steps, from 0.30 to 0.84.
 # Rainbow names carry the same mark meaning across themes.
 # See https://runebender.org/docs/themes.html for the full format.
+
+# Theme file format version; keep this at 1.
 formatVersion = 1
+# Unique identifier used to select this theme.
 id = "gray"
+# Display name shown in the theme chooser.
 name = "Gray"
+# Rainbow step used for glyph marks: dim, base, bright, or deep.
 markStep = "base"
+# Glyph mark treatment: fill colors the tile; border colors its outline.
 markStyle = "fill"
+# Outline around a tile with a filled rainbow mark.
 markOutline = "baseUi.00"
+# Glyph and caption color on filled rainbow tiles.
 markInk = "baseUi.00"
+# Outline point treatment: fill uses colored interiors; ring uses colored rings.
 pointStyle = "fill"
+# Outline around filled point markers.
 pointOutline = "baseUi.00"
+# Add a canvas-colored halo around points and anchors to separate them from paths.
 pointHalo = false
 
+# Base UI palette: ten reusable stops for neutral surfaces, text, and outlines.
+# References such as baseUi.02 point to these values; changing a stop affects every use.
+# Chroma 0 makes Gray neutral, so its hue has no visible effect.
 [baseUi]
 "00" = "oklch(0.30 0 0)"
 "01" = "oklch(0.36 0 0)"
@@ -26,9 +40,12 @@ pointHalo = false
 "08" = "oklch(0.78 0 0)"
 "09" = "oklch(0.84 0 0)"
 
+# Rainbow palette: named hues for glyph marks and semantic editor colors.
 [rainbow]
+# Glyph mark colors and their order in the mark picker; teal remains available for other roles.
 marks = ["red", "orange", "yellow", "green", "blue", "purple", "pink"]
 
+# Complete OKLCH colors before the step offsets below are added.
 [rainbow.hues]
 red = "oklch(0.61 0.167 27)"
 orange = "oklch(0.68 0.15 46)"
@@ -39,87 +56,188 @@ blue = "oklch(0.64 0.119 248)"
 purple = "oklch(0.61 0.15 292)"
 pink = "oklch(0.68 0.15 350)"
 
-# Steps are signed OKLCH offsets added to each rainbow hue, not complete colors.
-# The final 0 keeps the hue unchanged; base adds no offsets.
+# Signed OKLCH offsets added to each hue, not complete colors.
+# Negative lightness darkens; positive lightness brightens; chroma changes saturation.
+# The hue offset must be 0; hue rotation is not supported. Base adds no offsets.
 [rainbow.steps]
 dim = "oklch(-0.17 -0.02 0)"
 base = "oklch(0.0 0.0 0)"
 bright = "oklch(0.13 -0.03 0)"
 deep = "oklch(-0.26 0.0 0)"
 
+# Backgrounds, fills, outlines, and shadows. Values reference palette tokens.
 [surfaces]
-app = "baseUi.06"
+# Window background behind the floating panels.
+app = "baseUi.02"
+# Main floating panel faces and sidebar backgrounds.
 panel = "baseUi.07"
-titlebar = "baseUi.04"
+# Floating panel shadow color; currently drawn at 50% opacity, 2 px down and left.
+# Enable or disable it with geometry.shadowPanel below.
+panelShadow = "baseUi.01"
+# Title bar background in hosts that draw it separately.
+titlebar = "baseUi.02"
+# General control surface, including slider handles.
 control = "baseUi.06"
+# Default button face.
 button = "baseUi.07"
+# Button face when hovered in controls that use a hover fill.
 buttonHover = "baseUi.08"
+# Editable text field background.
 field = "baseUi.08"
+# Structural outlines: floating panels, glyph tiles, and selected sidebar rows.
 outline = "baseUi.00"
+# Text field outline.
 fieldOutline = "baseUi.00"
+# Shared divider color; native panel rules currently use outline.
 divider = "baseUi.00"
+# Editing canvas background inside its floating panel.
 canvas = "baseUi.07"
+# Recessed strip behind the sidebar tool tabs.
 tabRail = "baseUi.04"
+# Inactive sidebar tool tab face.
 inactiveTab = "baseUi.06"
-header = "baseUi.00"
+# Background behind the window title and top toolbar.
+header = "baseUi.02"
+# Ground behind glyph tiles, in both the main grid and editor sidebar grid.
 gridBackground = "baseUi.05"
-cellShadow = "baseUi.03"
+# Hard shadows beneath glyph tiles: 2 px down and left, or 3 px when selected.
+cellShadow = "baseUi.04"
+# Header of a small floating card, such as the glyph metrics card.
 floatingPaneHeader = "baseUi.06"
+# Slider rail behind its draggable handle; Gray uses two steps lighter than text.secondary.
+# The knob outline uses text.secondary.
 sliderTrack = "baseUi.03"
+# Normal slider knob fill: two steps darker than the panel at 07.
+sliderThumb = "baseUi.05"
+# Focused or dragged slider knob fill: one step brighter than its normal fill.
+sliderThumbActive = "baseUi.06"
 
+# Text and icon colors; kept separate from surface colors for contrast.
 [text]
+# Text on the window background, including the empty-document welcome view.
+appInk = "baseUi.09"
+# Normal text and icons on panels.
 primary = "baseUi.00"
+# Secondary ink, also used for outline control-handle lines.
 secondary = "baseUi.01"
+# Quieter labels, disclosure markers, and editor controls.
 muted = "baseUi.01"
+# Lowest-emphasis UI text.
 subdued = "baseUi.02"
+# Shared ink token for overlay text.
 overlay = "baseUi.00"
+# Shared glyph ink token; native grid glyphs currently use primary or markInk.
 glyph = "baseUi.00"
-headerInk = "baseUi.07"
+# Document title and active top-toolbar text and icons.
+headerInk = "baseUi.09"
+# Inactive top-toolbar text, icons, and button outlines.
+headerMutedInk = "baseUi.08"
 
+# Colors named by editor purpose; shared across hosts, so some are host-specific.
+# Values can reference Base UI or Rainbow, or use a literal color such as #17B870.
 [roles]
-gridSelected = "baseUi.00"
-cellSelectedFill = "baseUi.00"
+# Shared selected-grid color token.
+gridSelected = "baseUi.02"
+# Shared selected-cell fill token.
+cellSelectedFill = "baseUi.02"
+# Shared selected-cell ink token.
 cellSelectedInk = "baseUi.07"
-controlSelected = "baseUi.00"
+# Native selected backgrounds, including glyph tiles, sidebar rows, and controls.
+# Native selected glyphs and sidebar labels use rainbow.yellow at markStep.
+controlSelected = "baseUi.02"
+# Contrasting ink for other selected controls.
 controlSelectedInk = "baseUi.07"
+# Fine design-space grid lines.
 designGridFine = "baseUi.02"
+# Coarse design-space grid lines.
 designGridCoarse = "baseUi.03"
+# General accent color.
 accent = "rainbow.green.deep"
+# Warning state color.
 warning = "rainbow.orange.base"
+# Error or destructive-state color.
 danger = "rainbow.red.deep"
+# Selection geometry color, distinct from the selected UI background.
 selection = "rainbow.orange.base"
+# Unselected component geometry.
 component = "rainbow.purple.deep"
+# Selected component geometry.
 componentSelected = "rainbow.pink.deep"
+# Smooth on-curve point markers.
 pointSmooth = "rainbow.blue.base"
+# Corner on-curve point markers.
 pointCorner = "rainbow.green.base"
+# Off-curve control point markers.
 pointOffcurve = "rainbow.purple.base"
+# Hyperbezier-specific point markers.
 pointHyper = "rainbow.teal.base"
+# Selected point markers.
 pointSelected = "rainbow.yellow.base"
+# Shared interior color for ring-style point markers.
 pointInner = "baseUi.00"
+# Contour start marker.
 startNode = "rainbow.orange.base"
+# Text-tool insertion cursor.
 textCursor = "rainbow.orange.base"
+# Active kerning indicator.
 kernActive = "rainbow.teal.deep"
+# Previous kerning indicator.
 kernPrevious = "rainbow.orange.base"
+# Glyph outline path color.
 pathStroke = "baseUi.00"
+# Filled proof glyphs and compact editor marks.
 previewFill = "baseUi.02"
+# Background-layer geometry color; this is not the window background (surfaces.app).
 background = "baseUi.03"
+# Reference and underlay geometry, also used for inactive layer indicators.
 reference = "baseUi.06"
+# Contrast halo color used by geometry overlays.
 halo = "baseUi.09"
+# Quieter metric guides and measurements.
 metricQuiet = "baseUi.06"
+# Fill beneath editable outlines; native rendering applies 70% opacity.
 outlineFill = "baseUi.05"
+# Glyph metric lines.
 metricsLine = "baseUi.04"
+# Point markers on geometry that cannot be edited.
 readonlyPoint = "baseUi.03"
+# Curvature-continuous join indicator.
 continuityG2 = "rainbow.teal.deep"
+# Tangent-continuous join indicator.
 continuityG1 = "rainbow.yellow.deep"
+# Straight join indicator.
 continuityLine = "baseUi.03"
+# Discontinuous or kinked join indicator.
 continuityKink = "rainbow.red.deep"
+# Popcount diagnostic tier: one set bit.
 popcount1 = "#17B870"
+# Popcount diagnostic tier: two set bits.
 popcount2 = "#FFDB33"
+# Popcount diagnostic tier: three set bits.
 popcount3 = "#FF990F"
+# Popcount diagnostic tier: four or more set bits.
 popcount4 = "#FF4A3D"
 
+# Shape settings, separate from colors. All dimensions are logical pixels.
+# The three radii are independent; rendering caps them to fit the actual shape.
+# Changing this bundled file requires rebuilding before the application uses it.
 [geometry]
-radius = 1.0
-radiusControl = 1.0
+# General corner radius for glyph tiles and small popups, in logical pixels.
+# 0 gives square corners; larger values make rounder corners.
+radius = 8.0
+# Separate corner radius for the large floating workspace panels.
+# If omitted, it follows radius; it does not change glyph tiles or buttons.
+radiusPanel = 10.0
+# Enable floating panel drop shadows; false removes them without moving the panels.
+# Shadow color is surfaces.panelShadow; offset and opacity are currently fixed in code.
+shadowPanel = true
+# Corner radius for buttons, text fields, tabs, and other pressable controls.
+# Sidebar selection rows use half this value; panel and glyph tile radii are separate.
+# 0 gives square controls; this changes corner shape, not control height or padding.
+radiusControl = 4.0
+# Shared normal stroke width, in logical pixels; values must be nonnegative.
+# Currently parsed but not applied to native line widths, which remain fixed in code.
 stroke = 1.0
+# Shared emphasized stroke width, normally larger than stroke; must be nonnegative.
+# Currently parsed but not applied to native line widths.
 strokeEmphasis = 2.0

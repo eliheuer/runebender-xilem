@@ -93,8 +93,22 @@ pub(crate) fn run(
     let initial_background = app.background();
     let window_id = xilem::WindowId::next();
     Xilem::new(app, move |app| {
+        #[cfg(target_os = "macos")]
+        if let Some(workspace) = app.workspace.as_mut() {
+            workspace.fullscreen = crate::application::platform::window::is_fullscreen();
+        }
         let background = app.background();
-        let view = xilem::window(window_id, "Runebender", root_logic(app))
+        let content = root_logic(app);
+        #[cfg(target_os = "macos")]
+        let content = xilem::view::resize_observer(
+            |app: &mut AppState, _| {
+                if let Some(workspace) = app.workspace.as_mut() {
+                    workspace.fullscreen = crate::application::platform::window::is_fullscreen();
+                }
+            },
+            content,
+        );
+        let view = xilem::window(window_id, "Runebender", content)
             .with_options(|options| {
                 let options = options
                     .with_initial_inner_size(LogicalSize::new(

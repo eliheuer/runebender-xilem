@@ -7,7 +7,7 @@ use masonry::accesskit::{Node, Role};
 use masonry::core::{
     AccessCtx, AccessEvent, ChildrenIds, EventCtx, LayoutCtx, MeasureCtx, PaintCtx, PointerButton,
     PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, PropertySet, RegisterCtx,
-    TextEvent, Widget, WidgetMut, WidgetPod,
+    TextEvent, Update, UpdateCtx, Widget, WidgetMut, WidgetPod,
 };
 use masonry::kurbo::{Axis, Circle, Point, Size, Stroke};
 use masonry::layout::{LenReq, Length};
@@ -34,6 +34,8 @@ pub(crate) struct GestureSliderWidget {
     max: f64,
     value: f64,
     thumb_outline: Color,
+    thumb: Color,
+    thumb_active: Color,
 }
 
 impl GestureSliderWidget {
@@ -97,6 +99,20 @@ impl Widget for GestureSliderWidget {
         } else {
             self.thumb_outline
         };
+        let fill = if self.pointer_down || ctx.has_focus_target() {
+            self.thumb_active
+        } else {
+            self.thumb
+        };
+        let fill = if ctx.is_disabled() {
+            fill.with_alpha(0.4)
+        } else {
+            fill
+        };
+        // Cover the stock knob, including its state-dependent border, then draw our fixed keyline.
+        painter
+            .fill(Circle::new(thumb.center, SLIDER_THUMB_RADIUS), fill)
+            .draw();
         painter.stroke(thumb, &Stroke::new(2.0), outline).draw();
     }
 
@@ -109,7 +125,8 @@ impl Widget for GestureSliderWidget {
         if ctx.is_disabled() {
             return;
         }
-        // The stock slider retains capture, focus, values, painting and accessibility.
+        ctx.request_post_paint();
+        // The stock slider retains capture, focus, values and accessibility.
         // Its Down action is queued before this bubbled event; the view reads these
         // flags only after dispatch completes, so the first value joins the gesture.
         match event {
@@ -158,6 +175,15 @@ impl Widget for GestureSliderWidget {
         self.value_from_pointer = false;
     }
 
+    fn update(&mut self, ctx: &mut UpdateCtx<'_>, _: &mut PropertiesMut<'_>, event: &Update) {
+        if matches!(
+            event,
+            Update::ChildFocusChanged(_) | Update::DisabledChanged(_)
+        ) {
+            ctx.request_post_paint();
+        }
+    }
+
     fn accessibility_role(&self) -> Role {
         Role::Group
     }
@@ -182,6 +208,7 @@ pub(crate) struct GestureSliderView<F, E> {
     accessibility_name: Option<String>,
     track: Color,
     thumb: Color,
+    thumb_active: Color,
     thumb_outline: Color,
     on_change: F,
     on_end: E,
@@ -210,7 +237,8 @@ where
         disabled: false,
         accessibility_name: None,
         track: pal.slider_track(),
-        thumb: pal.button,
+        thumb: pal.slider_thumb,
+        thumb_active: pal.slider_thumb_active,
         thumb_outline: pal.handle_line,
         on_change,
         on_end,
@@ -272,6 +300,8 @@ where
                 max: self.max,
                 value: self.value,
                 thumb_outline: self.thumb_outline,
+                thumb: self.thumb,
+                thumb_active: self.thumb_active,
             })
         });
         pod.new_widget.options.disabled = self.disabled;
@@ -297,11 +327,15 @@ where
             || self.max != prev.max
             || self.value != prev.value
             || self.thumb_outline != prev.thumb_outline
+            || self.thumb != prev.thumb
+            || self.thumb_active != prev.thumb_active
         {
             element.widget.min = self.min;
             element.widget.max = self.max;
             element.widget.value = self.value;
             element.widget.thumb_outline = self.thumb_outline;
+            element.widget.thumb = self.thumb;
+            element.widget.thumb_active = self.thumb_active;
             element.ctx.request_post_paint();
         }
         let mut child = GestureSliderWidget::child_mut(&mut element);
@@ -381,10 +415,29 @@ mod tests {
                 max: 100.0,
                 value: 25.0,
                 thumb_outline: Color::BLACK,
+                thumb: Color::from_rgb8(100, 100, 100),
+                thumb_active: Color::from_rgb8(140, 140, 140),
             }
             .prepare(),
             (200, 32),
         )
+    }
+
+    #[test]
+    fn knob_brightens_on_focus_without_changing_its_outline() {
+        let mut harness = harness();
+        let normal = harness.render();
+        harness.mouse_move(Point::new(53.5, 16.0));
+        let hovered = harness.render();
+        assert_eq!(normal.get_pixel(53, 10), hovered.get_pixel(53, 10));
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        let active = harness.render();
+        assert!(active.get_pixel(53, 16)[0] > normal.get_pixel(53, 16)[0]);
+        assert_eq!(normal.get_pixel(53, 10), active.get_pixel(53, 10));
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        let focused = harness.render();
+        assert_eq!(active.get_pixel(53, 16), focused.get_pixel(53, 16));
+        assert_eq!(normal.get_pixel(53, 10), focused.get_pixel(53, 10));
     }
 
     #[test]

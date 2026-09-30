@@ -58,8 +58,6 @@ pub(crate) fn px32(value: f64) -> f32 {
 enum KeylineEdge {
     Top,
     Bottom,
-    Left,
-    Right,
 }
 
 /// Overlay a palette keyline at one edge without consuming layout space.
@@ -80,14 +78,6 @@ where
         KeylineEdge::Bottom => (
             Dimensions::new(Dim::Stretch, Dim::Fixed(Stroke::Hairline.length())),
             UnitPoint::BOTTOM,
-        ),
-        KeylineEdge::Left => (
-            Dimensions::new(Dim::Fixed(Stroke::Hairline.length()), Dim::Stretch),
-            UnitPoint::LEFT,
-        ),
-        KeylineEdge::Right => (
-            Dimensions::new(Dim::Fixed(Stroke::Hairline.length()), Dim::Stretch),
-            UnitPoint::RIGHT,
         ),
     };
     xilem::view::zstack((
@@ -126,13 +116,41 @@ where
     edge_keyline(content, KeylineEdge::Bottom, color)
 }
 
+/// Frame a workspace panel without letting rectangular child backgrounds erase its corners.
+fn floating_panel<State, V>(
+    content: V,
+    pal: &crate::application::view::theme::Palette,
+) -> impl WidgetView<State, Widget: Sized> + use<State, V>
+where
+    State: 'static,
+    V: WidgetView<State>,
+{
+    let ground = pal.app;
+    let radius = pal.panel_radius;
+    sized_box(xilem::view::zstack((
+        clip_split(sized_box(content).background_color(pal.panel)).alignment(UnitPoint::TOP_LEFT),
+        crate::application::widgets::panel_frame::panel_frame(
+            ground,
+            pal.outline,
+            radius,
+            pal.panel_shadow,
+        )
+        .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
+        .alignment(UnitPoint::TOP_LEFT),
+    )))
+    .padding(masonry::properties::Padding {
+        left: Length::px(design::PANEL_SHADOW_OFFSET),
+        bottom: Length::px(design::PANEL_SHADOW_OFFSET),
+        ..Default::default()
+    })
+}
+
 /// Native splitters retain dragged sizes across view rebuilds and window resizes.
 fn workspace_columns<State, A, B, C>(
     left: A,
     middle: B,
     right: C,
     collapsed: bool,
-    outline: Color,
 ) -> impl WidgetView<State, Widget: Sized> + use<State, A, B, C>
 where
     State: 'static,
@@ -141,28 +159,42 @@ where
     C: WidgetView<State>,
 {
     use crate::application::view::design::{
-        CENTER_MIN_WIDTH, SIDEBAR_SPLITTER_HIT_WIDTH, SPLITTER_HIT_WIDTH,
+        CENTER_MIN_WIDTH, SIDEBAR_SPLITTER_HIT_WIDTH, SPLITTER_HIT_WIDTH, WORKSPACE_GUTTER,
     };
-    let left = edge_keyline(left, KeylineEdge::Right, outline);
+    let shadow_extent = design::PANEL_SHADOW_OFFSET;
+    let panel_width = DOCK_WIDTH + shadow_extent;
+    let panel_gutter = WORKSPACE_GUTTER - shadow_extent;
+    let left_gutter = if collapsed { 0.0 } else { panel_gutter };
+    let left_width = if collapsed {
+        0.0
+    } else {
+        panel_width + left_gutter
+    };
+    let left = sized_box(left).padding(masonry::properties::Padding {
+        right: Length::px(left_gutter),
+        ..Default::default()
+    });
+    let middle = sized_box(middle).padding(masonry::properties::Padding {
+        right: Length::px(panel_gutter),
+        ..Default::default()
+    });
     let columns = xilem::view::split(left, middle)
-        .split_point_from_start(Length::px(if collapsed { 0.0 } else { DOCK_WIDTH }))
+        .split_point_from_start(Length::px(left_width))
         .min_lengths(
-            Length::px(if collapsed { 0.0 } else { DOCK_WIDTH }),
-            Length::px(CENTER_MIN_WIDTH),
+            Length::px(left_width),
+            Length::px(CENTER_MIN_WIDTH + shadow_extent + panel_gutter),
         )
         // Split keeps the generous hit target and all native resize behavior;
-        // the visible rule is our palette keyline above, not its hard-coded
-        // bluish-gray bar.
+        // the visible gutter comes from padding, not its hard-coded bar.
         .bar_thickness(Length::ZERO)
         .min_bar_area(Length::px(SIDEBAR_SPLITTER_HIT_WIDTH))
         .solid_bar(false)
         .draggable(!collapsed);
-    let right = edge_keyline(right, KeylineEdge::Left, outline);
     let columns = xilem::view::split(columns, right)
-        .split_point_from_end(Length::px(DOCK_WIDTH))
+        .split_point_from_end(Length::px(panel_width))
         .min_lengths(
-            Length::px(CENTER_MIN_WIDTH + if collapsed { 0.0 } else { DOCK_WIDTH } + 1.0),
-            Length::px(DOCK_WIDTH),
+            Length::px(CENTER_MIN_WIDTH + shadow_extent + panel_gutter + left_width),
+            Length::px(panel_width),
         )
         .bar_thickness(Length::ZERO)
         .min_bar_area(Length::px(SPLITTER_HIT_WIDTH))
@@ -237,9 +269,8 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     let _editing_mode = matches!(app.mode, Mode::Editor(_));
     let _ = &app.multi_selected;
 
-    // One title bar spans the whole width, followed by three columns and a bottom bar
-    // that runs under the sidebar and the middle but not under the
-    // inspector, which is full height.
+    // The header shares the window ground. Each workspace column is an inset
+    // panel with its own content and footer.
     let body = match app.mode {
         Mode::Overview => OneOf3::A(overview(app)),
         Mode::Editor(_) => OneOf3::B(editor_pane(app)),
@@ -278,12 +309,26 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         // the section tree is already near rustc's recursive trait limit.
         .boxed();
     let columns = workspace_columns(
-        left.background_color(pal.panel),
-        middle,
-        inspector,
+        floating_panel(left.boxed(), pal),
+        floating_panel(middle.boxed(), pal),
+        floating_panel(inspector, pal),
         app.left_collapsed,
-        pal.outline,
     );
+    // The native header already centers its controls between the window edge
+    // and this panel edge. A second top gutter makes the space below them
+    // larger than the space above, especially beside the macOS traffic lights.
+    let gutter = Length::px(design::WORKSPACE_GUTTER);
+    let columns = sized_box(columns).padding(masonry::properties::Padding {
+        left: Length::px(design::WORKSPACE_GUTTER - design::PANEL_SHADOW_OFFSET),
+        right: gutter,
+        top: if menu_shell::in_window() {
+            gutter
+        } else {
+            Length::ZERO
+        },
+        // Each panel reserves its own shadow extent inside the clipped columns.
+        bottom: Length::px(design::WORKSPACE_GUTTER - design::PANEL_SHADOW_OFFSET),
+    });
 
     // Boxed on purpose, and not for tidiness. Every wrapper here adds a
     // layer to a monomorphized view type that is already enormous, and
@@ -294,14 +339,6 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     // Erasing the type here cuts the chain.
     let content = flex_col((
         (!menu_shell::in_window()).then(|| titlebar(app)),
-        // One shared top rule keeps all three columns on the same boundary.
-        // The navigation rail must not paint another top edge of its own.
-        sized_box(label(""))
-            .dims(Dimensions::new(
-                Dim::Stretch,
-                Dim::Fixed(Stroke::Hairline.length()),
-            ))
-            .background_color(pal.outline),
         columns.flex(1.0),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
@@ -423,8 +460,8 @@ fn welcome(app: &mut AppState) -> impl WidgetView<AppState> + use<> {
         flex_col((
             label("No font open")
                 .text_size(TextSize::Heading.px())
-                .color(palette.text),
-            label(detail).color(palette.text_muted),
+                .color(palette.app_ink),
+            label(detail).color(palette.app_ink),
         ))
         .main_axis_alignment(MainAxisAlignment::Center)
         .cross_axis_alignment(CrossAxisAlignment::Center)
@@ -622,7 +659,7 @@ mod tab_tests {
 
     /// A two-glyph UFO on disk, because `Workspace::open` takes a path. Each
     /// test gets its own directory so they can run in parallel.
-    fn app() -> Workspace {
+    pub(super) fn app() -> Workspace {
         use std::sync::atomic::{AtomicUsize, Ordering};
         static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -889,7 +926,7 @@ mod tab_tests {
 
 #[cfg(test)]
 mod panel_resize_tests {
-    use super::{inspector_stack, proof_split, workspace_columns};
+    use super::{floating_panel, inspector_stack, proof_split, workspace_columns};
     use masonry::core::keyboard::{Key, NamedKey};
     use masonry::core::{TextEvent, WindowEvent};
     use masonry::dpi::PhysicalSize;
@@ -920,20 +957,188 @@ mod panel_resize_tests {
         )
     }
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn fullscreen_header_removes_and_restores_window_controls_inset() {
+        use crate::application::view::chrome::titlebar;
+        use xilem::core::View;
+
+        let mut app = super::tab_tests::app();
+        let mut ctx = context();
+        let normal = xilem::view::sized_box(titlebar(&app));
+        let (pod, mut state) = normal.build(&mut ctx, &mut app);
+        let mut harness = TestHarness::create_with_size(
+            crate::application::view::default_property_set(),
+            pod.new_widget,
+            (1336, 30),
+        );
+        let normal_count = harness.root_widget().children()[0].children()[0]
+            .children()
+            .len();
+
+        app.fullscreen = true;
+        let fullscreen = xilem::view::sized_box(titlebar(&app));
+        harness.edit_root_widget(|root| {
+            fullscreen.rebuild(&normal, &mut state, &mut ctx, root, &mut app);
+        });
+        assert_eq!(
+            harness.root_widget().children()[0].children()[0]
+                .children()
+                .len(),
+            normal_count - 1,
+            "full screen must remove the window-controls spacer"
+        );
+
+        app.fullscreen = false;
+        let restored = xilem::view::sized_box(titlebar(&app));
+        harness.edit_root_widget(|root| {
+            restored.rebuild(&fullscreen, &mut state, &mut ctx, root, &mut app);
+        });
+        assert_eq!(
+            harness.root_widget().children()[0].children()[0]
+                .children()
+                .len(),
+            normal_count
+        );
+    }
+
+    #[test]
+    fn floating_panel_rounds_children_without_blocking_clicks() {
+        use crate::application::view::theme::Palette;
+        use masonry::layout::{Dim, Length};
+        use masonry::properties::Dimensions;
+        use masonry::widgets::ButtonPress;
+        use xilem::core::View;
+        use xilem::style::Style;
+        use xilem::view::{button, label, sized_box};
+
+        for radius in [0.0, 8.0] {
+            let mut palette = Palette::load("gray");
+            palette.panel_radius = radius;
+            let content = button(label(""), |_: &mut ()| {})
+                .background_color(palette.panel)
+                .border_width(Length::ZERO)
+                .dims(Dimensions::new(Dim::Stretch, Dim::Stretch));
+            let view = sized_box(floating_panel(content, &palette))
+                .padding(Length::px(8.0))
+                .background_color(palette.app);
+            let mut ctx = context();
+            let (pod, _) = view.build(&mut ctx, &mut ());
+            let mut harness = TestHarness::create_with_size(
+                crate::application::view::default_property_set(),
+                pod.new_widget,
+                (96, 96),
+            );
+            let image = harness.render();
+            let ground = image.get_pixel(0, 0);
+            let face = image.get_pixel(20, 20);
+            assert_ne!(ground, face);
+            assert_eq!(
+                image.get_pixel(11, 9),
+                if radius == 0.0 { face } else { ground },
+                "the panel must retain square and rounded theme geometry"
+            );
+            harness.mouse_move(Point::new(48.0, 48.0));
+            harness.mouse_button_press(None);
+            harness.mouse_button_release(None);
+            assert!(
+                harness.pop_action::<ButtonPress>().is_some(),
+                "the frame must pass pointer input through to its content"
+            );
+        }
+    }
+
+    #[test]
+    fn panel_shadows_toggle_without_moving_content_and_survive_resizing() {
+        use crate::application::view::theme::Palette;
+        use image::Rgba;
+        use masonry::layout::Length;
+        use xilem::core::View;
+        use xilem::style::Style;
+        use xilem::view::{label, sized_box};
+
+        let mut palette = Palette::load("gray");
+        let shadow = palette.panel_shadow;
+        palette.panel_shadow = None;
+        let logic = |pal: &Palette| {
+            sized_box(floating_panel(label(""), pal))
+                .padding(Length::px(8.0))
+                .background_color(pal.app)
+        };
+        let mut ctx = context();
+        let off = logic(&palette);
+        let (pod, mut state) = off.build(&mut ctx, &mut ());
+        let mut harness = TestHarness::create_with_size(
+            crate::application::view::default_property_set(),
+            pod.new_widget,
+            (96, 96),
+        );
+        let baseline = harness.render();
+        let ground = *baseline.get_pixel(0, 0);
+        assert_eq!(*baseline.get_pixel(48, 87), ground);
+
+        palette.panel_shadow = shadow;
+        let on = logic(&palette);
+        harness.edit_root_widget(|root| on.rebuild(&off, &mut state, &mut ctx, root, &mut ()));
+        let rendered = harness.render();
+        let color = runebender::ui::theme::load_theme("gray")
+            .expect("Gray")
+            .surface("panelShadow");
+        let midpoint = Rgba([
+            color.r.midpoint(ground[0]),
+            color.g.midpoint(ground[1]),
+            color.b.midpoint(ground[2]),
+            255,
+        ]);
+        let expected = *rendered.get_pixel(48, 86);
+        for channel in 0..4 {
+            assert!(
+                expected[channel].abs_diff(midpoint[channel]) <= 1,
+                "the shadow must blend halfway into the ground"
+            );
+        }
+        for y in 86..88 {
+            assert_eq!(
+                *rendered.get_pixel(48, y),
+                expected,
+                "the full shadow must be visible"
+            );
+        }
+        assert_eq!(*rendered.get_pixel(48, 88), ground);
+        for x in 8..10 {
+            assert_eq!(
+                *rendered.get_pixel(x, 48),
+                expected,
+                "the left shadow must be visible"
+            );
+        }
+        assert_eq!(*rendered.get_pixel(7, 48), ground);
+        assert_eq!(rendered.get_pixel(10, 48), baseline.get_pixel(10, 48));
+        assert_eq!(
+            rendered.get_pixel(48, 85),
+            baseline.get_pixel(48, 85),
+            "the panel edge must stay put"
+        );
+        assert_eq!(rendered.get_pixel(48, 48), baseline.get_pixel(48, 48));
+
+        // The harness keeps its initial raster dimensions, so resize within that image.
+        harness.process_window_event(WindowEvent::Resize(PhysicalSize::new(80, 80)));
+        let resized = harness.render();
+        assert_eq!(*resized.get_pixel(40, 71), expected);
+        assert_eq!(*resized.get_pixel(40, 72), ground);
+
+        palette.panel_shadow = None;
+        let off_again = logic(&palette);
+        harness
+            .edit_root_widget(|root| off_again.rebuild(&on, &mut state, &mut ctx, root, &mut ()));
+        assert_eq!(*harness.render().get_pixel(40, 71), ground);
+    }
+
     #[test]
     fn both_docks_drag_and_retain_widths_after_rebuild_and_window_resize() {
         use xilem::core::View;
         use xilem::view::label;
-        let outline = masonry::peniko::Color::from_rgb8(29, 29, 29);
-        let logic = || {
-            workspace_columns(
-                label("Left"),
-                label("Canvas"),
-                label("Right"),
-                false,
-                outline,
-            )
-        };
+        let logic = || workspace_columns(label("Left"), label("Canvas"), label("Right"), false);
         let mut ctx = context();
         let view = logic();
         let (pod, mut state) = view.build(&mut ctx, &mut ());
@@ -948,54 +1153,53 @@ mod panel_resize_tests {
             let children = clip_children[0].children();
             let nested = children[0].children();
             (
-                nested[0].ctx().border_box().width(),
-                nested[1].ctx().border_box().width(),
+                nested[0].children()[0].ctx().border_box().width(),
+                nested[1].children()[0].ctx().border_box().width(),
                 children[1].ctx().border_box().width(),
             )
         }
-        assert_eq!(widths(&h), (246.0, 788.0, 246.0));
+        assert_eq!(widths(&h), (248.0, 772.0, 248.0));
         // Six pixels beside the visible line, outside the old hit target.
-        h.mouse_move(Point::new(239.5, 100.0));
+        h.mouse_move(Point::new(247.5, 100.0));
         h.mouse_button_press(None);
-        h.mouse_move(Point::new(319.5, 100.0));
+        h.mouse_move(Point::new(327.5, 100.0));
         h.mouse_button_release(None);
-        assert_eq!(widths(&h), (326.0, 708.0, 246.0));
+        assert_eq!(widths(&h), (328.0, 692.0, 248.0));
         h.mouse_move(Point::new(1033.5, 100.0));
         h.mouse_button_press(None);
         h.mouse_move(Point::new(953.5, 100.0));
         h.mouse_button_release(None);
-        assert_eq!(widths(&h), (326.0, 628.0, 326.0));
+        assert_eq!(widths(&h), (328.0, 612.0, 328.0));
         let again = logic();
         h.edit_root_widget(|root| again.rebuild(&view, &mut state, &mut ctx, root, &mut ()));
-        assert_eq!(widths(&h), (326.0, 628.0, 326.0));
+        assert_eq!(widths(&h), (328.0, 612.0, 328.0));
         h.process_window_event(WindowEvent::Resize(PhysicalSize::new(1100, 650)));
-        assert_eq!(widths(&h), (326.0, 448.0, 326.0));
-        h.mouse_move(Point::new(326.5, 100.0));
+        assert_eq!(widths(&h), (328.0, 432.0, 328.0));
+        h.mouse_move(Point::new(334.5, 100.0));
         h.mouse_button_press(None);
         h.mouse_move(Point::new(20.0, 100.0));
         h.mouse_button_release(None);
-        assert_eq!(widths(&h).0, crate::application::view::design::DOCK_WIDTH);
+        assert_eq!(
+            widths(&h).0,
+            crate::application::view::design::DOCK_WIDTH + super::design::PANEL_SHADOW_OFFSET
+        );
         let right_divider = 1100.0 - widths(&h).2;
         h.mouse_move(Point::new(right_divider, 100.0));
         h.mouse_button_press(None);
         h.mouse_move(Point::new(1090.0, 100.0));
         h.mouse_button_release(None);
-        assert_eq!(widths(&h).2, crate::application::view::design::DOCK_WIDTH);
+        assert_eq!(
+            widths(&h).2,
+            crate::application::view::design::DOCK_WIDTH + super::design::PANEL_SHADOW_OFFSET
+        );
     }
 
     #[test]
     fn collapsed_left_panel_reopens_without_disabling_the_inspector_splitter() {
         use xilem::core::View;
         use xilem::view::label;
-        let outline = masonry::peniko::Color::from_rgb8(29, 29, 29);
         let logic = |collapsed| {
-            workspace_columns(
-                label("Left"),
-                label("Canvas"),
-                label("Right"),
-                collapsed,
-                outline,
-            )
+            workspace_columns(label("Left"), label("Canvas"), label("Right"), collapsed)
         };
         let mut ctx = context();
         let view = logic(true);
@@ -1021,7 +1225,7 @@ mod panel_resize_tests {
                 .ctx()
                 .border_box()
                 .width(),
-            326.0
+            328.0
         );
         let again = logic(false);
         h.edit_root_widget(|root| again.rebuild(&view, &mut state, &mut ctx, root, &mut ()));
@@ -1030,14 +1234,14 @@ mod panel_resize_tests {
                 .ctx()
                 .border_box()
                 .width(),
-            246.0
+            254.0
         );
         assert_eq!(
             h.root_widget().children()[0].children()[1]
                 .ctx()
                 .border_box()
                 .width(),
-            326.0
+            328.0
         );
     }
 
@@ -1201,7 +1405,7 @@ mod panel_resize_tests {
             }
         }
         check(
-            workspace_columns(pane(), pane(), pane(), false, fill),
+            workspace_columns(pane(), pane(), pane(), false),
             (1296, 666),
             Point::new(1041.5, 108.0),
             Point::new(961.5, 108.0),

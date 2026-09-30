@@ -26,6 +26,8 @@ pub(crate) mod watch;
 #[cfg(target_arch = "wasm32")]
 #[path = "browser_watch.rs"]
 pub(crate) mod watch;
+#[cfg(target_os = "macos")]
+pub(crate) mod window;
 
 #[cfg(unix)]
 pub(crate) mod live;

@@ -337,7 +337,7 @@ pub(crate) fn list_row_marked<F: Fn(&mut Workspace) + Send + Sync + 'static>(
             }
             .length(),
         )
-        .corner_radius(Length::px(pal.control_radius)),
+        .corner_radius(Length::px(pal.control_radius * 0.5)),
     )
     .dims(Dimensions::new(
         Dim::Stretch,
@@ -444,19 +444,16 @@ pub(crate) fn neutral_slider<F>(
     max: f64,
     value: f64,
     on_change: F,
-) -> impl WidgetView<Workspace, Widget = masonry::widgets::Slider> + use<F>
+) -> impl WidgetView<Workspace, Widget: Sized> + use<F>
 where
     F: Fn(&mut Workspace, f64) + Send + Sync + 'static,
 {
-    use masonry::properties::{ThumbColor, TrackColor};
-    xilem::view::slider(min, max, value, on_change)
-        .prop(TrackColor {
-            active: pal.text_muted,
-            inactive: pal.text_muted,
-        })
-        .prop(ThumbColor(pal.button))
-        // Masonry's stock slider paints a white rounded capsule around the
-        // whole control on hover or focus. Runebender keeps that state in the
-        // slightly lighter thumb instead, so the footer remains one flat row.
-        .border_color(xilem::Color::TRANSPARENT)
+    crate::application::widgets::gesture_slider::gesture_slider(
+        pal,
+        min,
+        max,
+        value,
+        move |app, value, _from_pointer| on_change(app, value),
+        |_app, _cancelled| {},
+    )
 }

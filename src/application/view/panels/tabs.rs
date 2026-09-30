@@ -6,7 +6,7 @@
 
 use crate::application::view::canvas::grid::{GridEvent, grid};
 use crate::application::view::design::{
-    ButtonShape, ControlSize, Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
+    ControlSize, Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
 };
 use crate::application::view::design::{
     RAIL_TAB_ACTIVE_HEIGHT, RAIL_TAB_HEIGHT, RAIL_TAB_INACTIVE_HEIGHT,
@@ -457,8 +457,6 @@ fn header_tab_chip<F>(
     pal: &Palette,
     text: String,
     active: bool,
-    fixed_width: bool,
-    circular: bool,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F>
 where
@@ -467,15 +465,7 @@ where
     let (fg, border) = if active {
         (pal.header_ink, pal.header_ink)
     } else {
-        (
-            pal.header_ink.with_alpha(0.7),
-            pal.header_ink.with_alpha(0.5),
-        )
-    };
-    let width = if fixed_width {
-        Dim::from(ControlSize::Row)
-    } else {
-        Dim::Auto
+        (pal.header_inactive_ink(0.7), pal.header_inactive_ink(0.5))
     };
     sized_box(
         button(
@@ -486,14 +476,15 @@ where
         .background_color(pal.header)
         .border_color(border)
         .border_width(Stroke::Hairline.length())
-        .corner_radius(if circular {
-            ButtonShape::Circular.radius()
-        } else {
-            Length::px(pal.control_radius)
-        })
-        .padding(Space::Md),
+        .corner_radius(Length::px(pal.control_radius))
+        .padding(masonry::properties::Padding::horizontal(Length::px(
+            design::HEADER_TAB_TEXT_INSET,
+        ))),
     )
-    .dims(Dimensions::new(width, Dim::from(ControlSize::Row)))
+    .dims(Dimensions::new(
+        Dim::Auto,
+        Dim::Fixed(Length::px(design::HEADER_TAB_HEIGHT)),
+    ))
 }
 
 /// A compact title-bar button whose visible symbol comes from `icons.ufo`.
@@ -501,7 +492,6 @@ fn header_icon_chip<F>(
     pal: &Palette,
     icon: &'static str,
     label: &'static str,
-    circular: bool,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F>
 where
@@ -510,22 +500,18 @@ where
     sized_box(
         button(
             pal,
-            icon_paint::view(icon, label, pal.header_ink.with_alpha(0.7), 12.0),
+            icon_paint::view(icon, label, pal.header_inactive_ink(0.7), 12.0),
             on_click,
         )
         .background_color(pal.header)
-        .border_color(pal.header_ink.with_alpha(0.5))
+        .border_color(pal.header_inactive_ink(0.5))
         .border_width(Stroke::Hairline.length())
-        .corner_radius(if circular {
-            ButtonShape::Circular.radius()
-        } else {
-            Length::px(pal.control_radius)
-        })
-        .padding(Space::Md),
+        .corner_radius(Length::px(pal.control_radius))
+        .padding(Space::None),
     )
     .dims(Dimensions::new(
-        Dim::from(ControlSize::Row),
-        Dim::from(ControlSize::Row),
+        Dim::Fixed(Length::px(design::HEADER_TAB_ICON_WIDTH)),
+        Dim::Fixed(Length::px(design::HEADER_TAB_HEIGHT)),
     ))
 }
 
@@ -553,18 +539,12 @@ pub(crate) fn tab_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         pal,
                         label,
                         editing && index == active,
-                        false,
-                        false,
                         move |app: &mut Workspace| app.activate_tab(index),
                     ),
                     closable.then(|| {
-                        header_icon_chip(
-                            pal,
-                            "close",
-                            "Close tab",
-                            false,
-                            move |app: &mut Workspace| app.close_tab(index),
-                        )
+                        header_icon_chip(pal, "close", "Close tab", move |app: &mut Workspace| {
+                            app.close_tab(index);
+                        })
                     }),
                 ),
             )
@@ -580,8 +560,6 @@ pub(crate) fn tab_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 pal,
                 "Font".into(),
                 matches!(app.mode, Mode::Overview),
-                false,
-                false,
                 |app: &mut Workspace| app.back_to_overview(),
             ),
             // Nodes sits beside Font: the workflow over the font, as
@@ -590,12 +568,10 @@ pub(crate) fn tab_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 pal,
                 "Nodes".into(),
                 matches!(app.mode, Mode::Nodes),
-                false,
-                false,
                 |app: &mut Workspace| app.enter_nodes_mode(),
             ),
             xrow(Region::Inline, tabs),
-            header_icon_chip(pal, "plus", "New tab", true, |app: &mut Workspace| {
+            header_icon_chip(pal, "plus", "New tab", |app: &mut Workspace| {
                 app.new_tab();
             }),
         ),

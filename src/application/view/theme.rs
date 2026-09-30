@@ -18,21 +18,33 @@ fn color(c: ColorRgba) -> Color {
 /// A resolved palette: named surfaces, text, roles, and mark colors.
 pub(crate) struct Palette {
     pub app: Color,
+    /// Text on the window ground; custom themes can supply the optional `appInk` token.
+    pub app_ink: Color,
     pub panel: Color,
     /// The recessed surface behind editor-rail tabs.
     pub tab_rail: Color,
     /// The face of an inactive editor-rail tab.
     pub inactive_tab: Color,
-    /// The quiet dark band behind the title and tools.
+    /// The background behind the title and tools.
     pub header: Color,
-    /// The high-contrast ink used exclusively on the header band.
+    /// The contrasting ink used on the header background.
     pub header_ink: Color,
+    /// Optional solid ink for inactive header controls; older themes retain their opacity.
+    header_muted_ink: Option<Color>,
     /// Corner radius for glyph tiles and small popups, supplied by the active theme.
     pub corner_radius: f64,
+    /// Corner radius for the floating workspace panels.
+    pub panel_radius: f64,
+    /// A themed shadow color when panel shadows are enabled.
+    pub panel_shadow: Option<Color>,
     /// Corner radius for pressable controls and fields.
     pub control_radius: f64,
     pub control: Color,
     pub button: Color,
+    /// Normal slider knob fill.
+    pub slider_thumb: Color,
+    /// Slider knob fill while focused or dragged.
+    pub slider_thumb_active: Color,
     pub canvas: Color,
     pub field: Color,
     grid_background: Color,
@@ -76,15 +88,24 @@ impl Palette {
         let text = color(t.text("primary"));
         Self {
             app: color(t.surface("app")),
+            app_ink: color(t.text("appInk")),
             panel,
             tab_rail: color(t.surface("tabRail")),
             inactive_tab: color(t.surface("inactiveTab")),
             header: color(t.surface("header")),
             header_ink: color(t.text("headerInk")),
+            header_muted_ink: t.text.get("headerMutedInk").copied().map(color),
             corner_radius: f64::from(t.geometry.radius),
+            panel_radius: f64::from(t.geometry.radius_panel),
+            panel_shadow: t
+                .geometry
+                .shadow_panel
+                .then(|| color(t.surface("panelShadow")).with_alpha(0.5)),
             control_radius: f64::from(t.geometry.radius_control),
             control: color(t.surface("control")),
             button: color(t.surface("button")),
+            slider_thumb: color(t.surface("sliderThumb")),
+            slider_thumb_active: color(t.surface("sliderThumbActive")),
             canvas: color(t.surface("canvas")),
             field: color(t.surface("field")),
             grid_background: color(t.surface("gridBackground")),
@@ -120,8 +141,13 @@ impl Palette {
         self.field
     }
 
-    /// Selection is inversion, never a hue: the fill of anything
-    /// selected or active is the ink.
+    /// Use the theme's inactive header ink, preserving opacity in older themes.
+    pub(crate) fn header_inactive_ink(&self, legacy_opacity: f32) -> Color {
+        self.header_muted_ink
+            .unwrap_or_else(|| self.header_ink.with_alpha(legacy_opacity))
+    }
+
+    /// The themed background for selected rows, tiles, and controls.
     pub(crate) fn selected_bg(&self) -> Color {
         self.role("controlSelected")
     }
@@ -141,7 +167,7 @@ impl Palette {
         self.grid_background
     }
 
-    /// Recessed tile shadow, halfway between the grid ground and selected surface.
+    /// The themed hard shadow beneath glyph-grid tiles.
     pub(crate) fn cell_shadow(&self) -> Color {
         self.cell_shadow_color
     }
@@ -172,7 +198,7 @@ impl Palette {
         self.text_muted
     }
 
-    /// A quiet slider rail halfway between its original ink and the control surface.
+    /// The themed slider rail, separate from its thumb outline.
     pub(crate) fn slider_track(&self) -> Color {
         self.slider_track_color
     }

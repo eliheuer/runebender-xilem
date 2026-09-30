@@ -196,10 +196,15 @@ struct ThemeFile {
 
 /// Shape tokens. Every field is optional in the file: a theme names
 /// only what it changes, and the rest comes from `Geometry::default`.
+/// Panel corners follow `radius` when no separate panel radius is supplied.
 #[derive(Clone, Copy, Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 struct GeometryDef {
     radius: Option<f32>,
+    #[serde(rename = "radiusPanel")]
+    radius_panel: Option<f32>,
+    #[serde(rename = "shadowPanel")]
+    shadow_panel: Option<bool>,
     #[serde(rename = "radiusControl")]
     radius_control: Option<f32>,
     stroke: Option<f32>,
@@ -235,6 +240,10 @@ pub enum MarkStyle {
 pub struct Geometry {
     /// The default corner, on small chrome.
     pub radius: f32,
+    /// Large workspace panels; defaults to the general corner radius when omitted.
+    pub radius_panel: f32,
+    /// Whether the floating workspace panels cast a drop shadow; defaults to false.
+    pub shadow_panel: bool,
     /// Pressable tiles: toolbar tiles, sidebar tabs, toggles.
     pub radius_control: f32,
     /// The ordinary rule, on panels and chrome.
@@ -249,6 +258,8 @@ impl Default for Geometry {
     fn default() -> Self {
         Self {
             radius: 3.0,
+            radius_panel: 3.0,
+            shadow_panel: false,
             radius_control: 6.0,
             stroke: 1.0,
             stroke_emphasis: 2.0,
@@ -561,14 +572,48 @@ pub fn parse_theme(source: &str) -> Result<Theme, String> {
             ));
         }
     }
-    let surfaces = resolve_map(
+    let mut surface_tokens = file.surfaces.clone();
+    let panel_shadow = surface_tokens.remove("panelShadow");
+    let slider_thumb = surface_tokens.remove("sliderThumb");
+    let slider_thumb_active = surface_tokens.remove("sliderThumbActive");
+    let mut surfaces = resolve_map(
         &file,
         theme_id,
         "surfaces",
-        &file.surfaces,
+        &surface_tokens,
         REQUIRED_SURFACES,
     )?;
-    let text = resolve_map(&file, theme_id, "text", &file.text, REQUIRED_TEXT)?;
+    let panel_shadow = resolve_optional(
+        &file,
+        theme_id,
+        "surfaces.panelShadow",
+        panel_shadow.as_deref(),
+    )?
+    .unwrap_or_else(|| surfaces["outline"]);
+    surfaces.insert("panelShadow".into(), panel_shadow);
+    for (name, token, fallback) in [
+        ("sliderThumb", slider_thumb, "button"),
+        ("sliderThumbActive", slider_thumb_active, "buttonHover"),
+    ] {
+        let value = resolve_optional(&file, theme_id, name, token.as_deref())?
+            .unwrap_or(surfaces[fallback]);
+        surfaces.insert(name.into(), value);
+    }
+    let mut text_tokens = file.text.clone();
+    let app_ink = text_tokens.remove("appInk");
+    let header_muted_ink = text_tokens.remove("headerMutedInk");
+    let mut text = resolve_map(&file, theme_id, "text", &text_tokens, REQUIRED_TEXT)?;
+    let app_ink = resolve_optional(&file, theme_id, "text.appInk", app_ink.as_deref())?
+        .unwrap_or_else(|| text["primary"]);
+    text.insert("appInk".into(), app_ink);
+    if let Some(ink) = resolve_optional(
+        &file,
+        theme_id,
+        "text.headerMutedInk",
+        header_muted_ink.as_deref(),
+    )? {
+        text.insert("headerMutedInk".into(), ink);
+    }
     let roles = resolve_map(&file, theme_id, "roles", &file.roles, REQUIRED_ROLES)?;
     let mark_step = file.mark_step.as_deref().unwrap_or("base");
     let marks = file
@@ -600,12 +645,18 @@ pub fn parse_theme(source: &str) -> Result<Theme, String> {
     let fallback = Geometry::default();
     let geometry = Geometry {
         radius: own.radius.unwrap_or(fallback.radius),
+        radius_panel: own
+            .radius_panel
+            .or(own.radius)
+            .unwrap_or(fallback.radius_panel),
+        shadow_panel: own.shadow_panel.unwrap_or(fallback.shadow_panel),
         radius_control: own.radius_control.unwrap_or(fallback.radius_control),
         stroke: own.stroke.unwrap_or(fallback.stroke),
         stroke_emphasis: own.stroke_emphasis.unwrap_or(fallback.stroke_emphasis),
     };
     for (name, value) in [
         ("radius", geometry.radius),
+        ("radiusPanel", geometry.radius_panel),
         ("radiusControl", geometry.radius_control),
         ("stroke", geometry.stroke),
         ("strokeEmphasis", geometry.stroke_emphasis),
@@ -881,6 +932,42 @@ mod tests {
     }
 
     #[test]
+    fn window_ground_ink_is_optional_and_validated() {
+        let source = include_str!("../../assets/themes/default/gray.theme.toml");
+        let original = parse_theme(source).expect("Gray theme");
+        assert_ne!(original.text("appInk"), original.text("primary"));
+
+        let legacy = source.replace("appInk = \"baseUi.09\"\n", "");
+        let legacy = parse_theme(&legacy).expect("older themes retain their window text");
+        assert_eq!(legacy.text("appInk"), legacy.text("primary"));
+
+        let invalid = source.replace("appInk = \"baseUi.09\"", "appInk = \"baseUi.missing\"");
+        assert!(parse_theme(&invalid).unwrap_err().contains("text.appInk"));
+    }
+
+    #[test]
+    fn inactive_header_ink_is_optional_and_validated() {
+        let source = include_str!("../../assets/themes/default/gray.theme.toml");
+        let original = parse_theme(source).expect("Gray theme");
+        assert_eq!(original.text("headerMutedInk"), original.surface("field"));
+        assert_eq!(original.text("headerMutedInk").a, 255);
+
+        let legacy = source.replace("headerMutedInk = \"baseUi.08\"\n", "");
+        let legacy = parse_theme(&legacy).expect("older themes keep their dimmed header ink");
+        assert!(!legacy.text.contains_key("headerMutedInk"));
+
+        let invalid = source.replace(
+            "headerMutedInk = \"baseUi.08\"",
+            "headerMutedInk = \"baseUi.missing\"",
+        );
+        assert!(
+            parse_theme(&invalid)
+                .unwrap_err()
+                .contains("text.headerMutedInk")
+        );
+    }
+
+    #[test]
     fn edited_theme_reports_missing_and_unknown_tokens() {
         let source = include_str!("../../assets/themes/default/gray.theme.toml");
         let mut file: toml::Value = toml::from_str(source).expect("built-in TOML");
@@ -1147,6 +1234,7 @@ mod geometry_tests {
         let fixture = format!("{colors}\n[geometry]\nradius = 0.0\nradiusControl = 0.0\n");
         let gray = parse_theme(&fixture).expect("square geometry fixture");
         assert_eq!(gray.geometry.radius, 0.0);
+        assert_eq!(gray.geometry.radius_panel, 0.0);
         assert_eq!(gray.geometry.radius_control, 0.0);
         assert_ne!(gray.geometry, Geometry::default());
         // Gray changes the corners and not the rule weight, so the
@@ -1155,6 +1243,55 @@ mod geometry_tests {
         let fallback = Geometry::default();
         assert_eq!(gray.geometry.stroke, fallback.stroke);
         assert_eq!(gray.geometry.stroke_emphasis, fallback.stroke_emphasis);
+    }
+
+    #[test]
+    fn panel_corners_can_differ_from_tile_corners_and_reject_negative_radii() {
+        let source = include_str!("../../assets/themes/default/gray.theme.toml");
+        let colors = source.split("[geometry]").next().expect("theme colors");
+        let fixture = format!("{colors}\n[geometry]\nradius = 1.0\nradiusPanel = 8.0\n");
+        let theme = parse_theme(&fixture).expect("separate panel corners");
+        assert_eq!(theme.geometry.radius, 1.0);
+        assert_eq!(theme.geometry.radius_panel, 8.0);
+        let invalid = fixture.replace("radiusPanel = 8.0", "radiusPanel = -1.0");
+        assert!(
+            parse_theme(&invalid)
+                .unwrap_err()
+                .contains("geometry.radiusPanel")
+        );
+    }
+
+    #[test]
+    fn panel_shadows_are_optional_and_use_a_validated_theme_color() {
+        let source = include_str!("../../assets/themes/default/gray.theme.toml");
+        let theme = parse_theme(source).expect("Gray panel shadows");
+        assert!(theme.geometry.shadow_panel);
+        assert_eq!(theme.surface("panelShadow"), theme.text("secondary"));
+
+        let disabled = source.replace("shadowPanel = true", "shadowPanel = false");
+        assert!(
+            !parse_theme(&disabled)
+                .expect("disabled shadows")
+                .geometry
+                .shadow_panel
+        );
+
+        let legacy = source
+            .replace("shadowPanel = true\n", "")
+            .replace("panelShadow = \"baseUi.01\"\n", "");
+        let legacy = parse_theme(&legacy).expect("older themes need no shadow tokens");
+        assert!(!legacy.geometry.shadow_panel);
+        assert_eq!(legacy.surface("panelShadow"), legacy.surface("outline"));
+
+        let invalid = source.replace(
+            "panelShadow = \"baseUi.01\"",
+            "panelShadow = \"baseUi.missing\"",
+        );
+        assert!(
+            parse_theme(&invalid)
+                .unwrap_err()
+                .contains("surfaces.panelShadow")
+        );
     }
 
     #[test]
@@ -1286,7 +1423,8 @@ mod ui_contrast {
     const FLOOR: f64 = 3.0;
 
     const THEMES: [&str; 3] = ["dark", "gray", "light"];
-    const SURFACES: [&str; 6] = ["app", "panel", "control", "button", "field", "canvas"];
+    // Prose sits on workspace surfaces. The window ground uses its own ink.
+    const SURFACES: [&str; 5] = ["panel", "control", "button", "field", "canvas"];
     /// The text tokens the editor actually draws with. `muted` and
     /// `subdued` are in the file for other front-ends and are not
     /// checked here, because a floor nothing has to meet is noise.
@@ -1296,6 +1434,10 @@ mod ui_contrast {
     fn text_reads_on_every_surface() {
         for id in THEMES {
             let theme = load_theme(id).expect("theme");
+            assert!(
+                contrast(theme.text("appInk"), theme.surface("app")) >= FLOOR,
+                "{id}: application text must read on the window ground"
+            );
             for surface in SURFACES {
                 for text in TEXT {
                     let ratio = contrast(theme.text(text), theme.surface(surface));

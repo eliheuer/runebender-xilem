@@ -56,8 +56,9 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         flex_row((
             // Room for the traffic lights, which sit where AppKit puts
             // them: winit has no way to move them, so the header pads
-            // for the default place, the same 78px Zed pads on Tahoe.
-            cfg!(target_os = "macos").then(|| {
+            // for the default place. In full screen AppKit moves them out
+            // of the content area, so the document uses the normal inset.
+            (cfg!(target_os = "macos") && !app.fullscreen).then(|| {
                 sized_box(label("")).dims(Dimensions::new(Dim::Fixed(Length::px(66.0)), Dim::Auto))
             }),
             // The name and the save state take whatever is left and
@@ -108,7 +109,6 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         Dim::Stretch,
         Dim::Fixed(Length::px(TITLEBAR_HEIGHT)),
     ))
-    // The shared rule in app_logic separates the header from all three docks.
 }
 
 /// LTR, RTL, and automatic writing-direction controls.
@@ -146,10 +146,10 @@ pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<
     // Tool state is carried by icon contrast, not an inverted tile. This keeps
     // the header as quiet as the adjacent outlined tabs while making the
     // selected tool the brightest mark on the bar.
-    let fg = pal.header_ink.with_alpha(0.5);
+    let fg = pal.header_inactive_ink(0.5);
     let fg_active = pal.header_ink;
     let active_bg = Color::TRANSPARENT;
-    let hover_bg = pal.control;
+    let hover_bg = pal.header_ink.with_alpha(0.1);
     let editor_focus = app.editor_focus.clone();
     let tile = move |icon: &'static str, tool: Tool| {
         let button = icon_button(
@@ -205,6 +205,7 @@ pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     marks.push((None, pal.panel));
     let outline = pal.mark_outline.unwrap_or(pal.outline);
     let selected_ring = pal.outline;
+    let clear_ink = pal.editor_control_ink();
     let swatches = marks
         .into_iter()
         .map(|(mark, color)| {
@@ -243,7 +244,7 @@ pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         &mut painter.as_dyn(),
                         "close",
                         Rect::new(half - 5.0, half - 5.0, half + 5.0, half + 5.0),
-                        outline,
+                        clear_ink,
                     );
                 }
             }))

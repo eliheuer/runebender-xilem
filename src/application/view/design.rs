@@ -74,6 +74,10 @@ pub(crate) fn point_marker_scale(zoom: f64) -> f64 {
 
 /// Initial and minimum dock width shared by the glyph rail and inspector.
 pub(crate) const DOCK_WIDTH: f64 = 246.0;
+/// Background visible around and between the workspace's floating panels.
+pub(crate) const WORKSPACE_GUTTER: f64 = 8.0;
+/// Lower-left panel shadow extent, reserved even when a theme disables shadows.
+pub(crate) const PANEL_SHADOW_OFFSET: f64 = GRID_CELL_SHADOW_OFFSET;
 /// Default native window dimensions, in logical pixels and on an eight-pixel grid.
 pub(crate) const DEFAULT_WINDOW_WIDTH: f64 = 1336.0;
 pub(crate) const DEFAULT_WINDOW_HEIGHT: f64 = 840.0;
@@ -133,9 +137,16 @@ pub(crate) const STATUS_SLIDER_WIDTH: f64 = 96.0;
 pub(crate) const SLIDER_THUMB_RADIUS: f64 = 7.0;
 /// Square size shared by the overview footer's five icon controls.
 pub(crate) const STATUS_ICON_SIZE: f64 = 16.0;
-/// Compact native title bar: 21px tabs and 20px tools sit on one 30px centerline.
-/// On macOS this also balances the fixed traffic-light inset above and below.
+/// Compact native title bar: 19px tabs and 20px tools sit on one 30px centerline.
+/// On macOS this balances the fixed traffic-light inset above and below;
+/// the floating panels start at its bottom edge without a second top gutter.
 pub(crate) const TITLEBAR_HEIGHT: f64 = 30.0;
+/// Compact title-bar tabs leave clearance above and below their outlines.
+pub(crate) const HEADER_TAB_HEIGHT: f64 = 19.0;
+/// Horizontal breathing room around title-bar tab labels.
+pub(crate) const HEADER_TAB_TEXT_INSET: f64 = 6.0;
+/// Icon tabs share a short rectangular silhouette with the text tabs.
+pub(crate) const HEADER_TAB_ICON_WIDTH: f64 = 24.0;
 
 /// Transformation icon extent measured in the reference, inside a 24-pixel tile.
 pub(crate) const TRANSFORM_ICON_SIZE: f64 = 22.0;

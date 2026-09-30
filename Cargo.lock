@@ -4558,6 +4558,8 @@ dependencies = [
  "muda",
  "norad",
  "notify",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
  "plist",
  "quick-xml 0.41.0",
  "regex",

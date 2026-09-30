@@ -187,7 +187,7 @@ impl Widget for ToolGroupWidget {
         let ink = if self.group.contains(self.active) || self.hovered || self.open.is_some() {
             self.palette.header_ink
         } else {
-            self.palette.header_ink.with_alpha(0.5)
+            self.palette.header_inactive_ink(0.5)
         };
         let pad = self.size.width.min(self.size.height) * 0.10;
         icon_paint::paint(painter, self.group.icon(), rect.inset(pad), ink);

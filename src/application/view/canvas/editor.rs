@@ -1425,7 +1425,7 @@ impl Widget for EditorWidget {
                 } else if pal.points_filled {
                     (pal.point_outline.unwrap_or(pal.text), hue)
                 } else {
-                    (hue, pal.app)
+                    (hue, pal.canvas)
                 };
                 // A point is a dark window with a coloured ring, shared with
                 // the web editor: a
@@ -1445,7 +1445,7 @@ impl Widget for EditorWidget {
                     .find(|(start_id, _, _)| *start_id == id)
                     .and_then(|(_, from, to)| direction_marker_shape(*from, *to, r, smooth))
                     .unwrap_or_else(|| point_marker_shape(sp, r, square));
-                let halo = pal.app.with_alpha(0.85);
+                let halo = pal.canvas.with_alpha(0.85);
                 let ring = Stroke::new(ring_width);
                 if pal.point_halo {
                     painter
@@ -1506,13 +1506,17 @@ impl Widget for EditorWidget {
                 let (fill, interior) = if pal.points_filled {
                     (pal.point_outline.unwrap_or(pal.text), hue)
                 } else {
-                    (hue, pal.app)
+                    (hue, pal.canvas)
                 };
                 let shape =
                     point_marker_shape(affine * handle, POINT_CURVE_RADIUS * marker_scale, false);
                 if pal.point_halo {
                     painter
-                        .stroke(&shape, &Stroke::new(halo_width), pal.app.with_alpha(0.85))
+                        .stroke(
+                            &shape,
+                            &Stroke::new(halo_width),
+                            pal.canvas.with_alpha(0.85),
+                        )
                         .draw();
                 }
                 painter.fill(&shape, interior).draw();
@@ -1707,7 +1711,7 @@ impl Widget for EditorWidget {
                             pal.role("pointSelected"),
                         )
                     } else {
-                        (pal.editor_control_ink(), pal.app)
+                        (pal.editor_control_ink(), pal.canvas)
                     };
                     let support = Circle::new(
                         center,
@@ -1744,7 +1748,11 @@ impl Widget for EditorWidget {
                     let marker = Circle::new(center, radius);
                     if pal.point_halo {
                         painter
-                            .stroke(marker, &Stroke::new(halo_width), pal.app.with_alpha(0.85))
+                            .stroke(
+                                marker,
+                                &Stroke::new(halo_width),
+                                pal.canvas.with_alpha(0.85),
+                            )
                             .draw();
                     }
                     painter.fill(marker, interior).draw();

@@ -124,6 +124,8 @@ pub(crate) enum MetadataEdit {
 }
 
 pub(crate) struct Workspace {
+    /// Native full-screen windows do not need a traffic-light inset.
+    pub(crate) fullscreen: bool,
     /// Identity of this particular in-memory document session. Reopening or
     /// reloading the same path creates a new session, so background work can
     /// never apply a result to a replacement document by accident.

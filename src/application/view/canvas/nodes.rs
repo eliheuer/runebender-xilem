@@ -516,7 +516,7 @@ impl Widget for NodesWidget {
         let pal = self.palette.clone();
         let tf = nl::canvas_affine(&self.viewport);
         let zoom = self.viewport.zoom;
-        painter.fill_rect(self.size.to_rect(), pal.app);
+        painter.fill_rect(self.size.to_rect(), pal.canvas);
 
         // The GPUI canvas uses a quiet field of solid alignment dots.
         // Painting the shared circles rather than stroking them keeps the
@@ -529,7 +529,7 @@ impl Widget for NodesWidget {
                     &(tf * rings),
                     // Mixed most of the way into the ground so the grid stays
                     // behind.
-                    mix(pal.app, pal.outline, 0.4),
+                    mix(pal.canvas, pal.outline, 0.4),
                 )
                 .draw();
         }
