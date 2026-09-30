@@ -176,6 +176,9 @@ struct ThemeFile {
     surfaces: HashMap<String, String>,
     text: HashMap<String, String>,
     roles: HashMap<String, String>,
+    #[serde(default)]
+    drawing: Option<DrawingDef>,
+    // Keep the original top-level settings readable in existing custom themes.
     #[serde(rename = "markStep")]
     mark_step: Option<String>,
     #[serde(rename = "markStyle")]
@@ -194,6 +197,35 @@ struct ThemeFile {
     geometry: Option<GeometryDef>,
     #[serde(default)]
     window: WindowStyle,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DrawingDef {
+    mark_step: Option<String>,
+    mark_style: Option<String>,
+    mark_outline: Option<String>,
+    mark_ink: Option<String>,
+    point_style: Option<String>,
+    point_outline: Option<String>,
+    point_halo: Option<bool>,
+}
+
+fn merge_drawing_setting<T>(
+    theme_id: &str,
+    name: &str,
+    legacy: &mut Option<T>,
+    grouped: Option<T>,
+) -> Result<(), String> {
+    if grouped.is_some() {
+        if legacy.is_some() {
+            return Err(format!(
+                "theme '{theme_id}' defines {name} both at the top level and in drawing"
+            ));
+        }
+        *legacy = grouped;
+    }
+    Ok(())
 }
 
 /// Optional native window effects; unsupported hosts keep flat theme colors.
@@ -552,11 +584,44 @@ fn resolve_optional(
 /// Parse and resolve a TOML theme or an existing JSON theme.
 /// Reports invalid references by name.
 pub fn parse_theme(source: &str) -> Result<Theme, String> {
-    let file: ThemeFile = if source.trim_start().starts_with('{') {
+    let mut file: ThemeFile = if source.trim_start().starts_with('{') {
         serde_json::from_str(source).map_err(|error| format!("invalid theme JSON: {error}"))?
     } else {
         toml::from_str(source).map_err(|error| format!("invalid theme TOML: {error}"))?
     };
+    let drawing = file.drawing.take().unwrap_or_default();
+    merge_drawing_setting(&file.id, "markStep", &mut file.mark_step, drawing.mark_step)?;
+    merge_drawing_setting(
+        &file.id,
+        "markStyle",
+        &mut file.mark_style,
+        drawing.mark_style,
+    )?;
+    merge_drawing_setting(
+        &file.id,
+        "markOutline",
+        &mut file.mark_outline,
+        drawing.mark_outline,
+    )?;
+    merge_drawing_setting(&file.id, "markInk", &mut file.mark_ink, drawing.mark_ink)?;
+    merge_drawing_setting(
+        &file.id,
+        "pointStyle",
+        &mut file.point_style,
+        drawing.point_style,
+    )?;
+    merge_drawing_setting(
+        &file.id,
+        "pointOutline",
+        &mut file.point_outline,
+        drawing.point_outline,
+    )?;
+    merge_drawing_setting(
+        &file.id,
+        "pointHalo",
+        &mut file.point_halo,
+        drawing.point_halo,
+    )?;
     let theme_id = file.id.as_str();
     validate_theme_id(theme_id)?;
     if !(0.0..=1.0).contains(&file.window.blur_tint_opacity) {
@@ -935,6 +1000,11 @@ mod tests {
             }
             for section in ["surfaces", "text"] {
                 for (role, value) in file[section].as_table().unwrap() {
+                    // The native backdrop overlay is intentionally independent of Base UI.
+                    // load_theme_checked above still validates its color.
+                    if section == "surfaces" && role == "backdropTint" {
+                        continue;
+                    }
                     assert!(
                         value.as_str().unwrap().starts_with("baseUi."),
                         "{id}.{section}.{role} must use the Base UI scale"
@@ -1033,15 +1103,15 @@ mod tests {
     fn edited_theme_reports_invalid_optional_color_and_style() {
         let source = include_str!("../../assets/themes/default/gray.theme.toml");
         let mut file: toml::Value = toml::from_str(source).expect("built-in TOML");
-        file["pointOutline"] = "baseUi.nope".into();
+        file["drawing"]["pointOutline"] = "baseUi.nope".into();
         let edited = toml::to_string(&file).expect("edited TOML");
         assert_eq!(
             parse_theme(&edited).unwrap_err(),
             "theme 'gray' pointOutline has unknown color 'baseUi.nope'"
         );
 
-        file["pointOutline"] = "baseUi.04".into();
-        file["pointStyle"] = "circle".into();
+        file["drawing"]["pointOutline"] = "baseUi.04".into();
+        file["drawing"]["pointStyle"] = "circle".into();
         let edited = toml::to_string(&file).expect("edited TOML");
         assert_eq!(
             parse_theme(&edited).unwrap_err(),
@@ -1079,6 +1149,10 @@ mod tests {
     fn existing_json_themes_still_load() {
         let toml: toml::Value = toml::from_str(builtin_theme_source("gray").unwrap()).unwrap();
         let mut json = serde_json::to_value(&toml).unwrap();
+        let drawing = json.as_object_mut().unwrap().remove("drawing").unwrap();
+        json.as_object_mut()
+            .unwrap()
+            .extend(drawing.as_object().unwrap().clone());
         json["$comment"] = serde_json::json!(["Existing JSON comments remain valid."]);
         let json = serde_json::to_string(&json)
             .unwrap()
@@ -1086,6 +1160,39 @@ mod tests {
         let theme = parse_theme(&json).expect("existing JSON theme");
         assert_eq!(theme.id, "gray");
         assert_eq!(theme.marks, load_theme("gray").unwrap().marks);
+    }
+
+    #[test]
+    fn grouped_drawing_settings_preserve_legacy_theme_appearance() {
+        for id in ["dark", "gray", "light"] {
+            let source = builtin_theme_source(id).unwrap();
+            let grouped = parse_theme(source).unwrap();
+            let mut file: toml::Value = toml::from_str(source).unwrap();
+            let drawing = file.as_table_mut().unwrap().remove("drawing").unwrap();
+            file.as_table_mut()
+                .unwrap()
+                .extend(drawing.as_table().unwrap().clone());
+            let legacy = parse_theme(&toml::to_string(&file).unwrap()).unwrap();
+            assert_eq!(grouped.marks, legacy.marks, "{id}");
+            assert_eq!(grouped.mark_style, legacy.mark_style, "{id}");
+            assert_eq!(grouped.mark_outline, legacy.mark_outline, "{id}");
+            assert_eq!(grouped.mark_ink, legacy.mark_ink, "{id}");
+            assert_eq!(grouped.point_style, legacy.point_style, "{id}");
+            assert_eq!(grouped.point_outline, legacy.point_outline, "{id}");
+            assert_eq!(grouped.point_halo, legacy.point_halo, "{id}");
+        }
+    }
+
+    #[test]
+    fn drawing_settings_reject_duplicate_locations_and_typos() {
+        let source = builtin_theme_source("gray").unwrap();
+        let duplicate = source.replace("name = \"Gray\"", "name = \"Gray\"\npointHalo = false");
+        assert_eq!(
+            parse_theme(&duplicate).unwrap_err(),
+            "theme 'gray' defines pointHalo both at the top level and in drawing"
+        );
+        let typo = source.replace("pointHalo =", "pointHlao =");
+        assert!(parse_theme(&typo).unwrap_err().contains("pointHlao"));
     }
 
     #[test]
@@ -1144,7 +1251,7 @@ mod tests {
         assert_eq!(hex(dark.role("pointSelected")), "#fde895");
         assert_eq!(hex(dark.role("pathStroke")), "#c1c1c1");
         assert_eq!(hex(dark.role("gridSelected")), "#c1c1c1");
-        assert_eq!(hex(dark.role("continuityG2")), "#4db2a7");
+        assert_eq!(hex(dark.role("continuityG2")), "#4b91d1");
     }
 
     /// The swatches drawn in the Colors panel.
@@ -1260,8 +1367,10 @@ mod geometry_tests {
 
     #[test]
     fn a_theme_without_geometry_takes_the_default() {
-        let dark = load_theme("dark").expect("dark");
-        assert_eq!(dark.geometry, Geometry::default());
+        let source = include_str!("../../assets/themes/default/gray.theme.toml");
+        let colors = source.split("[geometry]").next().expect("theme colors");
+        let theme = parse_theme(colors).expect("theme without geometry");
+        assert_eq!(theme.geometry, Geometry::default());
     }
 
     #[test]
@@ -1537,6 +1646,21 @@ mod ui_contrast {
     /// `subdued` are in the file for other front-ends and are not
     /// checked here, because a floor nothing has to meet is noise.
     const TEXT: [&str; 3] = ["primary", "secondary", "glyph"];
+
+    #[test]
+    fn selected_labels_read_in_every_builtin_theme() {
+        for id in THEMES {
+            let theme = load_theme(id).expect("theme");
+            let fill = theme.role("controlSelected");
+            for ink in [
+                theme.role("controlSelectedInk"),
+                theme.mark("yellow").expect("yellow mark"),
+            ] {
+                let ratio = contrast(ink, fill);
+                assert!(ratio >= 4.5, "{id}: selected-label contrast is {ratio:.2}");
+            }
+        }
+    }
 
     #[test]
     fn text_reads_on_every_surface() {

@@ -2,15 +2,12 @@
 # Ten Base UI stops, 00–09, progress from darkest to lightest.
 # Rainbow names carry the same mark meaning across themes.
 # See https://runebender.org/docs/themes.html for the full format.
+# Theme file format version; keep this at 1.
 formatVersion = 1
+# Unique identifier used to select this theme.
 id = "light"
+# Display name shown in the theme chooser.
 name = "Light"
-markStep = "base"
-markStyle = "fill"
-markOutline = "baseUi.01"
-markInk = "baseUi.00"
-pointStyle = "ring"
-pointHalo = true
 
 [baseUi]
 "00" = "oklch(0.18 0 255)"
@@ -32,7 +29,6 @@ red = "oklch(0.61 0.167 27)"
 orange = "oklch(0.68 0.15 46)"
 yellow = "oklch(0.82 0.135 96)"
 green = "oklch(0.69 0.126 152)"
-teal = "oklch(0.7 0.095 186)"
 blue = "oklch(0.64 0.119 248)"
 purple = "oklch(0.61 0.15 292)"
 pink = "oklch(0.68 0.15 350)"
@@ -45,25 +41,48 @@ base = "oklch(0.0 0.0 0)"
 bright = "oklch(0.13 -0.03 0)"
 deep = "oklch(-0.26 0.0 0)"
 
+# How the palettes are applied to glyph tiles and outline points.
+[drawing]
+# Rainbow step used for glyph marks: dim, base, bright, or deep.
+markStep = "base"
+# Glyph mark treatment: fill colors the tile; border colors its outline.
+markStyle = "fill"
+# Outline around a tile with a filled rainbow mark.
+markOutline = "baseUi.01"
+# Glyph and caption color on filled rainbow tiles.
+markInk = "baseUi.00"
+# Outline point treatment: fill uses colored interiors; ring uses colored rings.
+pointStyle = "ring"
+# Add a canvas-colored halo around points and anchors to separate them from paths.
+pointHalo = true
+
 [surfaces]
 app = "baseUi.08"
 panel = "baseUi.09"
-titlebar = "baseUi.07"
+titlebar = "baseUi.08"
 control = "baseUi.08"
 button = "baseUi.09"
 buttonHover = "baseUi.08"
 field = "baseUi.09"
 outline = "baseUi.05"
-fieldOutline = "baseUi.08"
+fieldOutline = "baseUi.03"
 divider = "baseUi.06"
 canvas = "baseUi.09"
 tabRail = "baseUi.07"
 inactiveTab = "baseUi.08"
-header = "baseUi.00"
+header = "baseUi.08"
 gridBackground = "baseUi.06"
-cellShadow = "baseUi.03"
+cellShadow = "baseUi.05"
 floatingPaneHeader = "baseUi.08"
 sliderTrack = "baseUi.04"
+
+# Slider knob: two stops below the panel, then one stop brighter when active.
+sliderThumb = "baseUi.07"
+sliderThumbActive = "baseUi.08"
+# Main-panel shadows in solid mode; glyph shadows use cellShadow above.
+panelShadow = "baseUi.06"
+# Independent light overlay for the macOS material.
+backdropTint = "#F0F0F0"
 
 [text]
 primary = "baseUi.01"
@@ -72,7 +91,11 @@ muted = "baseUi.02"
 subdued = "baseUi.03"
 overlay = "baseUi.00"
 glyph = "baseUi.01"
-headerInk = "baseUi.09"
+headerInk = "baseUi.01"
+
+# Window-ground text and inactive title-bar controls.
+appInk = "baseUi.01"
+headerMutedInk = "baseUi.02"
 
 [roles]
 gridSelected = "baseUi.01"
@@ -91,12 +114,12 @@ componentSelected = "rainbow.pink.dim"
 pointSmooth = "rainbow.blue.dim"
 pointCorner = "rainbow.green.dim"
 pointOffcurve = "rainbow.purple.dim"
-pointHyper = "rainbow.teal.dim"
+pointHyper = "rainbow.blue.dim"
 pointSelected = "rainbow.orange.dim"
 pointInner = "baseUi.09"
 startNode = "rainbow.orange.dim"
 textCursor = "rainbow.orange.dim"
-kernActive = "rainbow.teal.dim"
+kernActive = "rainbow.blue.dim"
 kernPrevious = "rainbow.orange.dim"
 pathStroke = "baseUi.01"
 previewFill = "baseUi.02"
@@ -107,7 +130,7 @@ metricQuiet = "baseUi.06"
 outlineFill = "baseUi.05"
 metricsLine = "baseUi.05"
 readonlyPoint = "baseUi.03"
-continuityG2 = "rainbow.teal.dim"
+continuityG2 = "rainbow.blue.dim"
 continuityG1 = "rainbow.yellow.dim"
 continuityLine = "baseUi.03"
 continuityKink = "rainbow.red.dim"
@@ -116,8 +139,23 @@ popcount2 = "#FFDB33"
 popcount3 = "#FF990F"
 popcount4 = "#FF4A3D"
 
+[window]
+# Native macOS blur; unsupported hosts keep the flat app/header colors.
+# Restart when changing native transparency.
+blurBackground = true
+# A stronger light tint keeps the Light theme light over dark wallpaper.
+blurTintOpacity = 0.65
+# Hide only main-panel shadows over blur; keep glyph shadows.
+shadowPanels = false
+
 [geometry]
-radius = 3.0
-radiusControl = 6.0
+# Glyph tiles and small popups; independent from panel and control rounding.
+radius = 8.0
+# Main floating workspace panels.
+radiusPanel = 10.0
+# Main-panel shadows in solid mode; window.shadowPanels controls blur mode.
+shadowPanel = true
+# Buttons, fields, and tabs; selected sidebar rows use half this radius.
+radiusControl = 4.0
 stroke = 1.0
 strokeEmphasis = 2.0

@@ -434,15 +434,16 @@ mod tests {
         let normal = harness.render();
         harness.mouse_move(Point::new(53.5, 16.0));
         let hovered = harness.render();
-        assert_eq!(normal.get_pixel(53, 10), hovered.get_pixel(53, 10));
+        // Sample the outer stroke; its inner antialiased edge blends with the changing fill.
+        assert_eq!(normal.get_pixel(53, 8), hovered.get_pixel(53, 8));
         harness.mouse_button_press(Some(PointerButton::Primary));
         let active = harness.render();
         assert!(active.get_pixel(53, 16)[0] > normal.get_pixel(53, 16)[0]);
-        assert_eq!(normal.get_pixel(53, 10), active.get_pixel(53, 10));
+        assert_eq!(normal.get_pixel(53, 8), active.get_pixel(53, 8));
         harness.mouse_button_release(Some(PointerButton::Primary));
         let focused = harness.render();
         assert_eq!(active.get_pixel(53, 16), focused.get_pixel(53, 16));
-        assert_eq!(normal.get_pixel(53, 10), focused.get_pixel(53, 10));
+        assert_eq!(normal.get_pixel(53, 8), focused.get_pixel(53, 8));
     }
 
     #[test]

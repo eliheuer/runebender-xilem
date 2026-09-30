@@ -209,7 +209,7 @@ impl Palette {
         self.role("controlSelected")
     }
 
-    /// The ink on a selected fill: the panel colour.
+    /// Contrasting ink for selected controls, separate from glyph and sidebar labels.
     pub(crate) fn selected_ink(&self) -> Color {
         self.role("controlSelectedInk")
     }

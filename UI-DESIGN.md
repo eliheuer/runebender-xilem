@@ -42,16 +42,32 @@ Read colors from `view::theme::Palette` and measurements from `view::design` ins
 Let the dock own its width; section contents should fit the available width without repeating the dock's default or minimum width.
 If a reusable control needs a new spacing rule, change its recipe or introduce a named design measurement with a reason rather than tuning each call site.
 
+## Built-in theme baseline
+
+Theme files begin with `formatVersion`, `id`, and `name`, followed by the Base UI and Rainbow palette definitions.
+The built-in Rainbow palette contains the seven mark-picker hues: red, orange, yellow, green, blue, purple, and pink.
+The `[drawing]` section follows the palettes and controls how their colors appear on glyph tiles and outline points.
+It contains `markStep`, `markStyle`, `markOutline`, `markInk`, `pointStyle`, `pointOutline`, and `pointHalo`.
+Existing custom themes can keep these settings at the top level, but must not also define the same setting in `[drawing]`.
+Dark, Gray, and Light explicitly define panel, tile, and control rounding, slider states, header ink, backdrop tint, and panel shadows.
+They share 8-pixel tile corners, 10-pixel panel corners, and 4-pixel control corners while keeping their own palettes and point styles.
+Selected glyph and sidebar labels use the theme's yellow mark; other selected controls use `controlSelectedInk`.
+Both inks must remain readable against `controlSelected`, including in Dark.
+Light uses a light header rather than the legacy dark strip.
+Compare the glyph grid and edit mode in all three at the same viewport when adding or changing a built-in theme.
+Headless proofs cover solid-mode layout and colors; wallpaper blur still needs native review.
+
 ## Window backdrops
 
-Dark and Gray enable the optional macOS `[window] blurBackground` setting.
+Dark, Gray, and Light enable the optional macOS `[window] blurBackground` setting.
 Keep it `false` or omit it for the supported solid background; Gray uses `surfaces.app` and `surfaces.header`, both `baseUi.02`.
 Native window transparency is chosen at startup, so enabling the experiment from a solid window requires restarting the application.
 Linux, browser, and headless hosts always use flat colors.
 The native experiment places an AppKit behind-window effect below the GPU view and adds a `surfaces.backdropTint` overlay.
 That optional color defaults to `surfaces.app` in older themes.
 Dark uses the approved `#404040` tint; Gray uses a lighter `#7C7C7C` tint, aiming toward the user's `#2F2F2F` reference over dark wallpaper.
-Both use 25% opacity, and unsupported hosts keep their opaque theme colors.
+Dark and Gray use 25% opacity; Light uses a `#F0F0F0` tint at 65% to stay light over dark wallpaper.
+Unsupported hosts keep their opaque theme colors.
 `window.blurTintOpacity` is a diagnostic opacity from 0 to 1, with a default of 0.8 when omitted.
 On 2026-09-30, the user's desktop capture `1852-005` confirmed wallpaper blur in the full editor with transparent startup and zero application tint.
 `window.shadowPanels = false` suppresses only main-panel shadows when the native backdrop is active.

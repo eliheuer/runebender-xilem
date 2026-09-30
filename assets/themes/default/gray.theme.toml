@@ -1,8 +1,8 @@
+# See https://runebender.org/docs/themes.html for the full format docs.
+#
 # OKLCH order: lightness (0–1), chroma (0+, no fixed maximum), hue (0–360 degrees).
 # Ten Base UI stops, 00–09, progress from darkest to lightest.
-# Gray uses equal 0.06 lightness steps, from 0.30 to 0.84.
 # Rainbow names carry the same mark meaning across themes.
-# See https://runebender.org/docs/themes.html for the full format.
 
 # Theme file format version; keep this at 1.
 formatVersion = 1
@@ -10,20 +10,6 @@ formatVersion = 1
 id = "gray"
 # Display name shown in the theme chooser.
 name = "Gray"
-# Rainbow step used for glyph marks: dim, base, bright, or deep.
-markStep = "base"
-# Glyph mark treatment: fill colors the tile; border colors its outline.
-markStyle = "fill"
-# Outline around a tile with a filled rainbow mark.
-markOutline = "baseUi.00"
-# Glyph and caption color on filled rainbow tiles.
-markInk = "baseUi.00"
-# Outline point treatment: fill uses colored interiors; ring uses colored rings.
-pointStyle = "fill"
-# Outline around filled point markers.
-pointOutline = "baseUi.00"
-# Add a canvas-colored halo around points and anchors to separate them from paths.
-pointHalo = false
 
 # Base UI palette: ten reusable stops for neutral surfaces, text, and outlines.
 # References such as baseUi.02 point to these values; changing a stop affects every use.
@@ -42,16 +28,14 @@ pointHalo = false
 
 # Rainbow palette: named hues for glyph marks and semantic editor colors.
 [rainbow]
-# Glyph mark colors and their order in the mark picker; teal remains available for other roles.
+# Glyph mark colors and their order in the mark picker.
 marks = ["red", "orange", "yellow", "green", "blue", "purple", "pink"]
-
 # Complete OKLCH colors before the step offsets below are added.
 [rainbow.hues]
 red = "oklch(0.61 0.167 27)"
 orange = "oklch(0.68 0.15 46)"
 yellow = "oklch(0.82 0.135 96)"
 green = "oklch(0.69 0.126 152)"
-teal = "oklch(0.7 0.095 186)"
 blue = "oklch(0.64 0.119 248)"
 purple = "oklch(0.61 0.15 292)"
 pink = "oklch(0.68 0.15 350)"
@@ -64,6 +48,23 @@ dim = "oklch(-0.17 -0.02 0)"
 base = "oklch(0.0 0.0 0)"
 bright = "oklch(0.13 -0.03 0)"
 deep = "oklch(-0.26 0.0 0)"
+
+# How the palettes are applied to glyph tiles and outline points.
+[drawing]
+# Rainbow step used for glyph marks: dim, base, bright, or deep.
+markStep = "base"
+# Glyph mark treatment: fill colors the tile; border colors its outline.
+markStyle = "fill"
+# Outline around a tile with a filled rainbow mark.
+markOutline = "baseUi.00"
+# Glyph and caption color on filled rainbow tiles.
+markInk = "baseUi.00"
+# Outline point treatment: fill uses colored interiors; ring uses colored rings.
+pointStyle = "fill"
+# Outline around filled point markers.
+pointOutline = "baseUi.00"
+# Add a canvas-colored halo around points and anchors to separate them from paths.
+pointHalo = false
 
 # Backgrounds, fills, outlines, and shadows. Values reference palette tokens.
 [surfaces]
@@ -149,7 +150,7 @@ cellSelectedInk = "baseUi.07"
 # Native selected glyphs and sidebar labels use rainbow.yellow at markStep.
 controlSelected = "baseUi.02"
 # Contrasting ink for other selected controls.
-controlSelectedInk = "baseUi.07"
+controlSelectedInk = "baseUi.09"
 # Fine design-space grid lines.
 designGridFine = "baseUi.02"
 # Coarse design-space grid lines.
@@ -173,7 +174,7 @@ pointCorner = "rainbow.green.base"
 # Off-curve control point markers.
 pointOffcurve = "rainbow.purple.base"
 # Hyperbezier-specific point markers.
-pointHyper = "rainbow.teal.base"
+pointHyper = "rainbow.blue.base"
 # Selected point markers.
 pointSelected = "rainbow.yellow.base"
 # Shared interior color for ring-style point markers.
@@ -183,7 +184,7 @@ startNode = "rainbow.orange.base"
 # Text-tool insertion cursor.
 textCursor = "rainbow.orange.base"
 # Active kerning indicator.
-kernActive = "rainbow.teal.deep"
+kernActive = "rainbow.blue.deep"
 # Previous kerning indicator.
 kernPrevious = "rainbow.orange.base"
 # Glyph outline path color.
@@ -205,7 +206,7 @@ metricsLine = "baseUi.04"
 # Point markers on geometry that cannot be edited.
 readonlyPoint = "baseUi.03"
 # Curvature-continuous join indicator.
-continuityG2 = "rainbow.teal.deep"
+continuityG2 = "rainbow.blue.deep"
 # Tangent-continuous join indicator.
 continuityG1 = "rainbow.yellow.deep"
 # Straight join indicator.
