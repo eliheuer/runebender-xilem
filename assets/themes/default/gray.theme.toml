@@ -69,6 +69,9 @@ deep = "oklch(-0.26 0.0 0)"
 [surfaces]
 # Window background behind the floating panels.
 app = "baseUi.02"
+# Gray overlay on the native macOS blur; independent of the opaque app background.
+# Its opacity is window.blurTintOpacity. Other hosts ignore this tint.
+backdropTint = "#7C7C7C"
 # Main floating panel faces and sidebar backgrounds.
 panel = "baseUi.07"
 # Floating panel shadow color; currently drawn at 50% opacity, 2 px down and left.
@@ -219,16 +222,20 @@ popcount3 = "#FF990F"
 popcount4 = "#FF4A3D"
 
 [window]
-# Native macOS wallpaper blur works; disabled while text and panel-edge artifacts remain.
+# Native macOS wallpaper blur; disable for the solid app/header background.
 # See src/application/platform/window.rs and Xilem issue #1852 for the integration evidence.
 # false (or omission) keeps the solid surfaces.app/header colors (baseUi.02 in Gray).
 # Changing native window transparency requires restarting the application.
 # Linux, browser, and headless proofs always use flat colors.
-blurBackground = false
-# Ground tint opacity from 0 (more visible blur) to 1 (solid theme color).
-# Diagnostic only; this affects macOS when the experimental blurBackground is enabled.
-# Keep the zero-overlay setting confirmed in the full editor on 2026-09-30.
-blurTintOpacity = 0.0
+blurBackground = true
+# Opacity of surfaces.backdropTint over the blur: 0 is clear, 1 is solid.
+# Midpoint tint at 0.25 lifts dark wallpaper while retaining visible blur.
+# The final blended color still varies with the wallpaper behind the window.
+# Used only on macOS with blurBackground enabled.
+blurTintOpacity = 0.25
+# Hide only main-panel shadows while macOS blur is active.
+# Solid mode still uses geometry.shadowPanel; glyph and other shadows are unaffected.
+shadowPanels = false
 
 # Shape settings, separate from colors. All dimensions are logical pixels.
 # The three radii are independent; rendering caps them to fit the actual shape.

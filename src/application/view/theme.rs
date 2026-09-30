@@ -18,9 +18,11 @@ fn color(c: ColorRgba) -> Color {
 /// A resolved palette: named surfaces, text, roles, and mark colors.
 pub(crate) struct Palette {
     pub app: Color,
+    /// Independent gray overlay for the translucent macOS window ground.
+    backdrop_tint: Color,
     /// Whether the theme requests the optional macOS backdrop.
     pub blur_background: bool,
-    /// Opacity of the theme's ground tint over the native backdrop.
+    /// Opacity of the independent tint over the native backdrop.
     blur_tint_opacity: f32,
     /// Text on the window ground; custom themes can supply the optional `appInk` token.
     pub app_ink: Color,
@@ -41,6 +43,7 @@ pub(crate) struct Palette {
     pub panel_radius: f64,
     /// A themed shadow color when panel shadows are enabled.
     pub panel_shadow: Option<Color>,
+    shadow_panels_over_backdrop: bool,
     /// Corner radius for pressable controls and fields.
     pub control_radius: f64,
     pub control: Color,
@@ -92,7 +95,9 @@ impl Palette {
         let text = color(t.text("primary"));
         Self {
             app: color(t.surface("app")),
+            backdrop_tint: color(t.surface("backdropTint")),
             blur_background: t.window.blur_background,
+            shadow_panels_over_backdrop: t.window.shadow_panels,
             blur_tint_opacity: t.window.blur_tint_opacity,
             app_ink: color(t.text("appInk")),
             panel,
@@ -150,8 +155,8 @@ impl Palette {
     /// Tint the native backdrop once, beneath the opaque floating panels.
     pub(crate) fn app_background(&self) -> Color {
         if self.native_backdrop_active() {
-            // Keep the theme's ground dominant over AppKit's own material tint.
-            self.app.with_alpha(self.blur_tint_opacity)
+            // Apply one independent tint over the native material, beneath all panels.
+            self.backdrop_tint.with_alpha(self.blur_tint_opacity)
         } else {
             self.app
         }
@@ -163,6 +168,19 @@ impl Palette {
             Color::TRANSPARENT
         } else {
             self.header
+        }
+    }
+
+    /// Suppress only the main-panel shadow when the actual native backdrop is active.
+    pub(crate) fn main_panel_shadow(&self) -> Option<Color> {
+        self.panel_shadow_for_backdrop(self.native_backdrop_active())
+    }
+
+    fn panel_shadow_for_backdrop(&self, active: bool) -> Option<Color> {
+        if active && !self.shadow_panels_over_backdrop {
+            None
+        } else {
+            self.panel_shadow
         }
     }
 
@@ -356,5 +374,18 @@ mod tests {
             assert!(*component > (*ink).min(*surface));
             assert!(*component < (*ink).max(*surface));
         }
+    }
+    #[test]
+    fn translucent_panels_can_hide_shadows_without_affecting_glyph_shadows() {
+        let mut palette = Palette::load("gray");
+        let glyph_shadow = palette.cell_shadow_color;
+        assert!(palette.panel_shadow_for_backdrop(false).is_some());
+        assert!(palette.panel_shadow_for_backdrop(true).is_none());
+        palette.shadow_panels_over_backdrop = true;
+        assert!(palette.panel_shadow_for_backdrop(true).is_some());
+        assert_eq!(palette.cell_shadow_color, glyph_shadow);
+        palette.panel_shadow = None;
+        assert!(palette.panel_shadow_for_backdrop(false).is_none());
+        assert!(palette.panel_shadow_for_backdrop(true).is_none());
     }
 }

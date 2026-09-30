@@ -80,7 +80,7 @@ pub(crate) fn with_backdrop<V: xilem::WidgetView<AppState>>(
 /// Panel contents use a rounded subtree clip instead of opaque ground-colored corner masks.
 /// The user accepted the rebuilt native result after that clipping change.
 /// Earlier application tint opacity 0.8 and 0.65 produced washed-out gray.
-/// Keep Gray's `blurBackground` disabled until both renderer and panel clipping are resolved.
+/// Dark and Gray now enable the backdrop with independent 25% gray overlays.
 /// Xilem dependency/workaround report: <https://github.com/linebender/xilem/issues/1852>.
 pub(crate) fn set_backdrop(enabled: bool, background: xilem::Color) {
     let Some(main_thread) = MainThreadMarker::new() else {

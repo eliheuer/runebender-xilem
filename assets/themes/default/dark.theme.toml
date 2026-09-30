@@ -47,6 +47,8 @@ deep = "oklch(-0.26 0.0 0)"
 
 [surfaces]
 app = "baseUi.00"
+# Independent gray overlay on the macOS blur; opacity is window.blurTintOpacity.
+backdropTint = "#404040"
 panel = "baseUi.01"
 titlebar = "baseUi.00"
 control = "baseUi.03"
@@ -115,6 +117,16 @@ popcount1 = "#17B870"
 popcount2 = "#FFDB33"
 popcount3 = "#FF990F"
 popcount4 = "#FF4A3D"
+
+[window]
+# Native macOS wallpaper blur; other hosts retain the solid app/header colors.
+# Changing transparency requires restarting the application.
+blurBackground = true
+# Keep the approved dark backdrop: a #404040 tint at 25% opacity.
+blurTintOpacity = 0.25
+# Hide only main-panel shadows while macOS blur is active.
+# Solid mode still uses geometry.shadowPanel; glyph and other shadows are unaffected.
+shadowPanels = false
 
 [geometry]
 radius = 3.0

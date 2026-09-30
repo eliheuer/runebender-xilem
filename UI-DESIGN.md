@@ -44,15 +44,21 @@ If a reusable control needs a new spacing rule, change its recipe or introduce a
 
 ## Window backdrops
 
-The experimental `[window] blurBackground` setting is disabled in Gray while native text and panel-edge artifacts remain unresolved.
+Dark and Gray enable the optional macOS `[window] blurBackground` setting.
 Keep it `false` or omit it for the supported solid background; Gray uses `surfaces.app` and `surfaces.header`, both `baseUi.02`.
 Native window transparency is chosen at startup, so enabling the experiment from a solid window requires restarting the application.
 Linux, browser, and headless hosts always use flat colors.
-The native experiment places an AppKit behind-window effect below the GPU view and adds a `surfaces.app` tint.
+The native experiment places an AppKit behind-window effect below the GPU view and adds a `surfaces.backdropTint` overlay.
+That optional color defaults to `surfaces.app` in older themes.
+Dark uses the approved `#404040` tint; Gray uses a lighter `#7C7C7C` tint, aiming toward the user's `#2F2F2F` reference over dark wallpaper.
+Both use 25% opacity, and unsupported hosts keep their opaque theme colors.
 `window.blurTintOpacity` is a diagnostic opacity from 0 to 1, with a default of 0.8 when omitted.
 On 2026-09-30, the user's desktop capture `1852-005` confirmed wallpaper blur in the full editor with transparent startup and zero application tint.
-Gray preserves `blurTintOpacity = 0.0` from that capture, with `blurBackground = false` for everyday work.
-To reproduce the backdrop, enable `blurBackground` and restart; keep other application changes intact.
+`window.shadowPanels = false` suppresses only main-panel shadows when the native backdrop is active.
+Solid mode retains `geometry.shadowPanel`; glyph tile shadows and other application shadows are independent.
+The independent tint gently lifts dark wallpaper and reduces its color influence.
+To use the backdrop, enable `blurBackground` and restart; its color and opacity are independent of the solid background.
+The original zero-overlay test can be reproduced with `blurTintOpacity = 0.0`.
 Earlier 0.8 and 0.65 tint settings appeared washed out.
 The small Xilem example in `examples/macos_vibrancy.rs` reproduced bright, jagged edges on translucent text and shapes.
 An isolated comparison with Vello 0.10.0 and wgpu 30.0.1 still reproduced those artifacts.

@@ -203,9 +203,12 @@ pub struct WindowStyle {
     /// Blur the content behind the macOS window; disabled when omitted.
     #[serde(rename = "blurBackground")]
     pub blur_background: bool,
-    /// Opacity of the theme's ground over native blur, from 0 (clear) to 1 (solid).
+    /// Opacity of `surfaces.backdropTint` over native blur, from 0 (clear) to 1 (solid).
     #[serde(rename = "blurTintOpacity")]
     pub blur_tint_opacity: f32,
+    /// Allow main-panel shadows over native blur; other shadows are unaffected.
+    #[serde(rename = "shadowPanels")]
+    pub shadow_panels: bool,
 }
 
 impl Default for WindowStyle {
@@ -213,6 +216,7 @@ impl Default for WindowStyle {
         Self {
             blur_background: false,
             blur_tint_opacity: 0.8,
+            shadow_panels: true,
         }
     }
 }
@@ -604,6 +608,7 @@ pub fn parse_theme(source: &str) -> Result<Theme, String> {
     }
     let mut surface_tokens = file.surfaces.clone();
     let panel_shadow = surface_tokens.remove("panelShadow");
+    let backdrop_tint = surface_tokens.remove("backdropTint");
     let slider_thumb = surface_tokens.remove("sliderThumb");
     let slider_thumb_active = surface_tokens.remove("sliderThumbActive");
     let mut surfaces = resolve_map(
@@ -622,6 +627,7 @@ pub fn parse_theme(source: &str) -> Result<Theme, String> {
     .unwrap_or_else(|| surfaces["outline"]);
     surfaces.insert("panelShadow".into(), panel_shadow);
     for (name, token, fallback) in [
+        ("backdropTint", backdrop_tint, "app"),
         ("sliderThumb", slider_thumb, "button"),
         ("sliderThumbActive", slider_thumb_active, "buttonHover"),
     ] {
@@ -1293,6 +1299,22 @@ mod geometry_tests {
     }
 
     #[test]
+    fn backdrop_tint_is_independent_and_defaults_to_the_opaque_ground() {
+        let source = include_str!("../../assets/themes/default/gray.theme.toml");
+        let gray = parse_theme(source).expect("Gray backdrop tint");
+        assert_ne!(gray.surface("backdropTint"), gray.surface("app"));
+        let tint_line = source
+            .lines()
+            .find(|line| line.starts_with("backdropTint = "))
+            .expect("Gray backdrop token");
+        let legacy = source.replace(tint_line, "");
+        let legacy = parse_theme(&legacy).expect("optional backdrop tint");
+        assert_eq!(legacy.surface("backdropTint"), legacy.surface("app"));
+        let invalid = source.replace(tint_line, "backdropTint = \"baseUi.missing\"");
+        assert!(parse_theme(&invalid).unwrap_err().contains("backdropTint"));
+    }
+
+    #[test]
     fn window_blur_is_optional_and_requires_a_boolean() {
         let source = include_str!("../../assets/themes/default/gray.theme.toml")
             .replace("blurBackground = false", "blurBackground = true");
@@ -1311,7 +1333,8 @@ mod geometry_tests {
         );
         let legacy = source
             .replace("blurBackground = true\n", "")
-            .replace("blurTintOpacity = 0.0\n", "");
+            .replace("blurTintOpacity = 0.25\n", "")
+            .replace("shadowPanels = false\n", "");
         assert_eq!(
             parse_theme(&legacy).expect("optional backdrop").window,
             WindowStyle::default()
@@ -1325,14 +1348,14 @@ mod geometry_tests {
         let source = include_str!("../../assets/themes/default/gray.theme.toml");
         for value in ["0.0", "0.65", "1.0"] {
             let edited = source.replace(
-                "blurTintOpacity = 0.0",
+                "blurTintOpacity = 0.25",
                 &format!("blurTintOpacity = {value}"),
             );
             assert!(parse_theme(&edited).is_ok(), "valid opacity {value}");
         }
         for value in ["-0.1", "1.1", "nan", "inf"] {
             let edited = source.replace(
-                "blurTintOpacity = 0.0",
+                "blurTintOpacity = 0.25",
                 &format!("blurTintOpacity = {value}"),
             );
             assert!(
@@ -1342,7 +1365,7 @@ mod geometry_tests {
                 "invalid opacity {value}"
             );
         }
-        let legacy = source.replace("blurTintOpacity = 0.0\n", "");
+        let legacy = source.replace("blurTintOpacity = 0.25\n", "");
         assert_eq!(parse_theme(&legacy).unwrap().window.blur_tint_opacity, 0.8);
     }
 

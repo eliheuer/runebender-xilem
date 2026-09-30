@@ -135,7 +135,7 @@ where
         crate::application::widgets::panel_frame::panel_frame(
             pal.outline,
             radius,
-            pal.panel_shadow,
+            pal.main_panel_shadow(),
         )
         .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
         .alignment(UnitPoint::TOP_LEFT),
