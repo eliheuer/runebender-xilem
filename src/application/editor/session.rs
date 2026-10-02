@@ -109,6 +109,8 @@ pub(crate) struct Session {
     pub metaballs: metaballs::MetaballSelection,
     /// The label tool's active letter and polygon in progress.
     pub label: label::LabelState,
+    /// The open source is neural: this glyph is an item with no advance box or metrics.
+    pub neural: bool,
     pub metaball_preview: BezPath,
     /// Components, resolved against the font at session creation.
     pub components: BezPath,
@@ -201,6 +203,7 @@ impl Session {
             active_metaball_drag: None,
             metaballs: metaballs::MetaballSelection::default(),
             label: label::LabelState::default(),
+            neural: false,
             metrics,
             selection: HashSet::new(),
             viewport: ViewPort::new(),
@@ -257,6 +260,7 @@ impl Session {
             active_metaball_drag: None,
             metaballs: metaballs::MetaballSelection::default(),
             label: label::LabelState::default(),
+            neural: project.is_neural(),
             metrics,
             selection: HashSet::new(),
             viewport: ViewPort::new(),

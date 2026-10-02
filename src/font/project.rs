@@ -419,6 +419,9 @@ pub fn read_glyphspackage(root: &Path) -> Result<HashMap<String, String>, String
     Ok(out)
 }
 
+/// File extension of a neural source directory. The directory is a UFO in every other way.
+pub const NEURAL_SOURCE_EXTENSION: &str = "nufo";
+
 impl Project {
     pub(super) fn default_source_index(&self) -> usize {
         self.document_designspace()
@@ -1584,6 +1587,20 @@ impl Project {
     /// Layer-container names in exact UFO order for one stable source.
     pub fn document_source_layer_names(&self, id: SourceId) -> Option<Vec<&str>> {
         self.variable.source_layer_names(id)
+    }
+
+    /// Whether this is a neural source: a directory with the `.nufo` extension.
+    ///
+    /// A neural source holds labeled words and phrases for a model to learn from, not one glyph
+    /// per code point. Its items have no advance width, sidebearings or code points, so editors
+    /// leave those out.
+    pub fn is_neural(&self) -> bool {
+        self.document_sources().any(|source| {
+            source
+                .path()
+                .extension()
+                .is_some_and(|extension| extension == NEURAL_SOURCE_EXTENSION)
+        })
     }
 
     /// Read every source in current display order without its UFO projection.

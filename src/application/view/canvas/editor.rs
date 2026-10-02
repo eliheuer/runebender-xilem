@@ -543,7 +543,7 @@ impl EditorWidget {
     /// Paint and hit testing both read this, so the box you click is the
     /// box you can see. Writing it twice is how a painted control drifts.
     fn metric_boxes(&self) -> Option<[(MetricField, Rect); 3]> {
-        if self.preview_mode {
+        if self.preview_mode || self.session.neural {
             return None;
         }
         let (left, top) = self.metrics_panel_origin()?;
@@ -660,6 +660,10 @@ impl EditorWidget {
 
     fn paint_metrics(&self, painter: &mut Painter<'_>) {
         const PAD: f64 = PANEL_PAD;
+        // A neural item has no advance or sidebearings to show.
+        if self.session.neural {
+            return;
+        }
         let pal = &self.palette;
         let bearings = self.session.side_bearings();
         // Keep read-only group labels inside their end columns. Full names
@@ -1379,25 +1383,34 @@ impl Widget for EditorWidget {
         let x0 = (affine * Point::new(0.0, 0.0)).x;
         let x1 = (affine * Point::new(self.session.advance(), 0.0)).x;
         let levels = text_sort_metric_ys(m);
-        for &y in &levels {
+        // A neural item is not set in a box: no advance, no ascender or descender lines. It
+        // keeps one line, the one its text sits on, across the whole canvas.
+        let neural = self.session.neural;
+        if neural {
+            let sy = (affine * Point::new(0.0, 0.0)).y;
+            painter.fill_rect(horizontal_rule_rect(0.0, self.size.width, sy, rule), frame);
+        }
+        for &y in levels.iter().filter(|_| !neural) {
             let sy = (affine * Point::new(0.0, y)).y;
             painter.fill_rect(horizontal_rule_rect(x0, x1, sy, rule), frame);
         }
         let top = (affine * Point::new(0.0, box_top)).y;
         let bottom = (affine * Point::new(0.0, m.descender)).y;
-        for x in [x0, x1] {
+        for x in [x0, x1].into_iter().filter(|_| !neural) {
             painter.fill_rect(vertical_rule_rect(x, top, bottom, rule), frame);
         }
         let mark =
             (((box_top - m.descender) * self.session.viewport.zoom).abs() * 0.05).clamp(1.5, 24.0);
-        paint_metric_crosses(
-            painter,
-            [x0, x1],
-            [top, bottom],
-            levels.iter().map(|&y| (affine * Point::new(0.0, y)).y),
-            mark,
-            pal.outline,
-        );
+        if !neural {
+            paint_metric_crosses(
+                painter,
+                [x0, x1],
+                [top, bottom],
+                levels.iter().map(|&y| (affine * Point::new(0.0, y)).y),
+                mark,
+                pal.outline,
+            );
+        }
 
         // Editing affordances only render on a master. Off a master the view
         // shows the read-only interpolated instance instead (web/Glyphs
@@ -2222,7 +2235,7 @@ impl Widget for EditorWidget {
                         let affine = self.glyph_affine();
                         let adv_x = (affine * Point::new(self.session.advance(), 0.0)).x;
                         let lsb_x = (affine * Point::new(0.0, 0.0)).x;
-                        if self.hit_point(at).is_none() {
+                        if self.hit_point(at).is_none() && !self.session.neural {
                             if (at.x - adv_x).abs() <= 4.0 {
                                 self.drag = Drag::AdvanceLine;
                                 ctx.set_handled();

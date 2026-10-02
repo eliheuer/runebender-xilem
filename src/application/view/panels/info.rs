@@ -46,7 +46,9 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
     let nodes = matches!(app.mode, Mode::Nodes);
     // Width, LSB, and RSB share one row. Each field commits
     // live; LSB shifts the glyph, RSB changes the advance.
-    let advance_field = editing.then(|| {
+    // A neural item has no advance, code point or kerning group.
+    let neural = app.font.project.is_neural();
+    let advance_field = (editing && !neural).then(|| {
         xrow(
             Region::Form,
             (
@@ -89,38 +91,42 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                         app.commit_rename();
                     },
                 ),
-                recipes::field(
-                    pal,
-                    "Unicode",
-                    app.unicode_buf.clone(),
-                    |app: &mut Workspace, v| app.set_unicode_from_buf(v),
-                ),
+                (!neural).then(|| {
+                    recipes::field(
+                        pal,
+                        "Unicode",
+                        app.unicode_buf.clone(),
+                        |app: &mut Workspace, v| app.set_unicode_from_buf(v),
+                    )
+                }),
                 // Kerning groups, left side then right. The Glyph
                 // panel has them. Empty takes the glyph out of the group,
                 // and the write lands in every master, because a
                 // designspace's masters have to agree about groups.
-                recipes::labeled_control(
-                    pal,
-                    "Kerning Groups (L \u{00b7} R)",
-                    // Group names scroll inside equal columns rather than widening the dock.
-                    xrow(
-                        Region::Form,
-                        (
-                            recipes::field_column(recipes::field(
-                                pal,
-                                "",
-                                app.kern1_buf.clone(),
-                                |app: &mut Workspace, v| app.set_kern_group(true, v),
-                            )),
-                            recipes::field_column(recipes::field(
-                                pal,
-                                "",
-                                app.kern2_buf.clone(),
-                                |app: &mut Workspace, v| app.set_kern_group(false, v),
-                            )),
+                (!neural).then(|| {
+                    recipes::labeled_control(
+                        pal,
+                        "Kerning Groups (L \u{00b7} R)",
+                        // Group names scroll inside equal columns rather than widening the dock.
+                        xrow(
+                            Region::Form,
+                            (
+                                recipes::field_column(recipes::field(
+                                    pal,
+                                    "",
+                                    app.kern1_buf.clone(),
+                                    |app: &mut Workspace, v| app.set_kern_group(true, v),
+                                )),
+                                recipes::field_column(recipes::field(
+                                    pal,
+                                    "",
+                                    app.kern2_buf.clone(),
+                                    |app: &mut Workspace, v| app.set_kern_group(false, v),
+                                )),
+                            ),
                         ),
-                    ),
-                ),
+                    )
+                }),
             ),
         )
     });
