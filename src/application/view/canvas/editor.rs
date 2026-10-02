@@ -1386,13 +1386,8 @@ impl Widget for EditorWidget {
         let x0 = (affine * Point::new(0.0, 0.0)).x;
         let x1 = (affine * Point::new(self.session.advance(), 0.0)).x;
         let levels = text_sort_metric_ys(m);
-        // A neural item is not set in a box: no advance, no ascender or descender lines. It
-        // keeps one line, the one its text sits on, across the whole canvas.
+        // A neural item is not set in a box: no advance, no ascender, baseline or descender.
         let neural = self.session.neural;
-        if neural {
-            let sy = (affine * Point::new(0.0, 0.0)).y;
-            painter.fill_rect(horizontal_rule_rect(0.0, self.size.width, sy, rule), frame);
-        }
         for &y in levels.iter().filter(|_| !neural) {
             let sy = (affine * Point::new(0.0, y)).y;
             painter.fill_rect(horizontal_rule_rect(x0, x1, sy, rule), frame);

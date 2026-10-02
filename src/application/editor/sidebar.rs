@@ -248,7 +248,8 @@ impl Workspace {
             cell: self.rail_cell_size,
             padding: design::RAIL_GRID_INSET,
             padding_y: design::RAIL_GRID_INSET,
-            captions_below: false,
+            // A neural item has no code point to recognize it by, so it keeps its name.
+            captions_below: self.font.project.is_neural(),
             ascender: self.font.ascender(),
             descender: self.font.descender(),
             upm: self.font.units_per_em(),
