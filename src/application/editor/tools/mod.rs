@@ -9,6 +9,7 @@
 //! `runebender::outline::metaballs` owns the shape operation.
 
 pub(crate) mod chat;
+pub(crate) mod label;
 pub(crate) mod local_ai;
 pub(crate) mod metaballs;
 pub(crate) mod nodes;

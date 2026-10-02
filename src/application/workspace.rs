@@ -60,6 +60,8 @@ pub(crate) enum Tool {
     HyperPen,
     Knife,
     Measure,
+    /// Say which ink of a neural item belongs to each letter of its text.
+    Label,
     /// Draw temporary raster ink, separate from the glyph's outline.
     Sketch,
     /// Type glyphs into a line and edit them in context: the web
@@ -240,6 +242,8 @@ pub(crate) struct Workspace {
     pub(crate) lsb_buf: String,
     pub(crate) rsb_buf: String,
     pub(crate) name_buf: String,
+    /// The label panel's text while it is typed, with the glyph it belongs to.
+    pub(crate) label_buf: Option<(String, String)>,
     pub(crate) unicode_buf: String,
     /// Kerning group names for the open glyph, left side then right.
     pub(crate) kern1_buf: String,

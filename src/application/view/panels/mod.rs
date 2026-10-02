@@ -15,4 +15,5 @@ pub(crate) mod sections;
 pub(crate) mod sketch;
 pub(crate) mod tabs;
 
+pub(crate) mod label;
 pub(crate) mod metaballs;

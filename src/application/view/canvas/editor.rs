@@ -403,6 +403,20 @@ fn dispatch_editor_event(
     }
 }
 
+/// One color per letter for the label tool, cycling through the theme's mark colors.
+fn label_colors(pal: &Palette) -> Vec<xilem::Color> {
+    let marks: Vec<xilem::Color> = pal
+        .mark_list()
+        .into_iter()
+        .map(|(_, color)| color)
+        .collect();
+    if marks.is_empty() {
+        vec![pal.tool_feedback()]
+    } else {
+        marks
+    }
+}
+
 enum Drag {
     Metaballs {
         last: Point,
@@ -436,6 +450,11 @@ enum Drag {
     Lasso {
         points: Vec<Point>,
         additive: bool,
+    },
+    /// Label tool: a press in screen space. It becomes a freehand region when it travels,
+    /// and a polygon corner when it does not.
+    Label {
+        points: Vec<Point>,
     },
     /// Drawing a shape; endpoints in design space.
     Shape {
@@ -934,6 +953,49 @@ impl EditorWidget {
         self.session.fitted = true;
     }
 
+    /// The label tool's view of the glyph: each letter's ink in that letter's color, the regions
+    /// of the active letter, and the polygon being placed. Ink no letter owns keeps the plain
+    /// outline, so what is left to label is what is not colored.
+    fn paint_labels(&self, painter: &mut Painter<'_>, affine: Affine) {
+        let pal = &self.palette;
+        let colors = label_colors(pal);
+        let outline = affine * self.session.outline();
+        let active = self.session.label.active;
+        for (position, area) in self.session.label_areas().into_iter().enumerate() {
+            if area.elements().is_empty() {
+                continue;
+            }
+            let color = colors[position % colors.len()];
+            let area = affine * area;
+            painter.with_fill_clip(&area, |painter| {
+                painter.fill(&outline, color.with_alpha(0.9)).draw();
+            });
+            let (width, alpha) = if position == active {
+                (1.5, 0.9)
+            } else {
+                (1.0, 0.35)
+            };
+            painter
+                .stroke(&area, &Stroke::new(width), color.with_alpha(alpha))
+                .draw();
+        }
+        let draft = &self.session.label.draft;
+        if let Some(first) = draft.first() {
+            let color = colors[active % colors.len()];
+            let mut path = kurbo::BezPath::new();
+            path.move_to(affine * *first);
+            for corner in &draft[1..] {
+                path.line_to(affine * *corner);
+            }
+            painter.stroke(&path, &Stroke::new(1.5), color).draw();
+            for corner in draft {
+                painter
+                    .fill(Circle::new(affine * *corner, 3.0), color)
+                    .draw();
+            }
+        }
+    }
+
     fn emit(&self, ctx: &mut EventCtx<'_>, edited: bool) {
         if edited {
             ctx.submit_action::<EditorEvent>(EditorEvent::Edited);
@@ -1405,8 +1467,15 @@ impl Widget for EditorWidget {
                 .stroke(&outline, &Stroke::new(1.0), pal.role("pathStroke"))
                 .draw();
 
+            // Labeling reads the ink as a whole; points and handles would only hide it.
+            let point_chrome = self.tool != Tool::Label;
             let handle = Stroke::new(1.0);
-            for line in self.session.handle_lines() {
+            for line in self
+                .session
+                .handle_lines()
+                .into_iter()
+                .filter(|_| point_chrome)
+            {
                 painter
                     .stroke(affine * line, &handle, pal.handle_line)
                     .draw();
@@ -1416,7 +1485,9 @@ impl Widget for EditorWidget {
             let ring_width = (POINT_RING_WIDTH * marker_scale).max(DesignStroke::Hairline.px());
             let halo_width = ring_width + POINT_HALO_EXTRA;
             let start_markers = self.start_markers();
-            for (id, sp, on_curve, smooth, _) in self.screen_points() {
+            for (id, sp, on_curve, smooth, _) in
+                self.screen_points().into_iter().filter(|_| point_chrome)
+            {
                 let selected = self.session.selection.contains(&id);
                 let hue = if !on_curve {
                     pal.role("pointOffcurve")
@@ -1790,7 +1861,11 @@ impl Widget for EditorWidget {
                 .draw();
         }
 
-        if let Drag::Lasso { points, .. } = &self.drag
+        if self.tool == Tool::Label {
+            self.paint_labels(painter, affine);
+        }
+
+        if let Drag::Lasso { points, .. } | Drag::Label { points } = &self.drag
             && let Some(first) = points.first()
         {
             let mut path = kurbo::BezPath::new();
@@ -2033,6 +2108,23 @@ impl Widget for EditorWidget {
                         );
                         self.drag = Drag::Metaballs { last: at, changed };
                         self.emit(ctx, false);
+                        ctx.request_render();
+                        ctx.set_handled();
+                        return;
+                    }
+                    Some(PointerButton::Primary) if self.tool == Tool::Label => {
+                        ctx.request_focus();
+                        let design = self.screen_to_glyph_design(at);
+                        if state.modifiers.alt() {
+                            // a whole contour, such as a dot
+                            let changed = self.session.assign_label_contour(design);
+                            self.emit(ctx, changed);
+                        } else if state.count >= 2 {
+                            let changed = self.session.close_label_polygon();
+                            self.emit(ctx, changed);
+                        } else {
+                            self.drag = Drag::Label { points: vec![at] };
+                        }
                         ctx.request_render();
                         ctx.set_handled();
                         return;
@@ -2297,7 +2389,7 @@ impl Widget for EditorWidget {
                         *current = at;
                         ctx.request_render();
                     }
-                    Drag::Lasso { points, .. } => {
+                    Drag::Lasso { points, .. } | Drag::Label { points } => {
                         if points.last().is_none_or(|last| last.distance(at) >= 2.0) {
                             points.push(at);
                             ctx.request_render();
@@ -2370,6 +2462,29 @@ impl Widget for EditorWidget {
                         }
                         self.drag = Drag::None;
                         self.emit(ctx, false);
+                    }
+                    Drag::Label { points } => {
+                        let mut changed = false;
+                        if !cancelled {
+                            let travelled = points
+                                .iter()
+                                .fold(Rect::from_points(points[0], points[0]), |r, p| {
+                                    r.union_pt(*p)
+                                });
+                            if points.len() >= 6 && travelled.width().max(travelled.height()) > 12.0
+                            {
+                                let design: Vec<Point> = points
+                                    .iter()
+                                    .map(|p| self.screen_to_glyph_design(*p))
+                                    .collect();
+                                changed = self.session.add_label_lasso(&design);
+                            } else {
+                                let corner = self.screen_to_glyph_design(points[0]);
+                                self.session.add_label_corner(corner);
+                            }
+                        }
+                        self.drag = Drag::None;
+                        self.emit(ctx, changed);
                     }
                     Drag::Lasso { points, additive } => {
                         if !cancelled {
@@ -2557,6 +2672,35 @@ impl Widget for EditorWidget {
             if character.eq_ignore_ascii_case("a") {
                 text.buffer.select_range(0, text.buffer.len());
                 self.emit_text_proof_selection(ctx);
+                ctx.request_render();
+                ctx.set_handled();
+                return;
+            }
+        }
+
+        if self.tool == Tool::Label && self.field.is_none() && !cmd {
+            let mut edited = false;
+            let handled = match &key.key {
+                Key::Named(NamedKey::Tab) => {
+                    self.session.step_label_letter(if shift { -1 } else { 1 });
+                    true
+                }
+                Key::Named(NamedKey::Enter) => {
+                    edited = self.session.close_label_polygon();
+                    true
+                }
+                Key::Named(NamedKey::Backspace | NamedKey::Delete) => {
+                    edited = self.session.delete_label_region();
+                    true
+                }
+                Key::Named(NamedKey::Escape) if !self.session.label.draft.is_empty() => {
+                    self.session.label.draft.clear();
+                    true
+                }
+                _ => false,
+            };
+            if handled {
+                self.emit(ctx, edited);
                 ctx.request_render();
                 ctx.set_handled();
                 return;
@@ -3921,6 +4065,51 @@ mod tests {
         harness.mouse_button_press(Some(PointerButton::Primary));
         let menu = harness.edit_root_widget(|root| root.widget.menu);
         assert!(menu.is_none(), "a left click does not open the menu");
+    }
+
+    #[test]
+    fn label_press_is_a_corner_and_a_drag_is_a_loop() {
+        let mut editor = widget();
+        editor.tool = Tool::Label;
+        let original = projected_glyph(&editor.session);
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+        // two presses that do not travel: two corners of a polygon
+        for at in [Point::new(200.0, 150.0), Point::new(260.0, 150.0)] {
+            harness.mouse_move(at);
+            harness.mouse_button_press(Some(PointerButton::Primary));
+            harness.mouse_button_release(Some(PointerButton::Primary));
+        }
+        harness.edit_root_widget(|root| {
+            assert_eq!(root.widget.session.label.draft.len(), 2);
+            assert!(root.widget.session.label.error.is_none());
+            root.widget.session.label.draft.clear();
+        });
+        // a press that travels: a loop. This item has no text, so the loop has no letter to
+        // go to, and saying so is the proof that the loop was offered as a region.
+        harness.mouse_move(Point::new(200.0, 150.0));
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        for step in 1..=12 {
+            let turn = f64::from(step) * std::f64::consts::TAU / 12.0;
+            harness.mouse_move(Point::new(
+                260.0 + 60.0 * turn.cos(),
+                150.0 + 60.0 * turn.sin(),
+            ));
+        }
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        harness.edit_root_widget(|root| {
+            let session = &root.widget.session;
+            assert!(session.label.draft.is_empty(), "a loop places no corner");
+            assert_eq!(
+                session.label.error.as_deref(),
+                Some("Type the text of this item first")
+            );
+            assert_eq!(
+                projected_glyph(session),
+                original,
+                "labeling never edits the outline"
+            );
+        });
     }
 
     #[test]

@@ -181,6 +181,7 @@ impl Workspace {
             Ok("hand") => Tool::Hand,
             Ok("metaball") => Tool::Metaball,
             Ok("measure") => Tool::Measure,
+            Ok("label") => Tool::Label,
             Ok("text") => Tool::Text,
             Ok("sketch") => Tool::Sketch,
             _ => Tool::Select,
@@ -288,6 +289,7 @@ impl Workspace {
             sketch_trace: None,
             component_base_buf: String::new(),
             name_buf: first_name,
+            label_buf: None,
             unicode_buf: first_uni,
             tabs: first
                 .map(|_| Tab {

@@ -175,6 +175,8 @@ pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<
             tool_group(ToolGroup::Shapes, app.tool, app.palette.clone()),
             tile("knife", Tool::Knife),
             tile("measure", Tool::Measure),
+            // No icon is drawn for it yet; two overlapping shapes are what a label is.
+            tile("intersect", Tool::Label),
             tile("text", Tool::Text),
         ),
     )

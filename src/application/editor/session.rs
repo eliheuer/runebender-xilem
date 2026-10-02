@@ -9,6 +9,7 @@
 //! transactions.
 //! UFO contours and images appear only as explicit import or format-boundary payloads.
 
+use crate::application::editor::tools::label;
 use crate::application::editor::tools::metaballs;
 use crate::application::font_model::FontModel;
 use crate::application::platform::host;
@@ -106,6 +107,8 @@ pub(crate) fn semantic_mark(label: Option<&str>) -> (Option<&str>, Option<MarkCo
 pub(crate) struct Session {
     pub glyph_name: String,
     pub metaballs: metaballs::MetaballSelection,
+    /// The label tool's active letter and polygon in progress.
+    pub label: label::LabelState,
     pub metaball_preview: BezPath,
     /// Components, resolved against the font at session creation.
     pub components: BezPath,
@@ -197,6 +200,7 @@ impl Session {
             active_metric_drag: None,
             active_metaball_drag: None,
             metaballs: metaballs::MetaballSelection::default(),
+            label: label::LabelState::default(),
             metrics,
             selection: HashSet::new(),
             viewport: ViewPort::new(),
@@ -252,6 +256,7 @@ impl Session {
             active_metric_drag: None,
             active_metaball_drag: None,
             metaballs: metaballs::MetaballSelection::default(),
+            label: label::LabelState::default(),
             metrics,
             selection: HashSet::new(),
             viewport: ViewPort::new(),
@@ -493,6 +498,24 @@ impl Session {
         self.current_layer()
             .ok_or(runebender::font::DocumentEditError::MissingLayer)?
             .metaballs()
+    }
+
+    pub(crate) fn neural_item_data(
+        &self,
+    ) -> Result<runebender::font::model::neural_item::NeuralItem, runebender::font::DocumentEditError>
+    {
+        self.current_layer()
+            .ok_or(runebender::font::DocumentEditError::MissingLayer)?
+            .neural_item()
+    }
+
+    /// Stage a replacement neural item as one undoable edit.
+    pub(crate) fn store_neural_item(
+        &mut self,
+        item: runebender::font::model::neural_item::NeuralItem,
+    ) -> Result<bool, String> {
+        item.validate()?;
+        Ok(self.stage_canonical_edit("label", move |draft| draft.set_neural_item(item)))
     }
 
     pub(crate) fn set_image(&mut self, image: Option<runebender::font::LayerImage>) -> bool {

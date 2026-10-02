@@ -832,6 +832,12 @@ pub(crate) const ACTIONS: &[Entry] = &[
         accelerator: Some("M"),
         action: AppAction::Tool(Tool::Measure),
     },
+    Entry {
+        menu: "",
+        title: "Label",
+        accelerator: None,
+        action: AppAction::Tool(Tool::Label),
+    },
 ];
 
 /// The order menus appear in the bar.
