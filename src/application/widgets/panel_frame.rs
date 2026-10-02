@@ -50,15 +50,9 @@ impl Widget for PanelFrameWidget {
         } else {
             0.0
         };
-        // The one-pixel outer outline needs space even when shadows are disabled.
-        let extent = extent.max(1.0);
-        ctx.set_paint_insets(Insets::new(extent, 1.0, 1.0, extent));
-        ctx.set_clip_path(Rect::new(
-            -extent,
-            -1.0,
-            size.width + 1.0,
-            size.height + extent,
-        ));
+        // The outline stays inside the box; only the lower-left shadow paints outside it.
+        ctx.set_paint_insets(Insets::new(extent, 0.0, 0.0, extent));
+        ctx.set_clip_path(Rect::new(-extent, 0.0, size.width, size.height + extent));
     }
 
     fn paint(
@@ -93,14 +87,21 @@ impl Widget for PanelFrameWidget {
                     .draw();
             });
         }
-        // Keep the stroke outside the content, with its inner edge matching the clip.
-        // Both the rectangle and radius must expand together to stay concentric.
+        // Keep the stroke inside the box, where a parent clip cannot cut it off.
+        // Its outer edge follows the box and panel radius, and `floating_panel` clips
+        // the face to its inner edge, so no face pixel can show outside the corners.
+        // Kurbo insets grow a rectangle for positive values; this one moves inward.
+        let width = design::Stroke::Hairline.px();
         let edge = design::rounded_rect_path(
-            rect.inset(-0.5),
-            if radius > 0.0 { radius + 0.5 } else { 0.0 },
+            rect.inset(-width / 2.0),
+            if radius > 0.0 {
+                (radius - width / 2.0).max(0.0)
+            } else {
+                0.0
+            },
         );
         painter
-            .stroke(&edge, &Stroke::new(1.0), self.outline)
+            .stroke(&edge, &Stroke::new(width), self.outline)
             .draw();
     }
 

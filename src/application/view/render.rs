@@ -126,11 +126,16 @@ where
     V: WidgetView<State>,
 {
     let radius = pal.panel_radius;
+    // The frame draws its outline inside the panel box. Clip the face to the
+    // outline's inner edge with a concentric radius, so antialiased corner pixels
+    // never mix the light face into the outline's outer edge.
+    let outline = Stroke::Hairline.px();
     sized_box(xilem::view::zstack((
-        crate::application::widgets::rounded_clip::rounded_clip(
+        sized_box(crate::application::widgets::rounded_clip::rounded_clip(
             clip_split(sized_box(content).background_color(pal.panel)),
-            radius,
-        )
+            (radius - outline).max(0.0),
+        ))
+        .padding(Length::px(outline))
         .alignment(UnitPoint::TOP_LEFT),
         crate::application::widgets::panel_frame::panel_frame(
             pal.outline,
@@ -1329,6 +1334,55 @@ mod panel_resize_tests {
                 harness.pop_action::<ButtonPress>().is_some(),
                 "the frame must pass pointer input through to its content"
             );
+        }
+    }
+
+    #[test]
+    fn rounded_panel_face_stays_inside_its_outline() {
+        use crate::application::view::theme::Palette;
+        use masonry::layout::{Dim, Length};
+        use masonry::properties::Dimensions;
+        use xilem::core::View;
+        use xilem::style::Style;
+        use xilem::view::{label, sized_box};
+
+        let mut palette = Palette::load("gray");
+        palette.panel_radius = 8.0;
+        let view = sized_box(floating_panel(
+            sized_box(label("")).dims(Dimensions::new(Dim::Stretch, Dim::Stretch)),
+            &palette,
+        ))
+        .padding(Length::px(8.0))
+        .background_color(palette.app);
+        let mut ctx = context();
+        let (pod, _) = view.build(&mut ctx, &mut ());
+        let mut harness = TestHarness::create_with_size(
+            crate::application::view::default_property_set(),
+            pod.new_widget,
+            (96, 96),
+        );
+        let image = harness.render();
+        let brightest = |x: u32, y: u32| image.get_pixel(x, y).0[..3].iter().copied().max();
+        let ground = brightest(0, 0).expect("pixel has color channels");
+        assert!(
+            brightest(48, 8).expect("pixel has color channels") < ground,
+            "the top edge must show the outline"
+        );
+
+        // The panel box spans x 10..88 and y 8..86, and the shadow falls down and left.
+        // Scanning each top-right corner row inward, nothing may be brighter than the
+        // ground until the outline first darkens a pixel; a brighter pixel is face leaking out.
+        for y in 8..16 {
+            for x in (78..96).rev() {
+                let value = brightest(x, y).expect("pixel has color channels");
+                if value + 3 < ground {
+                    break;
+                }
+                assert!(
+                    value <= ground + 2,
+                    "the panel face showed outside its outline at ({x}, {y}): {value}"
+                );
+            }
         }
     }
 
