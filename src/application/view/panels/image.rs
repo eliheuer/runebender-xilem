@@ -76,9 +76,18 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 recipes::action(pal, "Trace image".into(), |app: &mut Workspace| {
                     app.command_trace_placed_image();
                 }),
-                label("Height and Bottom are in font units. Threshold is 0 to 255; empty is automatic.")
-                    .text_size(TextSize::Caption.px())
-                    .color(pal.text_muted),
+                xcolumn(
+                    Region::List,
+                    [
+                        "Height, Bottom: font units",
+                        "Threshold: 0 to 255, empty is automatic",
+                    ]
+                    .map(|hint| {
+                        label(hint)
+                            .text_size(TextSize::Caption.px())
+                            .color(pal.text_muted)
+                    }),
+                ),
             ),
         )
     });
