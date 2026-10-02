@@ -155,6 +155,7 @@ impl Workspace {
             mark_cloud,
             proposal,
             brush_candidate,
+            image: self.placed_image(),
         }
     }
 

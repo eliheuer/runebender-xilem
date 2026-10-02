@@ -290,6 +290,11 @@ impl Workspace {
             component_base_buf: String::new(),
             name_buf: first_name,
             label_buf: None,
+            image_cache: Arc::default(),
+            image_height_buf: None,
+            image_y_buf: None,
+            trace: runebender::formats::image_trace::PlacedTraceOptions::default(),
+            trace_threshold_buf: String::new(),
             unicode_buf: first_uni,
             tabs: first
                 .map(|_| Tab {

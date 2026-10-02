@@ -16,3 +16,4 @@ pub(crate) mod nodes;
 pub(crate) mod scripts;
 pub(crate) mod sketch;
 pub(crate) mod text;
+pub(crate) mod trace;

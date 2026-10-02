@@ -1652,6 +1652,11 @@ impl Project {
         self.variable.source_glyph_metadata(source, name)
     }
 
+    /// The bytes of one PNG resource of a source, as a layer image names it.
+    pub fn document_source_image(&self, source: SourceId, path: &Path) -> Option<Arc<[u8]>> {
+        self.variable.source_image(source, path)
+    }
+
     /// Install or replace one PNG resource in a stable source without exposing its UFO font.
     ///
     /// Invalid image paths or payloads leave the source-format preservation store, dirty state and

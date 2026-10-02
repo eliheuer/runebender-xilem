@@ -787,68 +787,6 @@ impl Workspace {
         }
     }
 
-    /// Pick a raster image, store it in the UFO, and attach it to the glyph.
-    pub(crate) fn command_place_image(&mut self) {
-        if !matches!(self.mode, Mode::Editor(_)) {
-            return;
-        }
-        let start = self
-            .font
-            .document_source()
-            .parent()
-            .unwrap_or_else(|| std::path::Path::new("."));
-        let Some(path) = dialogs::image(start) else {
-            return;
-        };
-        let bytes = match std::fs::read(&path) {
-            Ok(bytes) => bytes,
-            Err(error) => {
-                self.note = format!("Place image: {error}");
-                return;
-            }
-        };
-        let decoded = match image::load_from_memory(&bytes) {
-            Ok(image) => image,
-            Err(error) => {
-                self.note = format!("Place image: {error}");
-                return;
-            }
-        };
-        let (width, height) = (decoded.width(), decoded.height());
-        let file_name = path
-            .file_name()
-            .map(|name| name.to_string_lossy().to_string())
-            .unwrap_or_else(|| "image.png".into());
-        let scale =
-            ((self.font.ascender() - self.font.descender()) / f64::from(height).max(1.0)).max(1e-6);
-        let placed = match runebender::font::LayerImage::new(
-            std::path::PathBuf::from(&file_name),
-            None,
-            kurbo::Affine::new([scale, 0.0, 0.0, scale, 0.0, self.font.descender()]),
-        ) {
-            Ok(image) => image,
-            Err(error) => {
-                self.note = format!("Place image: {error}");
-                return;
-            }
-        };
-        let Some(source) = self.font.project.source_id(self.font.active()) else {
-            self.note = "Place image: the active source is unavailable".into();
-            return;
-        };
-        if let Err(error) = self.font.project.install_document_source_image(
-            source,
-            std::path::PathBuf::from(&file_name),
-            bytes,
-        ) {
-            self.note = format!("Place image: {error}");
-            return;
-        }
-        self.apply_op(move |session| session.set_image(Some(placed)));
-        self.show_background = true;
-        self.note = format!("Placed {file_name} · {width}×{height}px");
-    }
-
     /// Pick a local model and run its structure-preserving bolden task.
     pub(crate) fn command_bolden_with_model(&mut self) {
         let Mode::Editor(index) = self.mode else {

@@ -1248,6 +1248,9 @@ impl Widget for EditorWidget {
         // Underlay, drawn first so everything else sits on top of it. The
         // reference glyph is a quiet fill (it is a shape to match), the
         // background layer is a quiet outline (it is a trace to follow).
+        if let Some(image) = &self.underlay.image {
+            painter.draw_image(&image.data, affine * image.to_glyph);
+        }
         if let Some(reference) = &self.underlay.reference {
             painter
                 .fill(
@@ -3139,6 +3142,17 @@ pub(crate) struct Underlay {
     pub proposal: Option<Arc<kurbo::BezPath>>,
     /// A completed, unapplied Brush draft rendered without compiling the font.
     pub brush_candidate: Option<Arc<kurbo::BezPath>>,
+    /// The picture placed behind the glyph, such as a page of calligraphy to trace.
+    pub image: Option<PlacedImage>,
+}
+
+/// A decoded picture and where it sits on the canvas.
+#[derive(Clone, PartialEq)]
+pub(crate) struct PlacedImage {
+    /// The pixels, already faded to sit behind the outline.
+    pub data: ImageData,
+    /// Maps pixel space (origin at the top left, y down) to font units.
+    pub to_glyph: Affine,
 }
 
 impl<F> ViewMarker for EditorView<F> {}

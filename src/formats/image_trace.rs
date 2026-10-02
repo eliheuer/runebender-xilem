@@ -421,3 +421,202 @@ mod tests {
         assert!(error.contains("contour count"), "{error}");
     }
 }
+
+/// Which kind of source image a trace is tuned for.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TraceProfile {
+    /// An unknown raster; a looser fit that detects clean renders and soft scans itself.
+    #[default]
+    Wild,
+    /// A clean, high-resolution source; a tighter fit.
+    Clean,
+    /// A soft scan or photograph; blurs away the texture of the edge first.
+    Photo,
+}
+
+impl TraceProfile {
+    /// The next profile, in the order a control cycles through them.
+    pub fn next(self) -> Self {
+        match self {
+            Self::Wild => Self::Clean,
+            Self::Clean => Self::Photo,
+            Self::Photo => Self::Wild,
+        }
+    }
+
+    /// The profile's short display name.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Wild => "Wild",
+            Self::Clean => "Clean",
+            Self::Photo => "Photo",
+        }
+    }
+}
+
+/// How to read the ink out of a placed image.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PlacedTraceOptions {
+    /// The kind of source image.
+    pub profile: TraceProfile,
+    /// Trace light pixels as ink.
+    pub invert: bool,
+    /// Brightness that separates ink from ground, 0 to 255; automatic when `None`.
+    pub threshold: Option<u8>,
+}
+
+/// The largest image a placed trace accepts, in pixels.
+const MAX_PLACED_IMAGE_PIXELS: u64 = 64_000_000;
+
+/// Trace a whole image where it is placed on the canvas.
+///
+/// `placement` is a layer image's transform: it maps image space, one unit per pixel with the
+/// origin at the lower left corner and y up, to font units. The outline lands on the ink of the
+/// image as it is shown, at any size; nothing is fitted into a glyph box. This is how a word or
+/// a line of calligraphy is traced. The placement must scale both axes equally and not rotate.
+pub fn trace_image_placed(
+    image_bytes: &[u8],
+    placement: kurbo::Affine,
+    options: PlacedTraceOptions,
+) -> Result<crate::font::ImportedContours, String> {
+    crate::formats::ufo::decode_contours(&placed_contours(image_bytes, placement, options)?)
+}
+
+fn placed_contours(
+    image_bytes: &[u8],
+    placement: kurbo::Affine,
+    options: PlacedTraceOptions,
+) -> Result<Vec<norad::Contour>, String> {
+    use img2bez::PointKind;
+    use img2bez::image::{ImageReader, guess_format};
+
+    if image_bytes.is_empty() {
+        return Err("image bytes are empty".into());
+    }
+    let [scale, skew_y, skew_x, scale_y, dx, dy] = placement.as_coeffs();
+    if !placement.as_coeffs().iter().all(|value| value.is_finite())
+        || skew_x.abs() > 1e-9
+        || skew_y.abs() > 1e-9
+        || scale <= 0.0
+        || (scale - scale_y).abs() > 1e-6 * scale
+    {
+        return Err("a placed trace needs an image that is scaled evenly and not rotated".into());
+    }
+    let format = guess_format(image_bytes).map_err(|error| format!("image format: {error}"))?;
+    let (width, height) = ImageReader::with_format(std::io::Cursor::new(image_bytes), format)
+        .into_dimensions()
+        .map_err(|error| format!("image dimensions: {error}"))?;
+    if width == 0 || height == 0 || u64::from(width) * u64::from(height) > MAX_PLACED_IMAGE_PIXELS {
+        return Err("a placed trace needs an image of 1 to 64 million pixels".into());
+    }
+
+    let mut trace = img2bez::TraceOptions::for_profile(match options.profile {
+        TraceProfile::Wild => img2bez::Profile::Wild,
+        TraceProfile::Clean => img2bez::Profile::Clean,
+        TraceProfile::Photo => img2bez::Profile::Photo,
+    });
+    trace.verbose = false;
+    trace.invert = options.invert;
+    if let Some(threshold) = options.threshold {
+        trace.threshold = img2bez::ThresholdMethod::Fixed(threshold);
+    }
+    // The tracer works in font units with the image as tall as it is placed, so its fitting
+    // tolerances mean the same thing at any image size.
+    trace.em_height = f64::from(height) * scale;
+    let outline = img2bez::trace(image_bytes, &trace)
+        .map_err(|error| format!("img2bez trace failed: {error}"))?
+        .translated(dx, dy);
+    let contours: Vec<norad::Contour> = outline
+        .contours
+        .into_iter()
+        .map(|contour| {
+            norad::Contour::new(
+                contour
+                    .points
+                    .into_iter()
+                    .map(|point| {
+                        norad::ContourPoint::new(
+                            point.x,
+                            point.y,
+                            match point.kind {
+                                PointKind::Move => norad::PointType::Move,
+                                PointKind::Line => norad::PointType::Line,
+                                PointKind::Curve => norad::PointType::Curve,
+                                PointKind::QCurve => norad::PointType::QCurve,
+                                PointKind::OffCurve => norad::PointType::OffCurve,
+                            },
+                            point.smooth,
+                            None,
+                            None,
+                        )
+                    })
+                    .collect(),
+                None,
+            )
+        })
+        .collect();
+    Ok(contours)
+}
+
+#[cfg(test)]
+mod placed_tests {
+    use super::*;
+
+    /// A white PNG with one black rectangle, x 40..120 and y 20..60 from the top left.
+    fn block_png() -> Vec<u8> {
+        let mut image =
+            img2bez::image::GrayImage::from_pixel(200, 100, img2bez::image::Luma([255]));
+        for y in 20..60 {
+            for x in 40..120 {
+                image.put_pixel(x, y, img2bez::image::Luma([0]));
+            }
+        }
+        let mut bytes = Vec::new();
+        img2bez::image::DynamicImage::ImageLuma8(image)
+            .write_to(
+                &mut std::io::Cursor::new(&mut bytes),
+                img2bez::image::ImageFormat::Png,
+            )
+            .unwrap();
+        bytes
+    }
+
+    #[test]
+    fn a_placed_trace_lands_on_the_ink_where_the_image_is_shown() {
+        // 10 font units per pixel, lower left corner of the image at (500, -300)
+        let placement = kurbo::Affine::new([10.0, 0.0, 0.0, 10.0, 500.0, -300.0]);
+        let options = PlacedTraceOptions {
+            profile: TraceProfile::Clean,
+            ..Default::default()
+        };
+        let contours = placed_contours(&block_png(), placement, options).unwrap();
+        assert_eq!(contours.len(), 1);
+        assert_eq!(
+            trace_image_placed(&block_png(), placement, options)
+                .unwrap()
+                .len(),
+            1
+        );
+        // the block spans x 40..120 px and, from the bottom, y 40..80 px
+        let on_curve = contours[0]
+            .points
+            .iter()
+            .filter(|point| point.typ != norad::PointType::OffCurve);
+        let (mut x0, mut x1, mut y0, mut y1) = (f64::MAX, f64::MIN, f64::MAX, f64::MIN);
+        for point in on_curve {
+            (x0, x1) = (x0.min(point.x), x1.max(point.x));
+            (y0, y1) = (y0.min(point.y), y1.max(point.y));
+        }
+        let near = |a: f64, b: f64| (a - b).abs() <= 12.0;
+        assert!(near(x0, 900.0) && near(x1, 1700.0), "x {x0}..{x1}");
+        assert!(near(y0, 100.0) && near(y1, 500.0), "y {y0}..{y1}");
+    }
+
+    #[test]
+    fn a_rotated_or_uneven_placement_is_refused() {
+        let uneven = kurbo::Affine::new([10.0, 0.0, 0.0, 12.0, 0.0, 0.0]);
+        assert!(trace_image_placed(&block_png(), uneven, PlacedTraceOptions::default()).is_err());
+        let turned = kurbo::Affine::rotate(0.3);
+        assert!(trace_image_placed(&block_png(), turned, PlacedTraceOptions::default()).is_err());
+    }
+}

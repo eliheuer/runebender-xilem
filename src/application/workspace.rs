@@ -244,6 +244,16 @@ pub(crate) struct Workspace {
     pub(crate) name_buf: String,
     /// The label panel's text while it is typed, with the glyph it belongs to.
     pub(crate) label_buf: Option<(String, String)>,
+    /// The placed picture of the open glyph, decoded once for the canvas.
+    pub(crate) image_cache:
+        Arc<std::sync::Mutex<Option<crate::application::editor::tools::trace::DecodedImage>>>,
+    /// The image panel's height and lower-edge fields while they are typed.
+    pub(crate) image_height_buf: Option<String>,
+    pub(crate) image_y_buf: Option<String>,
+    /// How the placed picture is traced; the threshold comes from its own field.
+    pub(crate) trace: runebender::formats::image_trace::PlacedTraceOptions,
+    /// The trace threshold as typed; empty means automatic.
+    pub(crate) trace_threshold_buf: String,
     pub(crate) unicode_buf: String,
     /// Kerning group names for the open glyph, left side then right.
     pub(crate) kern1_buf: String,

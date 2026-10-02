@@ -542,6 +542,14 @@ impl VariableData {
         self.glyphs.get(name)?.source_metadata.get(&source)
     }
 
+    pub(super) fn source_image(
+        &self,
+        source: SourceId,
+        path: &std::path::Path,
+    ) -> Option<std::sync::Arc<[u8]>> {
+        self.source_formats.get(&source)?.image_bytes(path).ok()?
+    }
+
     pub(super) fn install_source_image(
         &mut self,
         source: SourceId,
