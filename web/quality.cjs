@@ -42,7 +42,10 @@ if (output) fs.mkdirSync(output, { recursive: true });
       const setTheme = async theme => {
         await page.mouse.click(393, 15);
         await page.mouse.click(515, 284);
-        await page.mouse.click(681, { dark: 43, gray: 66, light: 92 }[theme]);
+        await page.mouse.click(681, {
+          dark: 43, gray: 66, light: 92, 'dark-gray': 118,
+          'light-gray': 144, strawberry: 170, campfire: 196,
+        }[theme]);
       };
       const backing = async () => {
         await frame.waitForFunction(() => {
@@ -122,12 +125,13 @@ if (output) fs.mkdirSync(output, { recursive: true });
       await page.mouse.move(305, 350); await page.mouse.down();
       await page.mouse.move(245, 350, { steps: 12 }); await page.mouse.up(); await settle();
       assert.ok(await divider(245) > .95, 'drag restores the original panel width');
-      for (const theme of ['light', 'dark', 'gray']) {
+      for (const theme of ['light', 'light-gray', 'dark', 'dark-gray', 'strawberry', 'campfire', 'gray']) {
         await setTheme(theme); await settle();
         assert.ok((await markers()).count > 30, `${theme}: outline survives theme changes`);
         const surface = await frame.evaluate(() => document.querySelector('canvas').getContext('2d')
           .getImageData(Math.round(2 * devicePixelRatio), Math.round(35 * devicePixelRatio), 1, 1).data[0]);
-        assert.ok(theme === 'light' ? surface > 200 : theme === 'dark' ? surface < 80 : surface > 100 && surface < 200,
+        assert.ok(['light', 'light-gray', 'strawberry'].includes(theme) ? surface > 200
+          : ['dark', 'dark-gray', 'campfire'].includes(theme) ? surface < 80 : surface > 100 && surface < 200,
           `${theme}: actual painted surface changes with the menu selection`);
         await page.mouse.click(112, 15); await settle();
         const menuSurfaces = await frame.evaluate(() => {

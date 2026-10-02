@@ -137,7 +137,7 @@ pub(crate) fn set_backdrop(enabled: bool, background: xilem::Color) {
             return;
         };
         let effect = NSVisualEffectView::initWithFrame(main_thread.alloc(), content.frame());
-        // Material used by the experimental probe; full-editor integration remains unverified.
+        // Menu material was verified in the native probe and full editor.
         effect.setMaterial(NSVisualEffectMaterial::Menu);
         set_backdrop_appearance(&effect, background);
         effect.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
@@ -172,12 +172,9 @@ pub(crate) fn set_backdrop(enabled: bool, background: xilem::Color) {
 /// Keep the native material consistent with the theme's window ground.
 /// System light mode must not put a pale material beneath a dark application theme.
 fn set_backdrop_appearance(effect: &NSVisualEffectView, background: xilem::Color) {
-    let [red, green, blue, _] = background.components;
-    let brightness = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
-    let name = if brightness < 0.5 {
-        "NSAppearanceNameVibrantDark"
-    } else {
-        "NSAppearanceNameVibrantLight"
+    let name = match crate::application::view::theme::window_theme_for_color(background) {
+        winit::window::Theme::Dark => "NSAppearanceNameVibrantDark",
+        winit::window::Theme::Light => "NSAppearanceNameVibrantLight",
     };
     effect
         .setAppearance(NSAppearance::appearanceNamed(&NSAppearanceName::from_str(name)).as_deref());

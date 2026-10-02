@@ -50,8 +50,15 @@ impl Widget for PanelFrameWidget {
         } else {
             0.0
         };
-        ctx.set_paint_insets(Insets::new(extent, 0.0, 0.0, extent));
-        ctx.set_clip_path(Rect::new(-extent, 0.0, size.width, size.height + extent));
+        // The one-pixel outer outline needs space even when shadows are disabled.
+        let extent = extent.max(1.0);
+        ctx.set_paint_insets(Insets::new(extent, 1.0, 1.0, extent));
+        ctx.set_clip_path(Rect::new(
+            -extent,
+            -1.0,
+            size.width + 1.0,
+            size.height + extent,
+        ));
     }
 
     fn paint(
@@ -86,7 +93,12 @@ impl Widget for PanelFrameWidget {
                     .draw();
             });
         }
-        let edge = design::rounded_rect_path(rect.inset(-0.5), (radius - 0.5).max(0.0));
+        // Keep the stroke outside the content, with its inner edge matching the clip.
+        // Both the rectangle and radius must expand together to stay concentric.
+        let edge = design::rounded_rect_path(
+            rect.inset(-0.5),
+            if radius > 0.0 { radius + 0.5 } else { 0.0 },
+        );
         painter
             .stroke(&edge, &Stroke::new(1.0), self.outline)
             .draw();

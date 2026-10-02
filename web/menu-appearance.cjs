@@ -15,9 +15,12 @@ fs.mkdirSync(output, { recursive: true });
     const setTheme = async theme => {
       await page.mouse.click(393, 15);
       await page.mouse.click(515, 284);
-      await page.mouse.click(681, { dark: 43, gray: 66, light: 92 }[theme]);
+      await page.mouse.click(681, {
+        dark: 43, gray: 66, light: 92, 'dark-gray': 118,
+        'light-gray': 144, strawberry: 170, campfire: 196,
+      }[theme]);
     };
-    for (const theme of ['gray', 'light', 'dark']) {
+    for (const theme of ['gray', 'light', 'light-gray', 'dark', 'dark-gray', 'strawberry', 'campfire']) {
       await setTheme(theme);
       await page.waitForTimeout(150);
       for (const [menu, x] of [['filter', 345], ['file', 112]]) {

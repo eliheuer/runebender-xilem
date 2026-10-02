@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use runebender::ui::theme::{Theme, load_theme_checked};
+use runebender::ui::theme::{BUILTIN_THEME_IDS, Theme, load_theme_checked};
 
 /// Built-in and installed themes, resolved once at application startup.
 pub(crate) struct ThemeCatalog {
@@ -30,7 +30,7 @@ impl ThemeCatalog {
             themes: HashMap::new(),
             order: Vec::new(),
         };
-        for id in ["dark", "gray", "light"] {
+        for id in BUILTIN_THEME_IDS {
             let theme = load_theme_checked(id).unwrap_or_else(|error| panic!("{error}"));
             catalog.insert(theme).expect("unique built-in theme");
         }

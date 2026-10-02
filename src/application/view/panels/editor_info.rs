@@ -15,6 +15,7 @@ use crate::application::view::recipes::button;
 use crate::application::view::theme::Palette;
 use crate::application::view::{design, label, recipes, text_input};
 use crate::application::widgets::icon_paint;
+use crate::application::widgets::input_typography;
 use crate::application::widgets::scroll_viewport::portal;
 use crate::application::workspace::Workspace;
 use masonry::layout::{Dim, Length};
@@ -539,7 +540,7 @@ pub(crate) fn features_section(app: &Workspace) -> impl WidgetView<Workspace> + 
         xcolumn(
             Region::List,
             (
-                sized_box(portal(
+                sized_box(portal(input_typography::input_typography(
                     text_input(app.features_buf.clone(), |app: &mut Workspace, value| {
                         app.edit_features(value);
                     })
@@ -550,7 +551,8 @@ pub(crate) fn features_section(app: &Workspace) -> impl WidgetView<Workspace> + 
                     .border_color(pal.field_outline)
                     .border_width(Stroke::Hairline.length())
                     .corner_radius(Length::px(pal.corner_radius)),
-                ))
+                    pal.text,
+                )))
                 .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(260.0))))
                 .background_color(pal.field())
                 .border_color(pal.field_outline)

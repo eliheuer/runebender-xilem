@@ -11,14 +11,14 @@ name = "Dark"
 
 [baseUi]
 "00" = "oklch(0.15 0 255)"
-"01" = "oklch(0.18 0 255)"
+"01" = "oklch(0.20 0 255)"
 "02" = "oklch(0.23 0 255)"
 "03" = "oklch(0.31 0 255)"
 "04" = "oklch(0.37 0 255)"
 "05" = "oklch(0.43 0 255)"
 "06" = "oklch(0.55 0 255)"
-"07" = "oklch(0.6 0 255)"
-"08" = "oklch(0.65 0 255)"
+"07" = "oklch(0.63 0 255)"
+"08" = "oklch(0.70 0 255)"
 "09" = "oklch(0.81 0 255)"
 
 [rainbow]
@@ -44,13 +44,10 @@ deep = "oklch(-0.26 0.0 0)"
 # How the palettes are applied to glyph tiles and outline points.
 [drawing]
 # Rainbow step used for glyph marks: dim, base, bright, or deep.
-markStep = "bright"
+markStep = "base"
 # Glyph mark treatment: fill colors the tile; border colors its outline.
-markStyle = "fill"
-# Outline around a tile with a filled rainbow mark.
-markOutline = "baseUi.00"
-# Glyph and caption color on filled rainbow tiles.
-markInk = "baseUi.00"
+# Dark keeps colored glyphs and thin colored outlines on charcoal tiles.
+markStyle = "border"
 # Outline point treatment: fill uses colored interiors; ring uses colored rings.
 pointStyle = "ring"
 # Add a canvas-colored halo around points and anchors to separate them from paths.
@@ -65,22 +62,24 @@ titlebar = "baseUi.00"
 control = "baseUi.03"
 button = "baseUi.02"
 buttonHover = "baseUi.03"
-field = "baseUi.01"
+field = "baseUi.00"
 outline = "baseUi.04"
-fieldOutline = "baseUi.06"
+fieldOutline = "baseUi.04"
 divider = "baseUi.02"
 canvas = "baseUi.00"
+# Independent inspector preview surface; keep the drawing canvas unchanged.
+glyphPreview = "baseUi.00"
 tabRail = "baseUi.00"
 inactiveTab = "baseUi.00"
 header = "baseUi.00"
-gridBackground = "baseUi.02"
-cellShadow = "baseUi.01"
+gridBackground = "baseUi.00"
+cellShadow = "baseUi.00"
 floatingPaneHeader = "baseUi.01"
 sliderTrack = "baseUi.05"
 
 # Slider knob fills are separate from the track and outline colors.
-sliderThumb = "baseUi.03"
-sliderThumbActive = "baseUi.04"
+sliderThumb = "baseUi.00"
+sliderThumbActive = "baseUi.01"
 # Main-panel shadows in solid mode; glyph shadows use cellShadow above.
 panelShadow = "baseUi.00"
 
@@ -101,8 +100,11 @@ headerMutedInk = "baseUi.08"
 gridSelected = "baseUi.09"
 cellSelectedFill = "baseUi.02"
 cellSelectedInk = "baseUi.09"
-controlSelected = "baseUi.03"
-controlSelectedInk = "baseUi.09"
+controlSelected = "baseUi.02"
+controlSelectedInk = "rainbow.green.base"
+# Active controls and tabs use green; the document title keeps its neutral ink.
+controlSelectedOutline = "rainbow.green.base"
+headerActiveInk = "rainbow.green.base"
 designGridFine = "baseUi.03"
 designGridCoarse = "baseUi.04"
 accent = "rainbow.green.base"
@@ -121,14 +123,16 @@ startNode = "rainbow.orange.base"
 textCursor = "rainbow.orange.base"
 kernActive = "rainbow.blue.base"
 kernPrevious = "rainbow.orange.base"
-pathStroke = "baseUi.09"
+pathStroke = "baseUi.08"
 previewFill = "baseUi.07"
+# Yellow belongs to the proof strip; editable outlines remain neutral.
+proofInk = "rainbow.yellow.base"
 background = "baseUi.04"
 reference = "baseUi.02"
 halo = "baseUi.00"
 metricQuiet = "baseUi.02"
 outlineFill = "baseUi.03"
-metricsLine = "baseUi.04"
+metricsLine = "rainbow.green.dim"
 readonlyPoint = "baseUi.07"
 continuityG2 = "rainbow.blue.base"
 continuityG1 = "rainbow.yellow.base"

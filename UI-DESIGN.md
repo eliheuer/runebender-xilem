@@ -35,6 +35,8 @@ Use `design::column` and `design::row` to state the kind of layout:
 
 Use `recipes::field` for an edit that can commit on each change and `recipes::field_enter` when the whole value must be entered before committing.
 These recipes provide the standard input height, caption typography, theme colors, outline, and control radius.
+Wrap direct `text_input` views with `input_typography(input, pal.text)` so their retained text editor receives theme changes as well as their placeholder label.
+The wrapper bridges the pinned Xilem input's color-update behavior without replacing focused fields or losing selections.
 Use `recipes::labeled_control(pal, caption, controls)` for a shared caption over a control row; empty field captions leave no blank label row.
 For equal columns in a `Region::Form` row, wrap each field in `recipes::field_column(field)`; the row shares its available width after gaps, and the fields grow when the dock widens.
 Use the shared button and list recipes for the same reason.
@@ -49,24 +51,55 @@ The built-in Rainbow palette contains the seven mark-picker hues: red, orange, y
 The `[drawing]` section follows the palettes and controls how their colors appear on glyph tiles and outline points.
 It contains `markStep`, `markStyle`, `markOutline`, `markInk`, `pointStyle`, `pointOutline`, and `pointHalo`.
 Existing custom themes can keep these settings at the top level, but must not also define the same setting in `[drawing]`.
-Dark, Gray, and Light explicitly define panel, tile, and control rounding, slider states, header ink, backdrop tint, and panel shadows.
-They share 8-pixel tile corners, 10-pixel panel corners, and 4-pixel control corners while keeping their own palettes and point styles.
+Dark, Dark Gray, Gray, Light Gray, Light, Strawberry, and Campfire explicitly define panel, tile, and control rounding, slider states, header ink, backdrop tint, and panel shadows.
+Gray uses 6-pixel tile and sidebar-tab corners; the other built-ins use 8-pixel tile corners.
+All built-ins use 10-pixel panel corners and 4-pixel control corners while keeping their own palettes and point styles.
+Sidebar tabs use the glyph-tile radius, including the active tab's convex top and concave bottom corners.
+The strip uses 8-pixel body gaps and outer insets, 14-pixel icons, and an active icon lowered relative to inactive icons.
+Optional `text.inactiveTabInk` supplies solid inactive icon ink; older themes retain their previous opacity treatment.
+Panel outlines sit outside the content clip, with matching concentric radii and paint bounds that include the full stroke.
 Selected glyph and sidebar labels use the theme's yellow mark; other selected controls use `controlSelectedInk`.
 Both inks must remain readable against `controlSelected`, including in Dark.
-Light uses a light header rather than the legacy dark strip.
-Compare the glyph grid and edit mode in all three at the same viewport when adding or changing a built-in theme.
+Dark uses charcoal glyph tiles with colored outlines and matching glyph/caption ink; the other built-ins retain filled marks.
+The native grid must honor `[drawing] markStyle` rather than assuming a filled mark.
+The floating metrics card follows the same mark treatment.
+The inspector outline preview uses `surfaces.glyphPreview`, falling back to `surfaces.canvas` in existing custom themes.
+Gray uses `baseUi.08` for that preview while its main drawing canvas stays `baseUi.07`.
+The preview boundary owns a full-strength section keyline inside the scroll viewport.
+Inspector preview markers use 75% of the main editor point radius.
+Optional `roles.proofInk` separates proof-strip type from neutral `previewFill` in the editing canvas.
+Optional `roles.headerActiveInk` colors active title-bar tools and tabs without changing the document title.
+Optional `roles.controlSelectedOutline` colors selected control keylines.
+Optional `roles.savedInk` and `roles.unsavedInk` keep save-state text readable on pale headers without changing glyph mark colors.
+Older custom themes retain their previous colors when these roles are absent.
+Dark uses green active controls, yellow proof type, and subdued neutral field borders to keep the glyph primary.
+Dark Gray uses Gray's filled tiles, neutral proof ink, and yellow selected labels on charcoal panels.
+Its colored ring points keep their edges visible on a dark canvas.
+Both dark themes use slider knobs one Base UI step darker than their panels and brighten the fill during interaction.
+Light pairs pale gray window chrome with near-white panels and a white drawing surface.
+Light Gray uses the same light chrome with softer gray panels and canvas; its fields are one Base UI stop above the panel.
+Both light themes and Strawberry use a deep green Saved label and dim red Not saved label, with at least 4.5:1 contrast against their headers.
+Strawberry applies a rose Base UI ramp across the window, panels, controls, and ink.
+Campfire applies an ember-brown and copper Base UI ramp with cream ink.
+These showcase themes preserve Gray's Rainbow mark colors and shared geometry.
+Native title-bar appearance follows the brightness of the opaque window ground at startup and after theme changes.
+Light, Light Gray, and Strawberry request light native appearance; the other built-ins request dark appearance.
+The macOS backdrop uses the matching Vibrant Light or Vibrant Dark appearance.
+Linux keeps flat application surfaces and requests the same native appearance where the window manager supports it.
+Compare the glyph grid and edit mode in all built-ins at the same viewport when adding or changing a built-in theme.
 Headless proofs cover solid-mode layout and colors; wallpaper blur still needs native review.
 
 ## Window backdrops
 
-Dark, Gray, and Light enable the optional macOS `[window] blurBackground` setting.
+All built-ins enable the optional macOS `[window] blurBackground` setting.
 Keep it `false` or omit it for the supported solid background; Gray uses `surfaces.app` and `surfaces.header`, both `baseUi.02`.
 Native window transparency is chosen at startup, so enabling the experiment from a solid window requires restarting the application.
 Linux, browser, and headless hosts always use flat colors.
 The native experiment places an AppKit behind-window effect below the GPU view and adds a `surfaces.backdropTint` overlay.
 That optional color defaults to `surfaces.app` in older themes.
-Dark uses the approved `#404040` tint; Gray uses a lighter `#7C7C7C` tint, aiming toward the user's `#2F2F2F` reference over dark wallpaper.
-Dark and Gray use 25% opacity; Light uses a `#F0F0F0` tint at 65% to stay light over dark wallpaper.
+Dark uses the approved `#404040` tint; Dark Gray uses `#505050`; Gray uses `#808080` at 50% opacity to keep the window ground lighter over dark wallpaper.
+Dark and Dark Gray use 25% opacity; Light uses a `#F0F0F0` tint at 65% to stay light over dark wallpaper.
+Light Gray uses `#E5E5E5` at 65%, Strawberry uses `#F3B8C4` at 75%, and Campfire uses `#774D2F` at 38%.
 Unsupported hosts keep their opaque theme colors.
 `window.blurTintOpacity` is a diagnostic opacity from 0 to 1, with a default of 0.8 when omitted.
 On 2026-09-30, the user's desktop capture `1852-005` confirmed wallpaper blur in the full editor with transparent startup and zero application tint.

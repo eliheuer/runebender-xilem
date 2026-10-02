@@ -1,0 +1,146 @@
+# A charcoal counterpart to Gray, using the same panel and control recipes.
+# Ten Base UI stops, 00–09, progress from darkest to lightest.
+# See https://runebender.org/docs/themes.html for the full format.
+formatVersion = 1
+id = "dark-gray"
+name = "Dark Gray"
+
+[baseUi]
+"00" = "oklch(0.15 0 0)"
+"01" = "oklch(0.21 0 0)"
+"02" = "oklch(0.265 0 0)"
+"03" = "oklch(0.30 0 0)"
+"04" = "oklch(0.33 0 0)"
+"05" = "oklch(0.40 0 0)"
+"06" = "oklch(0.55 0 0)"
+"07" = "oklch(0.66 0 0)"
+"08" = "oklch(0.78 0 0)"
+"09" = "oklch(0.88 0 0)"
+
+[rainbow]
+marks = ["red", "orange", "yellow", "green", "blue", "purple", "pink"]
+
+[rainbow.hues]
+red = "oklch(0.61 0.167 27)"
+orange = "oklch(0.68 0.15 46)"
+yellow = "oklch(0.82 0.135 96)"
+green = "oklch(0.69 0.126 152)"
+blue = "oklch(0.64 0.119 248)"
+purple = "oklch(0.61 0.15 292)"
+pink = "oklch(0.68 0.15 350)"
+
+# Signed OKLCH offsets added to each hue; the final 0 preserves the hue.
+[rainbow.steps]
+dim = "oklch(-0.17 -0.02 0)"
+base = "oklch(0.0 0.0 0)"
+bright = "oklch(0.13 -0.03 0)"
+deep = "oklch(-0.26 0.0 0)"
+
+[drawing]
+# Keep Gray's filled glyph tiles and dark ink.
+markStep = "base"
+markStyle = "fill"
+markOutline = "baseUi.00"
+markInk = "baseUi.00"
+# Colored rings remain distinct against the charcoal editing canvas.
+pointStyle = "ring"
+pointHalo = true
+
+[surfaces]
+app = "baseUi.02"
+# Independent tint over the native material, slightly lighter than Dark's tint.
+backdropTint = "#505050"
+panel = "baseUi.03"
+titlebar = "baseUi.02"
+control = "baseUi.04"
+button = "baseUi.03"
+buttonHover = "baseUi.04"
+field = "baseUi.04"
+outline = "baseUi.05"
+fieldOutline = "baseUi.05"
+divider = "baseUi.05"
+canvas = "baseUi.01"
+# Independent inspector preview surface; keep the drawing canvas unchanged.
+glyphPreview = "baseUi.01"
+tabRail = "baseUi.02"
+inactiveTab = "baseUi.03"
+header = "baseUi.02"
+gridBackground = "baseUi.01"
+cellShadow = "baseUi.00"
+floatingPaneHeader = "baseUi.04"
+sliderTrack = "baseUi.05"
+sliderThumb = "baseUi.02"
+sliderThumbActive = "baseUi.03"
+panelShadow = "baseUi.00"
+
+[text]
+appInk = "baseUi.09"
+primary = "baseUi.09"
+secondary = "baseUi.08"
+muted = "baseUi.07"
+subdued = "baseUi.06"
+overlay = "baseUi.09"
+glyph = "baseUi.08"
+headerInk = "baseUi.09"
+headerMutedInk = "baseUi.08"
+
+[roles]
+# Selected cells and sidebar labels keep Gray's yellow ink on a darker face.
+gridSelected = "baseUi.00"
+cellSelectedFill = "baseUi.00"
+cellSelectedInk = "baseUi.09"
+controlSelected = "baseUi.00"
+controlSelectedInk = "baseUi.09"
+designGridFine = "baseUi.03"
+designGridCoarse = "baseUi.04"
+accent = "rainbow.green.base"
+warning = "rainbow.orange.base"
+danger = "rainbow.red.base"
+selection = "rainbow.orange.base"
+component = "rainbow.purple.base"
+componentSelected = "rainbow.pink.base"
+pointSmooth = "rainbow.blue.base"
+pointCorner = "rainbow.green.base"
+pointOffcurve = "rainbow.purple.base"
+pointHyper = "rainbow.blue.base"
+pointSelected = "rainbow.yellow.base"
+pointInner = "baseUi.01"
+startNode = "rainbow.orange.base"
+textCursor = "rainbow.orange.base"
+kernActive = "rainbow.blue.base"
+kernPrevious = "rainbow.orange.base"
+pathStroke = "baseUi.08"
+# Neutral proof text, following Gray's hierarchy.
+previewFill = "baseUi.08"
+background = "baseUi.05"
+reference = "baseUi.04"
+halo = "baseUi.01"
+metricQuiet = "baseUi.03"
+outlineFill = "baseUi.04"
+metricsLine = "baseUi.05"
+readonlyPoint = "baseUi.07"
+continuityG2 = "rainbow.blue.base"
+continuityG1 = "rainbow.yellow.base"
+continuityLine = "baseUi.06"
+continuityKink = "rainbow.red.base"
+popcount1 = "#17B870"
+popcount2 = "#FFDB33"
+popcount3 = "#FF990F"
+popcount4 = "#FF4A3D"
+
+[window]
+# Native macOS blur; other hosts retain the solid app/header colors.
+# Changing transparency requires restarting the application.
+blurBackground = true
+blurTintOpacity = 0.25
+# Hide only main-panel shadows while macOS blur is active.
+shadowPanels = false
+
+# Same rounding, strokes, and shadow behavior as Gray.
+[geometry]
+radius = 8.0
+radiusPanel = 10.0
+shadowPanel = true
+radiusControl = 4.0
+stroke = 1.0
+strokeEmphasis = 2.0

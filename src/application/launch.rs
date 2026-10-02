@@ -7,10 +7,15 @@ use crate::application::platform::screenshot;
 use crate::application::view::render::root_logic;
 use crate::application::view::{UI_FONT, default_property_set};
 use crate::application::workspace::AppState;
+use masonry::core::{ErasedAction, WidgetId};
+use masonry_winit::app::{AppDriver, DriverCtx, WgpuContext, WindowId};
+use std::cell::Cell;
 use std::path::Path as FsPath;
+use std::rc::Rc;
 use std::sync::Arc;
 use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
+use winit::window::Theme;
 use xilem::view::sized_box;
 use xilem::{EventLoopBuilder, Xilem};
 
@@ -91,10 +96,14 @@ pub(crate) fn run(
         event_loop
     };
     let initial_background = app.background();
+    let initial_theme = app.palette.window_theme();
+    let window_theme = Rc::new(Cell::new(initial_theme));
+    let theme_for_view = window_theme.clone();
     #[cfg(target_os = "macos")]
     let initial_transparency = app.palette.blur_background;
-    let window_id = xilem::WindowId::next();
-    Xilem::new(app, move |app| {
+    let window_id = WindowId::next();
+    let application = Xilem::new(app, move |app| {
+        theme_for_view.set(app.palette.window_theme());
         #[cfg(target_os = "macos")]
         if let Some(workspace) = app.workspace.as_mut() {
             workspace.fullscreen = crate::application::platform::window::is_fullscreen();
@@ -158,7 +167,76 @@ pub(crate) fn run(
         std::iter::once(view)
     })
     .with_font(xilem::Blob::new(Arc::new(UI_FONT)))
-    .with_default_properties(default_property_set())
-    .with_default_base_color(initial_background)
-    .run_in(event_loop)
+    .with_default_base_color(initial_background);
+    // The pinned Xilem WindowOptions lacks a native appearance setter.
+    // Its public Masonry driver path supports both initial and live winit themes.
+    let event_loop = {
+        let mut event_loop = event_loop;
+        event_loop.build()?
+    };
+    let proxy = event_loop.create_proxy();
+    let (driver, mut windows) = application
+        .into_driver_and_windows(move |event| proxy.send_event(event).map_err(|error| error.0));
+    for window in &mut windows {
+        window.attributes = window.attributes.clone().with_theme(Some(initial_theme));
+    }
+    let driver = WindowAppearanceDriver {
+        inner: driver,
+        theme: window_theme,
+        applied: initial_theme,
+    };
+    masonry_winit::app::run_with(event_loop, windows, driver, default_property_set())
+}
+
+/// Forward Xilem events while keeping the application's single native window themed.
+struct WindowAppearanceDriver<D> {
+    inner: D,
+    theme: Rc<Cell<Theme>>,
+    applied: Theme,
+}
+
+impl<D> WindowAppearanceDriver<D> {
+    fn sync_theme(&mut self, window_id: WindowId, ctx: &mut DriverCtx<'_>) {
+        let theme = self.theme.get();
+        if theme != self.applied {
+            ctx.window(window_id).handle().set_theme(Some(theme));
+            self.applied = theme;
+        }
+    }
+}
+
+impl<D: AppDriver> AppDriver for WindowAppearanceDriver<D> {
+    fn on_action(
+        &mut self,
+        window_id: WindowId,
+        ctx: &mut DriverCtx<'_>,
+        widget_id: WidgetId,
+        action: ErasedAction,
+    ) {
+        self.inner.on_action(window_id, ctx, widget_id, action);
+        self.sync_theme(window_id, ctx);
+    }
+
+    fn on_async_action(
+        &mut self,
+        window_id: WindowId,
+        ctx: &mut DriverCtx<'_>,
+        action: ErasedAction,
+    ) {
+        self.inner.on_async_action(window_id, ctx, action);
+        self.sync_theme(window_id, ctx);
+    }
+
+    fn on_start(&mut self, state: &mut masonry_winit::app::MasonryState) {
+        self.inner.on_start(state);
+    }
+
+    fn on_close_requested(&mut self, window_id: WindowId, ctx: &mut DriverCtx<'_>) {
+        // Closing cannot change the palette and may remove the window.
+        self.inner.on_close_requested(window_id, ctx);
+    }
+
+    fn on_wgpu_ready(&mut self, wgpu: &WgpuContext<'_>) {
+        self.inner.on_wgpu_ready(wgpu);
+    }
 }

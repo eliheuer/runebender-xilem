@@ -19,6 +19,7 @@ use crate::application::view::canvas::nodes::{NodesEvent, nodes_canvas};
 use crate::application::view::design::{Region, Space, TextSize, row as xrow};
 use crate::application::view::render::{bottom_keyline, px32};
 use crate::application::view::{design, label, recipes, text_input};
+use crate::application::widgets::input_typography;
 use crate::application::workspace::Workspace;
 use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
@@ -578,7 +579,7 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                 label("Glyph scope")
                     .text_size(TextSize::Caption.px())
                     .color(pal.text_muted),
-                sized_box(
+                sized_box(input_typography::input_typography(
                     text_input(
                         app.nodes.live_scope.clone(),
                         |app: &mut Workspace, scope| {
@@ -589,7 +590,8 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                     .placeholder_color(pal.text_muted)
                     .background_color(pal.field())
                     .border_color(pal.field_outline),
-                )
+                    pal.text,
+                ))
                 .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
                 .flex(1.0),
             ),

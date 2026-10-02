@@ -1,0 +1,148 @@
+# A light rose workspace: pink surfaces, pale fields, and deep berry ink.
+# Ten Base UI stops, 00–09, progress from darkest to lightest.
+# See https://runebender.org/docs/themes.html for the full format.
+formatVersion = 1
+id = "strawberry"
+name = "Strawberry"
+
+# Rose is part of every Base UI stop, rather than a separate accent.
+[baseUi]
+"00" = "oklch(0.24 0.045 5)"
+"01" = "oklch(0.34 0.055 5)"
+"02" = "oklch(0.43 0.07 5)"
+"03" = "oklch(0.55 0.09 5)"
+"04" = "oklch(0.67 0.11 5)"
+"05" = "oklch(0.76 0.09 5)"
+"06" = "oklch(0.84 0.07 5)"
+"07" = "oklch(0.89 0.05 5)"
+"08" = "oklch(0.94 0.03 5)"
+"09" = "oklch(0.97 0.014 5)"
+
+# Glyph marks keep the same colors, order, and meaning as Gray.
+[rainbow]
+marks = ["red", "orange", "yellow", "green", "blue", "purple", "pink"]
+
+[rainbow.hues]
+red = "oklch(0.61 0.167 27)"
+orange = "oklch(0.68 0.15 46)"
+yellow = "oklch(0.82 0.135 96)"
+green = "oklch(0.69 0.126 152)"
+blue = "oklch(0.64 0.119 248)"
+purple = "oklch(0.61 0.15 292)"
+pink = "oklch(0.68 0.15 350)"
+
+# Signed OKLCH offsets added to each hue; the final 0 preserves the hue.
+[rainbow.steps]
+dim = "oklch(-0.17 -0.02 0)"
+base = "oklch(0.0 0.0 0)"
+bright = "oklch(0.13 -0.03 0)"
+deep = "oklch(-0.26 0.0 0)"
+
+[drawing]
+# Gray's filled glyph tiles use berry ink and keylines.
+markStep = "base"
+markStyle = "fill"
+markOutline = "baseUi.00"
+markInk = "baseUi.00"
+# Darker Rainbow rings keep outline points legible on the pale rose canvas.
+pointStyle = "ring"
+pointHalo = true
+
+[surfaces]
+app = "baseUi.06"
+backdropTint = "#F3B8C4"
+panel = "baseUi.07"
+titlebar = "baseUi.06"
+control = "baseUi.06"
+button = "baseUi.07"
+buttonHover = "baseUi.08"
+field = "baseUi.08"
+outline = "baseUi.03"
+fieldOutline = "baseUi.03"
+divider = "baseUi.04"
+canvas = "baseUi.08"
+# Independent inspector preview surface; keep the drawing canvas unchanged.
+glyphPreview = "baseUi.08"
+tabRail = "baseUi.05"
+inactiveTab = "baseUi.06"
+header = "baseUi.06"
+gridBackground = "baseUi.05"
+cellShadow = "baseUi.04"
+floatingPaneHeader = "baseUi.06"
+sliderTrack = "baseUi.04"
+sliderThumb = "baseUi.05"
+sliderThumbActive = "baseUi.06"
+panelShadow = "baseUi.04"
+
+[text]
+appInk = "baseUi.00"
+primary = "baseUi.00"
+secondary = "baseUi.01"
+muted = "baseUi.02"
+subdued = "baseUi.03"
+overlay = "baseUi.00"
+glyph = "baseUi.01"
+headerInk = "baseUi.00"
+headerMutedInk = "baseUi.01"
+
+[roles]
+# Save-state labels use darker hues on the pale title bar, independently of glyph marks.
+savedInk = "rainbow.green.deep"
+unsavedInk = "rainbow.red.dim"
+# Selected cells and sidebar labels keep Gray's yellow ink on a dark face.
+gridSelected = "baseUi.00"
+cellSelectedFill = "baseUi.00"
+cellSelectedInk = "baseUi.09"
+controlSelected = "baseUi.00"
+controlSelectedInk = "baseUi.09"
+designGridFine = "baseUi.07"
+designGridCoarse = "baseUi.06"
+accent = "rainbow.green.dim"
+warning = "rainbow.orange.dim"
+danger = "rainbow.red.dim"
+selection = "rainbow.orange.dim"
+component = "rainbow.purple.dim"
+componentSelected = "rainbow.pink.dim"
+pointSmooth = "rainbow.blue.dim"
+pointCorner = "rainbow.green.dim"
+pointOffcurve = "rainbow.purple.dim"
+pointHyper = "rainbow.blue.dim"
+pointSelected = "rainbow.orange.dim"
+pointInner = "baseUi.08"
+startNode = "rainbow.orange.dim"
+textCursor = "rainbow.orange.dim"
+kernActive = "rainbow.blue.dim"
+kernPrevious = "rainbow.orange.dim"
+pathStroke = "baseUi.01"
+previewFill = "baseUi.02"
+background = "baseUi.03"
+reference = "baseUi.06"
+halo = "baseUi.08"
+metricQuiet = "baseUi.06"
+outlineFill = "baseUi.06"
+metricsLine = "baseUi.05"
+readonlyPoint = "baseUi.03"
+continuityG2 = "rainbow.blue.dim"
+continuityG1 = "rainbow.yellow.dim"
+continuityLine = "baseUi.03"
+continuityKink = "rainbow.red.dim"
+popcount1 = "#17B870"
+popcount2 = "#FFDB33"
+popcount3 = "#FF990F"
+popcount4 = "#FF4A3D"
+
+[window]
+# Native macOS blur; Linux and other hosts retain the solid rose surfaces.
+# A strong pale tint preserves Strawberry's light appearance over dark wallpaper.
+blurBackground = true
+blurTintOpacity = 0.75
+shadowPanels = false
+
+# The same rounding, strokes, and shadow behavior as Gray.
+[geometry]
+radius = 8.0
+radiusPanel = 10.0
+shadowPanel = true
+radiusControl = 4.0
+stroke = 1.0
+strokeEmphasis = 2.0

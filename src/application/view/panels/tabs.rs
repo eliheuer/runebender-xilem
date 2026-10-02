@@ -96,6 +96,7 @@ fn glyph_search(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     Dim::Stretch,
                     Dim::from(ControlSize::Control),
                 )),
+                pal.text,
             )
             .flex(1.0),
             toggle(
@@ -190,6 +191,7 @@ fn shapes_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                             Dim::Stretch,
                             Dim::from(ControlSize::Control),
                         )),
+                        pal.text,
                     )
                     .flex(1.0),
                     recipes::action(pal, "Add".into(), |app: &mut Workspace| {
@@ -238,7 +240,7 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
             icon_button(
                 icon,
                 active,
-                pal.text.with_alpha(0.42),
+                pal.inactive_tab_ink,
                 pal.text,
                 Color::TRANSPARENT,
                 Color::TRANSPARENT,
@@ -248,7 +250,7 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
                 if active { pal.panel } else { pal.inactive_tab },
                 pal.outline,
                 design::RAIL_TAB_ICON_RISE,
-                pal.control_radius,
+                pal.corner_radius,
             ),
         )
         .dims(Dimensions::new(
@@ -296,11 +298,11 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
             tab("save", Rail::Scripts).flex(1.0),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(Space::Sm)
+        .gap(Space::Md)
         .padding(masonry::properties::Padding {
-            left: Space::Sm.length(),
-            right: Space::Sm.length(),
-            top: Space::Sm.length(),
+            left: Space::Md.length(),
+            right: Space::Md.length(),
+            top: Space::Md.length(),
             bottom: Space::None.length(),
         }),
     )))
@@ -414,10 +416,13 @@ pub(crate) fn tab_chip<F>(
 where
     F: Fn(&mut Workspace) + Send + Sync + 'static,
 {
-    // Selection is inversion: an active tab is a filled block of ink
-    // with the panel colour for its label.
+    // Themes can emphasize the active tab with an accent keyline and ink.
     let (fg, border, bg) = if active {
-        (pal.selected_ink(), pal.selected_bg(), pal.selected_bg())
+        (
+            pal.selected_ink(),
+            pal.selected_outline(pal.selected_bg()),
+            pal.selected_bg(),
+        )
     } else {
         (pal.text_muted, pal.outline, pal.panel)
     };
@@ -443,8 +448,7 @@ where
     .dims(Dimensions::new(width, Dim::from(ControlSize::Row)))
 }
 
-/// A title-bar tab: GPUI keeps the header quiet and marks the active
-/// workspace with a brighter neutral keyline, matching the GPUI reference.
+/// A title-bar tab with the theme's active ink and keyline.
 fn header_tab_chip<F>(
     pal: &Palette,
     text: String,
@@ -455,7 +459,7 @@ where
     F: Fn(&mut Workspace) + Send + Sync + 'static,
 {
     let (fg, border) = if active {
-        (pal.header_ink, pal.header_ink)
+        (pal.header_active_ink(), pal.header_active_ink())
     } else {
         (pal.header_inactive_ink(0.7), pal.header_inactive_ink(0.5))
     };

@@ -11,7 +11,7 @@ use masonry::core::{
     PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, Widget, WidgetId,
 };
 use masonry::imaging::Painter;
-use masonry::kurbo::{Axis, BezPath, Rect, Size, Stroke};
+use masonry::kurbo::{Axis, BezPath, Insets, Rect, Size, Stroke};
 use masonry::layout::{LenReq, Length};
 use runebender::ui::icons::icons;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
@@ -58,8 +58,20 @@ impl Widget for IconWidget {
         Length::px(self.tile_size)
     }
 
-    fn layout(&mut self, _ctx: &mut LayoutCtx<'_>, _props: &PropertiesRef<'_>, size: Size) {
+    fn layout(&mut self, ctx: &mut LayoutCtx<'_>, _props: &PropertiesRef<'_>, size: Size) {
         self.size = size;
+        let flare = self
+            .rail
+            .filter(|_| self.active)
+            .map_or(0.0, |(_, _, _, radius)| {
+                radius.max(0.5).min(size.width.min(size.height) / 2.0)
+            });
+        ctx.set_paint_insets(Insets::new(
+            flare,
+            0.0,
+            flare,
+            if flare > 0.0 { 1.0 } else { 0.0 },
+        ));
     }
 
     fn paint(
@@ -70,7 +82,7 @@ impl Widget for IconWidget {
     ) {
         let rect = self.size.to_rect();
         if let Some((background, border, _, radius)) = self.rail {
-            // Open at the bottom when selected, joining the panel below.
+            // Open at the bottom, with outward curves joining the panel below.
             let r = radius
                 .max(0.5)
                 .min(self.size.width.min(self.size.height) / 2.0);
@@ -78,20 +90,40 @@ impl Widget for IconWidget {
             let h = self.size.height;
             if self.active {
                 let mut face = BezPath::new();
-                face.move_to((0.5, h));
-                face.line_to((0.5, r));
-                face.quad_to((0.5, 0.5), (r, 0.5));
-                face.line_to((w - r, 0.5));
-                face.quad_to((w - 0.5, 0.5), (w - 0.5, r));
-                face.line_to((w - 0.5, h));
-                painter.fill(&face, background).draw();
+                // Quarter-circle control points match Kurbo's rounded rectangles.
+                let k = r * 0.552_284_749_830_793_6;
+                let left = 0.5;
+                let right = w - 0.5;
+                let top = 0.5;
+                let bottom = h - 0.5;
+                face.move_to((left - r, bottom));
+                face.curve_to(
+                    (left - r + k, bottom),
+                    (left, bottom - r + k),
+                    (left, bottom - r),
+                );
+                face.line_to((left, top + r));
+                face.curve_to((left, top + r - k), (left + r - k, top), (left + r, top));
+                face.line_to((right - r, top));
+                face.curve_to((right - r + k, top), (right, top + r - k), (right, top + r));
+                face.line_to((right, bottom - r));
+                face.curve_to(
+                    (right, bottom - r + k),
+                    (right + r - k, bottom),
+                    (right + r, bottom),
+                );
+                let mut fill = face.clone();
+                fill.line_to((w - 0.5 + r, h + 1.0));
+                fill.line_to((0.5 - r, h + 1.0));
+                fill.close_path();
+                painter.fill(&fill, background).draw();
                 painter.stroke(&face, &Stroke::new(1.0), border).draw();
             } else if radius > 0.0 {
-                let face = rect.inset(-0.5).to_rounded_rect(r);
+                let face = rect.inset(0.5).to_rounded_rect(r);
                 painter.fill(face, background).draw();
                 painter.stroke(face, &Stroke::new(1.0), border).draw();
             } else {
-                let face = rect.inset(-0.5);
+                let face = rect.inset(0.5);
                 painter.fill(face, background).draw();
                 painter.stroke(face, &Stroke::new(1.0), border).draw();
             }

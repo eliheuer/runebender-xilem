@@ -73,12 +73,7 @@ pub(super) fn theme_command(action: &ThemeAction, json_output: bool) -> i32 {
                     return Err("theme output must end in .theme.toml".into());
                 }
                 let source = builtin_theme_source(from)?;
-                let base_name = match from.as_str() {
-                    "dark" => "Dark",
-                    "gray" => "Gray",
-                    "light" => "Light",
-                    _ => return Err(format!("unknown built-in theme '{from}'")),
-                };
+                let base_name = parse_theme(source)?.name;
                 let id_value = toml::Value::String(id.clone()).to_string();
                 let name_value = toml::Value::String(name.clone()).to_string();
                 let text = source

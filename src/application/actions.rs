@@ -764,24 +764,6 @@ pub(crate) const ACTIONS: &[Entry] = &[
         accelerator: None,
         action: AppAction::MeasureAllOff,
     },
-    Entry {
-        menu: "View",
-        title: "Dark",
-        accelerator: None,
-        action: AppAction::Theme("dark"),
-    },
-    Entry {
-        menu: "View",
-        title: "Gray",
-        accelerator: None,
-        action: AppAction::Theme("gray"),
-    },
-    Entry {
-        menu: "View",
-        title: "Light",
-        accelerator: None,
-        action: AppAction::Theme("light"),
-    },
     // Shortcut-only commands. GPUI exposes tools in the chrome rather than a
     // top-level Tools menu, and Escape returns to the overview without a row.
     Entry {
@@ -860,13 +842,13 @@ pub(crate) const ACTIONS: &[Entry] = &[
         reason = "the menu table is read by the native menu bar, which is macOS only"
     )
 )]
-/// The menu table with discovered local themes appended after the built-ins.
+/// The menu table with built-in and local theme rows supplied by the catalog.
 pub(crate) fn actions() -> &'static [Entry] {
     static ALL: std::sync::OnceLock<Vec<Entry>> = std::sync::OnceLock::new();
     ALL.get_or_init(|| {
         let mut entries = ACTIONS.to_vec();
         let catalog = crate::application::platform::themes::catalog();
-        for id in catalog.ids().iter().skip(3) {
+        for id in catalog.ids() {
             let theme = catalog.get(id).expect("catalog id has a theme");
             entries.push(Entry {
                 menu: "View",
@@ -974,7 +956,7 @@ mod tests {
     #[test]
     fn accelerators_are_unique_and_every_row_has_a_known_home() {
         let mut accelerators = HashSet::new();
-        for entry in ACTIONS {
+        for entry in actions() {
             assert!(
                 entry.menu.is_empty() || MENUS.contains(&entry.menu),
                 "unknown menu for {}: {}",
@@ -1005,7 +987,7 @@ mod tests {
                 "View"
             ]
         );
-        let view: Vec<_> = ACTIONS
+        let view: Vec<_> = actions()
             .iter()
             .filter(|entry| entry.menu == "View")
             .map(|entry| (entry.title, entry.submenu()))
@@ -1014,7 +996,7 @@ mod tests {
         assert_eq!(view[8], ("Dots", Some("Grid")));
         assert_eq!(view[10], ("Colorize Outline", Some("Measure")));
         assert_eq!(view[19], ("Dark", Some("Theme")));
-        assert_eq!(view.last(), Some(&("Light", Some("Theme"))));
+        assert_eq!(view[21], ("Light", Some("Theme")));
 
         let glyph: Vec<_> = ACTIONS
             .iter()
@@ -1147,10 +1129,46 @@ mod tests {
     }
 
     #[test]
+    fn theme_menu_matches_the_catalog_once_in_catalog_order() {
+        let catalog = crate::application::platform::themes::catalog();
+        let rows: Vec<_> = actions()
+            .iter()
+            .filter_map(|entry| match entry.action {
+                AppAction::Theme(id) => Some((id, entry)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(rows.len(), catalog.ids().len());
+        let mut seen = HashSet::new();
+        for (&(id, entry), expected) in rows.iter().zip(catalog.ids()) {
+            assert_eq!(id, expected.as_str());
+            assert!(seen.insert(id), "duplicate theme menu row: {id}");
+            let theme = catalog.get(id).expect("menu theme is installed");
+            assert_eq!(entry.title, theme.name);
+            assert_eq!(entry.menu, "View");
+            assert_eq!(entry.submenu(), Some("Theme"));
+        }
+        let builtin_ids = runebender::ui::theme::BUILTIN_THEME_IDS;
+        assert_eq!(
+            catalog.ids()[..builtin_ids.len()]
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            builtin_ids,
+            "built-in theme order must precede locally installed themes"
+        );
+        let (_, dark_gray) = rows
+            .iter()
+            .find(|(id, _)| *id == "dark-gray")
+            .expect("Dark Gray is listed");
+        assert_eq!(dark_gray.title, "Dark Gray");
+    }
+
+    #[test]
     fn welcome_state_keeps_application_commands_and_disables_document_commands() {
         let app = AppState::open(None);
         let entry = |action| {
-            ACTIONS
+            actions()
                 .iter()
                 .find(|entry| entry.action == action)
                 .expect("the action is in the command table")

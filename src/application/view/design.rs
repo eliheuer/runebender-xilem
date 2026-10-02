@@ -36,7 +36,7 @@ pub(crate) const POINT_SELECTED_GROW: f64 = 1.0;
 pub(crate) const POINT_RING_WIDTH: f64 = 1.5;
 pub(crate) const POINT_HALO_EXTRA: f64 = 2.0;
 /// Inspector points stay subordinate to the smaller outline preview.
-pub(crate) const INSPECTOR_PREVIEW_POINT_SCALE: f64 = 0.6;
+pub(crate) const INSPECTOR_PREVIEW_POINT_SCALE: f64 = 0.75;
 /// Grid-line chords redrawn inside point markers, coarse then fine.
 pub(crate) const POINT_GRID_COARSE_LINE_WIDTH: f64 = 1.0;
 pub(crate) const POINT_GRID_FINE_LINE_WIDTH: f64 = 0.7;
@@ -112,8 +112,8 @@ pub(crate) const SIDEBAR_ROW_INSET: f64 = 14.0;
 pub(crate) const ROW_MARKER_SIZE: f64 = 10.0;
 /// GPUI navigation strip geometry, in logical pixels.
 pub(crate) const RAIL_TAB_ACTIVE_HEIGHT: f64 = 32.0;
-pub(crate) const RAIL_TAB_INACTIVE_HEIGHT: f64 = 28.0;
-pub(crate) const RAIL_TAB_HEIGHT: f64 = 36.0;
+pub(crate) const RAIL_TAB_INACTIVE_HEIGHT: f64 = 24.0;
+pub(crate) const RAIL_TAB_HEIGHT: f64 = 40.0;
 /// Content height that makes a collapsed node-inspector group fill the rail.
 pub(crate) const NODE_VIEW_SECTION_HEADER_HEIGHT: f64 = 23.0;
 /// Target thumbnail size and compact grid inset; the fitted cells use whole pixels.
@@ -125,7 +125,7 @@ pub(crate) const RAIL_CELL_MAX: f64 = 96.0;
 pub(crate) const GRID_CELL_SHADOW_OFFSET: f64 = 2.0;
 /// Selected glyph-grid tiles sit one pixel farther above the grid ground.
 pub(crate) const GRID_CELL_SELECTED_SHADOW_OFFSET: f64 = 3.0;
-pub(crate) const RAIL_TAB_ICON: f64 = 18.0;
+pub(crate) const RAIL_TAB_ICON: f64 = 14.0;
 pub(crate) const RAIL_TAB_ICON_RISE: f64 = 2.0;
 /// Initial proof drawing height, excluding its single top divider.
 /// Proof appearance controls live in the footer; text and shaping in the inspector.

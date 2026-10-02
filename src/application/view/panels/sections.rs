@@ -14,6 +14,7 @@ use crate::application::view::theme::Palette;
 use crate::application::view::{design, label, recipes, text_input};
 use crate::application::widgets::icon_button;
 use crate::application::widgets::icon_paint;
+use crate::application::widgets::input_typography;
 use crate::application::workspace::{Mode, Workspace};
 use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
@@ -91,11 +92,14 @@ fn glyph_layer_controls(app: &Workspace) -> Box<xilem::AnyWidgetView<Workspace>>
             label("Glyph layer name")
                 .text_size(TextSize::Body.px())
                 .color(pal.text_muted),
-            text_input(app.layer_name_buf.clone(), |app: &mut Workspace, value| {
-                app.layer_name_buf = value;
-            })
-            .text_color(pal.text)
-            .background_color(pal.field()),
+            input_typography::input_typography(
+                text_input(app.layer_name_buf.clone(), |app: &mut Workspace, value| {
+                    app.layer_name_buf = value;
+                })
+                .text_color(pal.text)
+                .background_color(pal.field()),
+                pal.text,
+            ),
             xrow(
                 Region::Inline,
                 (
@@ -167,11 +171,14 @@ pub(crate) fn masters_section(app: &Workspace) -> Option<impl WidgetView<Workspa
                 label("Source name")
                     .text_size(TextSize::Body.px())
                     .color(pal.text_muted),
-                text_input(app.source_name_buf.clone(), |app: &mut Workspace, value| {
-                    app.source_name_buf = value;
-                })
-                .text_color(pal.text)
-                .background_color(pal.field()),
+                input_typography::input_typography(
+                    text_input(app.source_name_buf.clone(), |app: &mut Workspace, value| {
+                        app.source_name_buf = value;
+                    })
+                    .text_color(pal.text)
+                    .background_color(pal.field()),
+                    pal.text,
+                ),
                 label("Uses the axis sliders below")
                     .text_size(TextSize::Body.px())
                     .color(pal.text_muted),
@@ -655,7 +662,7 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
                     Length::px(COORD_LABEL_WIDTH),
                     ControlSize::Icon.length(),
                 )),
-                sized_box(
+                sized_box(input_typography::input_typography(
                     text_input(value, move |app: &mut Workspace, v| {
                         if axis < 2 {
                             app.set_coord(axis, v);
@@ -668,7 +675,8 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
                     .border_color(pal.field_outline)
                     .border_width(Stroke::Hairline.length())
                     .corner_radius(Length::px(pal.control_radius)),
-                )
+                    pal.text,
+                ))
                 .dims(Dimensions::new(
                     Dim::Stretch,
                     Dim::from(ControlSize::Control),

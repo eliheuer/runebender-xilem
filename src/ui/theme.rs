@@ -18,6 +18,17 @@ use crate::ui::color::ColorRgba;
 
 use serde::Deserialize;
 
+/// Built-in theme IDs in menu and cycle order, followed by any locally installed themes.
+pub const BUILTIN_THEME_IDS: &[&str] = &[
+    "dark",
+    "gray",
+    "light",
+    "dark-gray",
+    "light-gray",
+    "strawberry",
+    "campfire",
+];
+
 /// OKLCH → linear sRGB, unclamped (Ottosson reference matrices).
 fn oklch_to_linear(l: f64, c: f64, h_deg: f64) -> [f64; 3] {
     let h = h_deg.to_radians();
@@ -489,6 +500,13 @@ const REQUIRED_ROLES: &[&str] = &[
     "popcount3",
     "popcount4",
 ];
+const OPTIONAL_ROLES: &[&str] = &[
+    "proofInk",
+    "headerActiveInk",
+    "controlSelectedOutline",
+    "savedInk",
+    "unsavedInk",
+];
 const MARK_LABELS: [&str; 7] = ["red", "orange", "yellow", "green", "blue", "purple", "pink"];
 
 fn parse_color(value: &str) -> Option<ColorRgba> {
@@ -674,6 +692,7 @@ pub fn parse_theme(source: &str) -> Result<Theme, String> {
     let mut surface_tokens = file.surfaces.clone();
     let panel_shadow = surface_tokens.remove("panelShadow");
     let backdrop_tint = surface_tokens.remove("backdropTint");
+    let glyph_preview = surface_tokens.remove("glyphPreview");
     let slider_thumb = surface_tokens.remove("sliderThumb");
     let slider_thumb_active = surface_tokens.remove("sliderThumbActive");
     let mut surfaces = resolve_map(
@@ -693,6 +712,7 @@ pub fn parse_theme(source: &str) -> Result<Theme, String> {
     surfaces.insert("panelShadow".into(), panel_shadow);
     for (name, token, fallback) in [
         ("backdropTint", backdrop_tint, "app"),
+        ("glyphPreview", glyph_preview, "canvas"),
         ("sliderThumb", slider_thumb, "button"),
         ("sliderThumbActive", slider_thumb_active, "buttonHover"),
     ] {
@@ -703,6 +723,7 @@ pub fn parse_theme(source: &str) -> Result<Theme, String> {
     let mut text_tokens = file.text.clone();
     let app_ink = text_tokens.remove("appInk");
     let header_muted_ink = text_tokens.remove("headerMutedInk");
+    let inactive_tab_ink = text_tokens.remove("inactiveTabInk");
     let mut text = resolve_map(&file, theme_id, "text", &text_tokens, REQUIRED_TEXT)?;
     let app_ink = resolve_optional(&file, theme_id, "text.appInk", app_ink.as_deref())?
         .unwrap_or_else(|| text["primary"]);
@@ -715,7 +736,28 @@ pub fn parse_theme(source: &str) -> Result<Theme, String> {
     )? {
         text.insert("headerMutedInk".into(), ink);
     }
-    let roles = resolve_map(&file, theme_id, "roles", &file.roles, REQUIRED_ROLES)?;
+    if let Some(ink) = resolve_optional(
+        &file,
+        theme_id,
+        "text.inactiveTabInk",
+        inactive_tab_ink.as_deref(),
+    )? {
+        text.insert("inactiveTabInk".into(), ink);
+    }
+    let mut role_tokens = file.roles.clone();
+    let mut optional_roles = Vec::new();
+    for &name in OPTIONAL_ROLES {
+        if let Some(token) = role_tokens.remove(name) {
+            optional_roles.push((name, token));
+        }
+    }
+    let mut roles = resolve_map(&file, theme_id, "roles", &role_tokens, REQUIRED_ROLES)?;
+    for (name, token) in optional_roles {
+        let key = format!("roles.{name}");
+        if let Some(value) = resolve_optional(&file, theme_id, &key, Some(&token))? {
+            roles.insert(name.into(), value);
+        }
+    }
     let mark_step = file.mark_step.as_deref().unwrap_or("base");
     let marks = file
         .rainbow
@@ -842,6 +884,10 @@ pub fn load_theme_checked(theme_id: &str) -> Result<Theme, String> {
 pub fn builtin_theme_source(theme_id: &str) -> Result<&'static str, String> {
     let source = match theme_id {
         "dark" => include_str!("../../assets/themes/default/dark.theme.toml"),
+        "dark-gray" => include_str!("../../assets/themes/default/dark-gray.theme.toml"),
+        "light-gray" => include_str!("../../assets/themes/default/light-gray.theme.toml"),
+        "strawberry" => include_str!("../../assets/themes/default/strawberry.theme.toml"),
+        "campfire" => include_str!("../../assets/themes/default/campfire.theme.toml"),
         "gray" => include_str!("../../assets/themes/default/gray.theme.toml"),
         "light" => include_str!("../../assets/themes/default/light.theme.toml"),
         _ => return Err(format!("unknown built-in theme '{theme_id}'")),
@@ -989,8 +1035,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn inspector_preview_surface_preserves_legacy_canvas_fallback() {
+        let source = builtin_theme_source("gray").expect("Gray source");
+        let line = source
+            .lines()
+            .find(|line| line.starts_with("glyphPreview = "))
+            .expect("Gray preview surface");
+        let theme = parse_theme(source).expect("Gray theme");
+        assert_ne!(theme.surface("glyphPreview"), theme.surface("canvas"));
+        let legacy = parse_theme(&source.replace(line, "")).expect("legacy theme");
+        assert_eq!(legacy.surface("glyphPreview"), legacy.surface("canvas"));
+        assert_eq!(theme.surface("canvas"), legacy.surface("canvas"));
+        let invalid = source.replace(line, "glyphPreview = \"baseUi.missing\"");
+        assert!(parse_theme(&invalid).unwrap_err().contains("glyphPreview"));
+    }
+
+    #[test]
     fn built_in_themes_have_complete_color_references() {
-        for id in ["dark", "gray", "light"] {
+        for &id in BUILTIN_THEME_IDS {
             load_theme_checked(id).unwrap_or_else(|error| panic!("{error}"));
             let file: toml::Value = toml::from_str(builtin_theme_source(id).unwrap()).unwrap();
             let base = file["baseUi"].as_table().unwrap();
@@ -1011,6 +1073,34 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+
+    #[test]
+    fn optional_appearance_roles_validate_without_changing_legacy_themes() {
+        let source = builtin_theme_source("gray").expect("gray source");
+        let legacy = parse_theme(source).expect("legacy theme");
+        for &name in OPTIONAL_ROLES {
+            assert!(!legacy.roles.contains_key(name));
+            let mut file: toml::Value = toml::from_str(source).expect("theme TOML");
+            file["roles"]
+                .as_table_mut()
+                .expect("roles table")
+                .insert(name.into(), "rainbow.green.dim".into());
+            let customized = toml::to_string(&file).expect("customized TOML");
+            assert!(
+                parse_theme(&customized)
+                    .expect("optional appearance role")
+                    .roles
+                    .contains_key(name)
+            );
+            file["roles"][name] = "baseUi.missing".into();
+            let invalid = toml::to_string(&file).expect("invalid theme TOML");
+            assert!(
+                parse_theme(&invalid)
+                    .unwrap_err()
+                    .contains(&format!("roles.{name}"))
+            );
         }
     }
 
@@ -1164,7 +1254,7 @@ mod tests {
 
     #[test]
     fn grouped_drawing_settings_preserve_legacy_theme_appearance() {
-        for id in ["dark", "gray", "light"] {
+        for &id in BUILTIN_THEME_IDS {
             let source = builtin_theme_source(id).unwrap();
             let grouped = parse_theme(source).unwrap();
             let mut file: toml::Value = toml::from_str(source).unwrap();
@@ -1240,16 +1330,16 @@ mod tests {
     fn resolves_the_dark_palette() {
         let dark = load_theme("dark").expect("dark theme");
         assert_eq!(hex(dark.surface("app")), "#0b0b0b");
-        assert_eq!(hex(dark.surface("panel")), "#121212");
+        assert_eq!(hex(dark.surface("panel")), "#161616");
         assert_eq!(hex(dark.surface("outline")), "#404040");
-        assert_eq!(hex(dark.text("primary")), "#8f8f8f");
+        assert_eq!(hex(dark.text("primary")), "#9e9e9e");
         assert_eq!(hex(dark.role("accent")), "#57b174");
         assert_eq!(hex(dark.role("warning")), "#dec352");
         assert_eq!(hex(dark.role("selection")), "#e2763f");
         assert_eq!(hex(dark.role("pointSmooth")), "#4b91d1");
         assert_eq!(hex(dark.role("pointOffcurve")), "#876fd4");
         assert_eq!(hex(dark.role("pointSelected")), "#fde895");
-        assert_eq!(hex(dark.role("pathStroke")), "#c1c1c1");
+        assert_eq!(hex(dark.role("pathStroke")), "#9e9e9e");
         assert_eq!(hex(dark.role("gridSelected")), "#c1c1c1");
         assert_eq!(hex(dark.role("continuityG2")), "#4b91d1");
     }
@@ -1257,13 +1347,12 @@ mod tests {
     /// The swatches drawn in the Colors panel.
     #[test]
     fn resolves_mark_swatches() {
-        // Dark fills its marks at the bright step, so dark ink reads
-        // on every one of them.
+        // Dark's outlined marks use the base hues, matching their semantic roles.
         let dark = load_theme("dark").expect("dark theme");
-        assert_eq!(hex(dark.mark("red").unwrap()), "#f5867b");
-        assert_eq!(hex(dark.mark("orange").unwrap()), "#ffa980");
-        assert_eq!(hex(dark.mark("yellow").unwrap()), "#fde895");
-        assert_eq!(hex(dark.mark("green").unwrap()), "#94d6a6");
+        assert_eq!(dark.mark("red"), Some(dark.role("danger")));
+        assert_eq!(dark.mark("orange"), Some(dark.role("selection")));
+        assert_eq!(dark.mark("yellow"), Some(dark.role("warning")));
+        assert_eq!(dark.mark("green"), Some(dark.role("accent")));
         assert_eq!(dark.marks.len(), 7);
         assert!(dark.mark("chartreuse").is_none());
     }
@@ -1353,7 +1442,7 @@ mod geometry_tests {
 
     #[test]
     fn every_theme_resolves_geometry() {
-        for id in ["dark", "light", "gray"] {
+        for &id in BUILTIN_THEME_IDS {
             let theme = load_theme(id).expect("theme in the token file");
             assert!(theme.geometry.stroke > 0.0, "{id} stroke");
             assert!(theme.geometry.radius >= 0.0, "{id} radius");
@@ -1440,9 +1529,13 @@ mod geometry_tests {
                 .window
                 .blur_background
         );
+        let opacity_line = source
+            .lines()
+            .find(|line| line.starts_with("blurTintOpacity = "))
+            .expect("Gray backdrop opacity");
         let legacy = source
             .replace("blurBackground = true\n", "")
-            .replace("blurTintOpacity = 0.25\n", "")
+            .replace(opacity_line, "")
             .replace("shadowPanels = false\n", "");
         assert_eq!(
             parse_theme(&legacy).expect("optional backdrop").window,
@@ -1455,18 +1548,16 @@ mod geometry_tests {
     #[test]
     fn window_blur_tint_accepts_only_finite_opacity() {
         let source = include_str!("../../assets/themes/default/gray.theme.toml");
+        let opacity_line = source
+            .lines()
+            .find(|line| line.starts_with("blurTintOpacity = "))
+            .expect("Gray backdrop opacity");
         for value in ["0.0", "0.65", "1.0"] {
-            let edited = source.replace(
-                "blurTintOpacity = 0.25",
-                &format!("blurTintOpacity = {value}"),
-            );
+            let edited = source.replace(opacity_line, &format!("blurTintOpacity = {value}"));
             assert!(parse_theme(&edited).is_ok(), "valid opacity {value}");
         }
         for value in ["-0.1", "1.1", "nan", "inf"] {
-            let edited = source.replace(
-                "blurTintOpacity = 0.25",
-                &format!("blurTintOpacity = {value}"),
-            );
+            let edited = source.replace(opacity_line, &format!("blurTintOpacity = {value}"));
             assert!(
                 parse_theme(&edited)
                     .unwrap_err()
@@ -1474,7 +1565,7 @@ mod geometry_tests {
                 "invalid opacity {value}"
             );
         }
-        let legacy = source.replace("blurTintOpacity = 0.25\n", "");
+        let legacy = source.replace(opacity_line, "");
         assert_eq!(parse_theme(&legacy).unwrap().window.blur_tint_opacity, 0.8);
     }
 
@@ -1554,7 +1645,7 @@ mod mark_contrast {
     #[test]
     fn every_mark_is_legible_on_every_theme() {
         const FLOOR: f64 = 3.0;
-        for id in ["dark", "light", "gray"] {
+        for &id in BUILTIN_THEME_IDS {
             let theme = load_theme(id).expect("theme");
             for (name, mark) in &theme.marks {
                 match theme.mark_style {
@@ -1599,11 +1690,12 @@ mod mark_contrast {
         }
     }
 
-    /// Every theme fills its marks the same way, so the grid does not
-    /// change character with the theme.
+    /// Dark keeps the older outlined treatment; lighter themes retain filled marks.
     #[test]
-    fn every_theme_fills_its_marks() {
-        for id in ["dark", "light", "gray"] {
+    fn built_in_mark_treatments_match_their_surfaces() {
+        let dark = load_theme("dark").expect("dark");
+        assert_eq!(dark.mark_style, MarkStyle::Border);
+        for &id in BUILTIN_THEME_IDS.iter().filter(|&&id| id != "dark") {
             let theme = load_theme(id).expect("theme");
             assert_eq!(theme.mark_style, MarkStyle::Fill, "{id}");
             assert!(theme.mark_ink.is_some(), "{id} names the ink on a mark");
@@ -1639,7 +1731,6 @@ mod ui_contrast {
     /// editor chrome is prose: it is labels, tiles and marks.
     const FLOOR: f64 = 3.0;
 
-    const THEMES: [&str; 3] = ["dark", "gray", "light"];
     // Prose sits on workspace surfaces. The window ground uses its own ink.
     const SURFACES: [&str; 5] = ["panel", "control", "button", "field", "canvas"];
     /// The text tokens the editor actually draws with. `muted` and
@@ -1649,7 +1740,7 @@ mod ui_contrast {
 
     #[test]
     fn selected_labels_read_in_every_builtin_theme() {
-        for id in THEMES {
+        for &id in BUILTIN_THEME_IDS {
             let theme = load_theme(id).expect("theme");
             let fill = theme.role("controlSelected");
             for ink in [
@@ -1663,8 +1754,37 @@ mod ui_contrast {
     }
 
     #[test]
+    fn dark_proof_and_active_control_inks_read_on_their_surfaces() {
+        let theme = load_theme("dark").expect("dark");
+        for (role, surface) in [("proofInk", "panel"), ("headerActiveInk", "header")] {
+            let ratio = contrast(theme.role(role), theme.surface(surface));
+            assert!(ratio >= 4.5, "dark: {role} on {surface} is {ratio:.2}");
+        }
+        assert_eq!(theme.role("proofInk"), theme.role("warning"));
+        assert_ne!(theme.role("proofInk"), theme.role("previewFill"));
+        assert_eq!(theme.role("controlSelectedOutline"), theme.role("accent"));
+    }
+
+    /// Save-state labels are header text, not ink on a filled glyph tile.
+    #[test]
+    fn pale_header_save_status_is_readable_without_darkening_glyph_marks() {
+        for id in ["light", "light-gray", "strawberry"] {
+            let theme = load_theme(id).expect("theme");
+            let header = theme.surface("header");
+            for (role, mark) in [("savedInk", "green"), ("unsavedInk", "red")] {
+                let ratio = contrast(theme.role(role), header);
+                assert!(ratio >= 4.5, "{id}: {role} on header is {ratio:.2}");
+                assert!(
+                    ratio > contrast(theme.mark(mark).expect("glyph mark"), header),
+                    "{id}: {role} needs darker ink than the filled tile mark"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn text_reads_on_every_surface() {
-        for id in THEMES {
+        for &id in BUILTIN_THEME_IDS {
             let theme = load_theme(id).expect("theme");
             assert!(
                 contrast(theme.text("appInk"), theme.surface("app")) >= FLOOR,
@@ -1694,7 +1814,7 @@ mod ui_contrast {
             "pointSelected",
             "startNode",
         ];
-        for id in THEMES {
+        for &id in BUILTIN_THEME_IDS {
             let theme = load_theme(id).expect("theme");
             let canvas = theme.surface("canvas");
             // A filled point keeps its edge with the keyline, so the
@@ -1720,7 +1840,7 @@ mod ui_contrast {
     /// thing was the hardest thing to see.
     #[test]
     fn chrome_roles_read_on_the_panel() {
-        for id in THEMES {
+        for &id in BUILTIN_THEME_IDS {
             let theme = load_theme(id).expect("theme");
             let panel = theme.surface("panel");
             for role in ["accent", "danger"] {
@@ -1766,7 +1886,7 @@ mod ui_contrast {
     /// two tokens exist for is not there.
     #[test]
     fn the_two_text_levels_stay_distinct() {
-        for id in THEMES {
+        for &id in BUILTIN_THEME_IDS {
             let theme = load_theme(id).expect("theme");
             let ratio = contrast(theme.text("primary"), theme.text("secondary"));
             assert!(

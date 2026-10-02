@@ -670,7 +670,7 @@ impl EditorWidget {
             )
             .draw();
         painter.fill(rounded(frame, radius), pal.panel).draw();
-        let header_bg = self.mark.unwrap_or_else(|| pal.floating_pane_header_bg());
+        let (header_bg, header_ink) = pal.floating_header_colors(self.mark);
         painter.with_fill_clip(rounded(frame, radius), |painter| {
             painter
                 .fill(
@@ -697,11 +697,6 @@ impl EditorWidget {
             )
             .draw();
 
-        let header_ink = if self.mark.is_some() {
-            pal.mark_ink.unwrap_or(pal.text)
-        } else {
-            pal.text
-        };
         let header_text = |painter: &mut Painter<'_>, x: f64, s: &str, size: f32, anchor| {
             text_label::draw(
                 painter,
@@ -3045,6 +3040,10 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
         _: &mut Workspace,
     ) {
         let mut dirty = false;
+        if !Arc::ptr_eq(&self.palette, &prev.palette) {
+            element.widget.palette = self.palette.clone();
+            dirty = true;
+        }
         if !Arc::ptr_eq(&self.session, &prev.session) {
             let viewport = element.widget.session.viewport.clone();
             let fitted = element.widget.session.fitted;

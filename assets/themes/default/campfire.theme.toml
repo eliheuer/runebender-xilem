@@ -1,0 +1,145 @@
+# A warm dark workspace: ember-brown surfaces, copper rules, and cream ink.
+# Ten Base UI stops, 00–09, progress from darkest to lightest.
+# See https://runebender.org/docs/themes.html for the full format.
+formatVersion = 1
+id = "campfire"
+name = "Campfire"
+
+# Warm chroma stays present across the scale, including fields and text.
+[baseUi]
+"00" = "oklch(0.17 0.024 55)"
+"01" = "oklch(0.23 0.034 55)"
+"02" = "oklch(0.285 0.044 55)"
+"03" = "oklch(0.33 0.055 55)"
+"04" = "oklch(0.375 0.065 55)"
+"05" = "oklch(0.46 0.072 55)"
+"06" = "oklch(0.58 0.08 60)"
+"07" = "oklch(0.72 0.072 65)"
+"08" = "oklch(0.84 0.046 75)"
+"09" = "oklch(0.93 0.021 85)"
+
+# Glyph marks keep the same colors, order, and meaning as Gray.
+[rainbow]
+marks = ["red", "orange", "yellow", "green", "blue", "purple", "pink"]
+
+[rainbow.hues]
+red = "oklch(0.61 0.167 27)"
+orange = "oklch(0.68 0.15 46)"
+yellow = "oklch(0.82 0.135 96)"
+green = "oklch(0.69 0.126 152)"
+blue = "oklch(0.64 0.119 248)"
+purple = "oklch(0.61 0.15 292)"
+pink = "oklch(0.68 0.15 350)"
+
+# Signed OKLCH offsets added to each hue; the final 0 preserves the hue.
+[rainbow.steps]
+dim = "oklch(-0.17 -0.02 0)"
+base = "oklch(0.0 0.0 0)"
+bright = "oklch(0.13 -0.03 0)"
+deep = "oklch(-0.26 0.0 0)"
+
+[drawing]
+# Keep Gray's filled glyph tiles, with dark warm ink rather than neutral black.
+markStep = "base"
+markStyle = "fill"
+markOutline = "baseUi.00"
+markInk = "baseUi.00"
+# Base Rainbow rings remain readable against the deep brown canvas.
+pointStyle = "ring"
+pointHalo = true
+
+[surfaces]
+app = "baseUi.02"
+backdropTint = "#774D2F"
+panel = "baseUi.03"
+titlebar = "baseUi.02"
+control = "baseUi.04"
+button = "baseUi.03"
+buttonHover = "baseUi.04"
+field = "baseUi.04"
+outline = "baseUi.05"
+fieldOutline = "baseUi.05"
+divider = "baseUi.05"
+canvas = "baseUi.01"
+# Independent inspector preview surface; keep the drawing canvas unchanged.
+glyphPreview = "baseUi.01"
+tabRail = "baseUi.02"
+inactiveTab = "baseUi.03"
+header = "baseUi.02"
+gridBackground = "baseUi.01"
+cellShadow = "baseUi.00"
+floatingPaneHeader = "baseUi.04"
+sliderTrack = "baseUi.05"
+sliderThumb = "baseUi.02"
+sliderThumbActive = "baseUi.03"
+panelShadow = "baseUi.00"
+
+[text]
+appInk = "baseUi.09"
+primary = "baseUi.09"
+secondary = "baseUi.08"
+muted = "baseUi.07"
+subdued = "baseUi.06"
+overlay = "baseUi.09"
+glyph = "baseUi.08"
+headerInk = "baseUi.09"
+headerMutedInk = "baseUi.08"
+
+[roles]
+# Selected cells and sidebar labels keep Gray's yellow ink on a dark face.
+gridSelected = "baseUi.00"
+cellSelectedFill = "baseUi.00"
+cellSelectedInk = "baseUi.09"
+controlSelected = "baseUi.00"
+controlSelectedInk = "baseUi.09"
+designGridFine = "baseUi.03"
+designGridCoarse = "baseUi.04"
+accent = "rainbow.green.base"
+warning = "rainbow.orange.base"
+danger = "rainbow.red.base"
+selection = "rainbow.orange.base"
+component = "rainbow.purple.base"
+componentSelected = "rainbow.pink.base"
+pointSmooth = "rainbow.blue.base"
+pointCorner = "rainbow.green.base"
+pointOffcurve = "rainbow.purple.base"
+pointHyper = "rainbow.blue.base"
+pointSelected = "rainbow.yellow.base"
+pointInner = "baseUi.01"
+startNode = "rainbow.orange.base"
+textCursor = "rainbow.orange.base"
+kernActive = "rainbow.blue.base"
+kernPrevious = "rainbow.orange.base"
+pathStroke = "baseUi.08"
+previewFill = "baseUi.08"
+background = "baseUi.05"
+reference = "baseUi.04"
+halo = "baseUi.01"
+metricQuiet = "baseUi.03"
+outlineFill = "baseUi.04"
+metricsLine = "baseUi.05"
+readonlyPoint = "baseUi.07"
+continuityG2 = "rainbow.blue.base"
+continuityG1 = "rainbow.yellow.base"
+continuityLine = "baseUi.06"
+continuityKink = "rainbow.red.base"
+popcount1 = "#17B870"
+popcount2 = "#FFDB33"
+popcount3 = "#FF990F"
+popcount4 = "#FF4A3D"
+
+[window]
+# Native macOS blur; Linux and other hosts retain the solid warm surfaces.
+# The copper tint keeps the window warm while leaving some wallpaper visible.
+blurBackground = true
+blurTintOpacity = 0.38
+shadowPanels = false
+
+# The same rounding, strokes, and shadow behavior as Gray.
+[geometry]
+radius = 8.0
+radiusPanel = 10.0
+shadowPanel = true
+radiusControl = 4.0
+stroke = 1.0
+strokeEmphasis = 2.0

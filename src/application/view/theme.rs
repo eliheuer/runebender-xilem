@@ -15,6 +15,18 @@ fn color(c: ColorRgba) -> Color {
     Color::from_rgba8(c.r, c.g, c.b, c.a)
 }
 
+/// Native chrome follows the opaque theme ground, independently of wallpaper and blur tint.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn window_theme_for_color(background: Color) -> winit::window::Theme {
+    let [red, green, blue, _] = background.components;
+    let brightness = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+    if brightness < 0.5 {
+        winit::window::Theme::Dark
+    } else {
+        winit::window::Theme::Light
+    }
+}
+
 /// A resolved palette: named surfaces, text, roles, and mark colors.
 pub(crate) struct Palette {
     pub app: Color,
@@ -31,6 +43,8 @@ pub(crate) struct Palette {
     pub tab_rail: Color,
     /// The face of an inactive editor-rail tab.
     pub inactive_tab: Color,
+    /// Solid inactive tab ink, with the legacy opacity for themes that omit it.
+    pub inactive_tab_ink: Color,
     /// The background behind the title and tools.
     pub header: Color,
     /// The contrasting ink used on the header background.
@@ -53,6 +67,8 @@ pub(crate) struct Palette {
     /// Slider knob fill while focused or dragged.
     pub slider_thumb_active: Color,
     pub canvas: Color,
+    /// Independent surface for the glyph outline preview in the inspector.
+    pub glyph_preview: Color,
     pub field: Color,
     grid_background: Color,
     cell_shadow_color: Color,
@@ -70,6 +86,8 @@ pub(crate) struct Palette {
     roles: HashMap<String, Color>,
     marks: HashMap<String, Color>,
     mark_order: Vec<String>,
+    /// Whether glyph marks color the tile face rather than its outline and ink.
+    pub marks_filled: bool,
     /// The keyline a filled mark cell carries, when the theme names one.
     pub mark_outline: Option<Color>,
     /// The ink on a filled mark cell, when the theme names one.
@@ -103,6 +121,12 @@ impl Palette {
             panel,
             tab_rail: color(t.surface("tabRail")),
             inactive_tab: color(t.surface("inactiveTab")),
+            inactive_tab_ink: t
+                .text
+                .get("inactiveTabInk")
+                .copied()
+                .map(color)
+                .unwrap_or_else(|| text.with_alpha(0.42)),
             header: color(t.surface("header")),
             header_ink: color(t.text("headerInk")),
             header_muted_ink: t.text.get("headerMutedInk").copied().map(color),
@@ -118,6 +142,7 @@ impl Palette {
             slider_thumb: color(t.surface("sliderThumb")),
             slider_thumb_active: color(t.surface("sliderThumbActive")),
             canvas: color(t.surface("canvas")),
+            glyph_preview: color(t.surface("glyphPreview")),
             field: color(t.surface("field")),
             grid_background: color(t.surface("gridBackground")),
             cell_shadow_color: color(t.surface("cellShadow")),
@@ -140,6 +165,7 @@ impl Palette {
                 .map(|(k, v)| (k.clone(), color(*v)))
                 .collect(),
             mark_order: t.marks.iter().map(|(k, _)| k.clone()).collect(),
+            marks_filled: t.mark_style == runebender::ui::theme::MarkStyle::Fill,
             mark_outline: t.mark_outline.map(color),
             mark_ink: t.mark_ink.map(color),
             points_filled: t.point_style == runebender::ui::theme::PointStyle::Fill,
@@ -150,6 +176,12 @@ impl Palette {
 
     pub(crate) fn field(&self) -> Color {
         self.field
+    }
+
+    /// Light or dark native title-bar styling, derived from this theme's window ground.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn window_theme(&self) -> winit::window::Theme {
+        window_theme_for_color(self.app)
     }
 
     /// Tint the native backdrop once, beneath the opaque floating panels.
@@ -204,6 +236,27 @@ impl Palette {
             .unwrap_or_else(|| self.header_ink.with_alpha(legacy_opacity))
     }
 
+    /// Active title-bar controls can use an accent independently of the document title.
+    pub(crate) fn header_active_ink(&self) -> Color {
+        self.roles
+            .get("headerActiveInk")
+            .copied()
+            .unwrap_or(self.header_ink)
+    }
+
+    /// Save-state text can use contrasting ink independently of filled glyph marks.
+    /// Themes without these roles retain their existing red and green status colors.
+    pub(crate) fn save_status_ink(&self, modified: bool) -> Color {
+        let role = if modified { "unsavedInk" } else { "savedInk" };
+        self.roles.get(role).copied().unwrap_or_else(|| {
+            if modified {
+                self.mark("red").unwrap_or_else(|| self.role("warning"))
+            } else {
+                self.mark("green").unwrap_or(self.text_muted)
+            }
+        })
+    }
+
     /// The themed background for selected rows, tiles, and controls.
     pub(crate) fn selected_bg(&self) -> Color {
         self.role("controlSelected")
@@ -212,6 +265,14 @@ impl Palette {
     /// Contrasting ink for selected controls, separate from glyph and sidebar labels.
     pub(crate) fn selected_ink(&self) -> Color {
         self.role("controlSelectedInk")
+    }
+
+    /// Selected control keylines retain their previous treatment in older custom themes.
+    pub(crate) fn selected_outline(&self, fallback: Color) -> Color {
+        self.roles
+            .get("controlSelectedOutline")
+            .copied()
+            .unwrap_or(fallback)
     }
 
     /// The selected glyph or sidebar label, matching GPUI's yellow mark ink.
@@ -245,6 +306,23 @@ impl Palette {
     /// quieter than Gray's shared dark ink for keylines and controls.
     pub(crate) fn editor_ink(&self) -> Color {
         self.role("previewFill")
+    }
+
+    /// Proof type can have its own ink without recoloring outlines in the editing canvas.
+    pub(crate) fn proof_ink(&self) -> Color {
+        self.roles
+            .get("proofInk")
+            .copied()
+            .unwrap_or_else(|| self.editor_ink())
+    }
+
+    /// Follow the mark treatment on the small metrics card as well as on glyph tiles.
+    pub(crate) fn floating_header_colors(&self, mark: Option<Color>) -> (Color, Color) {
+        match mark {
+            Some(mark) if self.marks_filled => (mark, self.mark_ink.unwrap_or(self.text)),
+            Some(mark) => (self.floating_pane_header_bg(), mark),
+            None => (self.floating_pane_header_bg(), self.text),
+        }
     }
 
     /// The neutral for a compact editor control.
@@ -342,8 +420,92 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn native_chrome_follows_the_light_and_dark_theme_families() {
+        for id in ["light", "light-gray", "strawberry"] {
+            assert_eq!(
+                Palette::load(id).window_theme(),
+                winit::window::Theme::Light
+            );
+        }
+        for id in ["dark", "dark-gray", "gray", "campfire"] {
+            assert_eq!(Palette::load(id).window_theme(), winit::window::Theme::Dark);
+        }
+    }
+
+    #[test]
+    fn legacy_themes_keep_their_optional_appearance_colors() {
+        for &id in runebender::ui::theme::BUILTIN_THEME_IDS {
+            let mut theme = runebender::ui::theme::load_theme(id).expect("theme");
+            for role in [
+                "proofInk",
+                "headerActiveInk",
+                "controlSelectedOutline",
+                "savedInk",
+                "unsavedInk",
+            ] {
+                theme.roles.remove(role);
+            }
+            let palette = Palette::from_theme(&theme);
+            assert_eq!(palette.proof_ink(), palette.editor_ink());
+            assert_eq!(palette.header_active_ink(), palette.header_ink);
+            assert_eq!(palette.selected_outline(palette.outline), palette.outline);
+            assert_eq!(
+                palette.selected_outline(palette.selected_bg()),
+                palette.selected_bg()
+            );
+            assert_eq!(
+                palette.save_status_ink(false),
+                palette.mark("green").expect("green mark")
+            );
+            assert_eq!(
+                palette.save_status_ink(true),
+                palette.mark("red").expect("red mark")
+            );
+        }
+        let mut palette = Palette::load("gray");
+        palette.marks.remove("green");
+        palette.marks.remove("red");
+        assert_eq!(palette.save_status_ink(false), palette.text_muted);
+        assert_eq!(palette.save_status_ink(true), palette.role("warning"));
+    }
+
+    #[test]
+    fn pale_theme_save_status_uses_its_own_ink_instead_of_tile_colors() {
+        for id in ["light", "light-gray", "strawberry"] {
+            let palette = Palette::load(id);
+            assert_eq!(palette.save_status_ink(false), palette.role("savedInk"));
+            assert_eq!(palette.save_status_ink(true), palette.role("unsavedInk"));
+            assert_ne!(
+                palette.save_status_ink(false),
+                palette.mark("green").expect("green mark")
+            );
+            assert_ne!(
+                palette.save_status_ink(true),
+                palette.mark("red").expect("red mark")
+            );
+        }
+    }
+
+    #[test]
+    fn metrics_headers_follow_the_mark_treatment() {
+        for &id in runebender::ui::theme::BUILTIN_THEME_IDS {
+            let palette = Palette::load(id);
+            let mark = palette.mark("green").expect("green mark");
+            let (background, ink) = palette.floating_header_colors(Some(mark));
+            if palette.marks_filled {
+                assert_eq!(background, mark);
+                assert_eq!(Some(ink), palette.mark_ink);
+            } else {
+                assert_eq!(background, palette.floating_pane_header_bg());
+                assert_eq!(ink, mark);
+            }
+        }
+    }
+
+    #[test]
     fn editable_outline_fill_preserves_role_color_at_gpui_opacity() {
-        for theme_id in ["dark", "gray", "light"] {
+        for &theme_id in runebender::ui::theme::BUILTIN_THEME_IDS {
             let palette = Palette::load(theme_id);
             let role = palette.role("outlineFill").components;
             let fill = palette.outline_fill().components;

@@ -301,9 +301,16 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(Space::None);
     let inspector_sections = || {
-        portal(sized_box(info_panel(app)).dims(Dimensions::new(Dim::Stretch, Dim::Auto)))
-            .constrain_horizontal(true)
-            .background_color(pal.panel)
+        // The portal can clip the final section rule at its measured boundary.
+        // Paint the same keyline inside the viewport so the preview separator
+        // stays as solid as every other section divider.
+        bottom_keyline(
+            portal(sized_box(info_panel(app)).dims(Dimensions::new(Dim::Stretch, Dim::Auto)))
+                .constrain_horizontal(true)
+                .background_color(pal.panel)
+                .boxed(),
+            pal.outline,
+        )
     };
     // Every mode lets its sections take their natural height. The preview
     // fills only the space left below them and moves out of view as they grow.
@@ -958,6 +965,67 @@ mod panel_resize_tests {
                     .unwrap(),
             ),
         )
+    }
+
+    #[test]
+    fn editor_repaints_every_theme_without_reopening_the_glyph() {
+        use xilem::core::View;
+        use xilem::view::sized_box;
+
+        let mut app = super::tab_tests::app();
+        app.open_glyph(app.font.index_of("A").expect("A"));
+        app.set_theme("gray");
+        let session = app.session.clone();
+        let revision = app.font.project.document_revision();
+        let mut ctx = context();
+        let mut view = sized_box(super::editor_pane(&app));
+        let (pod, mut state) = view.build(&mut ctx, &mut app);
+        let mut harness = TestHarness::create_with_size(
+            crate::application::view::default_property_set(),
+            pod.new_widget,
+            (786, 510),
+        );
+        let initial = harness.render();
+
+        let themes = runebender::ui::theme::BUILTIN_THEME_IDS;
+        for theme in themes
+            .iter()
+            .copied()
+            .chain(std::iter::once("gray"))
+            .chain(themes.iter().rev().copied())
+            .chain(std::iter::once("gray"))
+        {
+            app.set_theme(theme);
+            let next = sized_box(super::editor_pane(&app));
+            harness.edit_root_widget(|root| {
+                next.rebuild(&view, &mut state, &mut ctx, root, &mut app);
+            });
+            view = next;
+            let actual = harness.render();
+
+            // Compare the retained canvas, including its metrics card and outline,
+            // against a newly opened canvas in the requested theme.
+            let fresh = sized_box(super::editor_pane(&app));
+            let mut fresh_ctx = context();
+            let (fresh_pod, _) = fresh.build(&mut fresh_ctx, &mut app);
+            let mut fresh_harness = TestHarness::create_with_size(
+                crate::application::view::default_property_set(),
+                fresh_pod.new_widget,
+                (786, 510),
+            );
+            assert!(
+                actual == fresh_harness.render(),
+                "stale editor colors in {theme}"
+            );
+            if theme == "gray" {
+                assert!(
+                    actual == initial,
+                    "Gray must return to its original appearance"
+                );
+            }
+            assert!(Arc::ptr_eq(&session, &app.session));
+            assert_eq!(app.font.project.document_revision(), revision);
+        }
     }
 
     #[test]

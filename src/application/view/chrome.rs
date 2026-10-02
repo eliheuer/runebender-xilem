@@ -68,17 +68,10 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     label(title)
                         .text_size(TextSize::Body.px())
                         .color(pal.header_ink),
-                    // Saved is the mark palette's green, not saved its
-                    // red: the same two colours the glyph grid uses. The
-                    // This remains coloured text until the tag becomes a
-                    // dedicated painted widget.
+                    // Pale headers need darker status ink than filled glyph tiles.
                     label(status.to_string())
                         .text_size(TextSize::Body.px())
-                        .color(if app.modified {
-                            pal.mark("red").unwrap_or_else(|| pal.role("warning"))
-                        } else {
-                            pal.mark("green").unwrap_or(pal.text_muted)
-                        }),
+                        .color(pal.save_status_ink(app.modified)),
                 ),
             ))
             // In the overview this takes the leftover space. In the
@@ -145,7 +138,7 @@ pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<
     // the header as quiet as the adjacent outlined tabs while making the
     // selected tool the brightest mark on the bar.
     let fg = pal.header_inactive_ink(0.5);
-    let fg_active = pal.header_ink;
+    let fg_active = pal.header_active_ink();
     let active_bg = Color::TRANSPARENT;
     let hover_bg = pal.header_ink.with_alpha(0.1);
     let editor_focus = app.editor_focus.clone();

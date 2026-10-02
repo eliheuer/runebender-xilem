@@ -184,7 +184,9 @@ impl Widget for ToolGroupWidget {
         painter: &mut Painter<'_>,
     ) {
         let rect = self.size.to_rect();
-        let ink = if self.group.contains(self.active) || self.hovered || self.open.is_some() {
+        let ink = if self.group.contains(self.active) {
+            self.palette.header_active_ink()
+        } else if self.hovered || self.open.is_some() {
             self.palette.header_ink
         } else {
             self.palette.header_inactive_ink(0.5)

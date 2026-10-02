@@ -182,6 +182,30 @@ pub(crate) fn cells_of(font: &FontModel, palette: &Palette) -> Vec<Cell> {
         .collect()
 }
 
+/// Tile face, drawing ink, and keyline for the theme's mark treatment.
+/// Selection keeps its own treatment regardless of whether ordinary marks fill their tiles.
+fn cell_colors(palette: &Palette, mark: Option<Color>, selected: bool) -> (Color, Color, Color) {
+    if selected {
+        (
+            palette.selected_bg(),
+            palette.selected_content_ink(),
+            palette.outline,
+        )
+    } else if let Some(mark) = mark {
+        if palette.marks_filled {
+            (
+                mark,
+                palette.mark_ink.unwrap_or(palette.text),
+                palette.mark_outline.unwrap_or(palette.outline),
+            )
+        } else {
+            (palette.panel, mark, mark)
+        }
+    } else {
+        (palette.panel, palette.text, palette.outline)
+    }
+}
+
 /// What the grid reports upward.
 #[derive(Debug)]
 pub(crate) enum GridEvent {
@@ -557,13 +581,6 @@ impl Widget for GridWidget {
                 .max(inset),
         ));
 
-        // A marked cell is filled with its mark and keylined; its glyph and labels are drawn in the
-        // theme's mark ink. A selected cell inverts.
-        let cell_border = pal.outline;
-        let glyph_fill = pal.text;
-        let mark_outline = pal.mark_outline.unwrap_or(cell_border);
-        let mark_ink = pal.mark_ink.unwrap_or(glyph_fill);
-
         // Pixel rounding can leave room for the top edge of another row in
         // the bottom gutter. Only complete fitted rows belong to this viewport.
         let visible = self.visible_row_range();
@@ -588,18 +605,7 @@ impl Widget for GridWidget {
                 // Selected and multi-selected read the same: one fill, one
                 // ring, and one width.
                 let picked = selected || multi;
-                let bg = if picked {
-                    pal.selected_bg()
-                } else {
-                    cell.mark.unwrap_or(pal.panel)
-                };
-                let ink = if picked {
-                    pal.selected_content_ink()
-                } else if cell.mark.is_some() {
-                    mark_ink
-                } else {
-                    glyph_fill
-                };
+                let (bg, ink, border) = cell_colors(pal, cell.mark, picked);
                 // A hard lower-left shadow lifts each tile from the recessed
                 // grid ground. Selection gets one extra pixel without changing
                 // the tile's layout or hit geometry.
@@ -621,13 +627,6 @@ impl Widget for GridWidget {
                 }
                 // Square themes retain the rectangle path: a zero-radius
                 // RoundedRect can lose later same-color draws in Vello CPU.
-                let border = if picked {
-                    pal.outline
-                } else if cell.mark.is_some() {
-                    mark_outline
-                } else {
-                    cell_border
-                };
                 // Keep the keyline inside the cell, like a layout border.
                 // A centered stroke at the edge blurs into the surrounding gap.
                 let width = DesignStroke::Hairline.px();
@@ -667,9 +666,8 @@ impl Widget for GridWidget {
                     let preview =
                         fit_transform(preview_rect, cell.outline.bounding_box(), self.metrics.upm);
                     let outline = preview * (*cell.outline).clone();
-                    // Fill the glyph with its mark colour (gpui), so the grid
-                    // reads by category; selected cells use the ring colour,
-                    // unmarked glyphs the default glyph fill.
+                    // Glyphs and captions share the resolved tile ink: its
+                    // mark hue for outlined tiles, contrasting ink for filled ones.
                     painter.fill(&outline, ink).draw();
                 }
                 if label_lines == 0 {
@@ -990,6 +988,47 @@ where
 #[cfg(test)]
 mod thumbnail_tests {
     use super::*;
+
+    #[test]
+    fn mark_treatment_keeps_selection_and_unmarked_tiles_consistent() {
+        let mut palette = Palette::load("gray");
+        let mark = palette.mark("green").expect("green mark");
+        let unmarked = (palette.panel, palette.text, palette.outline);
+        let selected = (
+            palette.selected_bg(),
+            palette.selected_content_ink(),
+            palette.outline,
+        );
+
+        palette.marks_filled = false;
+        assert_eq!(
+            cell_colors(&palette, Some(mark), false),
+            (palette.panel, mark, mark)
+        );
+        assert_eq!(cell_colors(&palette, None, false), unmarked);
+        assert_eq!(cell_colors(&palette, Some(mark), true), selected);
+        assert_eq!(cell_colors(&palette, None, true), selected);
+
+        palette.marks_filled = true;
+        assert_eq!(
+            cell_colors(&palette, Some(mark), false),
+            (
+                mark,
+                palette.mark_ink.expect("filled mark ink"),
+                palette.mark_outline.expect("filled mark keyline"),
+            )
+        );
+        assert_eq!(cell_colors(&palette, None, false), unmarked);
+        assert_eq!(cell_colors(&palette, Some(mark), true), selected);
+        assert_eq!(cell_colors(&palette, None, true), selected);
+
+        palette.mark_ink = None;
+        palette.mark_outline = None;
+        assert_eq!(
+            cell_colors(&palette, Some(mark), false),
+            (mark, palette.text, palette.outline)
+        );
+    }
 
     fn rail() -> GridWidget {
         GridWidget {

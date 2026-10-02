@@ -5,21 +5,21 @@
 # Theme file format version; keep this at 1.
 formatVersion = 1
 # Unique identifier used to select this theme.
-id = "light"
+id = "light-gray"
 # Display name shown in the theme chooser.
-name = "Light"
+name = "Light Gray"
 
 [baseUi]
-"00" = "oklch(0.18 0 255)"
-"01" = "oklch(0.31 0 255)"
-"02" = "oklch(0.43 0 255)"
-"03" = "oklch(0.55 0 255)"
-"04" = "oklch(0.65 0 255)"
-"05" = "oklch(0.76 0 255)"
-"06" = "oklch(0.86 0 255)"
-"07" = "oklch(0.925 0 255)"
-"08" = "oklch(0.985 0 255)"
-"09" = "oklch(1.0 0 255)"
+"00" = "oklch(0.18 0 0)"
+"01" = "oklch(0.30 0 0)"
+"02" = "oklch(0.42 0 0)"
+"03" = "oklch(0.52 0 0)"
+"04" = "oklch(0.64 0 0)"
+"05" = "oklch(0.76 0 0)"
+"06" = "oklch(0.83 0 0)"
+"07" = "oklch(0.89 0 0)"
+"08" = "oklch(0.925 0 0)"
+"09" = "oklch(0.96 0 0)"
 
 [rainbow]
 marks = ["red", "orange", "yellow", "green", "blue", "purple", "pink"]
@@ -45,47 +45,43 @@ deep = "oklch(-0.26 0.0 0)"
 [drawing]
 # Rainbow step used for glyph marks: dim, base, bright, or deep.
 markStep = "base"
-# Glyph mark treatment: fill colors the tile; border colors its outline.
+# Keep Gray's filled glyph tiles with dark, readable ink.
 markStyle = "fill"
-# Outline around a tile with a filled rainbow mark.
-markOutline = "baseUi.01"
-# Glyph and caption color on filled rainbow tiles.
+markOutline = "baseUi.00"
 markInk = "baseUi.00"
-# Outline point treatment: fill uses colored interiors; ring uses colored rings.
+# Darker colored rings stay legible on the light canvas.
 pointStyle = "ring"
-# Add a canvas-colored halo around points and anchors to separate them from paths.
 pointHalo = true
 
 [surfaces]
-# Pale gray window chrome surrounds near-white panels and a white drawing surface.
-app = "baseUi.07"
-panel = "baseUi.08"
-titlebar = "baseUi.07"
-control = "baseUi.07"
-button = "baseUi.08"
-buttonHover = "baseUi.09"
-field = "baseUi.09"
-outline = "baseUi.06"
-fieldOutline = "baseUi.05"
-divider = "baseUi.07"
-canvas = "baseUi.09"
+# Match Light's pale window chrome with softer gray panels and canvas.
+app = "baseUi.08"
+titlebar = "baseUi.08"
+header = "baseUi.08"
+panel = "baseUi.07"
+canvas = "baseUi.08"
 # Independent inspector preview surface; keep the drawing canvas unchanged.
-glyphPreview = "baseUi.09"
-tabRail = "baseUi.06"
-inactiveTab = "baseUi.07"
-header = "baseUi.07"
-gridBackground = "baseUi.07"
-cellShadow = "baseUi.06"
-floatingPaneHeader = "baseUi.07"
+glyphPreview = "baseUi.08"
+control = "baseUi.06"
+button = "baseUi.07"
+buttonHover = "baseUi.08"
+field = "baseUi.08"
+outline = "baseUi.05"
+fieldOutline = "baseUi.05"
+divider = "baseUi.06"
+tabRail = "baseUi.05"
+inactiveTab = "baseUi.06"
+gridBackground = "baseUi.06"
+cellShadow = "baseUi.05"
+floatingPaneHeader = "baseUi.06"
 sliderTrack = "baseUi.04"
-
 # Slider knob: two stops below the panel, then one stop brighter when active.
-sliderThumb = "baseUi.06"
-sliderThumbActive = "baseUi.07"
+sliderThumb = "baseUi.05"
+sliderThumbActive = "baseUi.06"
 # Main-panel shadows in solid mode; glyph shadows use cellShadow above.
-panelShadow = "baseUi.07"
-# Independent light overlay for the macOS material.
-backdropTint = "#F0F0F0"
+panelShadow = "baseUi.06"
+# Independent pale gray overlay for the macOS material.
+backdropTint = "#E5E5E5"
 
 [text]
 primary = "baseUi.01"
@@ -95,8 +91,6 @@ subdued = "baseUi.03"
 overlay = "baseUi.00"
 glyph = "baseUi.01"
 headerInk = "baseUi.01"
-
-# Window-ground text and inactive title-bar controls.
 appInk = "baseUi.01"
 headerMutedInk = "baseUi.02"
 
@@ -104,10 +98,10 @@ headerMutedInk = "baseUi.02"
 # Save-state labels use darker hues on the pale title bar, independently of glyph marks.
 savedInk = "rainbow.green.deep"
 unsavedInk = "rainbow.red.dim"
-gridSelected = "baseUi.01"
-cellSelectedFill = "baseUi.01"
+gridSelected = "baseUi.02"
+cellSelectedFill = "baseUi.02"
 cellSelectedInk = "baseUi.09"
-controlSelected = "baseUi.01"
+controlSelected = "baseUi.02"
 controlSelectedInk = "baseUi.09"
 designGridFine = "baseUi.07"
 designGridCoarse = "baseUi.06"
@@ -122,7 +116,7 @@ pointCorner = "rainbow.green.dim"
 pointOffcurve = "rainbow.purple.dim"
 pointHyper = "rainbow.blue.dim"
 pointSelected = "rainbow.orange.dim"
-pointInner = "baseUi.09"
+pointInner = "baseUi.08"
 startNode = "rainbow.orange.dim"
 textCursor = "rainbow.orange.dim"
 kernActive = "rainbow.blue.dim"
@@ -131,9 +125,9 @@ pathStroke = "baseUi.01"
 previewFill = "baseUi.02"
 background = "baseUi.03"
 reference = "baseUi.06"
-halo = "baseUi.09"
-metricQuiet = "baseUi.06"
-outlineFill = "baseUi.05"
+halo = "baseUi.08"
+metricQuiet = "baseUi.07"
+outlineFill = "baseUi.06"
 metricsLine = "baseUi.05"
 readonlyPoint = "baseUi.03"
 continuityG2 = "rainbow.blue.dim"
@@ -149,19 +143,16 @@ popcount4 = "#FF4A3D"
 # Native macOS blur; unsupported hosts keep the flat app/header colors.
 # Restart when changing native transparency.
 blurBackground = true
-# A stronger light tint keeps the Light theme light over dark wallpaper.
+# A light tint keeps the window ground pale over dark wallpaper.
 blurTintOpacity = 0.65
 # Hide only main-panel shadows over blur; keep glyph shadows.
 shadowPanels = false
 
 [geometry]
-# Glyph tiles and small popups; independent from panel and control rounding.
+# Shared glyph tile, floating panel, and control geometry.
 radius = 8.0
-# Main floating workspace panels.
 radiusPanel = 10.0
-# Main-panel shadows in solid mode; window.shadowPanels controls blur mode.
 shadowPanel = true
-# Buttons, fields, and tabs; selected sidebar rows use half this radius.
 radiusControl = 4.0
 stroke = 1.0
 strokeEmphasis = 2.0

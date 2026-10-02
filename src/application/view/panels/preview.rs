@@ -25,12 +25,12 @@ pub(crate) fn preview_strip(app: &Workspace) -> impl WidgetView<Workspace> + use
     };
     let components = app.session.components_arc();
     let has_components = interp.is_none() && !components.elements().is_empty();
-    // The proof is type, so it takes the editor's quiet neutral ink on the
-    // panel rather than the structural keyline or a semantic hue.
+    // Proof ink is independent of the drawing: Dark uses yellow proof type
+    // while keeping the editable outlines neutral.
     let fill = if app.preview_invert {
         app.palette.selected_ink()
     } else {
-        app.palette.editor_ink()
+        app.palette.proof_ink()
     };
     let background = if app.preview_invert {
         app.palette.selected_bg()
@@ -191,7 +191,7 @@ pub(crate) fn glyph_preview(app: &Workspace) -> impl WidgetView<Workspace> + use
         })
     };
     let pal = app.palette.clone();
-    let background = pal.canvas;
+    let background = pal.glyph_preview;
     sized_box(canvas(
         move |_app: &mut Workspace, _ctx, scene, size: Size| {
             let mut p = Painter::new(scene);
@@ -251,7 +251,7 @@ pub(crate) fn glyph_preview(app: &Workspace) -> impl WidgetView<Workspace> + use
                     let (fill, border) = if pal.points_filled {
                         (hue, pal.point_outline.unwrap_or(pal.text))
                     } else {
-                        (pal.canvas, hue)
+                        (background, hue)
                     };
                     let radius = if off || *smooth {
                         design::POINT_CURVE_RADIUS

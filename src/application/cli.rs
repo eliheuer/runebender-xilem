@@ -258,7 +258,7 @@ enum ThemeAction {
     },
     /// Copy a built-in theme into a new, editable file.
     Init {
-        /// Built-in starting theme: gray, light, or dark.
+        /// Built-in starting theme; use "theme list" to see the available IDs.
         #[arg(long, default_value = "gray")]
         from: String,
         /// Stable identifier for the new theme.

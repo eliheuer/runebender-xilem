@@ -4555,6 +4555,7 @@ dependencies = [
  "linesweeper",
  "masonry",
  "masonry_testing",
+ "masonry_winit",
  "muda",
  "norad",
  "notify",

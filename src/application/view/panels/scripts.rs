@@ -8,6 +8,7 @@ use crate::application::view::design::ControlSize;
 use crate::application::view::design::{Region, Space, Stroke, TextSize, column as xcolumn};
 use crate::application::view::recipes;
 use crate::application::view::{label, text_input};
+use crate::application::widgets::input_typography;
 use crate::application::widgets::scroll_viewport::portal;
 use crate::application::widgets::selectable_text::selectable_text;
 use crate::application::widgets::source_text_area::source_text_area;
@@ -39,16 +40,19 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
                     } else {
                         pal.text_muted
                     }),
-                text_input(draft.name, |app: &mut Workspace, value| {
-                    app.script_name_changed(value);
-                })
-                .placeholder("Script name.py")
-                .text_color(pal.text)
-                .placeholder_color(pal.text_muted)
-                .background_color(pal.field())
-                .border_color(pal.field_outline)
-                .border_width(Stroke::Hairline.length())
-                .corner_radius(Length::px(pal.control_radius)),
+                input_typography::input_typography(
+                    text_input(draft.name, |app: &mut Workspace, value| {
+                        app.script_name_changed(value);
+                    })
+                    .placeholder("Script name.py")
+                    .text_color(pal.text)
+                    .placeholder_color(pal.text_muted)
+                    .background_color(pal.field())
+                    .border_color(pal.field_outline)
+                    .border_width(Stroke::Hairline.length())
+                    .corner_radius(Length::px(pal.control_radius)),
+                    pal.text,
+                ),
                 sized_box(
                     portal(
                         source_text_area(draft.content, |app: &mut Workspace, value| {

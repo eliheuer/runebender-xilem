@@ -241,6 +241,7 @@ where
             .border_color(pal.field_outline)
             .border_width(Stroke::Hairline.length())
             .corner_radius(Length::px(pal.control_radius)),
+        pal.text,
     ))
     .dims(Dimensions::new(
         Dim::Stretch,
@@ -292,6 +293,7 @@ where
                 .border_color(pal.field_outline)
                 .border_width(Stroke::Hairline.length())
                 .corner_radius(Length::px(pal.control_radius)),
+            pal.text,
         ))
         .dims(Dimensions::new(
             Dim::Stretch,
@@ -446,7 +448,11 @@ pub(crate) fn toggle<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
     let (fg, border, bg) = if active {
-        (pal.selected_ink(), pal.outline, pal.selected_bg())
+        (
+            pal.selected_ink(),
+            pal.selected_outline(pal.outline),
+            pal.selected_bg(),
+        )
     } else {
         (pal.text, pal.outline, pal.panel)
     };

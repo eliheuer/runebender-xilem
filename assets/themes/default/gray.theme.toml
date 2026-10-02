@@ -72,7 +72,7 @@ pointHalo = false
 app = "baseUi.02"
 # Gray overlay on the native macOS blur; independent of the opaque app background.
 # Its opacity is window.blurTintOpacity. Other hosts ignore this tint.
-backdropTint = "#7C7C7C"
+backdropTint = "#808080"
 # Main floating panel faces and sidebar backgrounds.
 panel = "baseUi.07"
 # Floating panel shadow color; currently drawn at 50% opacity, 2 px down and left.
@@ -96,8 +96,10 @@ fieldOutline = "baseUi.00"
 divider = "baseUi.00"
 # Editing canvas background inside its floating panel.
 canvas = "baseUi.07"
+# Independent inspector preview surface; keep the drawing canvas unchanged.
+glyphPreview = "baseUi.08"
 # Recessed strip behind the sidebar tool tabs.
-tabRail = "baseUi.04"
+tabRail = "baseUi.05"
 # Inactive sidebar tool tab face.
 inactiveTab = "baseUi.06"
 # Background behind the window title and top toolbar.
@@ -118,6 +120,8 @@ sliderThumbActive = "baseUi.07"
 
 # Text and icon colors; kept separate from surface colors for contrast.
 [text]
+# Solid ink for inactive sidebar tab icons.
+inactiveTabInk = "baseUi.04"
 # Text on the window background, including the empty-document welcome view.
 appInk = "baseUi.09"
 # Normal text and icons on panels.
@@ -233,7 +237,7 @@ blurBackground = true
 # Midpoint tint at 0.25 lifts dark wallpaper while retaining visible blur.
 # The final blended color still varies with the wallpaper behind the window.
 # Used only on macOS with blurBackground enabled.
-blurTintOpacity = 0.25
+blurTintOpacity = 0.50
 # Hide only main-panel shadows while macOS blur is active.
 # Solid mode still uses geometry.shadowPanel; glyph and other shadows are unaffected.
 shadowPanels = false
@@ -244,7 +248,7 @@ shadowPanels = false
 [geometry]
 # General corner radius for glyph tiles and small popups, in logical pixels.
 # 0 gives square corners; larger values make rounder corners.
-radius = 8.0
+radius = 6.0
 # Separate corner radius for the large floating workspace panels.
 # If omitted, it follows radius; it does not change glyph tiles or buttons.
 radiusPanel = 10.0
