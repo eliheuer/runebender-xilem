@@ -9,6 +9,7 @@ pub mod font_info;
 pub mod glyph_metadata;
 pub mod hoi;
 pub mod kerning;
+pub mod neural_item;
 pub mod smart_components;
 
 pub use entity_id::EntityId;

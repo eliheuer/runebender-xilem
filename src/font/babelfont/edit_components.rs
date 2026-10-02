@@ -364,6 +364,28 @@ impl LayerEditDraft {
         Ok(true)
     }
 
+    /// Replace the validated neural item, removing the key for an empty item.
+    pub fn set_neural_item(
+        &mut self,
+        item: crate::font::model::neural_item::NeuralItem,
+    ) -> Result<bool, DocumentEditError> {
+        use crate::font::model::neural_item::NEURAL_ITEM_KEY;
+        item.validate()
+            .map_err(|_| DocumentEditError::InvalidLayerMetadata)?;
+        if self.view().neural_item().ok().as_ref() == Some(&item) {
+            return Ok(false);
+        }
+        if item.is_empty() {
+            self.preserved.lib.remove(NEURAL_ITEM_KEY);
+        } else {
+            self.preserved.lib.insert(
+                NEURAL_ITEM_KEY.into(),
+                plist::to_value(&item).map_err(|_| DocumentEditError::InvalidLayerMetadata)?,
+            );
+        }
+        Ok(true)
+    }
+
     /// Replace validated editable metaball data, removing the key for an empty value.
     pub fn set_metaballs(&mut self, metaballs: Metaballs) -> Result<bool, DocumentEditError> {
         metaballs

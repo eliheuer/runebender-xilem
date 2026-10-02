@@ -14,6 +14,7 @@ pub mod glyphs_import;
 pub mod icon_ufo;
 pub mod image_trace;
 pub mod metadata;
+pub mod neural_phrase;
 pub mod proposal_ufo;
 pub mod svg;
 pub mod ufo;

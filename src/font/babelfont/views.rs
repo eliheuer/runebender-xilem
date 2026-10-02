@@ -95,6 +95,21 @@ impl<'a> LayerView<'a> {
         parse_metaballs(self.preserved.metaballs.as_ref())
     }
 
+    /// The validated neural item of this layer; a missing key is an empty item.
+    pub fn neural_item(
+        self,
+    ) -> Result<crate::font::model::neural_item::NeuralItem, DocumentEditError> {
+        use crate::font::model::neural_item::{NEURAL_ITEM_KEY, NeuralItem};
+        let Some(value) = self.preserved.lib.get(NEURAL_ITEM_KEY) else {
+            return Ok(NeuralItem::default());
+        };
+        let item: NeuralItem =
+            plist::from_value(value).map_err(|_| DocumentEditError::InvalidLayerMetadata)?;
+        item.validate()
+            .map_err(|_| DocumentEditError::InvalidLayerMetadata)?;
+        Ok(item)
+    }
+
     /// Exact source spelling of one valid explicit composition recipe.
     pub fn composition_recipe_source(self) -> Result<Option<&'a str>, DocumentEditError> {
         match self.preserved.composition_recipe.as_ref() {
