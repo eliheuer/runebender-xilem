@@ -5,6 +5,55 @@
 
 use super::*;
 
+/// Write the phrase files of a source's labeled neural items.
+pub(in crate::application::cli) fn phrases(source: &Path, out: Option<&Path>, json: bool) -> i32 {
+    let project = match open_project(source, json) {
+        Ok(project) => project,
+        Err(code) => return code,
+    };
+    let source_id = project
+        .source_id(0)
+        .expect("one source has a stable identity");
+    let directory = out.map(Path::to_path_buf).unwrap_or_else(|| {
+        source
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join("phrases")
+    });
+    match runebender::formats::neural_phrase::export_source(&project, source_id, &directory) {
+        Ok(export) => {
+            if json {
+                println!(
+                    "{}",
+                    json!({
+                        "ok": export.skipped.is_empty(),
+                        "directory": directory,
+                        "written": export.written,
+                        "skipped": export.skipped.iter().map(|(name, reason)| {
+                            json!({ "glyph": name, "reason": reason })
+                        }).collect::<Vec<_>>(),
+                    })
+                );
+            } else {
+                println!(
+                    "wrote {} phrase file(s) to {}",
+                    export.written.len(),
+                    directory.display()
+                );
+                for (name, reason) in &export.skipped {
+                    eprintln!("skipped {name}: {reason}");
+                }
+            }
+            if export.skipped.is_empty() {
+                exit::OK
+            } else {
+                exit::FAILED
+            }
+        }
+        Err(error) => fail(json, exit::FAILED, &error),
+    }
+}
+
 /// What a font is, for a person or a program about to work on it.
 pub(in crate::application::cli) fn info(source: &Path, list_glyphs: bool, json: bool) -> i32 {
     let project = match open_project(source, json) {

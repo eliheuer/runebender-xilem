@@ -19,7 +19,7 @@ mod theme;
 
 use agent_commands::agent_call;
 use font_commands::{
-    bolden, collapse_metaballs, compose_cmd, features_cmd, info, proof, proposal_discard,
+    bolden, collapse_metaballs, compose_cmd, features_cmd, info, phrases, proof, proposal_discard,
     proposal_install, proposal_list, propose,
 };
 use mcp::mcp_serve;
@@ -122,6 +122,15 @@ enum Command {
         /// List every glyph with its codepoints.
         #[arg(long)]
         glyphs: bool,
+    },
+    /// Write a phrase file for every labeled neural item: the JSON the NeuralType tools turn
+    /// into training rows.
+    Phrases {
+        /// The UFO.
+        source: PathBuf,
+        /// The directory to write into; `phrases` beside the source when omitted.
+        #[arg(long)]
+        out: Option<PathBuf>,
     },
     /// Draw a proof sheet as SVG, with metrics per glyph.
     Proof {
@@ -490,6 +499,7 @@ pub(crate) fn run() -> Startup {
             }
         }
         Command::Info { source, glyphs } => info(source, *glyphs, json),
+        Command::Phrases { source, out } => phrases(source, out.as_deref(), json),
         Command::Proof {
             source,
             out,

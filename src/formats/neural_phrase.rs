@@ -15,6 +15,59 @@ use kurbo::BezPath;
 
 use crate::font::LayerView;
 use crate::font::model::neural_item::NeuralItem;
+use crate::font::project::Project;
+use crate::font::variable::SourceId;
+
+/// What an export of phrase files did.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PhraseExport {
+    /// Names of the glyphs whose phrase files were written.
+    pub written: Vec<String>,
+    /// Glyphs with a neural item that is not ready, each with the reason.
+    pub skipped: Vec<(String, String)>,
+}
+
+/// Write one phrase file for every labeled item of a source into `directory`.
+///
+/// A glyph without a neural item is not an item and is passed over. An item that is not ready,
+/// such as one with a letter that owns no ink, is reported in `skipped` and writes nothing.
+pub fn export_source(
+    project: &Project,
+    source: SourceId,
+    directory: &std::path::Path,
+) -> Result<PhraseExport, String> {
+    let default_layer = project
+        .document_source(source)
+        .ok_or("the source does not exist")?
+        .default_layer();
+    let upm = project
+        .document_font_info(source)
+        .ok_or("the source has no font information")?
+        .metrics
+        .resolved()
+        .units_per_em;
+    let mut export = PhraseExport::default();
+    let names: Vec<String> = project.glyph_names().map(str::to_owned).collect();
+    for name in names {
+        let Some(layer) = project.document_layer(&name, &default_layer) else {
+            continue;
+        };
+        if layer.neural_item().is_ok_and(|item| item.is_empty()) {
+            continue;
+        }
+        match layer_phrase(layer, upm) {
+            Ok(phrase) => {
+                std::fs::create_dir_all(directory).map_err(|error| error.to_string())?;
+                let text = serde_json::to_string(&phrase).map_err(|error| error.to_string())?;
+                std::fs::write(directory.join(format!("{name}.json")), text)
+                    .map_err(|error| error.to_string())?;
+                export.written.push(name);
+            }
+            Err(reason) => export.skipped.push((name, reason)),
+        }
+    }
+    Ok(export)
+}
 
 /// The phrase file for one layer, or the reason it cannot be written yet.
 pub fn layer_phrase(layer: LayerView<'_>, upm: f64) -> Result<serde_json::Value, String> {

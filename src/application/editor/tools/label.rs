@@ -224,49 +224,36 @@ impl Workspace {
     /// not ready (a letter without a region, a contour region that points at nothing) are named
     /// in the note and skipped.
     pub(crate) fn command_export_phrases(&mut self) {
-        let project = &self.font.project;
-        let Some(source) = project
-            .document_sources()
-            .find(|source| Some(source.id()) == project.source_id(self.font.active()))
-        else {
+        let Some(source) = self.font.project.source_id(self.font.active()) else {
             return;
         };
-        let layer_id = source.default_layer();
-        let upm = self.session.metrics.upm;
         let directory = self
             .font
             .document_source()
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."))
             .join("phrases");
-        let mut written = 0;
-        let mut skipped: Vec<String> = Vec::new();
-        for glyph in &self.font.glyphs {
-            let Some(layer) = project.document_layer(&glyph.name, &layer_id) else {
-                continue;
-            };
-            if layer.neural_item().is_ok_and(|item| item.is_empty()) {
-                continue;
-            }
-            let result =
-                runebender::formats::neural_phrase::layer_phrase(layer, upm).and_then(|phrase| {
-                    std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
-                    let text = serde_json::to_string(&phrase).map_err(|error| error.to_string())?;
-                    std::fs::write(directory.join(format!("{}.json", glyph.name)), text)
-                        .map_err(|error| error.to_string())
-                });
-            match result {
-                Ok(()) => written += 1,
-                Err(error) => skipped.push(format!("{}: {error}", glyph.name)),
-            }
-        }
-        self.note = if skipped.is_empty() {
-            format!("Wrote {written} phrase file(s) to {}", directory.display())
-        } else {
-            format!(
-                "Wrote {written} phrase file(s); skipped {}",
-                skipped.join("; ")
-            )
+        self.note = match runebender::formats::neural_phrase::export_source(
+            &self.font.project,
+            source,
+            &directory,
+        ) {
+            Ok(export) if export.skipped.is_empty() => format!(
+                "Wrote {} phrase file(s) to {}",
+                export.written.len(),
+                directory.display()
+            ),
+            Ok(export) => format!(
+                "Wrote {} phrase file(s); skipped {}",
+                export.written.len(),
+                export
+                    .skipped
+                    .iter()
+                    .map(|(name, reason)| format!("{name}: {reason}"))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ),
+            Err(error) => format!("Phrase export failed: {error}"),
         };
     }
 }
