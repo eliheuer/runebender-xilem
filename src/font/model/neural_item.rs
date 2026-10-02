@@ -100,7 +100,7 @@ impl NeuralItem {
             .chars()
             .enumerate()
             .filter(|(_, c)| !c.is_whitespace())
-            .map(|(index, c)| (index as u32, c))
+            .filter_map(|(index, c)| Some((u32::try_from(index).ok()?, c)))
             .collect()
     }
 

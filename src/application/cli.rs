@@ -123,7 +123,7 @@ enum Command {
         #[arg(long)]
         glyphs: bool,
     },
-    /// Write a phrase file for every labeled neural item: the JSON the NeuralType tools turn
+    /// Write a phrase file for every labeled neural item: the JSON the `NeuralType` tools turn
     /// into training rows.
     Phrases {
         /// The UFO.

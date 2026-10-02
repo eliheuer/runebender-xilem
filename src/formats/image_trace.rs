@@ -561,21 +561,21 @@ fn placed_contours(
 #[cfg(test)]
 mod placed_tests {
     use super::*;
+    use img2bez::image;
 
     /// A white PNG with one black rectangle, x 40..120 and y 20..60 from the top left.
     fn block_png() -> Vec<u8> {
-        let mut image =
-            img2bez::image::GrayImage::from_pixel(200, 100, img2bez::image::Luma([255]));
+        let mut image = image::GrayImage::from_pixel(200, 100, image::Luma([255]));
         for y in 20..60 {
             for x in 40..120 {
-                image.put_pixel(x, y, img2bez::image::Luma([0]));
+                image.put_pixel(x, y, image::Luma([0]));
             }
         }
         let mut bytes = Vec::new();
-        img2bez::image::DynamicImage::ImageLuma8(image)
+        image::DynamicImage::ImageLuma8(image)
             .write_to(
                 &mut std::io::Cursor::new(&mut bytes),
-                img2bez::image::ImageFormat::Png,
+                image::ImageFormat::Png,
             )
             .unwrap();
         bytes

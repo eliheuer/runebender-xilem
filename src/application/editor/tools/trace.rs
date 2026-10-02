@@ -16,8 +16,8 @@ use runebender::formats::image_trace::{PlacedTraceOptions, trace_image_placed};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-/// How strongly the picture shows behind the outline.
-const IMAGE_ALPHA: f64 = 0.6;
+/// How strongly the picture shows behind the outline, out of 255.
+const IMAGE_ALPHA: u16 = 153;
 
 /// One decoded picture, kept so the canvas does not decode it on every frame.
 pub(crate) struct DecodedImage {
@@ -52,7 +52,8 @@ impl Workspace {
             let (width, height) = decoded.dimensions();
             let mut pixels = decoded.into_raw();
             for pixel in pixels.chunks_exact_mut(4) {
-                pixel[3] = (f64::from(pixel[3]) * IMAGE_ALPHA) as u8;
+                let faded = u16::from(pixel[3]) * IMAGE_ALPHA / 255;
+                pixel[3] = u8::try_from(faded).unwrap_or(u8::MAX);
             }
             *cache = Some(DecodedImage {
                 file_name: image.file_name().to_path_buf(),

@@ -6,7 +6,7 @@
 //! A phrase file is JSON.
 //! It carries the text of an item, the outline of its ink, and for each letter the regions
 //! and whole contours that letter owns.
-//! The NeuralType tools read it and turn it into training rows (`distill hand`).
+//! The `NeuralType` tools read it and turn it into training rows (`distill hand`).
 //!
 //! Coordinates are font units with y up.
 //! The `clusters` array lists every letter of every word in logical order, with spaces left out.

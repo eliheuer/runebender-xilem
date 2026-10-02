@@ -49,8 +49,12 @@ impl Session {
         if count == 0 {
             return;
         }
-        let at = self.label.active.min(count - 1) as isize + step;
-        self.label.active = at.clamp(0, count as isize - 1) as usize;
+        let at = self.label.active.min(count - 1);
+        self.label.active = if step < 0 {
+            at.saturating_sub(step.unsigned_abs())
+        } else {
+            at.saturating_add(step.unsigned_abs()).min(count - 1)
+        };
         self.label.draft.clear();
     }
 
