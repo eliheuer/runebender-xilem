@@ -169,3 +169,31 @@ Run focused tests for changed interaction or layout behavior and the repository 
 Reuse shared recipe tests for common spacing instead of adding identical tests to every section.
 Headless screenshots do not verify native pointer, input method, accessibility, or GPU behavior; validate those separately when the change requires it.
 See [`AGENTS.md`](AGENTS.md) for the full validation guidance and the [design principles](https://runebender.org/docs/design-principles.html) for the broader visual rules.
+
+## Headless screenshots
+
+Set `RUNEBENDER_SCREENSHOT` to a PNG path to render one frame of the editor and exit without a window:
+
+```sh
+RUNEBENDER_SCREENSHOT=/tmp/shot.png cargo run --release -- path/to/Font.designspace
+```
+
+The capture uses the same text and font settings as the window.
+These variables control what the frame shows:
+
+| Variable | Effect |
+| --- | --- |
+| `RUNEBENDER_SIZE=1100x720` | Logical window size; the default is 1100 by 720. |
+| `RUNEBENDER_SCALE=2` | Device-pixel scale at the same logical layout. |
+| `RUNEBENDER_THEME=<id>` | Theme ID; the default is Gray. |
+| `RUNEBENDER_GLYPH=<name>` | Open this glyph in the editor. |
+| `RUNEBENDER_SELECTED=<name>` | Select this glyph in the grid. |
+| `RUNEBENDER_SELECTALL=1` | Select all points in the open glyph. |
+| `RUNEBENDER_EXPAND=<key>` | Expand the panel section with this collapse key. |
+| `RUNEBENDER_COLLAPSED=<key,...>` | Collapse these panel sections. |
+| `RUNEBENDER_RAIL=<ai\|chat\|scripts\|shapes>` | Open this tool pane. |
+| `RUNEBENDER_VIEW=<option,...>` | Turn on canvas view options: `comb`, `continuity`, `colorize`, `handles`, `segments`, `bearings`, `popcount`. |
+| `RUNEBENDER_AXIS=wght=500,wdth=80` | Set the design-space location. |
+
+The code in `src/application/launch.rs` and `src/application/platform/host.rs` reads these variables.
+Search for `RUNEBENDER_` in `src` to find more specialized ones.
