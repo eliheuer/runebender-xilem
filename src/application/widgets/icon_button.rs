@@ -156,7 +156,7 @@ impl Widget for IconWidget {
         let pad = self.size.width.min(self.size.height) * 0.10;
         let vb = icon.view_box;
         let scale = if self.rail.is_some() {
-            RAIL_TAB_ICON / vb.width().max(vb.height())
+            self.icon_size.unwrap_or(RAIL_TAB_ICON) / vb.width().max(vb.height())
         } else if let Some(side) = self.icon_size {
             side.min(self.size.width).min(self.size.height) / vb.width().max(vb.height())
         } else {
@@ -307,7 +307,7 @@ impl<F> IconView<F> {
     }
 
     /// Set the icon's maximum ink extent in logical pixels, clamped to its tile.
-    /// Rail tabs continue to use the rail's own icon-size token.
+    /// Rail tabs default to the rail's own icon-size token.
     pub(crate) fn icon_size(mut self, size: f64) -> Self {
         self.icon_size = Some(size.max(0.0));
         self

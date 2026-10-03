@@ -233,7 +233,9 @@ fn shapes_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
 /// One navigation strip for the font, node, and glyph workspaces.
 fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
-    let tab = |icon: &'static str, which: Rail| {
+    // Inset icons such as `invert` use the full rail size; icons that fill their
+    // whole frame use a smaller one so all tab icons look the same size.
+    let tab = |icon: &'static str, which: Rail, size: f64| {
         let active =
             app.rail == which || (!editing && app.rail == Rail::Shapes && which == Rail::Glyphs);
         sized_box(
@@ -246,6 +248,7 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
                 Color::TRANSPARENT,
                 move |app: &mut Workspace| app.rail = which,
             )
+            .icon_size(size)
             .rail_tab(
                 if active { pal.panel } else { pal.inactive_tab },
                 pal.outline,
@@ -287,12 +290,14 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
         }))
         .dims(Dimensions::new(Dim::Stretch, Dim::Stretch)),
         flex_row((
-            tab("glyph-grid", Rail::Glyphs).flex(1.0),
-            editing.then(|| tab("shapes", Rail::Shapes).flex(1.0)),
-            has_axes.then(|| tab("measure", Rail::Axes).flex(1.0)),
-            tab("preview", Rail::LocalAi).flex(1.0),
-            tab("text", Rail::Chat).flex(1.0),
-            tab("save", Rail::Scripts).flex(1.0),
+            tab("hyperpen", Rail::Glyphs, design::RAIL_TAB_ICON).flex(1.0),
+            editing
+                .then(|| tab("shapes", Rail::Shapes, design::RAIL_TAB_ICON_FULL_FRAME).flex(1.0)),
+            has_axes
+                .then(|| tab("measure", Rail::Axes, design::RAIL_TAB_ICON_FULL_FRAME).flex(1.0)),
+            tab("invert", Rail::LocalAi, design::RAIL_TAB_ICON).flex(1.0),
+            tab("text", Rail::Chat, design::RAIL_TAB_ICON_FULL_FRAME).flex(1.0),
+            tab("save", Rail::Scripts, design::RAIL_TAB_ICON_FULL_FRAME).flex(1.0),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(Space::Md)

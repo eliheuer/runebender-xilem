@@ -121,7 +121,7 @@ sliderThumbActive = "baseUi.07"
 # Text and icon colors; kept separate from surface colors for contrast.
 [text]
 # Solid ink for inactive sidebar tab icons.
-inactiveTabInk = "baseUi.04"
+inactiveTabInk = "baseUi.03"
 # Text on the window background, including the empty-document welcome view.
 appInk = "baseUi.09"
 # Normal text and icons on panels.

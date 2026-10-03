@@ -126,6 +126,8 @@ pub(crate) const GRID_CELL_SHADOW_OFFSET: f64 = 2.0;
 /// Selected glyph-grid tiles sit one pixel farther above the grid ground.
 pub(crate) const GRID_CELL_SELECTED_SHADOW_OFFSET: f64 = 3.0;
 pub(crate) const RAIL_TAB_ICON: f64 = 14.0;
+/// Rail icons whose ink fills their whole frame draw smaller to match inset icons.
+pub(crate) const RAIL_TAB_ICON_FULL_FRAME: f64 = 12.0;
 pub(crate) const RAIL_TAB_ICON_RISE: f64 = 2.0;
 /// Initial proof drawing height, excluding its single top divider.
 /// Proof appearance controls live in the footer; text and shaping in the inspector.
