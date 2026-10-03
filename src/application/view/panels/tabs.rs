@@ -272,14 +272,11 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
                 use masonry::kurbo::Rect;
                 let mut painter = Painter::new(scene);
                 let stroke = Stroke::Hairline.px();
+                // The floating panel frame owns the side outlines; a strip here
+                // would double the panel edge beside the rail.
                 painter
                     .fill(Rect::new(0.0, 0.0, size.width, size.height), background)
                     .draw();
-                if !editing {
-                    painter
-                        .fill(Rect::new(0.0, 0.0, stroke, size.height), outline)
-                        .draw();
-                }
                 painter
                     .fill(
                         Rect::new(0.0, size.height - stroke, size.width, size.height),
