@@ -139,6 +139,11 @@ pub(crate) fn run(
             content,
             app.palette.blur_background,
         );
+        // An open document cannot shrink the window past its panels' minimum widths.
+        // The option is reactive, so collapsing the left dock lowers the limit.
+        let min_width = app.workspace.as_ref().map(|workspace| {
+            crate::application::view::render::workspace_min_width(workspace.left_collapsed)
+        });
         let view = xilem::window(window_id, "Runebender", content)
             .with_options(|options| {
                 let options = options
@@ -148,6 +153,10 @@ pub(crate) fn run(
                     ))
                     .on_close(AppState::request_quit)
                     .on_file_drop(AppState::file_dropped);
+                let options = match min_width {
+                    Some(width) => options.with_min_inner_size(LogicalSize::new(width, 0.0)),
+                    None => options,
+                };
                 // On macOS the header row is the title bar: content runs under
                 // the transparent system bar and pads for traffic lights.
                 #[cfg(target_os = "macos")]

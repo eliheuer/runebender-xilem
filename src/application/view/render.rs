@@ -209,6 +209,25 @@ where
     clip_split(columns)
 }
 
+/// The narrowest window that keeps both docks and the center at their minimum widths.
+///
+/// Window resizing stops here, at the same limits that dragging a splitter respects.
+/// Below it, the splitters cannot meet their minimums and squeeze the docks.
+pub(crate) fn workspace_min_width(collapsed: bool) -> f64 {
+    use crate::application::view::design::{CENTER_MIN_WIDTH, WORKSPACE_GUTTER};
+    let shadow_extent = design::PANEL_SHADOW_OFFSET;
+    let panel_width = DOCK_WIDTH + shadow_extent;
+    let panel_gutter = WORKSPACE_GUTTER - shadow_extent;
+    let left_width = if collapsed {
+        0.0
+    } else {
+        panel_width + panel_gutter
+    };
+    let center_width = CENTER_MIN_WIDTH + shadow_extent + panel_gutter;
+    // The columns' outer padding: the shadow-adjusted left gutter and the full right gutter.
+    panel_gutter + left_width + center_width + panel_width + WORKSPACE_GUTTER
+}
+
 /// Clip the native splitter's expanded focus outline at the panel boundary.
 /// Both axes are constrained, so this Portal cannot scroll or show scrollbars.
 fn clip_split<State, V>(content: V) -> xilem::view::Portal<V, State, ()>
@@ -1592,6 +1611,51 @@ mod panel_resize_tests {
         assert_eq!(
             widths(&h).2,
             crate::application::view::design::DOCK_WIDTH + super::design::PANEL_SHADOW_OFFSET
+        );
+    }
+
+    #[test]
+    fn minimum_window_width_keeps_dragged_docks_at_their_minimums() {
+        use crate::application::view::design::{
+            CENTER_MIN_WIDTH, DOCK_WIDTH, PANEL_SHADOW_OFFSET, WORKSPACE_GUTTER,
+        };
+        use xilem::core::View;
+        use xilem::view::label;
+        let view = workspace_columns(label("Left"), label("Canvas"), label("Right"), false);
+        let mut ctx = context();
+        let (pod, _) = view.build(&mut ctx, &mut ());
+        let mut h = TestHarness::create_with_size(
+            crate::application::view::default_property_set(),
+            pod.new_widget,
+            (1280, 650),
+        );
+        fn widths<W: masonry::core::Widget>(h: &TestHarness<W>) -> (f64, f64, f64) {
+            let root = h.root_widget();
+            let clip_children = root.children();
+            let children = clip_children[0].children();
+            let nested = children[0].children();
+            (
+                nested[0].children()[0].ctx().border_box().width(),
+                nested[1].children()[0].ctx().border_box().width(),
+                children[1].ctx().border_box().width(),
+            )
+        }
+        // Widen both docks, then shrink to the window minimum less the outer padding.
+        h.mouse_move(Point::new(247.5, 100.0));
+        h.mouse_button_press(None);
+        h.mouse_move(Point::new(327.5, 100.0));
+        h.mouse_button_release(None);
+        h.mouse_move(Point::new(1033.5, 100.0));
+        h.mouse_button_press(None);
+        h.mouse_move(Point::new(953.5, 100.0));
+        h.mouse_button_release(None);
+        let padding = (WORKSPACE_GUTTER - PANEL_SHADOW_OFFSET) + WORKSPACE_GUTTER;
+        assert_eq!(super::workspace_min_width(false) - padding, 790.0);
+        h.process_window_event(WindowEvent::Resize(PhysicalSize::new(790, 650)));
+        let dock = DOCK_WIDTH + PANEL_SHADOW_OFFSET;
+        assert_eq!(
+            widths(&h),
+            (dock, CENTER_MIN_WIDTH + PANEL_SHADOW_OFFSET, dock)
         );
     }
 
