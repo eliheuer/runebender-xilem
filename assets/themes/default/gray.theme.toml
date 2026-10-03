@@ -152,7 +152,7 @@ cellSelectedFill = "baseUi.02"
 cellSelectedInk = "baseUi.07"
 # Native selected backgrounds, including glyph tiles, sidebar rows, and controls.
 # Native selected glyphs and sidebar labels use rainbow.yellow at markStep.
-controlSelected = "baseUi.02"
+controlSelected = "baseUi.03"
 # Contrasting ink for other selected controls.
 controlSelectedInk = "baseUi.09"
 # Fine design-space grid lines.
