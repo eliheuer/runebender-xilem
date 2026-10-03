@@ -126,9 +126,6 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     .map(|hint| caption((*hint).to_string()))
                     .collect::<Vec<_>>(),
             ),
-            recipes::action(pal, "Export phrase files".into(), |app: &mut Workspace| {
-                app.command_export_phrases();
-            }),
             app.session.label.error.clone().map(|error| {
                 label(error)
                     .text_size(TextSize::Caption.px())

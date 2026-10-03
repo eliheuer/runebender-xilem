@@ -11,7 +11,7 @@ mod outlines;
 mod proposals;
 
 pub(super) use features::{compose_cmd, features_cmd};
-pub(super) use inspection::{info, phrases, proof, proof_content};
+pub(super) use inspection::{info, proof, proof_content};
 pub(super) use outlines::{bolden, collapse_metaballs};
 pub(super) use proposals::{
     find_font_ml, proposal_discard, proposal_install, proposal_list, propose,

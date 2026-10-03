@@ -3390,6 +3390,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nufo"
+version = "0.1.0"
+dependencies = [
+ "kurbo 0.13.1",
+ "norad",
+ "plist",
+ "serde",
+]
+
+[[package]]
 name = "num"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4559,6 +4569,7 @@ dependencies = [
  "muda",
  "norad",
  "notify",
+ "nufo",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
  "plist",

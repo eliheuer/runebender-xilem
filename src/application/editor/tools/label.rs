@@ -316,44 +316,6 @@ impl Workspace {
                 .unwrap_or_default(),
         }
     }
-
-    /// Write a phrase file for every labeled sample of the active master.
-    ///
-    /// The files go in a `phrases` directory beside the document, one per sample. Samples that
-    /// are not ready (no text, a letter without a region) are named in the note and skipped.
-    pub(crate) fn command_export_phrases(&mut self) {
-        let Some(source) = self.font.project.source_id(self.font.active()) else {
-            return;
-        };
-        let directory = self
-            .font
-            .document_source()
-            .parent()
-            .unwrap_or_else(|| std::path::Path::new("."))
-            .join("phrases");
-        self.note = match runebender::formats::neural_phrase::export_source(
-            &self.font.project,
-            source,
-            &directory,
-        ) {
-            Ok(export) if export.skipped.is_empty() => format!(
-                "Wrote {} phrase file(s) to {}",
-                export.written.len(),
-                directory.display()
-            ),
-            Ok(export) => format!(
-                "Wrote {} phrase file(s); skipped {}",
-                export.written.len(),
-                export
-                    .skipped
-                    .iter()
-                    .map(|(name, reason)| format!("{name}: {reason}"))
-                    .collect::<Vec<_>>()
-                    .join("; ")
-            ),
-            Err(error) => format!("Phrase export failed: {error}"),
-        };
-    }
 }
 
 #[cfg(test)]
@@ -474,45 +436,34 @@ mod tests {
     }
 
     #[test]
-    fn labels_survive_a_save_and_export_one_phrase_file_per_sample() {
-        let path = item_font("export");
+    fn labels_survive_a_save_and_read_back_as_training_input() {
+        let path = item_font("training");
         let mut app = Workspace::open(&path).unwrap();
         app.open_glyph(app.font.index_of("item").unwrap());
         app.select_tool(Tool::Label);
         app.edit_label(|s| s.add_label_lasso(&loop_around(50.0, 650.0, -50.0, 300.0)));
         app.edit_label(|s| s.set_sample_text("بس".into()));
         app.edit_label(|s| s.add_label_lasso(&square(50.0, 400.0)));
+        app.font.project.save().unwrap();
 
-        // one letter still has no ink: the export names it and writes nothing
-        app.command_export_phrases();
-        assert!(
-            app.note.contains("skipped") && app.note.contains('س'),
-            "{}",
-            app.note
-        );
+        // what a trainer reads: one letter still has no ink, and the error names it
+        let source = nufo::Source::load(&path).unwrap();
+        let canvas = &source.canvases[0];
+        let error = nufo::training::prepare(&canvas.item.samples[0], &canvas.contours).unwrap_err();
+        assert!(error.contains('س'), "{error}");
 
         Arc::make_mut(&mut app.session).step_label_letter(1);
         app.edit_label(|s| s.add_label_lasso(&square(300.0, 650.0)));
         app.font.project.save().unwrap();
 
-        let glyph = norad::Font::load(&path).unwrap();
-        let glyph = glyph.default_layer().get_glyph("item").unwrap();
-        assert!(
-            glyph
-                .lib
-                .contains_key(runebender::font::model::neural_item::NEURAL_ITEM_KEY)
-        );
         let mut reopened = Workspace::open(&path).unwrap();
         reopened.open_glyph(reopened.font.index_of("item").unwrap());
         assert_eq!(reopened.session.neural_item(), app.session.neural_item());
-
-        reopened.command_export_phrases();
-        let file = path.parent().unwrap().join("phrases").join("item-1.json");
-        let phrase: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
-        assert_eq!(phrase["text"], "بس");
-        assert_eq!(phrase["clusters"].as_array().unwrap().len(), 2);
-        std::fs::remove_file(&file).ok();
+        let source = nufo::Source::load(&path).unwrap();
+        let canvas = &source.canvases[0];
+        let prepared = nufo::training::prepare(&canvas.item.samples[0], &canvas.contours).unwrap();
+        assert_eq!(prepared.text, "بس");
+        assert_eq!(prepared.letters.len(), 2);
         std::fs::remove_dir_all(&path).ok();
     }
 }

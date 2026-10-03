@@ -419,9 +419,6 @@ pub fn read_glyphspackage(root: &Path) -> Result<HashMap<String, String>, String
     Ok(out)
 }
 
-/// File extension of a neural source directory. The directory is a UFO in every other way.
-pub const NEURAL_SOURCE_EXTENSION: &str = "nufo";
-
 impl Project {
     pub(super) fn default_source_index(&self) -> usize {
         self.document_designspace()
@@ -1599,7 +1596,7 @@ impl Project {
             source
                 .path()
                 .extension()
-                .is_some_and(|extension| extension == NEURAL_SOURCE_EXTENSION)
+                .is_some_and(|extension| extension == nufo::EXTENSION)
         })
     }
 
