@@ -45,6 +45,8 @@ pub(crate) struct Palette {
     pub inactive_tab: Color,
     /// Solid inactive tab ink, with the legacy opacity for themes that omit it.
     pub inactive_tab_ink: Color,
+    /// Icon ink on the active rail tab.
+    pub active_tab_ink: Color,
     /// The background behind the title and tools.
     pub header: Color,
     /// The contrasting ink used on the header background.
@@ -76,6 +78,8 @@ pub(crate) struct Palette {
     slider_track_color: Color,
     pub text: Color,
     pub text_muted: Color,
+    /// Glyph previews and their captions in the glyph grid.
+    pub glyph_ink: Color,
     pub text_subdued: Color,
     /// Neutral control-handle lines from the shared secondary text token.
     pub handle_line: Color,
@@ -121,6 +125,7 @@ impl Palette {
             panel,
             tab_rail: color(t.surface("tabRail")),
             inactive_tab: color(t.surface("inactiveTab")),
+            active_tab_ink: color(t.text("activeTabInk")),
             inactive_tab_ink: t
                 .text
                 .get("inactiveTabInk")
@@ -150,6 +155,7 @@ impl Palette {
             slider_track_color: color(t.surface("sliderTrack")),
             text,
             text_muted: color(t.text("muted")),
+            glyph_ink: color(t.text("glyph")),
             text_subdued: color(t.text("subdued")),
             handle_line: color(t.text("secondary")),
             outline: color(t.surface("outline")),

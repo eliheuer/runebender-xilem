@@ -80,7 +80,7 @@ secondary = "baseUi.08"
 muted = "baseUi.07"
 subdued = "baseUi.06"
 overlay = "baseUi.09"
-glyph = "baseUi.08"
+glyph = "baseUi.09"
 headerInk = "baseUi.09"
 headerMutedInk = "baseUi.08"
 

@@ -724,6 +724,7 @@ pub fn parse_theme(source: &str) -> Result<Theme, String> {
     let app_ink = text_tokens.remove("appInk");
     let header_muted_ink = text_tokens.remove("headerMutedInk");
     let inactive_tab_ink = text_tokens.remove("inactiveTabInk");
+    let active_tab_ink = text_tokens.remove("activeTabInk");
     let mut text = resolve_map(&file, theme_id, "text", &text_tokens, REQUIRED_TEXT)?;
     let app_ink = resolve_optional(&file, theme_id, "text.appInk", app_ink.as_deref())?
         .unwrap_or_else(|| text["primary"]);
@@ -744,6 +745,14 @@ pub fn parse_theme(source: &str) -> Result<Theme, String> {
     )? {
         text.insert("inactiveTabInk".into(), ink);
     }
+    let active_tab_ink = resolve_optional(
+        &file,
+        theme_id,
+        "text.activeTabInk",
+        active_tab_ink.as_deref(),
+    )?
+    .unwrap_or_else(|| text["primary"]);
+    text.insert("activeTabInk".into(), active_tab_ink);
     let mut role_tokens = file.roles.clone();
     let mut optional_roles = Vec::new();
     for &name in OPTIONAL_ROLES {
@@ -1041,7 +1050,9 @@ mod tests {
             .lines()
             .find(|line| line.starts_with("glyphPreview = "))
             .expect("Gray preview surface");
-        let theme = parse_theme(source).expect("Gray theme");
+        // Gray's preview matches its canvas, so set a distinct value to prove independence.
+        let distinct = source.replace(line, "glyphPreview = \"baseUi.08\"");
+        let theme = parse_theme(&distinct).expect("Gray theme");
         assert_ne!(theme.surface("glyphPreview"), theme.surface("canvas"));
         let legacy = parse_theme(&source.replace(line, "")).expect("legacy theme");
         assert_eq!(legacy.surface("glyphPreview"), legacy.surface("canvas"));

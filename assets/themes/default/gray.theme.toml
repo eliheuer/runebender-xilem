@@ -97,7 +97,7 @@ divider = "baseUi.00"
 # Editing canvas background inside its floating panel.
 canvas = "baseUi.07"
 # Independent inspector preview surface; keep the drawing canvas unchanged.
-glyphPreview = "baseUi.08"
+glyphPreview = "baseUi.07"
 # Recessed strip behind the sidebar tool tabs.
 tabRail = "baseUi.05"
 # Inactive sidebar tool tab face.
@@ -122,6 +122,8 @@ sliderThumbActive = "baseUi.07"
 [text]
 # Solid ink for inactive sidebar tab icons.
 inactiveTabInk = "baseUi.03"
+# Icon ink on the active sidebar tab; defaults to primary.
+activeTabInk = "baseUi.01"
 # Text on the window background, including the empty-document welcome view.
 appInk = "baseUi.09"
 # Normal text and icons on panels.
@@ -134,8 +136,8 @@ muted = "baseUi.01"
 subdued = "baseUi.02"
 # Shared ink token for overlay text.
 overlay = "baseUi.00"
-# Shared glyph ink token; native grid glyphs currently use primary or markInk.
-glyph = "baseUi.00"
+# Glyph previews and captions on unmarked, unselected glyph-grid tiles.
+glyph = "baseUi.01"
 # Document title and active top-toolbar text and icons.
 headerInk = "baseUi.09"
 # Inactive top-toolbar text, icons, and button outlines.

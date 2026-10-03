@@ -19,6 +19,7 @@ use crate::application::view::recipes::button;
 use crate::application::view::render::top_keyline;
 use crate::application::view::theme::Palette;
 use crate::application::view::{design, label, recipes, text_input};
+use crate::application::widgets::even_row::even_row;
 use crate::application::widgets::icon_button::icon_button;
 use crate::application::widgets::icon_paint;
 use crate::application::widgets::input_typography;
@@ -33,7 +34,7 @@ use xilem::Color;
 use xilem::WidgetView;
 use xilem::style::Style;
 use xilem::view::FlexExt as _;
-use xilem::view::{FlexSpacer, canvas, flex_col, flex_row, sized_box};
+use xilem::view::{FlexSpacer, canvas, flex_col, sized_box};
 
 /// The editor rail's implemented navigation panels.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -243,7 +244,7 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
                 icon,
                 active,
                 pal.inactive_tab_ink,
-                pal.text,
+                pal.active_tab_ink,
                 Color::TRANSPARENT,
                 Color::TRANSPARENT,
                 move |app: &mut Workspace| app.rail = which,
@@ -253,7 +254,7 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
                 if active { pal.panel } else { pal.inactive_tab },
                 pal.outline,
                 design::RAIL_TAB_ICON_RISE,
-                pal.corner_radius,
+                design::rail_tab_radius(pal.corner_radius),
             ),
         )
         .dims(Dimensions::new(
@@ -289,24 +290,22 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
             }
         }))
         .dims(Dimensions::new(Dim::Stretch, Dim::Stretch)),
-        flex_row((
-            tab("hyperpen", Rail::Glyphs, design::RAIL_TAB_ICON).flex(1.0),
-            editing
-                .then(|| tab("shapes", Rail::Shapes, design::RAIL_TAB_ICON_FULL_FRAME).flex(1.0)),
-            has_axes
-                .then(|| tab("measure", Rail::Axes, design::RAIL_TAB_ICON_FULL_FRAME).flex(1.0)),
-            tab("invert", Rail::LocalAi, design::RAIL_TAB_ICON).flex(1.0),
-            tab("text", Rail::Chat, design::RAIL_TAB_ICON_FULL_FRAME).flex(1.0),
-            tab("save", Rail::Scripts, design::RAIL_TAB_ICON_FULL_FRAME).flex(1.0),
-        ))
-        .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(Space::Md)
-        .padding(masonry::properties::Padding {
-            left: Space::Md.length(),
-            right: Space::Md.length(),
-            top: Space::Md.length(),
-            bottom: Space::None.length(),
-        }),
+        // Whole-pixel tab widths keep every gap and inset at exactly the rail inset.
+        even_row(
+            [
+                Some(tab("hyperpen", Rail::Glyphs, design::RAIL_TAB_ICON)),
+                editing.then(|| tab("shapes", Rail::Shapes, design::RAIL_TAB_ICON_FULL_FRAME)),
+                has_axes.then(|| tab("measure", Rail::Axes, design::RAIL_TAB_ICON_FULL_FRAME)),
+                Some(tab("invert", Rail::LocalAi, design::RAIL_TAB_ICON)),
+                Some(tab("text", Rail::Chat, design::RAIL_TAB_ICON_FULL_FRAME)),
+                Some(tab("save", Rail::Scripts, design::RAIL_TAB_ICON_FULL_FRAME)),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
+            design::RAIL_TAB_INSET,
+            design::RAIL_TAB_INSET,
+        ),
     )))
     .dims(Dimensions::new(
         Dim::Stretch,

@@ -202,7 +202,7 @@ fn cell_colors(palette: &Palette, mark: Option<Color>, selected: bool) -> (Color
             (palette.panel, mark, mark)
         }
     } else {
-        (palette.panel, palette.text, palette.outline)
+        (palette.panel, palette.glyph_ink, palette.outline)
     }
 }
 
@@ -993,7 +993,7 @@ mod thumbnail_tests {
     fn mark_treatment_keeps_selection_and_unmarked_tiles_consistent() {
         let mut palette = Palette::load("gray");
         let mark = palette.mark("green").expect("green mark");
-        let unmarked = (palette.panel, palette.text, palette.outline);
+        let unmarked = (palette.panel, palette.glyph_ink, palette.outline);
         let selected = (
             palette.selected_bg(),
             palette.selected_content_ink(),

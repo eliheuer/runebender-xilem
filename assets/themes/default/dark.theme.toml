@@ -89,7 +89,7 @@ secondary = "baseUi.07"
 muted = "baseUi.07"
 subdued = "baseUi.05"
 overlay = "baseUi.09"
-glyph = "baseUi.07"
+glyph = "baseUi.08"
 headerInk = "baseUi.09"
 
 # Window-ground text and inactive title-bar controls.
