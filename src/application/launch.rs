@@ -146,7 +146,8 @@ pub(crate) fn run(
                         crate::application::view::design::DEFAULT_WINDOW_WIDTH,
                         crate::application::view::design::DEFAULT_WINDOW_HEIGHT,
                     ))
-                    .on_close(AppState::request_quit);
+                    .on_close(AppState::request_quit)
+                    .on_file_drop(AppState::file_dropped);
                 // On macOS the header row is the title bar: content runs under
                 // the transparent system bar and pads for traffic lights.
                 #[cfg(target_os = "macos")]
@@ -238,5 +239,15 @@ impl<D: AppDriver> AppDriver for WindowAppearanceDriver<D> {
 
     fn on_wgpu_ready(&mut self, wgpu: &WgpuContext<'_>) {
         self.inner.on_wgpu_ready(wgpu);
+    }
+
+    fn on_file_dropped(
+        &mut self,
+        window_id: WindowId,
+        path: std::path::PathBuf,
+        ctx: &mut DriverCtx<'_>,
+    ) {
+        self.inner.on_file_dropped(window_id, path, ctx);
+        self.sync_theme(window_id, ctx);
     }
 }

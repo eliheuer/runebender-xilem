@@ -2990,7 +2990,7 @@ dependencies = [
 [[package]]
 name = "linebender_include_doc_path"
 version = "0.1.0"
-source = "git+https://github.com/eliheuer/xilem?rev=881d2daef6bf9fb353c04f25e6374767480e869a#881d2daef6bf9fb353c04f25e6374767480e869a"
+source = "git+https://github.com/eliheuer/xilem?rev=5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c#5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3066,7 +3066,7 @@ dependencies = [
 [[package]]
 name = "masonry"
 version = "0.4.0"
-source = "git+https://github.com/eliheuer/xilem?rev=881d2daef6bf9fb353c04f25e6374767480e869a#881d2daef6bf9fb353c04f25e6374767480e869a"
+source = "git+https://github.com/eliheuer/xilem?rev=5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c#5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c"
 dependencies = [
  "accesskit",
  "linebender_include_doc_path",
@@ -3080,7 +3080,7 @@ dependencies = [
 [[package]]
 name = "masonry_core"
 version = "0.4.0"
-source = "git+https://github.com/eliheuer/xilem?rev=881d2daef6bf9fb353c04f25e6374767480e869a#881d2daef6bf9fb353c04f25e6374767480e869a"
+source = "git+https://github.com/eliheuer/xilem?rev=5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c#5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c"
 dependencies = [
  "accesskit",
  "anymap3",
@@ -3107,7 +3107,7 @@ dependencies = [
 [[package]]
 name = "masonry_imaging"
 version = "0.4.0"
-source = "git+https://github.com/eliheuer/xilem?rev=881d2daef6bf9fb353c04f25e6374767480e869a#881d2daef6bf9fb353c04f25e6374767480e869a"
+source = "git+https://github.com/eliheuer/xilem?rev=5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c#5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c"
 dependencies = [
  "imaging",
  "imaging_vello",
@@ -3120,7 +3120,7 @@ dependencies = [
 [[package]]
 name = "masonry_testing"
 version = "0.4.0"
-source = "git+https://github.com/eliheuer/xilem?rev=881d2daef6bf9fb353c04f25e6374767480e869a#881d2daef6bf9fb353c04f25e6374767480e869a"
+source = "git+https://github.com/eliheuer/xilem?rev=5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c#5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c"
 dependencies = [
  "accesskit_consumer 0.35.0",
  "image",
@@ -3133,7 +3133,7 @@ dependencies = [
 [[package]]
 name = "masonry_winit"
 version = "0.4.0"
-source = "git+https://github.com/eliheuer/xilem?rev=881d2daef6bf9fb353c04f25e6374767480e869a#881d2daef6bf9fb353c04f25e6374767480e869a"
+source = "git+https://github.com/eliheuer/xilem?rev=5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c#5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c"
 dependencies = [
  "accesskit_winit",
  "copypasta",
@@ -5665,7 +5665,7 @@ dependencies = [
 [[package]]
 name = "tree_arena"
 version = "0.2.0"
-source = "git+https://github.com/eliheuer/xilem?rev=881d2daef6bf9fb353c04f25e6374767480e869a#881d2daef6bf9fb353c04f25e6374767480e869a"
+source = "git+https://github.com/eliheuer/xilem?rev=5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c#5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c"
 dependencies = [
  "hashbrown 0.17.1",
 ]
@@ -6915,7 +6915,7 @@ checksum = "163b33ed8786455e2fa5d72f554057ce3f3182425434f756cd39c99839d88e23"
 [[package]]
 name = "xilem"
 version = "0.4.0"
-source = "git+https://github.com/eliheuer/xilem?rev=881d2daef6bf9fb353c04f25e6374767480e869a#881d2daef6bf9fb353c04f25e6374767480e869a"
+source = "git+https://github.com/eliheuer/xilem?rev=5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c#5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c"
 dependencies = [
  "masonry",
  "masonry_winit",
@@ -6929,7 +6929,7 @@ dependencies = [
 [[package]]
 name = "xilem_core"
 version = "0.4.0"
-source = "git+https://github.com/eliheuer/xilem?rev=881d2daef6bf9fb353c04f25e6374767480e869a#881d2daef6bf9fb353c04f25e6374767480e869a"
+source = "git+https://github.com/eliheuer/xilem?rev=5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c#5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c"
 dependencies = [
  "anymore",
  "hashbrown 0.17.1",
@@ -6939,7 +6939,7 @@ dependencies = [
 [[package]]
 name = "xilem_masonry"
 version = "0.4.0"
-source = "git+https://github.com/eliheuer/xilem?rev=881d2daef6bf9fb353c04f25e6374767480e869a#881d2daef6bf9fb353c04f25e6374767480e869a"
+source = "git+https://github.com/eliheuer/xilem?rev=5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c#5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c"
 dependencies = [
  "masonry",
  "smallvec",

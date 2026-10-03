@@ -322,4 +322,33 @@ mod tests {
         assert!(reopened.placed_image().is_some());
         std::fs::remove_dir_all(&directory).ok();
     }
+
+    #[test]
+    fn a_dropped_picture_is_placed_behind_the_open_glyph() {
+        let directory =
+            std::env::temp_dir().join(format!("xilem-trace-drop-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("item.nufo");
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(norad::Glyph::new("item"));
+        font.save(&path).unwrap();
+        let picture = directory.join("page.jpg");
+        block_jpeg(&picture);
+
+        let mut app = crate::application::workspace::AppState::open(Some(&path));
+        // in the glyph grid a picture has nowhere to go
+        app.file_dropped(picture.clone());
+        let workspace = app.workspace.as_mut().unwrap();
+        assert!(
+            workspace.note.contains("Open a glyph"),
+            "{}",
+            workspace.note
+        );
+        workspace.open_glyph(workspace.font.index_of("item").unwrap());
+        app.file_dropped(picture);
+        let workspace = app.workspace.as_ref().unwrap();
+        assert!(workspace.placed_image().is_some(), "{}", workspace.note);
+        std::fs::remove_dir_all(&directory).ok();
+    }
 }

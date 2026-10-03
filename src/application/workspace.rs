@@ -424,6 +424,36 @@ impl AppState {
         app
     }
 
+    /// A file dropped on the window. A picture is placed behind the open glyph, as Place Image
+    /// does; a font source opens. Anything else is named in the status line and ignored.
+    pub(crate) fn file_dropped(&mut self, path: std::path::PathBuf) {
+        let extension = path
+            .extension()
+            .map(|extension| extension.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        match extension.as_str() {
+            "png" | "jpg" | "jpeg" => {
+                let Some(workspace) = self.workspace.as_mut() else {
+                    return;
+                };
+                if !matches!(workspace.mode, Mode::Editor(_)) {
+                    workspace.note = "Open a glyph to place a picture behind it".into();
+                } else if let Err(error) = workspace.place_image_file(&path) {
+                    workspace.note = format!("Place image: {error}");
+                }
+            }
+            "ufo" | "nufo" | "designspace" | "glyphs" | "glyphspackage" | "babelfont" | "ttf"
+            | "otf" => {
+                self.open_path(&path);
+            }
+            _ => {
+                if let Some(workspace) = self.workspace.as_mut() {
+                    workspace.note = format!("Runebender cannot use {}", path.display());
+                }
+            }
+        }
+    }
+
     /// Opens `path` as the current document without discarding a document when
     /// core rejects the new source.
     ///

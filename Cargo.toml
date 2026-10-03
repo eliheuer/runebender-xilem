@@ -41,9 +41,9 @@ workspace = true
 [dependencies]
 # Temporary Metal premultiplication workaround for gfx-rs/wgpu#9922.
 # Based on upstream Xilem 271a27a; return upstream when a compatible wgpu includes the fix.
-xilem = { git = "https://github.com/eliheuer/xilem", rev = "881d2daef6bf9fb353c04f25e6374767480e869a", optional = true }
-masonry = { git = "https://github.com/eliheuer/xilem", rev = "881d2daef6bf9fb353c04f25e6374767480e869a", optional = true }
-masonry_winit = { git = "https://github.com/eliheuer/xilem", rev = "881d2daef6bf9fb353c04f25e6374767480e869a", optional = true }
+xilem = { git = "https://github.com/eliheuer/xilem", rev = "5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c", optional = true }
+masonry = { git = "https://github.com/eliheuer/xilem", rev = "5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c", optional = true }
+masonry_winit = { git = "https://github.com/eliheuer/xilem", rev = "5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c", optional = true }
 clap = { version = "4", features = ["derive"], optional = true }
 base64 = { version = "0.22.1", optional = true }
 norad = "0.18"
@@ -88,7 +88,7 @@ objc2 = { version = "0.6.4", optional = true }
 objc2-app-kit = { version = "0.3.2", optional = true, default-features = false, features = ["std", "NSApplication", "NSWindow", "NSView", "NSVisualEffectView", "NSGraphics", "NSButton", "NSWorkspace", "NSAccessibility", "NSAppearance"] }
 
 [dev-dependencies]
-masonry_testing = { git = "https://github.com/eliheuer/xilem", rev = "881d2daef6bf9fb353c04f25e6374767480e869a" }
+masonry_testing = { git = "https://github.com/eliheuer/xilem", rev = "5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c" }
 syn = { version = "2.0.119", features = ["full", "visit"] }
 
 [profile.release]
