@@ -76,28 +76,27 @@ impl Widget for IconWidget {
 
     fn paint(
         &mut self,
-        _ctx: &mut PaintCtx<'_>,
+        ctx: &mut PaintCtx<'_>,
         _props: &PropertiesRef<'_>,
         painter: &mut Painter<'_>,
     ) {
-        let rect = self.size.to_rect();
+        // Paint in the pixel-aligned box, not the unrounded layout size, so neighboring
+        // tabs keep whole-pixel edges and equal gaps.
+        let rect = ctx.border_box();
+        let size = rect.size();
         if let Some((background, border, _, radius)) = self.rail {
             // Open at the bottom, with outward curves joining the panel below.
-            let r = radius
-                .max(0.5)
-                .min(self.size.width.min(self.size.height) / 2.0);
-            let w = self.size.width;
-            let h = self.size.height;
+            let r = radius.max(0.5).min(size.width.min(size.height) / 2.0);
             if self.active {
                 let mut face = BezPath::new();
                 // Quarter-circle control points match Kurbo's rounded rectangles.
                 let k = r * 0.552_284_749_830_793_6;
                 let flare = design::rail_tab_flare(r);
                 let kf = flare * 0.552_284_749_830_793_6;
-                let left = 0.5;
-                let right = w - 0.5;
-                let top = 0.5;
-                let bottom = h - 0.5;
+                let left = rect.x0 + 0.5;
+                let right = rect.x1 - 0.5;
+                let top = rect.y0 + 0.5;
+                let bottom = rect.y1 - 0.5;
                 face.move_to((left - flare, bottom));
                 face.curve_to(
                     (left - flare + kf, bottom),
@@ -115,8 +114,8 @@ impl Widget for IconWidget {
                     (right + flare, bottom),
                 );
                 let mut fill = face.clone();
-                fill.line_to((w - 0.5 + flare, h + 1.0));
-                fill.line_to((0.5 - flare, h + 1.0));
+                fill.line_to((right + flare, rect.y1 + 1.0));
+                fill.line_to((left - flare, rect.y1 + 1.0));
                 fill.close_path();
                 painter.fill(&fill, background).draw();
                 painter.stroke(&face, &Stroke::new(1.0), border).draw();
@@ -155,18 +154,17 @@ impl Widget for IconWidget {
         let Some(icon) = icons().get(self.icon) else {
             return;
         };
-        let pad = self.size.width.min(self.size.height) * 0.10;
+        let pad = size.width.min(size.height) * 0.10;
         let vb = icon.view_box;
         let scale = if self.rail.is_some() {
             self.icon_size.unwrap_or(RAIL_TAB_ICON) / vb.width().max(vb.height())
         } else if let Some(side) = self.icon_size {
-            side.min(self.size.width).min(self.size.height) / vb.width().max(vb.height())
+            side.min(size.width).min(size.height) / vb.width().max(vb.height())
         } else {
-            ((self.size.width - pad * 2.0) / vb.width())
-                .min((self.size.height - pad * 2.0) / vb.height())
+            ((size.width - pad * 2.0) / vb.width()).min((size.height - pad * 2.0) / vb.height())
         };
-        let dx = (self.size.width - vb.width() * scale) / 2.0;
-        let dy = (self.size.height - vb.height() * scale) / 2.0
+        let dx = rect.x0 + (size.width - vb.width() * scale) / 2.0;
+        let dy = rect.y0 + (size.height - vb.height() * scale) / 2.0
             - if self.rail.is_some() && self.active {
                 self.rail.map(|(_, _, rise, _)| rise).unwrap_or_default()
             } else {

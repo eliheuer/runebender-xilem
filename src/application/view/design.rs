@@ -112,10 +112,16 @@ pub(crate) const SIDEBAR_ROW_INSET: f64 = 14.0;
 pub(crate) const ROW_MARKER_SIZE: f64 = 10.0;
 /// GPUI navigation strip geometry, in logical pixels.
 pub(crate) const RAIL_TAB_ACTIVE_HEIGHT: f64 = 32.0;
-pub(crate) const RAIL_TAB_INACTIVE_HEIGHT: f64 = 24.0;
-pub(crate) const RAIL_TAB_HEIGHT: f64 = 40.0;
+/// Space above the rail tabs, beside the outer tabs, and between neighbors.
+pub(crate) const RAIL_TAB_INSET: f64 = 6.0;
+pub(crate) const RAIL_TAB_HEIGHT: f64 = RAIL_TAB_INSET + RAIL_TAB_ACTIVE_HEIGHT;
+/// Inactive tabs leave the same inset below them, above the rail's bottom keyline,
+/// as above and beside them.
+pub(crate) const RAIL_TAB_INACTIVE_HEIGHT: f64 =
+    RAIL_TAB_HEIGHT - 2.0 * RAIL_TAB_INSET - Stroke::Hairline.px();
 /// Content height that makes a collapsed node-inspector group fill the rail.
-pub(crate) const NODE_VIEW_SECTION_HEADER_HEIGHT: f64 = 23.0;
+pub(crate) const NODE_VIEW_SECTION_HEADER_HEIGHT: f64 =
+    RAIL_TAB_HEIGHT - 2.0 * PANEL_SECTION_INSET.px() - Stroke::Hairline.px();
 /// Target thumbnail size and compact grid inset; the fitted cells use whole pixels.
 pub(crate) const RAIL_CELL_SIZE: f64 = 44.0;
 pub(crate) const RAIL_GRID_INSET: f64 = 6.0;
@@ -133,11 +139,17 @@ pub(crate) const RAIL_TAB_ICON_RISE: f64 = 2.0;
 /// so they read as even when slightly larger than those corners.
 pub(crate) const RAIL_TAB_FLARE_EXTRA: f64 = 2.0;
 
+/// Top-corner radius of the rail tabs for a theme's tile radius.
+/// Smaller than the tile radius when needed so the larger flare still fits the inset.
+pub(crate) fn rail_tab_radius(theme_radius: f64) -> f64 {
+    theme_radius.min(RAIL_TAB_INSET - RAIL_TAB_FLARE_EXTRA)
+}
+
 /// Radius of the active rail tab's bottom flares for a given top-corner radius.
 /// The flare cannot exceed the rail's tab gap and side inset, or it would meet
 /// the next tab or the panel edge.
 pub(crate) fn rail_tab_flare(radius: f64) -> f64 {
-    (radius + RAIL_TAB_FLARE_EXTRA).min(Space::Md.px())
+    (radius + RAIL_TAB_FLARE_EXTRA).min(RAIL_TAB_INSET)
 }
 /// Initial proof drawing height, excluding its single top divider.
 /// Proof appearance controls live in the footer; text and shaping in the inspector.
