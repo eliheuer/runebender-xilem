@@ -111,6 +111,8 @@ pub(crate) struct Session {
     pub label: label::LabelState,
     /// The open source is neural: this glyph is an item with no advance box or metrics.
     pub neural: bool,
+    /// The layer's picture is selected, for moving, resizing and removing.
+    pub image_selected: bool,
     pub metaball_preview: BezPath,
     /// Components, resolved against the font at session creation.
     pub components: BezPath,
@@ -204,6 +206,7 @@ impl Session {
             metaballs: metaballs::MetaballSelection::default(),
             label: label::LabelState::default(),
             neural: false,
+            image_selected: false,
             metrics,
             selection: HashSet::new(),
             viewport: ViewPort::new(),
@@ -261,6 +264,7 @@ impl Session {
             metaballs: metaballs::MetaballSelection::default(),
             label: label::LabelState::default(),
             neural: project.is_neural(),
+            image_selected: false,
             metrics,
             selection: HashSet::new(),
             viewport: ViewPort::new(),
@@ -524,6 +528,61 @@ impl Session {
 
     pub(crate) fn set_image(&mut self, image: Option<runebender::font::LayerImage>) -> bool {
         self.stage_canonical_edit("set image", move |draft| Ok(draft.set_image(image)))
+    }
+
+    /// The layer's picture, while it has one.
+    pub(crate) fn layer_image(&self) -> Option<runebender::font::LayerImage> {
+        self.current_layer()?.image().cloned()
+    }
+
+    /// Whether the layer's picture is locked against selection and editing.
+    pub(crate) fn image_locked(&self) -> bool {
+        self.current_layer()
+            .is_some_and(|layer| layer.image().is_some() && layer.image_locked())
+    }
+
+    /// Place the layer's picture with a new transform, keeping its file and tint.
+    pub(crate) fn set_image_transform(&mut self, transform: kurbo::Affine) -> bool {
+        let Some(image) = self.layer_image() else {
+            return false;
+        };
+        let Ok(placed) = runebender::font::LayerImage::new(
+            image.file_name().to_path_buf(),
+            image.color(),
+            transform,
+        ) else {
+            return false;
+        };
+        self.stage_canonical_edit("move image", move |draft| Ok(draft.set_image(Some(placed))))
+    }
+
+    /// Lock an unlocked picture, or unlock a locked one. Locking drops its selection.
+    pub(crate) fn toggle_image_lock(&mut self) -> bool {
+        if self.layer_image().is_none() {
+            return false;
+        }
+        let locked = !self.image_locked();
+        let changed =
+            self.stage_canonical_edit(
+                "lock image",
+                move |draft| Ok(draft.set_image_locked(locked)),
+            );
+        if changed && locked {
+            self.image_selected = false;
+        }
+        changed
+    }
+
+    /// Take the picture off the layer. The source drops its file when nothing else uses it.
+    pub(crate) fn remove_image(&mut self) -> bool {
+        if self.layer_image().is_none() {
+            return false;
+        }
+        self.image_selected = false;
+        self.stage_canonical_edit("remove image", |draft| {
+            let unlocked = draft.set_image_locked(false);
+            Ok(draft.set_image(None) | unlocked)
+        })
     }
 
     pub(crate) fn current_layer(&self) -> Option<LayerView<'_>> {
@@ -2656,6 +2715,13 @@ impl Workspace {
     }
 
     pub(crate) fn finish_open_glyph_refresh(&mut self) {
+        // A picture placed to trace is a working reference: once no canvas places it, its file
+        // leaves the neural source.
+        if self.font.project.is_neural()
+            && let Some(source) = self.font.project.source_id(self.font.active())
+        {
+            self.font.project.prune_document_source_images(source);
+        }
         self.cells = Arc::new(cells_of(&self.font, &self.palette));
         self.modified = true;
         self.note.clear();

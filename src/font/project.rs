@@ -1654,6 +1654,39 @@ impl Project {
         self.variable.source_image(source, path)
     }
 
+    /// Remove the pictures of a source that no glyph layer of that source places any more.
+    ///
+    /// A picture placed to trace is a working reference, not part of the font; when its last
+    /// glyph lets go of it, its file goes too. Returns how many files were removed.
+    pub fn prune_document_source_images(&mut self, source: SourceId) -> usize {
+        let Some(index) = self.source_index(source) else {
+            return 0;
+        };
+        let Some(view) = self.document_source(source) else {
+            return 0;
+        };
+        let layer = view.default_layer();
+        let mut used = HashSet::new();
+        for name in self.glyph_names() {
+            if let Some(image) = self
+                .document_layer(name, &layer)
+                .and_then(|layer| layer.image())
+            {
+                used.insert(image.file_name().to_path_buf());
+            }
+        }
+        let mut removed = 0;
+        for path in self.variable.source_image_paths(source) {
+            if !used.contains(&path) && self.variable.remove_source_image(source, &path) {
+                removed += 1;
+            }
+        }
+        if removed > 0 {
+            self.sources[index].dirty = true;
+        }
+        removed
+    }
+
     /// Install or replace one PNG resource in a stable source without exposing its UFO font.
     ///
     /// Invalid image paths or payloads leave the source-format preservation store, dirty state and

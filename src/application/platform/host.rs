@@ -292,6 +292,7 @@ impl Workspace {
             label_buf: None,
             image_cache: Arc::default(),
             image_height_buf: None,
+            image_x_buf: None,
             image_y_buf: None,
             trace: runebender::formats::image_trace::PlacedTraceOptions::default(),
             trace_threshold_buf: String::new(),

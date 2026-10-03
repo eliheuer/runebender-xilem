@@ -95,6 +95,14 @@ impl<'a> LayerView<'a> {
         parse_metaballs(self.preserved.metaballs.as_ref())
     }
 
+    /// Whether the layer's picture is locked against selection and editing.
+    pub fn image_locked(self) -> bool {
+        matches!(
+            self.preserved.lib.get(IMAGE_LOCKED_KEY),
+            Some(plist::Value::Boolean(true))
+        )
+    }
+
     /// The validated neural item of this layer; a missing key is an empty item.
     pub fn neural_item(
         self,

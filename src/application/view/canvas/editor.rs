@@ -451,6 +451,15 @@ enum Drag {
         points: Vec<Point>,
         additive: bool,
     },
+    /// Moving the layer's picture, or resizing it from a corner. `start` is in design space,
+    /// `origin` is the picture's transform at the press, and `anchor` is the corner that stays
+    /// put while the opposite one, `corner`, follows the pointer.
+    Image {
+        start: Point,
+        origin: Affine,
+        anchor: Option<Point>,
+        corner: Point,
+    },
     /// Label tool: a press in screen space. It becomes a freehand region when it travels,
     /// and a polygon corner when it does not.
     Label {
@@ -499,6 +508,8 @@ pub(crate) struct EditorWidget {
     /// The master the buffer was built from.
     text_inputs: Option<crate::application::editor::tools::text::TextInputs>,
     size: Size,
+    /// The picture's transform while it is dragged, drawn before it is committed.
+    image_preview: Option<Affine>,
     drag: Drag,
     /// Last cursor position in design space, for the pen preview segment.
     hover: Option<Point>,
@@ -1019,6 +1030,83 @@ impl EditorWidget {
         }
     }
 
+    /// The layer's picture as shown: its transform and its size in pixels. None while it is
+    /// hidden, missing or (unless `locked_too`) locked.
+    fn image_frame(&self, locked_too: bool) -> Option<(Affine, f64, f64)> {
+        if !locked_too && self.session.image_locked() {
+            return None;
+        }
+        let shown = self.underlay.image.as_ref()?;
+        let transform = self.session.layer_image()?.transform();
+        Some((
+            transform,
+            f64::from(shown.data.width),
+            f64::from(shown.data.height),
+        ))
+    }
+
+    /// The picture's corners in design space, each with the corner opposite it.
+    fn image_corners(transform: Affine, width: f64, height: f64) -> [(Point, Point); 4] {
+        let corner = |x: f64, y: f64| transform * Point::new(x, y);
+        let (a, b, c, d) = (
+            corner(0.0, 0.0),
+            corner(width, 0.0),
+            corner(width, height),
+            corner(0.0, height),
+        );
+        [(a, c), (b, d), (c, a), (d, b)]
+    }
+
+    /// What a Select press at `design` does to the picture: resize it from a corner handle
+    /// when it is selected, or move it when the press lands on it.
+    fn image_press(&self, design: Point) -> Option<Drag> {
+        let (transform, width, height) = self.image_frame(false)?;
+        let reach = HIT_RADIUS_PX / self.session.viewport.zoom;
+        if self.session.image_selected {
+            for (corner, anchor) in Self::image_corners(transform, width, height) {
+                if corner.distance(design) <= reach {
+                    return Some(Drag::Image {
+                        start: design,
+                        origin: transform,
+                        anchor: Some(anchor),
+                        corner,
+                    });
+                }
+            }
+        }
+        let bounds = (transform * Rect::new(0.0, 0.0, width, height).to_path(0.1)).bounding_box();
+        bounds.contains(design).then_some(Drag::Image {
+            start: design,
+            origin: transform,
+            anchor: None,
+            corner: design,
+        })
+    }
+
+    /// The transform an image drag gives the picture with the pointer at `design`.
+    fn image_drag_transform(
+        start: Point,
+        origin: Affine,
+        anchor: Option<Point>,
+        corner: Point,
+        design: Point,
+    ) -> Affine {
+        let Some(anchor) = anchor else {
+            return Affine::translate(design - start) * origin;
+        };
+        // Proportional: project the pointer onto the diagonal through the anchor.
+        let diagonal = corner - anchor;
+        let length = diagonal.hypot2();
+        if length <= f64::EPSILON {
+            return origin;
+        }
+        let scale = ((design - anchor).dot(diagonal) / length).max(0.02);
+        Affine::translate(anchor.to_vec2())
+            * Affine::scale(scale)
+            * Affine::translate(-anchor.to_vec2())
+            * origin
+    }
+
     fn emit(&self, ctx: &mut EventCtx<'_>, edited: bool) {
         if edited {
             ctx.submit_action::<EditorEvent>(EditorEvent::Edited);
@@ -1268,7 +1356,32 @@ impl Widget for EditorWidget {
         // reference glyph is a quiet fill (it is a shape to match), the
         // background layer is a quiet outline (it is a trace to follow).
         if let Some(image) = &self.underlay.image {
-            painter.draw_image(&image.data, affine * image.to_glyph);
+            let height = f64::from(image.data.height);
+            let to_glyph = self.image_preview.map_or(image.to_glyph, |transform| {
+                transform * Affine::new([1.0, 0.0, 0.0, -1.0, 0.0, height])
+            });
+            painter.draw_image(&image.data, affine * to_glyph);
+            if self.session.image_selected
+                && let Some((transform, width, height)) = self.image_frame(false)
+            {
+                let transform = self.image_preview.unwrap_or(transform);
+                let frame = affine * transform * Rect::new(0.0, 0.0, width, height).to_path(0.1);
+                let selection = pal.role("selection");
+                painter.stroke(&frame, &Stroke::new(1.0), selection).draw();
+                for (corner, _) in Self::image_corners(transform, width, height) {
+                    let at = affine * corner;
+                    painter
+                        .fill(Rect::from_center_size(at, (7.0, 7.0)), pal.canvas)
+                        .draw();
+                    painter
+                        .stroke(
+                            Rect::from_center_size(at, (7.0, 7.0)),
+                            &Stroke::new(1.0),
+                            selection,
+                        )
+                        .draw();
+                }
+            }
         }
         if let Some(reference) = &self.underlay.reference {
             painter
@@ -2074,6 +2187,31 @@ impl Widget for EditorWidget {
                     if self.menu.is_none() {
                         let design = self.screen_to_glyph_design(at);
                         let mut rows = MENU_ITEMS.to_vec();
+                        let on_image = self.image_frame(true).is_some_and(|(t, w, h)| {
+                            (t * Rect::new(0.0, 0.0, w, h).to_path(0.1))
+                                .bounding_box()
+                                .contains(design)
+                        });
+                        if on_image {
+                            let locked = self.session.image_locked();
+                            rows.splice(
+                                0..0,
+                                [
+                                    MenuRow {
+                                        label: std::borrow::Cow::Borrowed(if locked {
+                                            "Unlock Image"
+                                        } else {
+                                            "Lock Image"
+                                        }),
+                                        action: MenuAction::Op(|s| s.toggle_image_lock()),
+                                    },
+                                    MenuRow {
+                                        label: std::borrow::Cow::Borrowed("Remove Image"),
+                                        action: MenuAction::Op(|s| s.remove_image()),
+                                    },
+                                ],
+                            );
+                        }
                         if let Some(component) = self.session.component_at(design) {
                             self.session.select_component_id(component);
                             self.emit(ctx, false);
@@ -2282,6 +2420,7 @@ impl Widget for EditorWidget {
                         match self.hit_point(at) {
                             Some(id) => {
                                 self.session.metaballs.selected.clear();
+                                self.session.image_selected = false;
                                 if shift {
                                     if !self.session.selection.remove(&id) {
                                         self.session.selection.insert(id);
@@ -2305,10 +2444,22 @@ impl Widget for EditorWidget {
                                     ctx.set_handled();
                                     return;
                                 }
+                                if !shift && let Some(drag) = self.image_press(design) {
+                                    self.session.metaballs.selected.clear();
+                                    self.session.selection.clear();
+                                    self.session.selected_component = None;
+                                    self.session.image_selected = true;
+                                    self.drag = drag;
+                                    self.emit(ctx, false);
+                                    ctx.request_render();
+                                    ctx.set_handled();
+                                    return;
+                                }
                                 if !shift {
                                     self.session.metaballs.selected.clear();
                                     self.session.selection.clear();
                                     self.session.selected_component = None;
+                                    self.session.image_selected = false;
                                     self.emit(ctx, false);
                                 }
                                 self.drag = Drag::Marquee {
@@ -2356,6 +2507,21 @@ impl Widget for EditorWidget {
                             self.emit(ctx, false);
                             ctx.request_render();
                         }
+                    }
+                    Drag::Image {
+                        start,
+                        origin,
+                        anchor,
+                        corner,
+                    } => {
+                        self.image_preview = Some(Self::image_drag_transform(
+                            *start,
+                            *origin,
+                            *anchor,
+                            *corner,
+                            glyph_design,
+                        ));
+                        ctx.request_render();
                     }
                     Drag::AdvanceLine => {
                         let d = glyph_design;
@@ -2492,6 +2658,16 @@ impl Widget for EditorWidget {
                         }
                         self.drag = Drag::None;
                         self.emit(ctx, false);
+                    }
+                    Drag::Image { origin, .. } => {
+                        let origin = *origin;
+                        let moved = self.image_preview.take();
+                        let changed = !cancelled
+                            && moved.is_some_and(|transform| {
+                                transform != origin && self.session.set_image_transform(transform)
+                            });
+                        self.drag = Drag::None;
+                        self.emit(ctx, changed);
                     }
                     Drag::Label { points } => {
                         let mut changed = false;
@@ -2702,6 +2878,44 @@ impl Widget for EditorWidget {
             if character.eq_ignore_ascii_case("a") {
                 text.buffer.select_range(0, text.buffer.len());
                 self.emit_text_proof_selection(ctx);
+                ctx.request_render();
+                ctx.set_handled();
+                return;
+            }
+        }
+
+        if self.tool == Tool::Select
+            && self.session.image_selected
+            && self.session.selection.is_empty()
+            && self.field.is_none()
+            && !cmd
+            && let Some(transform) = self.session.layer_image().map(|image| image.transform())
+        {
+            let nudge = |dx: f64, dy: f64| Affine::translate((dx, dy)) * transform;
+            let (handled, edited) = match &key.key {
+                Key::Named(NamedKey::ArrowLeft) => {
+                    (true, self.session.set_image_transform(nudge(-step, 0.0)))
+                }
+                Key::Named(NamedKey::ArrowRight) => {
+                    (true, self.session.set_image_transform(nudge(step, 0.0)))
+                }
+                Key::Named(NamedKey::ArrowUp) => {
+                    (true, self.session.set_image_transform(nudge(0.0, step)))
+                }
+                Key::Named(NamedKey::ArrowDown) => {
+                    (true, self.session.set_image_transform(nudge(0.0, -step)))
+                }
+                Key::Named(NamedKey::Backspace | NamedKey::Delete) => {
+                    (true, self.session.remove_image())
+                }
+                Key::Named(NamedKey::Escape) => {
+                    self.session.image_selected = false;
+                    (true, false)
+                }
+                _ => (false, false),
+            };
+            if handled {
+                self.emit(ctx, edited);
                 ctx.request_render();
                 ctx.set_handled();
                 return;
@@ -3197,6 +3411,7 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
             ghosts: self.ghosts.clone(),
             interp: self.interp.clone(),
             underlay: self.underlay.clone(),
+            image_preview: None,
             text: self
                 .text
                 .as_ref()
@@ -3420,6 +3635,7 @@ mod tests {
             ghosts: Arc::new(Vec::new()),
             interp: None,
             underlay: Underlay::default(),
+            image_preview: None,
             text: None,
             text_inputs: None,
             size: Size::ZERO,
@@ -4110,6 +4326,75 @@ mod tests {
         harness.mouse_button_press(Some(PointerButton::Primary));
         let menu = harness.edit_root_widget(|root| root.widget.menu);
         assert!(menu.is_none(), "a left click does not open the menu");
+    }
+
+    #[test]
+    fn a_picture_is_selected_moved_and_resized_from_a_corner() {
+        let mut editor = widget();
+        let placed = runebender::font::LayerImage::new(
+            std::path::PathBuf::from("page.png"),
+            None,
+            Affine::new([2.0, 0.0, 0.0, 2.0, 100.0, 0.0]),
+        )
+        .unwrap();
+        assert!(editor.session.set_image(Some(placed)));
+        editor.underlay.image = Some(PlacedImage {
+            data: ImageData {
+                data: Blob::new(Arc::new(vec![0; 100 * 100 * 4])),
+                format: ImageFormat::Rgba8,
+                alpha_type: ImageAlphaType::Alpha,
+                width: 100,
+                height: 100,
+            },
+            to_glyph: Affine::new([2.0, 0.0, 0.0, -2.0, 100.0, 200.0]),
+        });
+        let original = projected_glyph(&editor.session).contours;
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+        // the picture spans x 100..300 and y 0..200 in design space; press in the middle
+        let (inside, delta) = harness.edit_root_widget(|root| {
+            let affine = root.widget.glyph_affine();
+            (
+                affine * Point::new(200.0, 100.0),
+                affine * Point::new(230.0, 140.0),
+            )
+        });
+        harness.mouse_move(inside);
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_move(delta);
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        let corner = harness.edit_root_widget(|root| {
+            let session = &root.widget.session;
+            assert!(session.image_selected);
+            let [_, _, _, _, x, y] = session.layer_image().unwrap().transform().as_coeffs();
+            assert!(
+                (x - 130.0).abs() < 1.0 && (y - 40.0).abs() < 1.0,
+                "moved to {x}, {y}"
+            );
+            assert_eq!(projected_glyph(session).contours, original);
+            root.widget.glyph_affine() * Point::new(330.0, 240.0)
+        });
+        // the top right corner, pulled out to twice the size about the lower left
+        let pulled =
+            harness.edit_root_widget(|root| root.widget.glyph_affine() * Point::new(530.0, 440.0));
+        harness.mouse_move(corner);
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_move(pulled);
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        harness.edit_root_widget(|root| {
+            let [scale, _, _, _, x, y] = root
+                .widget
+                .session
+                .layer_image()
+                .unwrap()
+                .transform()
+                .as_coeffs();
+            assert!((scale - 4.0).abs() < 0.05, "scaled to {scale}");
+            assert!(
+                (x - 130.0).abs() < 1.0 && (y - 40.0).abs() < 1.0,
+                "anchor kept at {x}, {y}"
+            );
+        });
     }
 
     #[test]

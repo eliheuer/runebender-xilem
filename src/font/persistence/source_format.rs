@@ -99,6 +99,16 @@ impl SourceFormatData {
             .map_err(|error| error.to_string())
     }
 
+    pub(in crate::font) fn image_paths(&self) -> Vec<PathBuf> {
+        self.images.iter().map(|(path, _)| path.clone()).collect()
+    }
+
+    pub(in crate::font) fn remove_image(&mut self, path: &Path) -> bool {
+        let present = self.images.contains_key(path);
+        self.images.remove(path);
+        present
+    }
+
     pub(in crate::font) fn install_image(
         &mut self,
         path: PathBuf,

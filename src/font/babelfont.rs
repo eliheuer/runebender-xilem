@@ -233,6 +233,9 @@ impl LayerImage {
     }
 }
 
+/// Glyph-lib key that locks a layer's picture against selection and editing.
+pub(crate) const IMAGE_LOCKED_KEY: &str = "com.runebender.imageLocked";
+
 /// Exact UFO values and object metadata that Babelfont cannot represent faithfully.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct LayerPreservation {

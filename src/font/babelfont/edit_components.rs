@@ -364,6 +364,21 @@ impl LayerEditDraft {
         Ok(true)
     }
 
+    /// Lock or unlock the layer's picture. Returns whether the state changed.
+    pub fn set_image_locked(&mut self, locked: bool) -> bool {
+        if self.view().image_locked() == locked {
+            return false;
+        }
+        if locked {
+            self.preserved
+                .lib
+                .insert(IMAGE_LOCKED_KEY.into(), plist::Value::Boolean(true));
+        } else {
+            self.preserved.lib.remove(IMAGE_LOCKED_KEY);
+        }
+        true
+    }
+
     /// Replace the validated neural item, removing the key for an empty item.
     pub fn set_neural_item(
         &mut self,

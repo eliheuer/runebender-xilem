@@ -249,6 +249,7 @@ pub(crate) struct Workspace {
         Arc<std::sync::Mutex<Option<crate::application::editor::tools::trace::DecodedImage>>>,
     /// The image panel's height and lower-edge fields while they are typed.
     pub(crate) image_height_buf: Option<String>,
+    pub(crate) image_x_buf: Option<String>,
     pub(crate) image_y_buf: Option<String>,
     /// How the placed picture is traced; the threshold comes from its own field.
     pub(crate) trace: runebender::formats::image_trace::PlacedTraceOptions,

@@ -550,6 +550,24 @@ impl VariableData {
         self.source_formats.get(&source)?.image_bytes(path).ok()?
     }
 
+    pub(super) fn source_image_paths(&self, source: SourceId) -> Vec<std::path::PathBuf> {
+        self.source_formats
+            .get(&source)
+            .map(|format| format.image_paths())
+            .unwrap_or_default()
+    }
+
+    pub(super) fn remove_source_image(&mut self, source: SourceId, path: &std::path::Path) -> bool {
+        let removed = self
+            .source_formats
+            .get_mut(&source)
+            .is_some_and(|format| format.remove_image(path));
+        if removed {
+            self.revision = self.revision.wrapping_add(1);
+        }
+        removed
+    }
+
     pub(super) fn install_source_image(
         &mut self,
         source: SourceId,

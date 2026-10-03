@@ -76,12 +76,12 @@ impl Workspace {
         })
     }
 
-    /// The placed picture's height in font units and the y of its lower edge.
-    pub(crate) fn image_frame(&self) -> Option<(f64, f64)> {
+    /// The placed picture's left edge, lower edge and height, in font units.
+    pub(crate) fn image_frame(&self) -> Option<(f64, f64, f64)> {
         let image = self.placed_image_reference()?;
         let pixels = self.image_pixel_height()?;
-        let [scale, _, _, _, _, y] = image.transform().as_coeffs();
-        Some((scale * pixels, y))
+        let [scale, _, _, _, x, y] = image.transform().as_coeffs();
+        Some((x, y, scale * pixels))
     }
 
     fn placed_image_reference(&self) -> Option<runebender::font::LayerImage> {
@@ -103,31 +103,33 @@ impl Workspace {
         Some(f64::from(height))
     }
 
-    /// Resize the placed picture to `height` font units, or move its lower edge to `y`.
+    /// Move the placed picture's left edge to `x` or its lower edge to `y`, or resize it to
+    /// `height` font units, keeping its lower left corner where it is.
     ///
-    /// The picture keeps its left edge where it is. Returns whether the placement changed.
-    pub(crate) fn set_image_frame(&mut self, height: Option<f64>, y: Option<f64>) -> bool {
+    /// Returns whether the placement changed.
+    pub(crate) fn set_image_frame(
+        &mut self,
+        x: Option<f64>,
+        y: Option<f64>,
+        height: Option<f64>,
+    ) -> bool {
         let (Some(image), Some(pixels)) =
             (self.placed_image_reference(), self.image_pixel_height())
         else {
             return false;
         };
-        let [scale, _, _, _, x, old_y] = image.transform().as_coeffs();
+        let [scale, _, _, _, old_x, old_y] = image.transform().as_coeffs();
         let scale = match height {
             Some(height) if height.is_finite() && height > 0.0 => height / pixels,
             Some(_) => return false,
             None => scale,
         };
+        let x = x.filter(|x| x.is_finite()).unwrap_or(old_x);
         let y = y.filter(|y| y.is_finite()).unwrap_or(old_y);
-        let Ok(placed) = runebender::font::LayerImage::new(
-            image.file_name().to_path_buf(),
-            image.color(),
-            kurbo::Affine::new([scale, 0.0, 0.0, scale, x, y]),
-        ) else {
-            return false;
-        };
         let before = self.image_frame();
-        self.apply_op(move |session| session.set_image(Some(placed)));
+        self.apply_op(move |session| {
+            session.set_image_transform(kurbo::Affine::new([scale, 0.0, 0.0, scale, x, y]))
+        });
         self.image_frame() != before
     }
 
@@ -173,6 +175,7 @@ impl Workspace {
         self.apply_op(move |session| session.set_image(Some(placed)));
         self.show_background = true;
         self.image_height_buf = None;
+        self.image_x_buf = None;
         self.image_y_buf = None;
         self.note = format!("Placed {} · {width}×{height}px", file_name.display());
         Ok(())
@@ -287,13 +290,13 @@ mod tests {
 
         // 100 px tall, resized to 2000 units with its lower edge at -500
         // the default metrics placed it 1000 units tall on the descender
-        assert_eq!(app.image_frame(), Some((1000.0, -200.0)));
+        assert_eq!(app.image_frame(), Some((0.0, -200.0, 1000.0)));
         assert!(
-            !app.set_image_frame(Some(1000.0), None),
+            !app.set_image_frame(None, None, Some(1000.0)),
             "the same height changes nothing"
         );
-        assert!(app.set_image_frame(Some(2000.0), Some(-500.0)));
-        let (height, y) = app.image_frame().unwrap();
+        assert!(app.set_image_frame(None, Some(-500.0), Some(2000.0)));
+        let (_, y, height) = app.image_frame().unwrap();
         assert!((height - 2000.0).abs() < 1e-6 && (y + 500.0).abs() < 1e-6);
 
         // the block is x 40..120 px and, from the bottom, y 40..80 px: twenty units per pixel
@@ -349,6 +352,50 @@ mod tests {
         app.file_dropped(picture);
         let workspace = app.workspace.as_ref().unwrap();
         assert!(workspace.placed_image().is_some(), "{}", workspace.note);
+        std::fs::remove_dir_all(&directory).ok();
+    }
+
+    #[test]
+    fn a_picture_locks_and_its_file_leaves_the_source_when_removed() {
+        let directory =
+            std::env::temp_dir().join(format!("xilem-trace-remove-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("item.nufo");
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(norad::Glyph::new("item"));
+        font.save(&path).unwrap();
+        let picture = directory.join("page.jpg");
+        block_jpeg(&picture);
+
+        let mut app = Workspace::open(&path).unwrap();
+        app.open_glyph(app.font.index_of("item").unwrap());
+        app.place_image_file(&picture).unwrap();
+        let source = app.font.project.source_id(app.font.active()).unwrap();
+        let stored = Path::new("page.png");
+        assert!(
+            app.font
+                .project
+                .document_source_image(source, stored)
+                .is_some()
+        );
+
+        app.apply_op(|session| session.toggle_image_lock());
+        assert!(app.session.image_locked());
+        app.apply_op(|session| session.toggle_image_lock());
+        assert!(!app.session.image_locked());
+
+        app.apply_op(|session| session.remove_image());
+        assert!(app.session.layer_image().is_none());
+        assert!(
+            app.font
+                .project
+                .document_source_image(source, stored)
+                .is_none(),
+            "an unused picture leaves the neural source"
+        );
+        app.font.project.save().unwrap();
+        assert!(!path.join("images").join("page.png").exists());
         std::fs::remove_dir_all(&directory).ok();
     }
 }
