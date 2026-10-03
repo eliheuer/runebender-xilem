@@ -724,6 +724,11 @@ impl Workspace {
         if !matches!(self.mode, Mode::Editor(_)) {
             return;
         }
+        // A placed picture is traced where it sits; without one, pick a file to trace.
+        if self.session.has_image() {
+            self.command_trace_placed_image();
+            return;
+        }
         let start = self
             .font
             .document_source()
@@ -813,7 +818,11 @@ impl Workspace {
         if !matches!(self.mode, Mode::Editor(_)) || !self.session.has_image() {
             return;
         }
-        self.apply_op(|session| session.set_image(None));
+        if self.session.image_locked() {
+            self.note = "The image is locked; unlock it to remove it".into();
+            return;
+        }
+        self.apply_op(|session| session.remove_image());
         self.note = "Removed image".into();
     }
 

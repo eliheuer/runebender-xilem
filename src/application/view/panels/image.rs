@@ -1,7 +1,7 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The image inspector: place a picture behind the glyph, adjust how it shows, and trace it.
+//! The image inspector, shown while the picture behind the glyph is selected.
 
 use crate::application::editor::tools::trace::ImageAdjust;
 use crate::application::view::design::{Region, TextSize, column as xcolumn, row as xrow};
@@ -108,10 +108,12 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                             app.apply_op(|session| session.toggle_image_lock());
                         })
                         .flex(1.0),
-                        recipes::action(pal, "Remove".into(), |app: &mut Workspace| {
-                            app.apply_op(|session| session.remove_image());
-                        })
-                        .flex(1.0),
+                        (!locked).then(|| {
+                            recipes::action(pal, "Remove".into(), |app: &mut Workspace| {
+                                app.apply_op(|session| session.remove_image());
+                            })
+                            .flex(1.0)
+                        }),
                     ),
                 ),
                 xrow(
@@ -185,8 +187,8 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 xcolumn(
                     Region::List,
                     [
-                        "Click to select, drag to move",
-                        "Drag a corner to resize",
+                        "Drag to move, drag a corner to resize",
+                        "Locked: select only",
                         "Threshold: 0 to 255, empty: auto",
                     ]
                     .map(|hint| {
@@ -198,17 +200,5 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             ),
         )
     });
-    xcolumn(
-        Region::Form,
-        (
-            label("Image").color(pal.text),
-            frame.is_none().then(|| {
-                recipes::action(pal, "Place image…".into(), |app: &mut Workspace| {
-                    app.command_place_image();
-                })
-            }),
-            controls,
-        ),
-    )
-    .boxed()
+    xcolumn(Region::Form, (label("Image").color(pal.text), controls)).boxed()
 }

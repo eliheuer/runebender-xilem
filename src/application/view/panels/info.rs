@@ -204,7 +204,9 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         // the overview still begins with glyph identity because these
         // optional edit groups disappear there.
         recipes::panel_stack((
-            editing.then(|| recipes::panel_group(pal, super::image::panel(app))),
+            // The picture's properties belong to the picture: they show while it is selected.
+            (editing && app.session.image_selected && app.image_frame().is_some())
+                .then(|| recipes::panel_group(pal, super::image::panel(app))),
             (editing && app.tool == Tool::Label)
                 .then(|| recipes::panel_group(pal, super::label::panel(app))),
             (editing && app.tool == Tool::Metaball)

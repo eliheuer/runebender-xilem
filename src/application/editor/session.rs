@@ -543,6 +543,9 @@ impl Session {
 
     /// Place the layer's picture with a new transform, keeping its file and tint.
     pub(crate) fn set_image_transform(&mut self, transform: kurbo::Affine) -> bool {
+        if self.image_locked() {
+            return false;
+        }
         let Some(image) = self.layer_image() else {
             return false;
         };
@@ -556,26 +559,22 @@ impl Session {
         self.stage_canonical_edit("move image", move |draft| Ok(draft.set_image(Some(placed))))
     }
 
-    /// Lock an unlocked picture, or unlock a locked one. Locking drops its selection.
+    /// Lock an unlocked picture, or unlock a locked one. Its selection stays.
     pub(crate) fn toggle_image_lock(&mut self) -> bool {
         if self.layer_image().is_none() {
             return false;
         }
         let locked = !self.image_locked();
-        let changed =
-            self.stage_canonical_edit(
-                "lock image",
-                move |draft| Ok(draft.set_image_locked(locked)),
-            );
-        if changed && locked {
-            self.image_selected = false;
-        }
-        changed
+        self.stage_canonical_edit(
+            "lock image",
+            move |draft| Ok(draft.set_image_locked(locked)),
+        )
     }
 
-    /// Take the picture off the layer. The source drops its file when nothing else uses it.
+    /// Take an unlocked picture off the layer. The source drops its file when nothing else uses
+    /// it.
     pub(crate) fn remove_image(&mut self) -> bool {
-        if self.layer_image().is_none() {
+        if self.layer_image().is_none() || self.image_locked() {
             return false;
         }
         self.image_selected = false;

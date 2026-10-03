@@ -1362,13 +1362,22 @@ impl Widget for EditorWidget {
             });
             painter.draw_image(&image.data, affine * to_glyph);
             if self.session.image_selected
-                && let Some((transform, width, height)) = self.image_frame(false)
+                && let Some((transform, width, height)) = self.image_frame(true)
             {
+                let locked = self.session.image_locked();
                 let transform = self.image_preview.unwrap_or(transform);
                 let frame = affine * transform * Rect::new(0.0, 0.0, width, height).to_path(0.1);
-                let selection = pal.role("selection");
+                // A locked picture shows that it is selected, but offers no handles.
+                let selection = if locked {
+                    pal.text_muted
+                } else {
+                    pal.role("selection")
+                };
                 painter.stroke(&frame, &Stroke::new(1.0), selection).draw();
-                for (corner, _) in Self::image_corners(transform, width, height) {
+                for (corner, _) in Self::image_corners(transform, width, height)
+                    .into_iter()
+                    .filter(|_| !locked)
+                {
                     let at = affine * corner;
                     painter
                         .fill(Rect::from_center_size(at, (7.0, 7.0)), pal.canvas)
@@ -2656,6 +2665,18 @@ impl Widget for EditorWidget {
                                 self.session.selection.insert(id);
                             }
                         }
+                        // A locked picture cannot be moved, so a drag over it is a marquee;
+                        // a click on it still selects it, to inspect or unlock it.
+                        let clicked = rect.width().max(rect.height()) < 3.0;
+                        if clicked && !additive && self.session.selection.is_empty() {
+                            let design = self.screen_to_glyph_design(*start);
+                            self.session.image_selected =
+                                self.image_frame(true).is_some_and(|(t, w, h)| {
+                                    (t * Rect::new(0.0, 0.0, w, h).to_path(0.1))
+                                        .bounding_box()
+                                        .contains(design)
+                                });
+                        }
                         self.drag = Drag::None;
                         self.emit(ctx, false);
                     }
@@ -2892,7 +2913,14 @@ impl Widget for EditorWidget {
             && let Some(transform) = self.session.layer_image().map(|image| image.transform())
         {
             let nudge = |dx: f64, dy: f64| Affine::translate((dx, dy)) * transform;
+            let locked = self.session.image_locked();
             let (handled, edited) = match &key.key {
+                Key::Named(NamedKey::Escape) => {
+                    self.session.image_selected = false;
+                    (true, false)
+                }
+                // A locked picture can be selected and nothing more.
+                _ if locked => (false, false),
                 Key::Named(NamedKey::ArrowLeft) => {
                     (true, self.session.set_image_transform(nudge(-step, 0.0)))
                 }
@@ -2907,10 +2935,6 @@ impl Widget for EditorWidget {
                 }
                 Key::Named(NamedKey::Backspace | NamedKey::Delete) => {
                     (true, self.session.remove_image())
-                }
-                Key::Named(NamedKey::Escape) => {
-                    self.session.image_selected = false;
-                    (true, false)
                 }
                 _ => (false, false),
             };
@@ -4395,6 +4419,85 @@ mod tests {
                 "anchor kept at {x}, {y}"
             );
         });
+    }
+
+    #[test]
+    fn a_locked_picture_can_be_selected_but_not_changed() {
+        // a locked picture as it comes from a source, beside the glyph's own ink
+        let mut font = norad::Font::new();
+        let mut glyph = norad::Glyph::new("A");
+        glyph.width = 500.0;
+        glyph.image = Some(
+            norad::Image::new(
+                std::path::PathBuf::from("page.png"),
+                None,
+                norad::AffineTransform {
+                    x_scale: 2.0,
+                    xy_scale: 0.0,
+                    yx_scale: 0.0,
+                    y_scale: 2.0,
+                    x_offset: 450.0,
+                    y_offset: 0.0,
+                },
+            )
+            .unwrap(),
+        );
+        glyph.lib.insert(
+            "com.runebender.imageLocked".into(),
+            plist::Value::Boolean(true),
+        );
+        font.default_layer_mut().insert_glyph(glyph);
+        let mut editor = widget();
+        editor.session = Session::new(&font, "A").unwrap();
+        let placed = editor.session.layer_image().unwrap();
+        assert!(editor.session.image_locked());
+        editor.underlay.image = Some(PlacedImage {
+            data: ImageData {
+                data: Blob::new(Arc::new(vec![0; 100 * 100 * 4])),
+                format: ImageFormat::Rgba8,
+                alpha_type: ImageAlphaType::Alpha,
+                width: 100,
+                height: 100,
+            },
+            to_glyph: Affine::new([2.0, 0.0, 0.0, -2.0, 450.0, 200.0]),
+        });
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+        let (inside, beside, outside) = harness.edit_root_widget(|root| {
+            let affine = root.widget.glyph_affine();
+            (
+                affine * Point::new(550.0, 100.0),
+                affine * Point::new(610.0, 160.0),
+                affine * Point::new(800.0, 100.0),
+            )
+        });
+        // beside the glyph's own ink, which a click would select first: a click selects it
+        harness.mouse_move(inside);
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        harness.edit_root_widget(|root| assert!(root.widget.session.image_selected));
+        // a drag over it does not move it, and Delete does not remove it
+        harness.mouse_move(inside);
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_move(beside);
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        harness.mouse_move(inside);
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        harness.process_text_event(TextEvent::key_down(Key::Named(NamedKey::Delete)));
+        harness.edit_root_widget(|root| {
+            let session = &mut root.widget.session;
+            assert_eq!(
+                session.layer_image().unwrap().transform(),
+                placed.transform()
+            );
+            assert!(!session.remove_image() && !session.set_image_transform(Affine::IDENTITY));
+        });
+        // a click beside it deselects it
+        harness.mouse_move(outside);
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        harness.edit_root_widget(|root| assert!(!root.widget.session.image_selected));
     }
 
     #[test]
