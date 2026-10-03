@@ -119,11 +119,13 @@ impl Widget for IconWidget {
                 painter.fill(&fill, background).draw();
                 painter.stroke(&face, &Stroke::new(1.0), border).draw();
             } else if radius > 0.0 {
-                let face = rect.inset(0.5).to_rounded_rect(r);
+                // Kurbo insets grow a rectangle for positive values. Move the stroke
+                // inward so inactive tops align with the active tab's top edge.
+                let face = rect.inset(-0.5).to_rounded_rect(r);
                 painter.fill(face, background).draw();
                 painter.stroke(face, &Stroke::new(1.0), border).draw();
             } else {
-                let face = rect.inset(0.5);
+                let face = rect.inset(-0.5);
                 painter.fill(face, background).draw();
                 painter.stroke(face, &Stroke::new(1.0), border).draw();
             }
