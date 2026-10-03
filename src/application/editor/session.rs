@@ -2715,11 +2715,9 @@ impl Workspace {
     }
 
     pub(crate) fn finish_open_glyph_refresh(&mut self) {
-        // A picture placed to trace is a working reference: once no canvas places it, its file
-        // leaves the neural source.
-        if self.font.project.is_neural()
-            && let Some(source) = self.font.project.source_id(self.font.active())
-        {
+        // A picture placed to trace is a working reference: once no glyph places it, its file
+        // leaves the source.
+        if let Some(source) = self.font.project.source_id(self.font.active()) {
             self.font.project.prune_document_source_images(source);
         }
         self.cells = Arc::new(cells_of(&self.font, &self.palette));

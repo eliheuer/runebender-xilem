@@ -1654,7 +1654,7 @@ impl Project {
         self.variable.source_image(source, path)
     }
 
-    /// Remove the pictures of a source that no glyph layer of that source places any more.
+    /// Remove the pictures of a source that no glyph's default layer places any more.
     ///
     /// A picture placed to trace is a working reference, not part of the font; when its last
     /// glyph lets go of it, its file goes too. Returns how many files were removed.
@@ -1662,6 +1662,10 @@ impl Project {
         let Some(index) = self.source_index(source) else {
             return 0;
         };
+        let pictures = self.variable.source_image_paths(source);
+        if pictures.is_empty() {
+            return 0;
+        }
         let Some(view) = self.document_source(source) else {
             return 0;
         };
@@ -1676,7 +1680,7 @@ impl Project {
             }
         }
         let mut removed = 0;
-        for path in self.variable.source_image_paths(source) {
+        for path in pictures {
             if !used.contains(&path) && self.variable.remove_source_image(source, &path) {
                 removed += 1;
             }

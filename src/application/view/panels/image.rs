@@ -1,15 +1,56 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The image inspector of a neural canvas: place a picture of calligraphy, place it, trace it.
+//! The image inspector: place a picture behind the glyph, adjust how it shows, and trace it.
 
+use crate::application::editor::tools::trace::ImageAdjust;
 use crate::application::view::design::{Region, TextSize, column as xcolumn, row as xrow};
 use crate::application::view::label;
 use crate::application::view::recipes;
+use crate::application::widgets::gesture_slider::gesture_slider;
 use crate::application::workspace::Workspace;
 use xilem::WidgetView;
 use xilem::style::Style;
 use xilem::view::FlexExt as _;
+
+/// One display adjustment: its name, range, readout and the field it sets.
+fn adjust_slider(
+    app: &Workspace,
+    name: &'static str,
+    (min, max): (f64, f64),
+    get: fn(&ImageAdjust) -> f64,
+    set: fn(&mut ImageAdjust, f64),
+) -> impl WidgetView<Workspace> + use<> {
+    let pal = &app.palette;
+    let value = get(&app.image_adjust);
+    xcolumn(
+        Region::List,
+        (
+            xrow(
+                Region::Inline,
+                (
+                    label(name)
+                        .text_size(TextSize::Body.px())
+                        .color(pal.text_muted),
+                    xilem::view::FlexSpacer::Flex(1.0),
+                    label(format!("{value:.2}"))
+                        .text_size(TextSize::Body.px())
+                        .color(pal.text),
+                ),
+            ),
+            gesture_slider(
+                pal,
+                min,
+                max,
+                value.clamp(min, max),
+                move |app: &mut Workspace, value, _| set(&mut app.image_adjust, value),
+                |_: &mut Workspace, _| {},
+            )
+            .accessibility_name(name)
+            .step(0.01),
+        ),
+    )
+}
 
 pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
@@ -102,6 +143,44 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 ),
                 recipes::action(pal, "Trace image".into(), |app: &mut Workspace| {
                     app.command_trace_placed_image();
+                }),
+                app.session.image_selected.then(|| {
+                    xcolumn(
+                        Region::Form,
+                        (
+                            adjust_slider(
+                                app,
+                                "Brightness",
+                                (-1.0, 1.0),
+                                |a| a.brightness,
+                                |a, v| a.brightness = v,
+                            ),
+                            adjust_slider(
+                                app,
+                                "Contrast",
+                                (0.0, 2.0),
+                                |a| a.contrast,
+                                |a, v| a.contrast = v,
+                            ),
+                            adjust_slider(
+                                app,
+                                "Saturation",
+                                (0.0, 2.0),
+                                |a| a.saturation,
+                                |a, v| a.saturation = v,
+                            ),
+                            adjust_slider(
+                                app,
+                                "Opacity",
+                                (0.0, 1.0),
+                                |a| a.opacity,
+                                |a, v| a.opacity = v,
+                            ),
+                            recipes::action(pal, "Reset".into(), |app: &mut Workspace| {
+                                app.image_adjust = ImageAdjust::default();
+                            }),
+                        ),
+                    )
                 }),
                 xcolumn(
                     Region::List,

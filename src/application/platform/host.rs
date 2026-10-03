@@ -294,6 +294,7 @@ impl Workspace {
             image_height_buf: None,
             image_x_buf: None,
             image_y_buf: None,
+            image_adjust: crate::application::editor::tools::trace::ImageAdjust::default(),
             trace: runebender::formats::image_trace::PlacedTraceOptions::default(),
             trace_threshold_buf: String::new(),
             unicode_buf: first_uni,

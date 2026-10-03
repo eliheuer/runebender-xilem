@@ -3,10 +3,11 @@
 
 //! Placing a picture behind a glyph and tracing it where it sits.
 //!
-//! A neural item starts from a picture of calligraphy. The picture is placed on the canvas, sized
-//! by its height in font units, and traced in place: the outline lands on the ink as it is shown.
-//! `runebender::formats::image_trace` owns the tracing. This module owns the placement, the
-//! decoded picture the canvas draws, and the commands.
+//! Any glyph, in an OpenType source or a neural one, can have one picture behind it: a drawing or
+//! a page of calligraphy to follow. It is placed on the canvas, sized by its height in font
+//! units, shown with display adjustments, and traced in place: the outline lands on the ink as it
+//! is shown. `runebender::formats::image_trace` owns the tracing. This module owns the placement,
+//! the decoded picture the canvas draws, and the commands.
 
 use crate::application::platform::dialogs;
 use crate::application::view::canvas::editor::PlacedImage;
@@ -16,14 +17,65 @@ use runebender::formats::image_trace::{PlacedTraceOptions, trace_image_placed};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-/// How strongly the picture shows behind the outline, out of 255.
-const IMAGE_ALPHA: u16 = 153;
+/// How the picture is shown: display adjustments that never touch its file or its trace.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ImageAdjust {
+    /// Added to every channel, from -1 to 1.
+    pub brightness: f64,
+    /// Spread of each channel around the middle; 1 leaves it, 0 is flat gray.
+    pub contrast: f64,
+    /// Color strength; 1 leaves it, 0 is gray, 2 doubles it.
+    pub saturation: f64,
+    /// How strongly the picture shows behind the outline, from 0 to 1.
+    pub opacity: f64,
+}
+
+impl Default for ImageAdjust {
+    fn default() -> Self {
+        Self {
+            brightness: 0.0,
+            contrast: 1.0,
+            saturation: 1.0,
+            opacity: 0.6,
+        }
+    }
+}
+
+impl ImageAdjust {
+    /// One RGBA pixel, adjusted.
+    fn apply(self, pixel: &mut [u8]) {
+        let channel = |value: u8| f64::from(value) / 255.0;
+        let [r, g, b] = [channel(pixel[0]), channel(pixel[1]), channel(pixel[2])];
+        let luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        for (index, value) in [r, g, b].into_iter().enumerate() {
+            let value = luma + (value - luma) * self.saturation;
+            let value = (value - 0.5) * self.contrast + 0.5 + self.brightness;
+            pixel[index] = to_byte(value);
+        }
+        pixel[3] = to_byte(channel(pixel[3]) * self.opacity);
+    }
+}
+
+fn to_byte(value: f64) -> u8 {
+    // Clamped to 0..=255 first, so the cast cannot truncate.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "the value is clamped to the byte range"
+    )]
+    let byte = (value.clamp(0.0, 1.0) * 255.0).round() as u8;
+    byte
+}
 
 /// One decoded picture, kept so the canvas does not decode it on every frame.
 pub(crate) struct DecodedImage {
     file_name: PathBuf,
     /// The encoded bytes this was decoded from, to notice a replaced file.
     source: Arc<[u8]>,
+    /// The decoded pixels before any adjustment.
+    original: Vec<u8>,
+    /// The adjustment `data` was made with.
+    adjust: ImageAdjust,
     data: ImageData,
 }
 
@@ -44,28 +96,39 @@ impl Workspace {
             .image_cache
             .lock()
             .unwrap_or_else(|error| error.into_inner());
+        let adjust = self.image_adjust;
         let fresh = cache.as_ref().is_some_and(|decoded| {
             decoded.file_name == image.file_name() && Arc::ptr_eq(&decoded.source, &bytes)
         });
         if !fresh {
             let decoded = image::load_from_memory(&bytes).ok()?.to_rgba8();
             let (width, height) = decoded.dimensions();
-            let mut pixels = decoded.into_raw();
-            for pixel in pixels.chunks_exact_mut(4) {
-                let faded = u16::from(pixel[3]) * IMAGE_ALPHA / 255;
-                pixel[3] = u8::try_from(faded).unwrap_or(u8::MAX);
-            }
             *cache = Some(DecodedImage {
                 file_name: image.file_name().to_path_buf(),
                 source: bytes,
+                original: decoded.into_raw(),
+                // differs from any real adjustment, so the pixels are made below
+                adjust: ImageAdjust {
+                    opacity: f64::NAN,
+                    ..adjust
+                },
                 data: ImageData {
-                    data: Blob::new(Arc::new(pixels)),
+                    data: Blob::new(Arc::new(Vec::new())),
                     format: ImageFormat::Rgba8,
                     alpha_type: ImageAlphaType::Alpha,
                     width,
                     height,
                 },
             });
+        }
+        let decoded = cache.as_mut()?;
+        if decoded.adjust != adjust {
+            let mut pixels = decoded.original.clone();
+            for pixel in pixels.chunks_exact_mut(4) {
+                adjust.apply(pixel);
+            }
+            decoded.data.data = Blob::new(Arc::new(pixels));
+            decoded.adjust = adjust;
         }
         let data = cache.as_ref()?.data.clone();
         // A layer image has its origin at the lower left and y up; pixels run from the top.
@@ -392,10 +455,48 @@ mod tests {
                 .project
                 .document_source_image(source, stored)
                 .is_none(),
-            "an unused picture leaves the neural source"
+            "an unused picture leaves the source"
         );
         app.font.project.save().unwrap();
         assert!(!path.join("images").join("page.png").exists());
         std::fs::remove_dir_all(&directory).ok();
+    }
+
+    #[test]
+    fn adjustments_change_only_how_the_picture_is_shown() {
+        let mut pixel = [200, 100, 50, 255];
+        ImageAdjust {
+            opacity: 1.0,
+            ..ImageAdjust::default()
+        }
+        .apply(&mut pixel);
+        assert_eq!(
+            pixel,
+            [200, 100, 50, 255],
+            "neutral settings change nothing"
+        );
+
+        let mut gray = [200, 100, 50, 255];
+        ImageAdjust {
+            saturation: 0.0,
+            opacity: 1.0,
+            ..ImageAdjust::default()
+        }
+        .apply(&mut gray);
+        assert!(gray[0] == gray[1] && gray[1] == gray[2], "{gray:?}");
+
+        let mut flat = [250, 5, 128, 200];
+        ImageAdjust {
+            contrast: 0.0,
+            brightness: 0.25,
+            opacity: 0.5,
+            ..ImageAdjust::default()
+        }
+        .apply(&mut flat);
+        assert_eq!(
+            flat,
+            [191, 191, 191, 100],
+            "flat gray, raised, half as opaque"
+        );
     }
 }

@@ -251,6 +251,8 @@ pub(crate) struct Workspace {
     pub(crate) image_height_buf: Option<String>,
     pub(crate) image_x_buf: Option<String>,
     pub(crate) image_y_buf: Option<String>,
+    /// How the placed picture is shown: brightness, contrast, saturation and opacity.
+    pub(crate) image_adjust: crate::application::editor::tools::trace::ImageAdjust,
     /// How the placed picture is traced; the threshold comes from its own field.
     pub(crate) trace: runebender::formats::image_trace::PlacedTraceOptions,
     /// The trace threshold as typed; empty means automatic.
