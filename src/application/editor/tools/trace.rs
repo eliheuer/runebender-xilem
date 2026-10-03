@@ -262,7 +262,7 @@ impl Workspace {
         }
     }
 
-    /// Replace the open glyph's contours with a trace of its placed picture, where it sits.
+    /// Add a trace of the open glyph's placed picture, where it sits, to its contours.
     pub(crate) fn command_trace_placed_image(&mut self) {
         if !matches!(self.mode, Mode::Editor(_)) {
             return;
@@ -285,8 +285,13 @@ impl Workspace {
         })();
         match traced {
             Ok(contours) => {
+                // The trace joins the outline that is there, selected, so it can be moved or
+                // deleted at once.
                 let count = contours.len();
-                self.apply_op(move |session| session.replace_imported_contours(contours));
+                self.apply_op(move |session| {
+                    session.image_selected = false;
+                    session.append_imported_contours(contours)
+                });
                 self.note = format!("Traced {count} contour(s)");
             }
             Err(error) => self.note = format!("Trace: {error}"),
@@ -379,6 +384,16 @@ mod tests {
             near(bounds.y0, 300.0) && near(bounds.y1, 1100.0),
             "{bounds:?}"
         );
+        let traced_points = app.session.points().len();
+        assert_eq!(
+            app.session.selection.len(),
+            traced_points,
+            "the new trace is selected"
+        );
+
+        // tracing again keeps what is there: the outline now holds both traces
+        app.command_trace_placed_image();
+        assert_eq!(app.session.points().len(), 2 * traced_points);
 
         // the picture and its placement survive a save
         app.font.project.save().unwrap();

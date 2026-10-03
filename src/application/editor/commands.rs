@@ -719,7 +719,7 @@ impl Workspace {
         }
     }
 
-    /// Pick a raster image and replace the open glyph's contours with its trace.
+    /// Trace the placed picture where it sits, or pick a raster image and add its trace.
     pub(crate) fn command_trace_image(&mut self) {
         if !matches!(self.mode, Mode::Editor(_)) {
             return;
@@ -753,7 +753,7 @@ impl Workspace {
         match traced {
             Ok(glyph) => {
                 let count = glyph.len();
-                self.apply_op(move |session| session.replace_imported_contours(glyph));
+                self.apply_op(move |session| session.append_imported_contours(glyph));
                 self.note = format!("Traced {count} contour(s)");
             }
             Err(error) => self.note = format!("Trace: {error}"),

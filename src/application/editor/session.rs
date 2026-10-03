@@ -1956,6 +1956,7 @@ impl Session {
     }
 
     /// Replace every contour decoded at an explicit import boundary.
+    #[cfg(test)]
     pub(crate) fn replace_imported_contours(
         &mut self,
         contours: runebender::font::ImportedContours,
