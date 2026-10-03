@@ -129,6 +129,16 @@ pub(crate) const RAIL_TAB_ICON: f64 = 14.0;
 /// Rail icons whose ink fills their whole frame draw smaller to match inset icons.
 pub(crate) const RAIL_TAB_ICON_FULL_FRAME: f64 = 12.0;
 pub(crate) const RAIL_TAB_ICON_RISE: f64 = 2.0;
+/// The active tab's bottom flares are outer curves around its top corners,
+/// so they read as even when slightly larger than those corners.
+pub(crate) const RAIL_TAB_FLARE_EXTRA: f64 = 2.0;
+
+/// Radius of the active rail tab's bottom flares for a given top-corner radius.
+/// The flare cannot exceed the rail's tab gap and side inset, or it would meet
+/// the next tab or the panel edge.
+pub(crate) fn rail_tab_flare(radius: f64) -> f64 {
+    (radius + RAIL_TAB_FLARE_EXTRA).min(Space::Md.px())
+}
 /// Initial proof drawing height, excluding its single top divider.
 /// Proof appearance controls live in the footer; text and shaping in the inspector.
 pub(crate) const PROOF_STRIP_HEIGHT: f64 = 140.0;

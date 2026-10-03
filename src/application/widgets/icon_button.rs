@@ -17,7 +17,7 @@ use runebender::ui::icons::icons;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
-use crate::application::view::design::RAIL_TAB_ICON;
+use crate::application::view::design::{self, RAIL_TAB_ICON};
 use crate::application::widgets::icon_paint;
 
 const TILE: f64 = 24.0;
@@ -64,7 +64,7 @@ impl Widget for IconWidget {
             .rail
             .filter(|_| self.active)
             .map_or(0.0, |(_, _, _, radius)| {
-                radius.max(0.5).min(size.width.min(size.height) / 2.0)
+                design::rail_tab_flare(radius.max(0.5).min(size.width.min(size.height) / 2.0))
             });
         ctx.set_paint_insets(Insets::new(
             flare,
@@ -92,29 +92,31 @@ impl Widget for IconWidget {
                 let mut face = BezPath::new();
                 // Quarter-circle control points match Kurbo's rounded rectangles.
                 let k = r * 0.552_284_749_830_793_6;
+                let flare = design::rail_tab_flare(r);
+                let kf = flare * 0.552_284_749_830_793_6;
                 let left = 0.5;
                 let right = w - 0.5;
                 let top = 0.5;
                 let bottom = h - 0.5;
-                face.move_to((left - r, bottom));
+                face.move_to((left - flare, bottom));
                 face.curve_to(
-                    (left - r + k, bottom),
-                    (left, bottom - r + k),
-                    (left, bottom - r),
+                    (left - flare + kf, bottom),
+                    (left, bottom - flare + kf),
+                    (left, bottom - flare),
                 );
                 face.line_to((left, top + r));
                 face.curve_to((left, top + r - k), (left + r - k, top), (left + r, top));
                 face.line_to((right - r, top));
                 face.curve_to((right - r + k, top), (right, top + r - k), (right, top + r));
-                face.line_to((right, bottom - r));
+                face.line_to((right, bottom - flare));
                 face.curve_to(
-                    (right, bottom - r + k),
-                    (right + r - k, bottom),
-                    (right + r, bottom),
+                    (right, bottom - flare + kf),
+                    (right + flare - kf, bottom),
+                    (right + flare, bottom),
                 );
                 let mut fill = face.clone();
-                fill.line_to((w - 0.5 + r, h + 1.0));
-                fill.line_to((0.5 - r, h + 1.0));
+                fill.line_to((w - 0.5 + flare, h + 1.0));
+                fill.line_to((0.5 - flare, h + 1.0));
                 fill.close_path();
                 painter.fill(&fill, background).draw();
                 painter.stroke(&face, &Stroke::new(1.0), border).draw();
