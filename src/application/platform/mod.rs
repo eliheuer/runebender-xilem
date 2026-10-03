@@ -3,6 +3,7 @@
 
 //! The world outside the window: files, watching, and headless frames.
 
+pub(crate) mod config;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod dialogs;
 #[cfg(target_arch = "wasm32")]

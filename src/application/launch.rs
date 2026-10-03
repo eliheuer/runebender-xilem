@@ -23,6 +23,7 @@ pub(crate) fn run(
     event_loop: EventLoopBuilder,
     path: Option<&FsPath>,
 ) -> Result<(), EventLoopError> {
+    crate::application::platform::config::load().apply();
     let mut app = AppState::open(path);
     // RUNEBENDER_GLYPH=<name> starts in the editor on that glyph, so
     // a headless screenshot reaches edit mode without clicks.

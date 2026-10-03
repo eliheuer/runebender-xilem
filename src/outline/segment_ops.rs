@@ -561,10 +561,9 @@ mod tests {
         let c = &glyph.contours[0];
         assert_eq!(c.points.len(), 6);
         assert_eq!(c.points[ids[0].1].typ, PointType::OffCurve);
-        // Thirds of a 100-unit line, snapped to the 2-unit design
-        // grid the editors place every point on.
-        assert_eq!((c.points[ids[0].1].x, c.points[ids[0].1].y), (34.0, 0.0));
-        assert_eq!((c.points[ids[1].1].x, c.points[ids[1].1].y), (66.0, 0.0));
+        // Thirds of a 100-unit line, snapped to the default design grid of whole units.
+        assert_eq!((c.points[ids[0].1].x, c.points[ids[0].1].y), (33.0, 0.0));
+        assert_eq!((c.points[ids[1].1].x, c.points[ids[1].1].y), (67.0, 0.0));
         // The segment's end point is a curve target now.
         assert_eq!(c.points[3].typ, PointType::Curve);
     }

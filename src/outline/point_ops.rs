@@ -34,14 +34,35 @@ pub(crate) struct PointState {
     pub(crate) smooth: bool,
 }
 
-/// The design grid every moved point snaps to.
-///
-/// This is `DESIGN_GRID_SPACING` in the web editor.
-pub const DESIGN_GRID_SPACING: f64 = 2.0;
+/// The default design grid: whole font units.
+pub const DEFAULT_GRID_SPACING: f64 = 1.0;
 
-/// Snap one coordinate to the design grid.
+/// The grid every moved point snaps to, in font units, as `f64` bits. Zero turns snapping off.
+///
+/// One setting for the whole process, read by every edit that snaps; an application sets it
+/// once from its configuration.
+static GRID_SPACING: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(DEFAULT_GRID_SPACING.to_bits());
+
+/// The design grid every moved point snaps to, in font units; zero means no snapping.
+pub fn grid_spacing() -> f64 {
+    f64::from_bits(GRID_SPACING.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+/// Set the design grid. A negative or nonfinite spacing is ignored.
+pub fn set_grid_spacing(spacing: f64) {
+    if spacing.is_finite() && spacing >= 0.0 {
+        GRID_SPACING.store(spacing.to_bits(), std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+/// Snap one coordinate to the design grid, or leave it when snapping is off.
 pub fn snap_coord(value: f64) -> f64 {
-    (value / DESIGN_GRID_SPACING).round() * DESIGN_GRID_SPACING
+    let spacing = grid_spacing();
+    if spacing <= 0.0 {
+        return value;
+    }
+    (value / spacing).round() * spacing
 }
 
 fn snap_pt(p: kurbo::Point) -> kurbo::Point {
@@ -603,8 +624,8 @@ mod tests {
     fn positions_land_on_the_design_grid() {
         let mut glyph = curve_glyph();
         let selected: HashSet<PointId> = [(0, 0)].into_iter().collect();
-        translate_points(&mut glyph, &selected, &HashMap::new(), (3.0, 3.0), true);
-        assert_eq!(at(&glyph, 0), (4.0, 4.0));
+        translate_points(&mut glyph, &selected, &HashMap::new(), (3.4, 2.6), true);
+        assert_eq!(at(&glyph, 0), (3.0, 3.0));
     }
 
     #[test]
@@ -633,9 +654,9 @@ mod tests {
         translate_points(&mut two_events, &selected, &originals, (1.0, 0.0), false);
         translate_points(&mut two_events, &selected, &originals, (2.0, 0.0), false);
         assert_eq!(two_events, one_event);
-        assert_eq!(at(&two_events, 2), (104.0, 20.0));
+        assert_eq!(at(&two_events, 2), (103.0, 20.0));
         assert_eq!(at(&two_events, 3), (102.0, 100.0));
-        assert_eq!(at(&two_events, 4), (104.0, 180.0));
+        assert_eq!(at(&two_events, 4), (103.0, 180.0));
     }
 
     #[test]
@@ -701,11 +722,11 @@ mod tests {
     #[test]
     fn snapping_offcurves_moves_only_handles() {
         let mut glyph = curve_glyph();
-        glyph.contours[0].points[1].x = 21.0;
-        glyph.contours[0].points[0].x = 1.0;
+        glyph.contours[0].points[1].x = 21.4;
+        glyph.contours[0].points[0].x = 1.4;
         let selected: HashSet<PointId> = [(0, 0), (0, 1)].into_iter().collect();
         assert!(snap_selected_offcurves(&mut glyph, &selected));
-        assert_eq!(at(&glyph, 1), (22.0, 0.0));
-        assert_eq!(at(&glyph, 0), (1.0, 0.0));
+        assert_eq!(at(&glyph, 1), (21.0, 0.0));
+        assert_eq!(at(&glyph, 0), (1.4, 0.0));
     }
 }

@@ -615,7 +615,7 @@ mod placed_tests {
 
     #[test]
     fn a_placed_trace_lands_on_the_design_grid() {
-        assert_eq!(crate::outline::point_ops::DESIGN_GRID_SPACING, 2.0);
+        let spacing = crate::outline::point_ops::grid_spacing();
         let placement = kurbo::Affine::new([3.7, 0.0, 0.0, 3.7, 11.0, -7.0]);
         let options = PlacedTraceOptions {
             profile: TraceProfile::Clean,
@@ -623,8 +623,8 @@ mod placed_tests {
         };
         for contour in placed_contours(&block_png(), placement, options).unwrap() {
             for point in contour.points {
-                assert_eq!(point.x % 2.0, 0.0, "{}", point.x);
-                assert_eq!(point.y % 2.0, 0.0, "{}", point.y);
+                assert_eq!(point.x % spacing, 0.0, "{}", point.x);
+                assert_eq!(point.y % spacing, 0.0, "{}", point.y);
             }
         }
     }

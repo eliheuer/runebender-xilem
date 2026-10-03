@@ -2880,10 +2880,10 @@ impl Widget for EditorWidget {
         }
         let cmd = key.modifiers.meta() || key.modifiers.ctrl();
         let shift = key.modifiers.shift();
-        // Moved points snap to the design grid, so a nudge is one grid step; a smaller one
-        // would round back to where it started in one direction and jump double in the other.
-        let grid = runebender::outline::point_ops::DESIGN_GRID_SPACING;
-        let step = if shift { 5.0 * grid } else { grid };
+        // From the config file; by default one grid step, so a nudge cannot round back to
+        // where it started.
+        let (nudge, shift_nudge) = crate::application::platform::config::nudge();
+        let step = if shift { shift_nudge } else { nudge };
 
         if self.tool == Tool::Text
             && let Some(text) = self.text.as_mut()
@@ -4510,14 +4510,15 @@ mod tests {
     }
 
     #[test]
-    fn every_arrow_nudges_a_point_one_grid_step() {
-        // The test glyph's corners sit on the grid; a step of one unit used to round back to
-        // the start in two directions and jump two units in the others.
+    fn every_arrow_nudges_a_point_the_same_distance() {
+        // A nudge smaller than the grid used to round back to the start in two directions and
+        // jump double in the others.
+        let (step, _) = crate::application::platform::config::nudge();
         for (key, delta) in [
-            (NamedKey::ArrowRight, (2.0, 0.0)),
-            (NamedKey::ArrowLeft, (-2.0, 0.0)),
-            (NamedKey::ArrowUp, (0.0, 2.0)),
-            (NamedKey::ArrowDown, (0.0, -2.0)),
+            (NamedKey::ArrowRight, (step, 0.0)),
+            (NamedKey::ArrowLeft, (-step, 0.0)),
+            (NamedKey::ArrowUp, (0.0, step)),
+            (NamedKey::ArrowDown, (0.0, -step)),
         ] {
             let mut editor = widget();
             let (id, before) = {
