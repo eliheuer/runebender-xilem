@@ -8,5 +8,5 @@ Runebender opens a `.nufo` in a neural mode without advance boxes or metrics.
 cargo run -- assets/font-sources/neural-fonts/NastaliqDemo.nufo
 ```
 
-`NastaliqDemo.nufo` holds one item with a placed picture to trace and label.
-The picture is calligraphy by Mishkín-Qalam (1826–1912), public domain, via Wikimedia Commons.
+`NastaliqDemo.nufo` holds one empty canvas, `ba-basic`.
+Place a picture to trace with Place image… in the inspector.
