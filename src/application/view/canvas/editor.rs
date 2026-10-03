@@ -916,6 +916,11 @@ impl EditorWidget {
     }
 
     fn fit(&mut self) {
+        // A neural canvas has no advance or metrics box to frame, and its
+        // ink sits wherever the calligraphy was traced. Frame the ink.
+        if self.session.neural && self.fit_ink() {
+            return;
+        }
         let m = self.session.metrics;
         self.session.viewport.fit_to_canvas(
             self.size.width,
@@ -926,6 +931,30 @@ impl EditorWidget {
             0.62,
         );
         self.session.fitted = true;
+    }
+
+    /// Center the outline's bounds in the canvas. Returns false when the
+    /// layer has no outline, so the caller can fall back to the metrics box.
+    fn fit_ink(&mut self) -> bool {
+        let Some(ink) = self
+            .session
+            .segment_bounds()
+            .into_iter()
+            .reduce(|a, b| a.union(b))
+        else {
+            return false;
+        };
+        let (width, height) = (ink.width().max(1.0), ink.height().max(1.0));
+        let zoom = ((self.size.width * 0.7) / width).min((self.size.height * 0.7) / height);
+        let viewport = &mut self.session.viewport;
+        viewport.zoom = zoom.max(0.001);
+        let center = ink.center();
+        viewport.offset = kurbo::Vec2::new(
+            self.size.width / 2.0 - center.x * viewport.zoom,
+            self.size.height / 2.0 + center.y * viewport.zoom,
+        );
+        self.session.fitted = true;
+        true
     }
 
     /// Frame the whole text line rather than one glyph.
@@ -1527,8 +1556,14 @@ impl Widget for EditorWidget {
         let x0 = (affine * Point::new(0.0, 0.0)).x;
         let x1 = (affine * Point::new(self.session.advance(), 0.0)).x;
         let levels = text_sort_metric_ys(m);
-        // A neural item is not set in a box: no advance, no ascender, baseline or descender.
+        // A neural item is not set in a box: no advance, ascender, or descender.
+        // One baseline at y = 0 runs across the whole canvas as the anchor
+        // between positive and negative heights.
         let neural = self.session.neural;
+        if neural {
+            let sy = (affine * Point::new(0.0, 0.0)).y;
+            painter.fill_rect(horizontal_rule_rect(0.0, self.size.width, sy, rule), frame);
+        }
         for &y in levels.iter().filter(|_| !neural) {
             let sy = (affine * Point::new(0.0, y)).y;
             painter.fill_rect(horizontal_rule_rect(x0, x1, sy, rule), frame);

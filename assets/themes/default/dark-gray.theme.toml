@@ -62,6 +62,8 @@ divider = "baseUi.05"
 canvas = "baseUi.01"
 # Independent inspector preview surface; keep the drawing canvas unchanged.
 glyphPreview = "baseUi.01"
+# Proof strip under the edit canvas: one step darker than the canvas.
+proofStrip = "baseUi.00"
 tabRail = "baseUi.02"
 inactiveTab = "baseUi.03"
 header = "baseUi.02"

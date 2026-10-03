@@ -71,6 +71,8 @@ pub(crate) struct Palette {
     pub canvas: Color,
     /// Independent surface for the glyph outline preview in the inspector.
     pub glyph_preview: Color,
+    /// The proof strip under the edit canvas, one step apart from the canvas.
+    pub proof_strip: Color,
     pub field: Color,
     grid_background: Color,
     cell_shadow_color: Color,
@@ -148,6 +150,7 @@ impl Palette {
             slider_thumb_active: color(t.surface("sliderThumbActive")),
             canvas: color(t.surface("canvas")),
             glyph_preview: color(t.surface("glyphPreview")),
+            proof_strip: color(t.surface("proofStrip")),
             field: color(t.surface("field")),
             grid_background: color(t.surface("gridBackground")),
             cell_shadow_color: color(t.surface("cellShadow")),

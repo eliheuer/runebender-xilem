@@ -693,6 +693,7 @@ pub fn parse_theme(source: &str) -> Result<Theme, String> {
     let panel_shadow = surface_tokens.remove("panelShadow");
     let backdrop_tint = surface_tokens.remove("backdropTint");
     let glyph_preview = surface_tokens.remove("glyphPreview");
+    let proof_strip = surface_tokens.remove("proofStrip");
     let slider_thumb = surface_tokens.remove("sliderThumb");
     let slider_thumb_active = surface_tokens.remove("sliderThumbActive");
     let mut surfaces = resolve_map(
@@ -713,6 +714,7 @@ pub fn parse_theme(source: &str) -> Result<Theme, String> {
     for (name, token, fallback) in [
         ("backdropTint", backdrop_tint, "app"),
         ("glyphPreview", glyph_preview, "canvas"),
+        ("proofStrip", proof_strip, "panel"),
         ("sliderThumb", slider_thumb, "button"),
         ("sliderThumbActive", slider_thumb_active, "buttonHover"),
     ] {

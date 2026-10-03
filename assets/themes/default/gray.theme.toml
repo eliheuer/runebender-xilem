@@ -98,6 +98,8 @@ divider = "baseUi.00"
 canvas = "baseUi.07"
 # Independent inspector preview surface; keep the drawing canvas unchanged.
 glyphPreview = "baseUi.07"
+# Proof strip under the edit canvas: one step darker than the canvas.
+proofStrip = "baseUi.06"
 # Recessed strip behind the sidebar tool tabs.
 tabRail = "baseUi.05"
 # Inactive sidebar tool tab face.

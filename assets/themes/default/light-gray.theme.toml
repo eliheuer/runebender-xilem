@@ -62,6 +62,8 @@ panel = "baseUi.07"
 canvas = "baseUi.08"
 # Independent inspector preview surface; keep the drawing canvas unchanged.
 glyphPreview = "baseUi.08"
+# Proof strip under the edit canvas: one step darker than the canvas.
+proofStrip = "baseUi.07"
 control = "baseUi.06"
 button = "baseUi.07"
 buttonHover = "baseUi.08"

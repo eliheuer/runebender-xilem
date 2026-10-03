@@ -35,7 +35,7 @@ pub(crate) fn preview_strip(app: &Workspace) -> impl WidgetView<Workspace> + use
     let background = if app.preview_invert {
         app.palette.selected_bg()
     } else {
-        app.palette.panel
+        app.palette.proof_strip
     };
     let blur = app.preview_blur;
     // The proof strip follows the open text composition even while an outline
