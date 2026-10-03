@@ -2427,6 +2427,12 @@ impl Widget for EditorWidget {
                         }
                         self.session.selected_anchor = None;
                         match self.hit_point(at) {
+                            // A double click on an on-curve point switches it between corner
+                            // and smooth, as in Glyphs.
+                            Some(id) if state.count >= 2 && self.session.toggle_smooth(id) => {
+                                self.session.selection = std::collections::HashSet::from([id]);
+                                self.emit(ctx, true);
+                            }
                             Some(id) => {
                                 self.session.metaballs.selected.clear();
                                 self.session.image_selected = false;
@@ -2874,7 +2880,10 @@ impl Widget for EditorWidget {
         }
         let cmd = key.modifiers.meta() || key.modifiers.ctrl();
         let shift = key.modifiers.shift();
-        let step = if shift { 10.0 } else { 1.0 };
+        // Moved points snap to the design grid, so a nudge is one grid step; a smaller one
+        // would round back to where it started in one direction and jump double in the other.
+        let grid = runebender::outline::point_ops::DESIGN_GRID_SPACING;
+        let step = if shift { 5.0 * grid } else { grid };
 
         if self.tool == Tool::Text
             && let Some(text) = self.text.as_mut()
@@ -4498,6 +4507,71 @@ mod tests {
         harness.mouse_button_press(Some(PointerButton::Primary));
         harness.mouse_button_release(Some(PointerButton::Primary));
         harness.edit_root_widget(|root| assert!(!root.widget.session.image_selected));
+    }
+
+    #[test]
+    fn every_arrow_nudges_a_point_one_grid_step() {
+        // The test glyph's corners sit on the grid; a step of one unit used to round back to
+        // the start in two directions and jump two units in the others.
+        for (key, delta) in [
+            (NamedKey::ArrowRight, (2.0, 0.0)),
+            (NamedKey::ArrowLeft, (-2.0, 0.0)),
+            (NamedKey::ArrowUp, (0.0, 2.0)),
+            (NamedKey::ArrowDown, (0.0, -2.0)),
+        ] {
+            let mut editor = widget();
+            let (id, before) = {
+                let point = editor.session.points()[0];
+                (point.id, point.point)
+            };
+            editor.session.selection = HashSet::from([id]);
+            let mut harness =
+                TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+            harness.focus_on(Some(harness.root_id()));
+            harness.process_text_event(TextEvent::key_down(Key::Named(key)));
+            harness.edit_root_widget(|root| {
+                let after = root
+                    .widget
+                    .session
+                    .points()
+                    .into_iter()
+                    .find(|point| point.id == id)
+                    .unwrap()
+                    .point;
+                assert_eq!(after - before, kurbo::Vec2::from(delta), "{key:?}");
+            });
+        }
+    }
+
+    #[test]
+    fn a_double_click_switches_a_point_between_corner_and_smooth() {
+        let editor = widget();
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+        let (id, at, smooth) = harness.edit_root_widget(|root| {
+            let (id, at, _, smooth, _) = root.widget.screen_points()[0];
+            (id, at, smooth)
+        });
+        let state = PointerState {
+            position: PhysicalPosition::new(at.x, at.y),
+            count: 2,
+            ..PointerState::default()
+        };
+        harness.process_pointer_event(PointerEvent::Down(PointerButtonEvent {
+            pointer: PRIMARY_MOUSE,
+            button: Some(PointerButton::Primary),
+            state,
+        }));
+        harness.edit_root_widget(|root| {
+            let point = root
+                .widget
+                .session
+                .points()
+                .into_iter()
+                .find(|point| point.id == id)
+                .unwrap();
+            assert_eq!(point.smooth, !smooth, "the double click switched it");
+        });
     }
 
     #[test]

@@ -535,9 +535,10 @@ fn placed_contours(
                     .points
                     .into_iter()
                     .map(|point| {
+                        // Land every point on the design grid, where edits keep it.
                         norad::ContourPoint::new(
-                            point.x,
-                            point.y,
+                            crate::outline::point_ops::snap_coord(point.x),
+                            crate::outline::point_ops::snap_coord(point.y),
                             match point.kind {
                                 PointKind::Move => norad::PointType::Move,
                                 PointKind::Line => norad::PointType::Line,
@@ -610,6 +611,22 @@ mod placed_tests {
         let near = |a: f64, b: f64| (a - b).abs() <= 12.0;
         assert!(near(x0, 900.0) && near(x1, 1700.0), "x {x0}..{x1}");
         assert!(near(y0, 100.0) && near(y1, 500.0), "y {y0}..{y1}");
+    }
+
+    #[test]
+    fn a_placed_trace_lands_on_the_design_grid() {
+        assert_eq!(crate::outline::point_ops::DESIGN_GRID_SPACING, 2.0);
+        let placement = kurbo::Affine::new([3.7, 0.0, 0.0, 3.7, 11.0, -7.0]);
+        let options = PlacedTraceOptions {
+            profile: TraceProfile::Clean,
+            ..Default::default()
+        };
+        for contour in placed_contours(&block_png(), placement, options).unwrap() {
+            for point in contour.points {
+                assert_eq!(point.x % 2.0, 0.0, "{}", point.x);
+                assert_eq!(point.y % 2.0, 0.0, "{}", point.y);
+            }
+        }
     }
 
     #[test]

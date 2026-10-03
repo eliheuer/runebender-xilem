@@ -1105,6 +1105,13 @@ impl Session {
         self.in_drag = false;
     }
 
+    /// Switch one on-curve point between corner and smooth. An off-curve point is unchanged.
+    pub(crate) fn toggle_smooth(&mut self, id: PointId) -> bool {
+        self.stage_canonical_edit("toggle smooth", move |draft| {
+            draft.toggle_smooth_points(&[id])
+        })
+    }
+
     pub(crate) fn nudge(&mut self, dx: f64, dy: f64) -> bool {
         if !dx.is_finite() || !dy.is_finite() || (dx == 0.0 && dy == 0.0) {
             return false;
