@@ -4,17 +4,4 @@
   <image fileName="mishkin.png" xScale="2.3391812865497075" yScale="2.3391812865497075" xOffset="0" yOffset="-600"/>
   <outline>
   </outline>
-  <lib>
-<dict>
-	<key>com.runebender.neuralItem</key>
-	<dict>
-		<key>regions</key>
-		<array/>
-		<key>text</key>
-		<string>بسم</string>
-		<key>version</key>
-		<integer>1</integer>
-	</dict>
-</dict>
-  </lib>
 </glyph>

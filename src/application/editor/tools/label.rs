@@ -1,24 +1,28 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The label tool: say which ink of a neural item belongs to each letter.
+//! The label tool: mark the samples on a neural canvas and say which ink is which letter.
 //!
-//! The item's text gives the letters. One letter is active at a time, and a new region goes to
-//! it. A region is a polygon (placed corner by corner, or drawn as a freehand loop) or one whole
-//! contour, such as a dot. Regions of joined letters may overlap; the letters share that ink.
+//! A canvas holds samples, each one connected piece of writing. With no sample selected, a
+//! loop drawn around some ink makes a new sample. With a sample selected, its text gives the
+//! letters; one letter is active at a time, and a new region goes to it. A region is a polygon
+//! (placed corner by corner, or drawn as a freehand loop) or one whole contour, such as a dot.
+//! Regions of joined letters may overlap; the letters share that ink. Escape leaves a sample.
 //!
 //! `runebender::font::model::neural_item` owns the data. This module owns the gestures.
 
 use crate::application::editor::session::Session;
 use crate::application::workspace::Workspace;
 use kurbo::{Point, Shape as _};
-use runebender::font::model::neural_item::{NeuralItem, NeuralRegion};
+use runebender::font::model::neural_item::{NeuralItem, NeuralRegion, NeuralSample};
 use std::sync::Arc;
 
 /// What the label tool is doing in one editor session.
 #[derive(Clone, Default)]
 pub(crate) struct LabelState {
-    /// Position of the active letter in the item's list of letters.
+    /// The selected sample, by its position on the canvas.
+    pub sample: Option<usize>,
+    /// Position of the active letter in the selected sample's list of letters.
     pub active: usize,
     /// Corners of the polygon being placed, in font units.
     pub draft: Vec<Point>,
@@ -29,15 +33,39 @@ pub(crate) struct LabelState {
 /// A freehand loop keeps a corner only when it is this far from the last one, in font units.
 const LASSO_SPACING: f64 = 6.0;
 
+/// One labeled area, for painting.
+pub(crate) struct LabelArea {
+    /// The sample's position on the canvas.
+    pub sample: usize,
+    /// The letter's position in its sample's letters.
+    pub letter: usize,
+    /// The letter's polygons and whole contours, in font units.
+    pub area: kurbo::BezPath,
+}
+
 impl Session {
     /// The neural item of the open layer; empty when it has none or cannot be read.
     pub(crate) fn neural_item(&self) -> NeuralItem {
         self.neural_item_data().unwrap_or_default()
     }
 
-    /// The text index and character of the active letter.
+    /// The selected sample and its position, while it exists.
+    pub(crate) fn selected_sample(&self) -> Option<(usize, NeuralSample)> {
+        let position = self.label.sample?;
+        Some((position, self.neural_item().samples.get(position)?.clone()))
+    }
+
+    /// Select a sample, or none, and start at its first letter.
+    pub(crate) fn select_sample(&mut self, position: Option<usize>) {
+        self.label.sample = position;
+        self.label.active = 0;
+        self.label.draft.clear();
+        self.label.error = None;
+    }
+
+    /// The text index and character of the active letter of the selected sample.
     pub(crate) fn active_letter(&self) -> Option<(u32, char)> {
-        let letters = self.neural_item().letters();
+        let letters = self.selected_sample()?.1.letters();
         letters
             .get(self.label.active.min(letters.len().saturating_sub(1)))
             .copied()
@@ -45,7 +73,10 @@ impl Session {
 
     /// Make the letter `step` places away active, stopping at either end.
     pub(crate) fn step_label_letter(&mut self, step: isize) {
-        let count = self.neural_item().letters().len();
+        let Some((_, sample)) = self.selected_sample() else {
+            return;
+        };
+        let count = sample.letters().len();
         if count == 0 {
             return;
         }
@@ -58,16 +89,37 @@ impl Session {
         self.label.draft.clear();
     }
 
-    /// Replace the item's text. Regions of letters past the end of a shorter text are dropped.
-    pub(crate) fn set_label_text(&mut self, text: String) -> bool {
+    /// Replace the selected sample's text. Regions of letters past the end of a shorter text
+    /// are dropped.
+    pub(crate) fn set_sample_text(&mut self, text: String) -> bool {
+        let Some(position) = self.label.sample else {
+            return false;
+        };
         let mut item = self.neural_item();
-        if item.text == text {
+        let Some(sample) = item.samples.get_mut(position) else {
+            return false;
+        };
+        if sample.text == text {
             return false;
         }
-        item.text = text;
-        item.retain_valid_owners();
-        let count = item.letters().len();
+        sample.text = text;
+        sample.retain_valid_owners();
+        let count = sample.letters().len();
         self.label.active = self.label.active.min(count.saturating_sub(1));
+        self.store_label(item)
+    }
+
+    /// Remove the selected sample and its labels. The ink stays.
+    pub(crate) fn delete_sample(&mut self) -> bool {
+        let Some(position) = self.label.sample else {
+            return false;
+        };
+        let mut item = self.neural_item();
+        if position >= item.samples.len() {
+            return false;
+        }
+        item.samples.remove(position);
+        self.select_sample(None);
         self.store_label(item)
     }
 
@@ -77,13 +129,14 @@ impl Session {
         self.label.draft.push(at);
     }
 
-    /// Give the placed polygon to the active letter. Needs three corners.
+    /// Close the placed polygon: a region of the active letter, or a new sample.
     pub(crate) fn close_label_polygon(&mut self) -> bool {
         let corners = std::mem::take(&mut self.label.draft);
         self.add_label_polygon(corners)
     }
 
-    /// Give a freehand loop to the active letter, thinned to a workable number of corners.
+    /// Use a freehand loop, thinned to a workable number of corners: a region of the active
+    /// letter, or with no sample selected, a new sample.
     pub(crate) fn add_label_lasso(&mut self, points: &[Point]) -> bool {
         let mut corners: Vec<Point> = Vec::new();
         for point in points {
@@ -99,14 +152,33 @@ impl Session {
 
     fn add_label_polygon(&mut self, corners: Vec<Point>) -> bool {
         if corners.len() < 3 {
-            self.label.error = Some("A region needs three corners".into());
+            self.label.error = Some("A loop needs three corners".into());
             return false;
+        }
+        let polygon: Vec<[f64; 2]> = corners.iter().map(|p| [p.x.round(), p.y.round()]).collect();
+        if self.label.sample.is_none() {
+            return self.add_sample(polygon);
         }
         self.add_label_region(NeuralRegion {
             owners: Vec::new(),
-            polygon: corners.iter().map(|p| [p.x.round(), p.y.round()]).collect(),
+            polygon,
             contour_at: None,
         })
+    }
+
+    fn add_sample(&mut self, boundary: Vec<[f64; 2]>) -> bool {
+        let mut item = self.neural_item();
+        item.samples.push(NeuralSample {
+            boundary,
+            text: String::new(),
+            regions: Vec::new(),
+        });
+        let position = item.samples.len() - 1;
+        let changed = self.store_label(item);
+        if changed {
+            self.select_sample(Some(position));
+        }
+        changed
     }
 
     /// Give the whole contour under `at` to the active letter.
@@ -127,29 +199,39 @@ impl Session {
     }
 
     fn add_label_region(&mut self, mut region: NeuralRegion) -> bool {
+        let Some(position) = self.label.sample else {
+            self.label.error = Some("Draw a loop around some ink to make a sample first".into());
+            return false;
+        };
         let Some((index, _)) = self.active_letter() else {
-            self.label.error = Some("Type the text of this item first".into());
+            self.label.error = Some("Type the text of this sample first".into());
             return false;
         };
         region.owners = vec![index];
         let mut item = self.neural_item();
-        item.regions.push(region);
+        let Some(sample) = item.samples.get_mut(position) else {
+            return false;
+        };
+        sample.regions.push(region);
         self.store_label(item)
     }
 
-    /// Remove the newest region of the active letter, or the last placed corner.
+    /// Remove the last placed corner, or else the newest region of the active letter.
     pub(crate) fn delete_label_region(&mut self) -> bool {
         if self.label.draft.pop().is_some() {
             return false;
         }
-        let Some((index, _)) = self.active_letter() else {
+        let (Some(position), Some((index, _))) = (self.label.sample, self.active_letter()) else {
             return false;
         };
         let mut item = self.neural_item();
-        let Some(position) = item.regions_of(index).last() else {
+        let Some(sample) = item.samples.get_mut(position) else {
             return false;
         };
-        item.regions.remove(position);
+        let Some(region) = sample.regions_of(index).last() else {
+            return false;
+        };
+        sample.regions.remove(region);
         self.store_label(item)
     }
 
@@ -177,18 +259,17 @@ impl Session {
             .collect()
     }
 
-    /// The area each letter owns, in font units: its polygons and its whole contours.
-    ///
-    /// Entries follow the item's letters. Painting clips the outline to each area.
-    pub(crate) fn label_areas(&self) -> Vec<kurbo::BezPath> {
+    /// The area every letter of every sample owns, in font units: its polygons and its whole
+    /// contours. Painting clips the outline to each area.
+    pub(crate) fn label_areas(&self) -> Vec<LabelArea> {
         let item = self.neural_item();
         let contours = self.label_contours();
-        item.letters()
-            .into_iter()
-            .map(|(index, _)| {
+        let mut areas = Vec::new();
+        for (sample_position, sample) in item.samples.iter().enumerate() {
+            for (letter, (index, _)) in sample.letters().into_iter().enumerate() {
                 let mut area = kurbo::BezPath::new();
-                for position in item.regions_of(index) {
-                    let region = &item.regions[position];
+                for position in sample.regions_of(index) {
+                    let region = &sample.regions[position];
                     if let Some(at) = region.contour_at {
                         let at = Point::new(at[0], at[1]);
                         // A little larger than the contour, so the clip keeps its whole edge.
@@ -199,9 +280,16 @@ impl Session {
                         area.extend(region.polygon_path());
                     }
                 }
-                area
-            })
-            .collect()
+                if !area.elements().is_empty() {
+                    areas.push(LabelArea {
+                        sample: sample_position,
+                        letter,
+                        area,
+                    });
+                }
+            }
+        }
+        areas
     }
 }
 
@@ -214,19 +302,25 @@ impl Workspace {
         }
     }
 
-    /// The text field of the label panel: what is being typed, or the item's text.
+    /// The text field of the label panel: what is being typed, or the selected sample's text.
     pub(crate) fn label_text(&self) -> String {
+        let sample = self.session.label.sample;
         match &self.label_buf {
-            Some((glyph, text)) if *glyph == self.session.glyph_name => text.clone(),
-            _ => self.session.neural_item().text,
+            Some((glyph, at, text)) if *glyph == self.session.glyph_name && Some(*at) == sample => {
+                text.clone()
+            }
+            _ => self
+                .session
+                .selected_sample()
+                .map(|(_, sample)| sample.text)
+                .unwrap_or_default(),
         }
     }
 
-    /// Write a phrase file for every labeled item of the active master.
+    /// Write a phrase file for every labeled sample of the active master.
     ///
-    /// The files go in a `phrases` directory beside the document, one per glyph. Items that are
-    /// not ready (a letter without a region, a contour region that points at nothing) are named
-    /// in the note and skipped.
+    /// The files go in a `phrases` directory beside the document, one per sample. Samples that
+    /// are not ready (no text, a letter without a region) are named in the note and skipped.
     pub(crate) fn command_export_phrases(&mut self) {
         let Some(source) = self.font.project.source_id(self.font.active()) else {
             return;
@@ -299,19 +393,31 @@ mod tests {
             .collect()
     }
 
+    fn loop_around(x0: f64, x1: f64, y0: f64, y1: f64) -> Vec<Point> {
+        [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+            .into_iter()
+            .map(Point::from)
+            .collect()
+    }
+
     #[test]
-    fn regions_go_to_the_active_letter_and_undo_one_at_a_time() {
+    fn a_loop_makes_a_sample_and_then_labels_its_letters() {
         let path = item_font("regions");
         let mut app = Workspace::open(&path).unwrap();
         app.open_glyph(app.font.index_of("item").unwrap());
         app.select_tool(Tool::Label);
 
-        // no text yet: a region has no letter to go to
+        // no sample selected: the loop around the ink is a new sample
+        app.edit_label(|s| s.add_label_lasso(&loop_around(50.0, 650.0, -50.0, 300.0)));
+        assert_eq!(app.session.neural_item().samples.len(), 1);
+        assert_eq!(app.session.label.sample, Some(0));
+
+        // no text yet: a loop has no letter to go to
         app.edit_label(|s| s.add_label_lasso(&square(50.0, 400.0)));
-        assert!(app.session.neural_item().regions.is_empty());
+        assert!(app.session.neural_item().samples[0].regions.is_empty());
         assert!(app.session.label.error.is_some());
 
-        app.edit_label(|s| s.set_label_text("ب س".into()));
+        app.edit_label(|s| s.set_sample_text("ب س".into()));
         assert_eq!(app.session.active_letter(), Some((0, 'ب')));
 
         // a freehand loop for the first letter, a placed polygon for the second
@@ -325,51 +431,56 @@ mod tests {
         for corner in square(300.0, 650.0) {
             Arc::make_mut(&mut app.session).add_label_corner(corner);
         }
-        assert!(
-            app.session.neural_item().regions.len() == 1,
+        assert_eq!(
+            app.session.neural_item().samples[0].regions.len(),
+            1,
             "corners are not a region yet"
         );
         app.edit_label(|s| s.close_label_polygon());
         // the dot is a whole contour
         app.edit_label(|s| s.assign_label_contour(Point::new(475.0, 225.0)));
         app.edit_label(|s| s.assign_label_contour(Point::new(0.0, 900.0)));
-
-        let item = app.session.neural_item();
-        assert_eq!(item.regions.len(), 3);
-        assert_eq!(item.regions[0].owners, vec![0]);
-        assert_eq!(item.regions[1].owners, vec![2]);
-        assert_eq!(item.regions[2].contour_at, Some([475.0, 225.0]));
-        assert!(item.unlabeled().is_empty());
         assert_eq!(app.session.label.error.as_deref(), Some("No contour there"));
+
+        let sample = app.session.neural_item().samples[0].clone();
+        assert_eq!(sample.regions.len(), 3);
+        assert_eq!(sample.regions[0].owners, vec![0]);
+        assert_eq!(sample.regions[1].owners, vec![2]);
+        assert_eq!(sample.regions[2].contour_at, Some([475.0, 225.0]));
+        assert!(sample.unlabeled().is_empty());
 
         // both letters own the middle of the bar; only the second owns the dot
         let areas = app.session.label_areas();
         let middle = Point::new(350.0, 50.0);
-        assert!(areas[0].contains(middle) && areas[1].contains(middle));
-        assert!(!areas[0].contains(Point::new(475.0, 225.0)));
-        assert!(areas[1].contains(Point::new(475.0, 225.0)));
+        assert!(areas[0].area.contains(middle) && areas[1].area.contains(middle));
+        assert!(!areas[0].area.contains(Point::new(475.0, 225.0)));
+        assert!(areas[1].area.contains(Point::new(475.0, 225.0)));
 
         // Delete removes the active letter's newest region; undo brings it back
         app.edit_label(|s| s.delete_label_region());
-        assert_eq!(app.session.neural_item().regions.len(), 2);
+        assert_eq!(app.session.neural_item().samples[0].regions.len(), 2);
         app.undo_open_glyph(false);
-        assert_eq!(app.session.neural_item().regions.len(), 3);
+        assert_eq!(app.session.neural_item().samples[0].regions.len(), 3);
 
-        // a shorter text drops the regions of the letters it lost
-        app.edit_label(|s| s.set_label_text("ب".into()));
-        assert_eq!(app.session.neural_item().regions.len(), 1);
-        app.undo_open_glyph(false);
-        assert_eq!(app.session.neural_item().regions.len(), 3);
+        // Escape leaves the sample; the next loop is a second sample
+        Arc::make_mut(&mut app.session).select_sample(None);
+        app.edit_label(|s| s.add_label_lasso(&loop_around(700.0, 900.0, 0.0, 100.0)));
+        assert_eq!(app.session.neural_item().samples.len(), 2);
+        assert_eq!(app.session.label.sample, Some(1));
+        app.edit_label(|s| s.delete_sample());
+        assert_eq!(app.session.neural_item().samples.len(), 1);
+        assert_eq!(app.session.label.sample, None);
         std::fs::remove_dir_all(&path).ok();
     }
 
     #[test]
-    fn labels_survive_a_save_and_export_as_phrase_files() {
+    fn labels_survive_a_save_and_export_one_phrase_file_per_sample() {
         let path = item_font("export");
         let mut app = Workspace::open(&path).unwrap();
         app.open_glyph(app.font.index_of("item").unwrap());
         app.select_tool(Tool::Label);
-        app.edit_label(|s| s.set_label_text("بس".into()));
+        app.edit_label(|s| s.add_label_lasso(&loop_around(50.0, 650.0, -50.0, 300.0)));
+        app.edit_label(|s| s.set_sample_text("بس".into()));
         app.edit_label(|s| s.add_label_lasso(&square(50.0, 400.0)));
 
         // one letter still has no ink: the export names it and writes nothing
@@ -384,7 +495,6 @@ mod tests {
         app.edit_label(|s| s.add_label_lasso(&square(300.0, 650.0)));
         app.font.project.save().unwrap();
 
-        let reopened = Workspace::open(&path).unwrap();
         let glyph = norad::Font::load(&path).unwrap();
         let glyph = glyph.default_layer().get_glyph("item").unwrap();
         assert!(
@@ -392,12 +502,12 @@ mod tests {
                 .lib
                 .contains_key(runebender::font::model::neural_item::NEURAL_ITEM_KEY)
         );
-        let mut reopened = reopened;
+        let mut reopened = Workspace::open(&path).unwrap();
         reopened.open_glyph(reopened.font.index_of("item").unwrap());
         assert_eq!(reopened.session.neural_item(), app.session.neural_item());
 
         reopened.command_export_phrases();
-        let file = path.parent().unwrap().join("phrases").join("item.json");
+        let file = path.parent().unwrap().join("phrases").join("item-1.json");
         let phrase: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
         assert_eq!(phrase["text"], "بس");

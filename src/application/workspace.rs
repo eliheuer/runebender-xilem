@@ -242,8 +242,8 @@ pub(crate) struct Workspace {
     pub(crate) lsb_buf: String,
     pub(crate) rsb_buf: String,
     pub(crate) name_buf: String,
-    /// The label panel's text while it is typed, with the glyph it belongs to.
-    pub(crate) label_buf: Option<(String, String)>,
+    /// The label panel's text while it is typed, with the glyph and sample it belongs to.
+    pub(crate) label_buf: Option<(String, usize, String)>,
     /// The placed picture of the open glyph, decoded once for the canvas.
     pub(crate) image_cache:
         Arc<std::sync::Mutex<Option<crate::application::editor::tools::trace::DecodedImage>>>,

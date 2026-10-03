@@ -964,28 +964,47 @@ impl EditorWidget {
         let pal = &self.palette;
         let colors = label_colors(pal);
         let outline = affine * self.session.outline();
+        let selected = self.session.label.sample;
         let active = self.session.label.active;
-        for (position, area) in self.session.label_areas().into_iter().enumerate() {
-            if area.elements().is_empty() {
-                continue;
-            }
-            let color = colors[position % colors.len()];
-            let area = affine * area;
-            painter.with_fill_clip(&area, |painter| {
-                painter.fill(&outline, color.with_alpha(0.9)).draw();
-            });
-            let (width, alpha) = if position == active {
+        // Every sample's boundary, the selected one strongest.
+        for (position, sample) in self.session.neural_item().samples.iter().enumerate() {
+            let (width, alpha) = if Some(position) == selected {
                 (1.5, 0.9)
             } else {
-                (1.0, 0.35)
+                (1.0, 0.45)
             };
             painter
-                .stroke(&area, &Stroke::new(width), color.with_alpha(alpha))
+                .stroke(
+                    affine * sample.boundary_path(),
+                    &Stroke::new(width),
+                    pal.tool_feedback().with_alpha(alpha),
+                )
                 .draw();
+        }
+        for area in self.session.label_areas() {
+            let color = colors[area.letter % colors.len()];
+            let path = affine * area.area;
+            painter.with_fill_clip(&path, |painter| {
+                painter.fill(&outline, color.with_alpha(0.9)).draw();
+            });
+            if Some(area.sample) == selected {
+                let (width, alpha) = if area.letter == active {
+                    (1.5, 0.9)
+                } else {
+                    (1.0, 0.35)
+                };
+                painter
+                    .stroke(&path, &Stroke::new(width), color.with_alpha(alpha))
+                    .draw();
+            }
         }
         let draft = &self.session.label.draft;
         if let Some(first) = draft.first() {
-            let color = colors[active % colors.len()];
+            let color = if selected.is_some() {
+                colors[active % colors.len()]
+            } else {
+                pal.tool_feedback()
+            };
             let mut path = kurbo::BezPath::new();
             path.move_to(affine * *first);
             for corner in &draft[1..] {
@@ -2708,6 +2727,10 @@ impl Widget for EditorWidget {
                     self.session.label.draft.clear();
                     true
                 }
+                Key::Named(NamedKey::Escape) if self.session.label.sample.is_some() => {
+                    self.session.select_sample(None);
+                    true
+                }
                 _ => false,
             };
             if handled {
@@ -4107,8 +4130,7 @@ mod tests {
             assert!(root.widget.session.label.error.is_none());
             root.widget.session.label.draft.clear();
         });
-        // a press that travels: a loop. This item has no text, so the loop has no letter to
-        // go to, and saying so is the proof that the loop was offered as a region.
+        // a press that travels: a loop. With no sample selected, it makes a sample.
         harness.mouse_move(Point::new(200.0, 150.0));
         harness.mouse_button_press(Some(PointerButton::Primary));
         for step in 1..=12 {
@@ -4122,13 +4144,11 @@ mod tests {
         harness.edit_root_widget(|root| {
             let session = &root.widget.session;
             assert!(session.label.draft.is_empty(), "a loop places no corner");
+            assert_eq!(session.neural_item().samples.len(), 1);
+            assert_eq!(session.label.sample, Some(0), "the new sample is selected");
             assert_eq!(
-                session.label.error.as_deref(),
-                Some("Type the text of this item first")
-            );
-            assert_eq!(
-                projected_glyph(session),
-                original,
+                projected_glyph(session).contours,
+                original.contours,
                 "labeling never edits the outline"
             );
         });

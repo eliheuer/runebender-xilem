@@ -103,11 +103,7 @@ impl<'a> LayerView<'a> {
         let Some(value) = self.preserved.lib.get(NEURAL_ITEM_KEY) else {
             return Ok(NeuralItem::default());
         };
-        let item: NeuralItem =
-            plist::from_value(value).map_err(|_| DocumentEditError::InvalidLayerMetadata)?;
-        item.validate()
-            .map_err(|_| DocumentEditError::InvalidLayerMetadata)?;
-        Ok(item)
+        NeuralItem::from_value(value).map_err(|_| DocumentEditError::InvalidLayerMetadata)
     }
 
     /// Exact source spelling of one valid explicit composition recipe.

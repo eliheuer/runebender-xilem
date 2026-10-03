@@ -80,7 +80,7 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     Region::List,
                     [
                         "Height, Bottom: font units",
-                        "Threshold: 0 to 255, empty is automatic",
+                        "Threshold: 0 to 255, empty: auto",
                     ]
                     .map(|hint| {
                         label(hint)
