@@ -12,7 +12,7 @@
 //! [editing]
 //! grid = 2          # moved points snap to this many units; 0 turns snapping off; default 1
 //! nudge = 2         # an arrow key moves this far; default one grid step
-//! shift_nudge = 10  # Shift and an arrow key; default ten nudges
+//! shift_nudge = 8   # Shift and an arrow key; default four nudges
 //! ```
 
 use std::path::PathBuf;
@@ -55,7 +55,7 @@ impl Config {
         let step = positive(self.editing.nudge).unwrap_or(if grid > 0.0 { grid } else { 1.0 });
         (
             step,
-            positive(self.editing.shift_nudge).unwrap_or(10.0 * step),
+            positive(self.editing.shift_nudge).unwrap_or(4.0 * step),
         )
     }
 
@@ -102,22 +102,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_are_whole_units_and_ten_times_with_shift() {
+    fn defaults_are_whole_units_and_four_times_with_shift() {
         let config = Config::default();
         assert_eq!(config.grid(), 1.0);
-        assert_eq!(config.nudge(), (1.0, 10.0));
+        assert_eq!(config.nudge(), (1.0, 4.0));
     }
 
     #[test]
     fn a_grid_sets_the_nudge_unless_the_nudge_is_given() {
         let config = parse("[editing]\ngrid = 2\n").unwrap();
-        assert_eq!((config.grid(), config.nudge()), (2.0, (2.0, 20.0)));
+        assert_eq!((config.grid(), config.nudge()), (2.0, (2.0, 8.0)));
         let config = parse("[editing]\ngrid = 2\nshift_nudge = 10\n").unwrap();
         assert_eq!(config.nudge(), (2.0, 10.0));
         let config = parse("[editing]\ngrid = 0\n").unwrap();
         assert_eq!(
             (config.grid(), config.nudge()),
-            (0.0, (1.0, 10.0)),
+            (0.0, (1.0, 4.0)),
             "no snapping"
         );
     }
@@ -128,7 +128,7 @@ mod tests {
             parse("theme = \"gray\"\n[quiver]\napi_key = \"x\"\n[editing]\ngrid = 4\n").unwrap();
         assert_eq!(config.grid(), 4.0);
         let config = parse("[editing]\ngrid = -3\nnudge = 0\n").unwrap();
-        assert_eq!((config.grid(), config.nudge()), (1.0, (1.0, 10.0)));
+        assert_eq!((config.grid(), config.nudge()), (1.0, (1.0, 4.0)));
         assert!(
             parse("[editing]\ngird = 2\n").is_err(),
             "a misspelled key is reported"
