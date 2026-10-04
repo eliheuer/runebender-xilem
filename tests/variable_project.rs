@@ -2847,6 +2847,94 @@ fn canonical_implied_quadratic_insertion_rejects_stale_segment_identity() {
 }
 
 #[test]
+fn deleting_an_on_curve_point_keeps_the_neighboring_handles() {
+    let scratch = Scratch::new();
+    let point = |x, y, typ, label: &str| {
+        ContourPoint::new(
+            x,
+            y,
+            typ,
+            false,
+            None,
+            Some(norad::Identifier::new(label).unwrap()),
+        )
+    };
+    let mut glyph = Glyph::new("join");
+    // A curve, then a line: deleting the joint keeps the curve's handles.
+    glyph.contours.push(Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::Line, "a start"),
+            point(0.0, 100.0, PointType::OffCurve, "a control 1"),
+            point(100.0, 150.0, PointType::OffCurve, "a control 2"),
+            point(200.0, 150.0, PointType::Curve, "a joint"),
+            point(300.0, 0.0, PointType::Line, "a end"),
+        ],
+        None,
+    ));
+    // One cubic split at its middle: deleting the joint restores it.
+    glyph.contours.push(Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::Line, "b start"),
+            point(0.0, 100.0, PointType::OffCurve, "b control 1"),
+            point(75.0, 150.0, PointType::OffCurve, "b control 2"),
+            point(150.0, 150.0, PointType::Curve, "b joint"),
+            point(225.0, 150.0, PointType::OffCurve, "b control 3"),
+            point(300.0, 100.0, PointType::OffCurve, "b control 4"),
+            point(300.0, 0.0, PointType::Curve, "b end"),
+        ],
+        None,
+    ));
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(glyph);
+    let mut project =
+        Project::from_source(SourceInput::from_font(font, scratch.0.join("Join.ufo")));
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let layer = project.document_layer("join", &layer_id).unwrap();
+    let ids: Vec<Vec<_>> = layer
+        .contours()
+        .map(|contour| contour.points().map(|point| point.id()).collect())
+        .collect();
+    project
+        .edit_document_layer("join", &layer_id, |draft| {
+            assert!(draft.delete_points(&[ids[0][3], ids[1][3]])?);
+            Ok(())
+        })
+        .unwrap();
+    let projected = project.encode_ufo_layer("join", &layer_id).unwrap();
+    let points = |contour: usize| {
+        projected.contours[contour]
+            .points
+            .iter()
+            .map(|point| (point.x, point.y, point.typ))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        points(0),
+        [
+            (0.0, 0.0, PointType::Line),
+            (0.0, 100.0, PointType::OffCurve),
+            (100.0, 150.0, PointType::OffCurve),
+            (300.0, 0.0, PointType::Curve),
+        ]
+    );
+    let joined = points(1);
+    assert_eq!(joined.len(), 4);
+    let (c1, c2) = ((joined[1].0, joined[1].1), (joined[2].0, joined[2].1));
+    assert!(
+        (c1.0 - 0.0).abs() <= 1.0 && (c1.1 - 200.0).abs() <= 1.0,
+        "{c1:?}"
+    );
+    assert!(
+        (c2.0 - 300.0).abs() <= 1.0 && (c2.1 - 200.0).abs() <= 1.0,
+        "{c2:?}"
+    );
+    assert_eq!(joined[3], (300.0, 0.0, PointType::Curve));
+}
+
+#[test]
 fn canonical_point_deletion_preserves_surviving_identities_and_metadata() {
     let scratch = Scratch::new();
     let point = |x, y, typ, label: &str| {

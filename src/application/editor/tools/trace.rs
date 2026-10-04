@@ -124,7 +124,7 @@ impl Workspace {
         let decoded = cache.as_mut()?;
         if decoded.adjust != adjust {
             let mut pixels = decoded.original.clone();
-            for pixel in pixels.chunks_exact_mut(4) {
+            for pixel in pixels.as_chunks_mut::<4>().0 {
                 adjust.apply(pixel);
             }
             decoded.data.data = Blob::new(Arc::new(pixels));

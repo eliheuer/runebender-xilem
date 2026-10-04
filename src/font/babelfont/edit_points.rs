@@ -450,7 +450,6 @@ impl LayerEditDraft {
                 };
                 records.push(SegmentRecord { on_index, controls });
             }
-            records.retain(|record| !selected.contains(&point_ids[record.on_index]));
             for record in &mut records {
                 if record
                     .controls
@@ -460,6 +459,69 @@ impl LayerEditDraft {
                     record.controls.clear();
                 }
             }
+            // A deleted on-curve point joins the segments on either side
+            // into one. The joined segment keeps the handles that survive
+            // instead of collapsing to a line.
+            let deleted: Vec<bool> = records
+                .iter()
+                .map(|record| selected.contains(&point_ids[record.on_index]))
+                .collect();
+            let mut moved_controls = HashMap::new();
+            let mut joined = Vec::new();
+            for (end, record) in records.iter().enumerate() {
+                if deleted[end] {
+                    continue;
+                }
+                // Walk back over the deleted points to the previous survivor.
+                let mut chain = vec![end];
+                let mut start = end;
+                loop {
+                    start = if start == 0 {
+                        if !closed {
+                            break;
+                        }
+                        records.len() - 1
+                    } else {
+                        start - 1
+                    };
+                    if !deleted[start] || start == end {
+                        break;
+                    }
+                    chain.push(start);
+                }
+                if chain.len() == 1 || start == end || deleted[start] {
+                    continue;
+                }
+                chain.reverse();
+                let segments: Vec<&[usize]> = chain
+                    .iter()
+                    .map(|index| records[*index].controls.as_slice())
+                    .collect();
+                let point =
+                    |index: usize| kurbo::Point::new(path.nodes[index].x, path.nodes[index].y);
+                if let Some(controls) = join_segments(
+                    point(records[start].on_index),
+                    &chain
+                        .iter()
+                        .map(|index| point(records[*index].on_index))
+                        .collect::<Vec<_>>(),
+                    &segments,
+                    &point,
+                    &mut moved_controls,
+                ) {
+                    joined.push((end, controls));
+                } else {
+                    joined.push((end, record.controls.clone()));
+                }
+            }
+            for (end, controls) in joined {
+                records[end].controls = controls;
+            }
+            let mut position = 0;
+            records.retain(|_| {
+                position += 1;
+                !deleted[position - 1]
+            });
             if records.is_empty() {
                 self.layer.shapes.remove(shape_index);
                 self.preserved
@@ -481,7 +543,12 @@ impl LayerEditDraft {
             let mut nodes = Vec::new();
             let mut points = Vec::new();
             let append = |index: usize, nodes: &mut Vec<Node>, points: &mut Vec<PreservedPoint>| {
-                nodes.push(old_nodes[index].clone());
+                let mut node = old_nodes[index].clone();
+                if let Some(position) = moved_controls.get(&index) {
+                    node.x = position.x;
+                    node.y = position.y;
+                }
+                nodes.push(node);
                 points.push(old_points[index].clone());
             };
             for (position, record) in records.iter().enumerate() {
@@ -496,6 +563,8 @@ impl LayerEditDraft {
                     endpoint.nodetype = NodeType::Move;
                 } else if record.controls.is_empty() {
                     endpoint.nodetype = NodeType::Line;
+                } else if endpoint.nodetype == NodeType::Line {
+                    endpoint.nodetype = NodeType::Curve;
                 }
             }
             if closed {
@@ -504,6 +573,8 @@ impl LayerEditDraft {
                 }
                 if records[0].controls.is_empty() {
                     nodes[0].nodetype = NodeType::Line;
+                } else if nodes[0].nodetype == NodeType::Line {
+                    nodes[0].nodetype = NodeType::Curve;
                 }
             }
             let Shape::Path(path) = &mut self.layer.shapes[shape_index] else {
@@ -718,4 +789,119 @@ impl LayerEditDraft {
         }
         Ok(true)
     }
+}
+
+/// Choose the controls of one segment that replaces a chain of segments
+/// joined by deleted on-curve points.
+///
+/// `segments` holds the control indices of each segment in the chain, and
+/// `ends` the on-curve point that ends each one. Lines stay out of the way:
+/// if one segment is a curve, its handles stay where they are. If several
+/// are curves, the outer two handles keep their directions and get the
+/// lengths that best fit the old chain; `moved` receives their new
+/// positions. Returns `None` for a chain this join does not handle, such
+/// as a quadratic segment.
+fn join_segments(
+    start: kurbo::Point,
+    ends: &[kurbo::Point],
+    segments: &[&[usize]],
+    point: &impl Fn(usize) -> kurbo::Point,
+    moved: &mut HashMap<usize, kurbo::Point>,
+) -> Option<Vec<usize>> {
+    use kurbo::{ParamCurve as _, ParamCurveDeriv as _};
+    if segments
+        .iter()
+        .any(|controls| !matches!(controls.len(), 0 | 2))
+    {
+        return None;
+    }
+    let curved: Vec<&[usize]> = segments
+        .iter()
+        .copied()
+        .filter(|controls| controls.len() == 2)
+        .collect();
+    let (first, last) = match curved.as_slice() {
+        [] => return Some(Vec::new()),
+        [only] => return Some(only.to_vec()),
+        [first, .., last] => (first[0], last[1]),
+    };
+    let p0 = start;
+    let p3 = *ends.last()?;
+    let (t0, t1) = (point(first) - p0, p3 - point(last));
+    if t0.hypot() < 1e-9 || t1.hypot() < 1e-9 {
+        return Some(vec![first, last]);
+    }
+    let (t0, t1) = (t0.normalize(), t1.normalize());
+
+    // Sample the old chain and give each sample a chord-length parameter.
+    let mut samples = vec![p0];
+    let mut from = p0;
+    for (controls, &to) in segments.iter().zip(ends) {
+        let cubic = match controls {
+            [a, b] => kurbo::CubicBez::new(from, point(*a), point(*b), to),
+            _ => kurbo::CubicBez::new(from, from.lerp(to, 1.0 / 3.0), from.lerp(to, 2.0 / 3.0), to),
+        };
+        samples.extend((1..=16).map(|step| cubic.eval(f64::from(step) / 16.0)));
+        from = to;
+    }
+    let mut lengths = vec![0.0];
+    for pair in samples.windows(2) {
+        lengths.push(lengths.last().copied().unwrap_or(0.0) + pair[0].distance(pair[1]));
+    }
+    let total = lengths.last().copied().unwrap_or(0.0);
+    if total < 1e-9 {
+        return Some(vec![first, last]);
+    }
+
+    // Least squares for the two handle lengths (Schneider's curve fit),
+    // with a few Newton steps that refine each sample's parameter.
+    let mut params: Vec<f64> = lengths.iter().map(|length| length / total).collect();
+    let (mut a, mut b) = (0.0, 0.0);
+    for round in 0..6 {
+        let (mut c11, mut c12, mut c22, mut x1, mut x2) = (0.0, 0.0, 0.0, 0.0, 0.0);
+        for (sample, &u) in samples.iter().zip(&params) {
+            let v = 1.0 - u;
+            let (b0, b1, b2, b3) = (v * v * v, 3.0 * u * v * v, 3.0 * u * u * v, u * u * u);
+            let a1 = t0 * b1;
+            let a2 = -t1 * b2;
+            let rest = sample.to_vec2() - (p0.to_vec2() * (b0 + b1) + p3.to_vec2() * (b2 + b3));
+            c11 += a1.dot(a1);
+            c12 += a1.dot(a2);
+            c22 += a2.dot(a2);
+            x1 += a1.dot(rest);
+            x2 += a2.dot(rest);
+        }
+        let det = c11 * c22 - c12 * c12;
+        if det.abs() < 1e-12 {
+            return Some(vec![first, last]);
+        }
+        a = (x1 * c22 - c12 * x2) / det;
+        b = (c11 * x2 - c12 * x1) / det;
+        if round == 5 || a <= 0.0 || b <= 0.0 {
+            break;
+        }
+        let fit = kurbo::CubicBez::new(p0, p0 + t0 * a, p3 - t1 * b, p3);
+        let d1 = fit.deriv();
+        let d2 = d1.deriv();
+        for (sample, u) in samples.iter().zip(params.iter_mut()) {
+            let offset = fit.eval(*u) - *sample;
+            let first_derivative = d1.eval(*u).to_vec2();
+            let denominator =
+                first_derivative.dot(first_derivative) + offset.dot(d2.eval(*u).to_vec2());
+            if denominator.abs() > 1e-12 {
+                *u = (*u - offset.dot(first_derivative) / denominator).clamp(0.0, 1.0);
+            }
+        }
+    }
+    let chord = p0.distance(p3);
+    if a <= chord * 1e-3 || b <= chord * 1e-3 {
+        return Some(vec![first, last]);
+    }
+    let snap = |p: kurbo::Point| {
+        use crate::outline::point_ops::snap_coord;
+        kurbo::Point::new(snap_coord(p.x), snap_coord(p.y))
+    };
+    moved.insert(first, snap(p0 + t0 * a));
+    moved.insert(last, snap(p3 - t1 * b));
+    Some(vec![first, last])
 }
