@@ -125,24 +125,26 @@ pub(crate) fn preview_strip(app: &Workspace) -> impl WidgetView<Workspace> + use
 
 /// Fit the advance horizontally and the actual ink vertically, as the GPUI
 /// proof does. Sidebearings stay meaningful; empty descender space does not
-/// displace the visible ink from the middle of the pane.
+/// displace the visible ink from the middle of the pane. With no advance, as
+/// on a neural canvas, the ink is centered on both axes.
 fn proof_transform(bounds: kurbo::Rect, advance: f64, size: kurbo::Size) -> kurbo::Affine {
     use masonry::kurbo::Affine;
     let padding = Space::Xl.px();
     let by_height = (size.height - padding * 2.0).max(0.0) / bounds.height().max(1.0);
-    let by_width = if advance > 0.0 {
-        (size.width - padding * 2.0).max(0.0) / advance
+    let width = if advance > 0.0 {
+        advance
     } else {
-        by_height
+        bounds.width()
     };
+    let by_width = (size.width - padding * 2.0).max(0.0) / width.max(1.0);
     let scale = by_height.min(by_width);
-    Affine::scale_non_uniform(scale, -scale).then_translate(
-        (
-            (size.width - advance * scale) / 2.0,
-            size.height / 2.0 + bounds.center().y * scale,
-        )
-            .into(),
-    )
+    let x = if advance > 0.0 {
+        (size.width - advance * scale) / 2.0
+    } else {
+        size.width / 2.0 - bounds.center().x * scale
+    };
+    Affine::scale_non_uniform(scale, -scale)
+        .then_translate((x, size.height / 2.0 + bounds.center().y * scale).into())
 }
 
 type PreviewContour = Vec<(f64, f64, runebender::font::LayerPointType, bool)>;
@@ -312,5 +314,13 @@ mod proof_tests {
         assert_eq!(right, Point::new(184.0, 70.0));
         let tiny = proof_transform(Rect::ZERO, 0.0, Size::new(20.0, 20.0));
         assert_eq!(tiny * Point::new(10.0, 10.0), Point::new(10.0, 10.0));
+    }
+
+    #[test]
+    fn ink_without_an_advance_sits_in_the_middle_of_the_proof() {
+        // A neural canvas has no advance, and its ink can lie anywhere.
+        let ink = Rect::new(-3000.0, -500.0, -1000.0, 500.0);
+        let t = proof_transform(ink, 0.0, Size::new(400.0, 140.0));
+        assert_eq!(t * ink.center(), Point::new(200.0, 70.0));
     }
 }

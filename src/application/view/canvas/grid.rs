@@ -43,13 +43,21 @@ const LABEL_GAP: f64 = 0.0;
 /// This is intentionally independent of a particular glyph: GPUI reserves
 /// the same two-line block for every full-size cell, leaving the Unicode line
 /// empty for an unencoded glyph, so outlines do not jump between neighbours.
-fn cell_label_metrics(width: f64, captions: bool, detail: bool) -> (f64, usize, f64) {
+///
+/// A grid where no glyph has a code point, such as a neural source, has no
+/// Unicode line to keep, so its block is one line shorter.
+fn cell_label_metrics(
+    width: f64,
+    captions: bool,
+    detail: bool,
+    encoded: bool,
+) -> (f64, usize, f64) {
     let (size, lines) = if !captions || width < 48.0 {
         (0.0, 0)
     } else if width < 90.0 {
         (13.0, 1)
     } else {
-        (13.0, if detail { 3 } else { 2 })
+        (13.0, usize::from(detail) + if encoded { 2 } else { 1 })
     };
     let line = (size * 1.10_f64).ceil();
     let height = if lines == 0 {
@@ -249,6 +257,11 @@ impl GridWidget {
         usize::try_from(round_units(count)).unwrap_or(1).max(1)
     }
 
+    /// Whether any glyph in the grid has a code point to caption.
+    fn encoded(&self) -> bool {
+        self.cells.iter().any(|cell| cell.codepoint.is_some())
+    }
+
     fn cell_width(&self, span: usize) -> f64 {
         // Distribute the remainder across columns in both overview and rail.
         // Painting and pointer hit testing use this same fitted width.
@@ -271,6 +284,7 @@ impl GridWidget {
             self.cell_width(1),
             self.metrics.captions_below,
             self.metrics.detail,
+            self.encoded(),
         )
         .1;
         let spans: Vec<(usize, usize)> = self
@@ -278,7 +292,13 @@ impl GridWidget {
             .iter()
             .enumerate()
             .map(|(i, c)| {
-                let label_width = c.caption_widths[..lines]
+                // Without a Unicode line, the detail line sits one line up.
+                let shown = if lines > 1 && !self.encoded() {
+                    lines + 1
+                } else {
+                    lines
+                };
+                let label_width = c.caption_widths[..shown.min(3)]
                     .iter()
                     .copied()
                     .fold(0.0, f64::max);
@@ -310,6 +330,7 @@ impl GridWidget {
             self.cell_width(1),
             self.metrics.captions_below,
             self.metrics.detail,
+            self.encoded(),
         )
         .2;
         let target = self.cell_width(1) + caption;
@@ -565,6 +586,7 @@ impl Widget for GridWidget {
         let total = rows.len();
         self.set_scroll_row(self.scroll_row(), total);
         let pal = &self.palette;
+        let encoded = self.encoded();
         painter.fill_rect(self.size.to_rect(), pal.grid_bg());
 
         // Keep cell paint inside the fitted-row area, including the last
@@ -658,6 +680,7 @@ impl Widget for GridWidget {
                     self.cell_width(1),
                     self.metrics.captions_below,
                     self.metrics.detail,
+                    self.encoded(),
                 );
                 let line = (label_size * 1.10).ceil();
 
@@ -688,17 +711,23 @@ impl Widget for GridWidget {
                 let top = rect.y1 - block + LABEL_TOP;
                 // Baseline inside its own line box, not the box edge.
                 let baseline = |n: f64| top + (line + LABEL_GAP) * n + line * 0.5;
+                // The name sits on the last line of the name and Unicode pair, so an
+                // unencoded glyph's name has no empty line below it.
+                let unicode_line = encoded && label_lines > 1;
+                let name_line = if unicode_line && cell.codepoint.is_none() {
+                    1.0
+                } else {
+                    0.0
+                };
                 text_label::draw(
                     painter,
-                    Point::new(rect.x0 + LABEL_TOP, baseline(0.0)),
+                    Point::new(rect.x0 + LABEL_TOP, baseline(name_line)),
                     &cell.name,
                     px32(label_size),
                     name_color,
                     Anchor::Start,
                 );
-                if label_lines > 1
-                    && let Some(cp) = cell.codepoint
-                {
+                if unicode_line && let Some(cp) = cell.codepoint {
                     text_label::draw(
                         painter,
                         Point::new(rect.x0 + LABEL_TOP, baseline(1.0)),
@@ -708,10 +737,11 @@ impl Widget for GridWidget {
                         Anchor::Start,
                     );
                 }
-                if label_lines > 2 {
+                if self.metrics.detail && label_lines > 1 {
+                    let detail_line = (label_lines - 1) as f64;
                     text_label::draw(
                         painter,
-                        Point::new(rect.x0 + LABEL_TOP, baseline(2.0)),
+                        Point::new(rect.x0 + LABEL_TOP, baseline(detail_line)),
                         &detail_caption(cell.codepoint, cell.advance),
                         px32(label_size),
                         muted,
@@ -865,8 +895,13 @@ fn fit_transform(cell: Rect, ink: Rect, upm: f64) -> Affine {
     let em_top = -BASELINE_FROM_TOP * em_height;
     let top = em_top.min(-ink.y1);
     let bottom = (em_top + em_height).max(-ink.y0);
-    let scale = (cell.width() / ink.width().max(1.0)).min(cell.height() / (bottom - top).max(1.0))
-        * THUMBNAIL_FILL;
+    // Ink taller than the em window, as on a neural canvas, would otherwise
+    // fill the tile from edge to caption; keep a margin above and below it.
+    const INK_HEIGHT_FILL: f64 = 0.75;
+    let scale = ((cell.width() / ink.width().max(1.0))
+        .min(cell.height() / (bottom - top).max(1.0))
+        * THUMBNAIL_FILL)
+        .min(cell.height() * INK_HEIGHT_FILL / ink.height().max(1.0));
     let x = cell.x0 + (cell.width() - ink.width() * scale) / 2.0 - ink.x0 * scale;
     let y = cell.y0 + (cell.height() - ink.height() * scale) / 2.0 + ink.y1 * scale;
     Affine::new([scale, 0.0, 0.0, -scale, x, y])
@@ -1427,12 +1462,18 @@ mod thumbnail_tests {
 
     #[test]
     fn caption_thresholds_match_the_gpui_grid() {
-        assert_eq!(cell_label_metrics(47.0, true, false), (0.0, 0, 0.0));
-        assert_eq!(cell_label_metrics(48.0, true, false), (13.0, 1, 25.0));
-        assert_eq!(cell_label_metrics(89.0, true, false), (13.0, 1, 25.0));
-        assert_eq!(cell_label_metrics(90.0, true, false), (13.0, 2, 40.0));
-        assert_eq!(cell_label_metrics(90.0, true, true), (13.0, 3, 55.0));
-        assert_eq!(cell_label_metrics(200.0, false, true), (0.0, 0, 0.0));
+        assert_eq!(cell_label_metrics(47.0, true, false, true), (0.0, 0, 0.0));
+        assert_eq!(cell_label_metrics(48.0, true, false, true), (13.0, 1, 25.0));
+        assert_eq!(cell_label_metrics(89.0, true, false, true), (13.0, 1, 25.0));
+        assert_eq!(cell_label_metrics(90.0, true, false, true), (13.0, 2, 40.0));
+        assert_eq!(cell_label_metrics(90.0, true, true, true), (13.0, 3, 55.0));
+        assert_eq!(cell_label_metrics(200.0, false, true, true), (0.0, 0, 0.0));
+        // No code point anywhere: no Unicode line to reserve.
+        assert_eq!(
+            cell_label_metrics(90.0, true, false, false),
+            (13.0, 1, 25.0)
+        );
+        assert_eq!(cell_label_metrics(90.0, true, true, false), (13.0, 2, 40.0));
     }
 
     #[test]
