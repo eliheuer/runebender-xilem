@@ -28,6 +28,9 @@ pub(crate) struct LabelState {
     pub draft: Vec<Point>,
     /// Why the last gesture did nothing, shown in the panel.
     pub error: Option<String>,
+    /// A polygon corner being dragged: its region and corner in the selected sample, and where
+    /// it is now, in font units. Shown at once, stored on release.
+    pub moving: Option<(usize, usize, Point)>,
 }
 
 /// A freehand loop keeps a corner only when it is this far from the last one, in font units.
@@ -39,14 +42,164 @@ pub(crate) struct LabelArea {
     pub sample: usize,
     /// The letter's position in its sample's letters.
     pub letter: usize,
+    /// The letter itself, for its tag on the canvas.
+    pub character: char,
     /// The letter's polygons and whole contours, in font units.
     pub area: kurbo::BezPath,
+}
+
+/// One polygon of the selected sample, for its outline and corner handles.
+pub(crate) struct LabelPolygon {
+    /// The owner's position in the sample's letters.
+    pub letter: usize,
+    /// The corners, in font units.
+    pub corners: Vec<Point>,
 }
 
 impl Session {
     /// The neural item of the open layer; empty when it has none or cannot be read.
     pub(crate) fn neural_item(&self) -> NeuralItem {
         self.neural_item_data().unwrap_or_default()
+    }
+
+    /// The neural item as shown: with the corner being dragged at the pointer.
+    fn shown_neural_item(&self) -> NeuralItem {
+        let mut item = self.neural_item();
+        if let (Some(position), Some((region, corner, to))) = (self.label.sample, self.label.moving)
+            && let Some(at) = item
+                .samples
+                .get_mut(position)
+                .and_then(|sample| sample.regions.get_mut(region))
+                .and_then(|region| region.polygon.get_mut(corner))
+        {
+            *at = [to.x, to.y];
+        }
+        item
+    }
+
+    /// The sample whose boundary holds `at`, the smallest when they nest.
+    pub(crate) fn sample_at(&self, at: Point) -> Option<usize> {
+        self.neural_item()
+            .samples
+            .iter()
+            .enumerate()
+            .filter(|(_, sample)| sample.boundary_path().contains(at))
+            .min_by(|a, b| {
+                let area = |sample: &NeuralSample| sample.boundary_path().area().abs();
+                area(a.1).total_cmp(&area(b.1))
+            })
+            .map(|(position, _)| position)
+    }
+
+    /// The polygon corner of the selected sample within `reach` of `at`: its region and
+    /// corner. The active letter's corners win over a neighbor's at the same place.
+    pub(crate) fn label_corner_at(&self, at: Point, reach: f64) -> Option<(usize, usize)> {
+        let (_, sample) = self.selected_sample()?;
+        let active = self.active_letter().map(|(index, _)| index);
+        let mut best: Option<(bool, f64, usize, usize)> = None;
+        for (position, region) in sample.regions.iter().enumerate() {
+            let own = active.is_some_and(|index| region.owners.contains(&index));
+            for (corner, p) in region.polygon.iter().enumerate() {
+                let distance = Point::new(p[0], p[1]).distance(at);
+                if distance > reach {
+                    continue;
+                }
+                let better = best.is_none_or(|(best_own, best_distance, ..)| {
+                    (own && !best_own) || (own == best_own && distance < best_distance)
+                });
+                if better {
+                    best = Some((own, distance, position, corner));
+                }
+            }
+        }
+        best.map(|(_, _, region, corner)| (region, corner))
+    }
+
+    /// `at`, or the corner of another polygon of the selected sample within `reach` of it, so
+    /// neighbors can share a corner exactly. `skip` is the region the corner belongs to.
+    pub(crate) fn snapped_label_corner(&self, at: Point, reach: f64, skip: Option<usize>) -> Point {
+        let Some((_, sample)) = self.selected_sample() else {
+            return at;
+        };
+        sample
+            .regions
+            .iter()
+            .enumerate()
+            .filter(|(position, _)| Some(*position) != skip)
+            .flat_map(|(_, region)| region.polygon.iter())
+            .map(|p| Point::new(p[0], p[1]))
+            .filter(|corner| corner.distance(at) <= reach)
+            .min_by(|a, b| a.distance(at).total_cmp(&b.distance(at)))
+            .unwrap_or(at)
+    }
+
+    /// Make the owner of a region of the selected sample the active letter.
+    pub(crate) fn activate_label_region(&mut self, region: usize) {
+        let Some((_, sample)) = self.selected_sample() else {
+            return;
+        };
+        let owner = sample.regions.get(region).and_then(|r| r.owners.first());
+        if let Some(letter) = owner.and_then(|owner| {
+            sample
+                .letters()
+                .iter()
+                .position(|(index, _)| index == owner)
+        }) {
+            self.label.active = letter;
+        }
+    }
+
+    /// Store the dragged corner where it was dropped.
+    pub(crate) fn finish_label_corner_move(&mut self, keep: bool) -> bool {
+        let Some((region, corner, to)) = self.label.moving.take() else {
+            return false;
+        };
+        let Some(position) = self.label.sample.filter(|_| keep) else {
+            return false;
+        };
+        let mut item = self.neural_item();
+        let Some(at) = item
+            .samples
+            .get_mut(position)
+            .and_then(|sample| sample.regions.get_mut(region))
+            .and_then(|region| region.polygon.get_mut(corner))
+        else {
+            return false;
+        };
+        let to = [to.x.round(), to.y.round()];
+        if *at == to {
+            return false;
+        }
+        *at = to;
+        self.store_label(item)
+    }
+
+    /// The polygons of the selected sample, as shown.
+    pub(crate) fn label_polygons(&self) -> Vec<LabelPolygon> {
+        let Some(position) = self.label.sample else {
+            return Vec::new();
+        };
+        let item = self.shown_neural_item();
+        let Some(sample) = item.samples.get(position) else {
+            return Vec::new();
+        };
+        let letters = sample.letters();
+        sample
+            .regions
+            .iter()
+            .filter(|region| !region.polygon.is_empty())
+            .filter_map(|region| {
+                let owner = region.owners.first()?;
+                Some(LabelPolygon {
+                    letter: letters.iter().position(|(index, _)| index == owner)?,
+                    corners: region
+                        .polygon
+                        .iter()
+                        .map(|p| Point::new(p[0], p[1]))
+                        .collect(),
+                })
+            })
+            .collect()
     }
 
     /// The selected sample and its position, while it exists.
@@ -61,6 +214,7 @@ impl Session {
         self.label.active = 0;
         self.label.draft.clear();
         self.label.error = None;
+        self.label.moving = None;
     }
 
     /// The text index and character of the active letter of the selected sample.
@@ -262,11 +416,11 @@ impl Session {
     /// The area every letter of every sample owns, in font units: its polygons and its whole
     /// contours. Painting clips the outline to each area.
     pub(crate) fn label_areas(&self) -> Vec<LabelArea> {
-        let item = self.neural_item();
+        let item = self.shown_neural_item();
         let contours = self.label_contours();
         let mut areas = Vec::new();
         for (sample_position, sample) in item.samples.iter().enumerate() {
-            for (letter, (index, _)) in sample.letters().into_iter().enumerate() {
+            for (letter, (index, character)) in sample.letters().into_iter().enumerate() {
                 let mut area = kurbo::BezPath::new();
                 for position in sample.regions_of(index) {
                     let region = &sample.regions[position];
@@ -284,6 +438,7 @@ impl Session {
                     areas.push(LabelArea {
                         sample: sample_position,
                         letter,
+                        character,
                         area,
                     });
                 }
@@ -432,6 +587,75 @@ mod tests {
         app.edit_label(|s| s.delete_sample());
         assert_eq!(app.session.neural_item().samples.len(), 1);
         assert_eq!(app.session.label.sample, None);
+        std::fs::remove_dir_all(&path).ok();
+    }
+
+    #[test]
+    fn a_corner_can_be_dragged_and_snaps_to_a_neighbor() {
+        let path = item_font("corners");
+        let mut app = Workspace::open(&path).unwrap();
+        app.open_glyph(app.font.index_of("item").unwrap());
+        app.select_tool(Tool::Label);
+        app.edit_label(|s| s.add_label_lasso(&loop_around(50.0, 650.0, -50.0, 300.0)));
+        app.edit_label(|s| s.set_sample_text("بس".into()));
+        app.edit_label(|s| s.add_label_lasso(&square(50.0, 400.0)));
+        Arc::make_mut(&mut app.session).step_label_letter(1);
+        app.edit_label(|s| s.add_label_lasso(&square(300.0, 650.0)));
+
+        // a click inside the sample selects it; outside every sample selects nothing
+        assert_eq!(app.session.sample_at(Point::new(300.0, 50.0)), Some(0));
+        assert_eq!(app.session.sample_at(Point::new(2000.0, 50.0)), None);
+
+        // the second letter is active, so its corner wins; a neighbor's is still in reach
+        assert_eq!(
+            app.session.label_corner_at(Point::new(302.0, -48.0), 8.0),
+            Some((1, 0))
+        );
+        assert_eq!(
+            app.session.label_corner_at(Point::new(52.0, -48.0), 8.0),
+            Some((0, 0))
+        );
+        assert_eq!(
+            app.session.label_corner_at(Point::new(175.0, 50.0), 8.0),
+            None
+        );
+
+        // near a neighbor's corner the dragged corner lands exactly on it
+        let near = Point::new(397.0, -46.0);
+        assert_eq!(
+            app.session.snapped_label_corner(near, 8.0, Some(1)),
+            Point::new(400.0, -50.0)
+        );
+        assert_eq!(app.session.snapped_label_corner(near, 8.0, Some(0)), near);
+
+        // the drag shows at once and is stored on release
+        let session = Arc::make_mut(&mut app.session);
+        session.activate_label_region(0);
+        assert_eq!(session.active_letter(), Some((0, 'ب')));
+        session.label.moving = Some((1, 0, Point::new(400.0, -50.0)));
+        assert_eq!(
+            session.label_polygons()[1].corners[0],
+            Point::new(400.0, -50.0)
+        );
+        assert_eq!(
+            session.neural_item().samples[0].regions[1].polygon[0],
+            [300.0, -50.0],
+            "not stored while it moves"
+        );
+        app.edit_label(|s| s.finish_label_corner_move(true));
+        assert_eq!(
+            app.session.neural_item().samples[0].regions[1].polygon[0],
+            [400.0, -50.0]
+        );
+        assert_eq!(app.session.label_areas()[0].character, 'ب');
+
+        // a cancelled drag stores nothing
+        Arc::make_mut(&mut app.session).label.moving = Some((1, 0, Point::new(0.0, 0.0)));
+        app.edit_label(|s| s.finish_label_corner_move(false));
+        assert_eq!(
+            app.session.neural_item().samples[0].regions[1].polygon[0],
+            [400.0, -50.0]
+        );
         std::fs::remove_dir_all(&path).ok();
     }
 

@@ -63,7 +63,7 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 };
                 recipes::list_row(
                     pal,
-                    character.to_string(),
+                    format!("U+{:04X}  {character}", *character as u32),
                     trailing,
                     letter == active,
                     move |app: &mut Workspace| {
@@ -99,9 +99,10 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     });
     let hints: &[&str] = if app.session.label.sample.is_some() {
         &[
-            "Drag: loop a letter's ink",
             "Click: place a corner",
             "Double-click or Enter: close",
+            "Drag a corner: move it",
+            "Drag: loop a letter's ink",
             "Option-click: whole contour",
             "Tab: next letter",
             "Delete: remove the last region",
@@ -110,7 +111,7 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     } else {
         &[
             "Loop around writing: new sample",
-            "Click a sample above to label it",
+            "Click a sample to label it",
         ]
     };
     xcolumn(

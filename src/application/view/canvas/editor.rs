@@ -412,8 +412,14 @@ fn label_colors(pal: &Palette) -> Vec<xilem::Color> {
         .collect();
     if marks.is_empty() {
         vec![pal.tool_feedback()]
-    } else {
+    } else if marks.len().is_multiple_of(3) {
         marks
+    } else {
+        // Step through the hues three at a time, so letters next to each other in the text
+        // do not get neighboring hues such as red and orange.
+        (0..marks.len())
+            .map(|index| marks[index * 3 % marks.len()])
+            .collect()
     }
 }
 
@@ -464,6 +470,10 @@ enum Drag {
     /// and a polygon corner when it does not.
     Label {
         points: Vec<Point>,
+    },
+    /// A polygon corner of a label region follows the pointer; the session holds where.
+    LabelCorner {
+        region: usize,
     },
     /// Drawing a shape; endpoints in design space.
     Shape {
@@ -1040,6 +1050,29 @@ impl EditorWidget {
                     .stroke(&path, &Stroke::new(width), color.with_alpha(alpha))
                     .draw();
             }
+        }
+        // The selected sample's polygons carry handles: a corner can be dragged.
+        for polygon in self.session.label_polygons() {
+            let color = colors[polygon.letter % colors.len()];
+            let radius = if polygon.letter == active { 3.5 } else { 2.5 };
+            for corner in &polygon.corners {
+                let handle = Circle::new(affine * *corner, radius);
+                painter.fill(handle, pal.canvas).draw();
+                painter.stroke(handle, &Stroke::new(1.5), color).draw();
+            }
+        }
+        // Each labeled letter says what it is, above its ink.
+        for area in self.session.label_areas() {
+            let bounds = (affine * area.area).bounding_box();
+            text_label::draw(
+                painter,
+                Point::new(bounds.center().x, bounds.y0 - 12.0),
+                // Code first: a leading Arabic letter would reorder the tag.
+                &format!("U+{:04X}  {}", area.character as u32, area.character),
+                13.0,
+                pal.text,
+                Anchor::Middle,
+            );
         }
         let draft = &self.session.label.draft;
         if let Some(first) = draft.first() {
@@ -2359,6 +2392,24 @@ impl Widget for EditorWidget {
                         } else if state.count >= 2 {
                             let changed = self.session.close_label_polygon();
                             self.emit(ctx, changed);
+                        } else if self.session.label.draft.is_empty()
+                            && let Some((region, corner)) = self
+                                .session
+                                .label_corner_at(design, HIT_RADIUS_PX / self.session.viewport.zoom)
+                        {
+                            // An existing corner: drag it, and work on its letter.
+                            self.session.activate_label_region(region);
+                            self.session.label.moving = Some((region, corner, design));
+                            self.drag = Drag::LabelCorner { region };
+                            ctx.capture_pointer();
+                            self.emit(ctx, false);
+                        } else if self.session.label.sample.is_none()
+                            && self.session.label.draft.is_empty()
+                            && let Some(sample) = self.session.sample_at(design)
+                        {
+                            // A click on a sample selects it.
+                            self.session.select_sample(Some(sample));
+                            self.emit(ctx, false);
                         } else {
                             self.drag = Drag::Label { points: vec![at] };
                         }
@@ -2689,6 +2740,18 @@ impl Widget for EditorWidget {
                         *current = at;
                         ctx.request_render();
                     }
+                    Drag::LabelCorner { region } => {
+                        let region = *region;
+                        if let Some((_, corner, _)) = self.session.label.moving {
+                            let to = self.session.snapped_label_corner(
+                                glyph_design,
+                                HIT_RADIUS_PX / self.session.viewport.zoom,
+                                Some(region),
+                            );
+                            self.session.label.moving = Some((region, corner, to));
+                            ctx.request_render();
+                        }
+                    }
                     Drag::Lasso { points, .. } | Drag::Label { points } => {
                         if points.last().is_none_or(|last| last.distance(at) >= 2.0) {
                             points.push(at);
@@ -2785,6 +2848,11 @@ impl Widget for EditorWidget {
                         self.drag = Drag::None;
                         self.emit(ctx, changed);
                     }
+                    Drag::LabelCorner { .. } => {
+                        let changed = self.session.finish_label_corner_move(!cancelled);
+                        self.drag = Drag::None;
+                        self.emit(ctx, changed);
+                    }
                     Drag::Label { points } => {
                         let mut changed = false;
                         if !cancelled {
@@ -2801,7 +2869,12 @@ impl Widget for EditorWidget {
                                     .collect();
                                 changed = self.session.add_label_lasso(&design);
                             } else {
-                                let corner = self.screen_to_glyph_design(points[0]);
+                                // A corner placed on a neighbor's corner shares it exactly.
+                                let corner = self.session.snapped_label_corner(
+                                    self.screen_to_glyph_design(points[0]),
+                                    HIT_RADIUS_PX / self.session.viewport.zoom,
+                                    None,
+                                );
                                 self.session.add_label_corner(corner);
                             }
                         }
