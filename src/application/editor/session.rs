@@ -1138,6 +1138,12 @@ impl Session {
     }
 
     pub(crate) fn nudge(&mut self, dx: f64, dy: f64) -> bool {
+        self.nudge_with(dx, dy, false)
+    }
+
+    /// Nudge the selection. With `independent`, on-curve points leave their
+    /// handles in place, as an Option nudge does in Glyphs.
+    pub(crate) fn nudge_with(&mut self, dx: f64, dy: f64, independent: bool) -> bool {
         if !dx.is_finite() || !dy.is_finite() || (dx == 0.0 && dy == 0.0) {
             return false;
         }
@@ -1165,7 +1171,7 @@ impl Session {
         }
         let selection = self.selected_point_ids();
         self.stage_canonical_edit("nudge points", |draft| {
-            draft.translate_points(&selection, &[], kurbo::Vec2::new(dx, dy), false)
+            draft.translate_points(&selection, &[], kurbo::Vec2::new(dx, dy), independent)
         })
     }
 

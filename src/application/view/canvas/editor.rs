@@ -2969,6 +2969,7 @@ impl Widget for EditorWidget {
         }
         let cmd = key.modifiers.meta() || key.modifiers.ctrl();
         let shift = key.modifiers.shift();
+        let alt = key.modifiers.alt();
         // From the config file; by default one grid step, so a nudge cannot round back to
         // where it started.
         let (nudge, shift_nudge) = crate::application::platform::config::nudge();
@@ -3258,10 +3259,11 @@ impl Widget for EditorWidget {
                 // "back to overview".
                 return;
             }
-            Key::Named(NamedKey::ArrowLeft) => (self.session.nudge(-step, 0.0), true),
-            Key::Named(NamedKey::ArrowRight) => (self.session.nudge(step, 0.0), true),
-            Key::Named(NamedKey::ArrowUp) => (self.session.nudge(0.0, step), true),
-            Key::Named(NamedKey::ArrowDown) => (self.session.nudge(0.0, -step), true),
+            // Option nudges on-curve points without their handles.
+            Key::Named(NamedKey::ArrowLeft) => (self.session.nudge_with(-step, 0.0, alt), true),
+            Key::Named(NamedKey::ArrowRight) => (self.session.nudge_with(step, 0.0, alt), true),
+            Key::Named(NamedKey::ArrowUp) => (self.session.nudge_with(0.0, step, alt), true),
+            Key::Named(NamedKey::ArrowDown) => (self.session.nudge_with(0.0, -step, alt), true),
             Key::Named(NamedKey::Delete) | Key::Named(NamedKey::Backspace) => {
                 if self.session.selected_anchor.is_some() {
                     (self.session.delete_selected_anchor(), true)
@@ -4728,8 +4730,8 @@ mod tests {
         });
     }
 
-    #[test]
-    fn an_option_drag_moves_a_smooth_point_without_its_handles() {
+    /// Two curves meeting at a smooth point, the fourth point, at (300, 300).
+    fn smooth_curve_session() -> Session {
         let mut font = norad::Font::new();
         let mut glyph = norad::Glyph::new("A");
         glyph.width = 500.0;
@@ -4749,7 +4751,61 @@ mod tests {
         }
         glyph.contours.push(contour);
         font.default_layer_mut().insert_glyph(glyph);
-        let mut session = Session::new(&font, "A").expect("the glyph is there");
+        Session::new(&font, "A").expect("the glyph is there")
+    }
+
+    #[test]
+    fn an_option_nudge_moves_a_smooth_point_without_its_handles() {
+        use masonry::core::keyboard::{Code, KeyboardEvent, Modifiers};
+        let (step, shift_step) = crate::application::platform::config::nudge();
+        let mut editor = widget();
+        editor.session = smooth_curve_session();
+        let smooth = editor.session.points()[3].id;
+        editor.session.selection = HashSet::from([smooth]);
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+        harness.focus_on(Some(harness.root_id()));
+        let arrow_up = |modifiers| {
+            TextEvent::Keyboard(KeyboardEvent {
+                state: KeyState::Down,
+                key: Key::Named(NamedKey::ArrowUp),
+                code: Code::Unidentified,
+                modifiers,
+                ..KeyboardEvent::default()
+            })
+        };
+        let positions = |harness: &mut TestHarness<EditorWidget>| {
+            harness.edit_root_widget(|root| {
+                root.widget.session.points()[2..=4]
+                    .iter()
+                    .map(|point| point.point)
+                    .collect::<Vec<_>>()
+            })
+        };
+        // Without a workspace, each nudge stages from the same committed
+        // state, so every press below starts from the original outline.
+        for (modifiers, rise, handles_follow) in [
+            (Modifiers::ALT, step, false),
+            (Modifiers::ALT | Modifiers::SHIFT, shift_step, false),
+            (Modifiers::empty(), step, true),
+        ] {
+            harness.process_text_event(arrow_up(modifiers));
+            let handle_y = if handles_follow { 300.0 + rise } else { 300.0 };
+            assert_eq!(
+                positions(&mut harness),
+                [
+                    Point::new(200.0, handle_y),
+                    Point::new(300.0, 300.0 + rise),
+                    Point::new(400.0, handle_y),
+                ],
+                "{modifiers:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_option_drag_moves_a_smooth_point_without_its_handles() {
+        let mut session = smooth_curve_session();
         let smooth = session.points()[3].id;
         session.selection.insert(smooth);
         let positions = |session: &Session| {
