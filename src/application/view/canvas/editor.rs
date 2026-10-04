@@ -3058,8 +3058,8 @@ impl Widget for EditorWidget {
         let alt = key.modifiers.alt();
         // From the config file; by default one grid step, so a nudge cannot round back to
         // where it started.
-        let (nudge, shift_nudge) = crate::application::platform::config::nudge();
-        let step = if shift { shift_nudge } else { nudge };
+        // Command and Shift together make large moves.
+        let step = crate::application::platform::config::nudge().for_modifiers(shift, cmd);
 
         if self.tool == Tool::Text
             && let Some(text) = self.text.as_mut()
@@ -4692,7 +4692,7 @@ mod tests {
     fn every_arrow_nudges_a_point_the_same_distance() {
         // A nudge smaller than the grid used to round back to the start in two directions and
         // jump double in the others.
-        let (step, _) = crate::application::platform::config::nudge();
+        let step = crate::application::platform::config::nudge().step;
         for (key, delta) in [
             (NamedKey::ArrowRight, (step, 0.0)),
             (NamedKey::ArrowLeft, (-step, 0.0)),
@@ -4843,7 +4843,8 @@ mod tests {
     #[test]
     fn an_option_nudge_moves_a_smooth_point_without_its_handles() {
         use masonry::core::keyboard::{Code, KeyboardEvent, Modifiers};
-        let (step, shift_step) = crate::application::platform::config::nudge();
+        let nudge = crate::application::platform::config::nudge();
+        let (step, shift_step, command_step) = (nudge.step, nudge.shift, nudge.command);
         let mut editor = widget();
         editor.session = smooth_curve_session();
         let smooth = editor.session.points()[3].id;
@@ -4880,6 +4881,7 @@ mod tests {
             assert_eq!(
                 positions(&mut harness),
                 [
+            (Modifiers::META | Modifiers::SHIFT, command_step, true),
                     Point::new(200.0, handle_y),
                     Point::new(300.0, 300.0 + rise),
                     Point::new(400.0, handle_y),

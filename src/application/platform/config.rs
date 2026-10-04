@@ -13,6 +13,7 @@
 //! grid = 2          # moved points snap to this many units; 0 turns snapping off; default 1
 //! nudge = 2         # an arrow key moves this far; default one grid step
 //! shift_nudge = 8   # Shift and an arrow key; default four nudges
+//! command_nudge = 64 # Command, Shift and an arrow key; default eight Shift nudges
 //! ```
 
 use std::path::PathBuf;
@@ -37,26 +38,52 @@ pub(crate) struct Editing {
     pub nudge: Option<f64>,
     /// How far Shift and an arrow key move a selection, in font units.
     pub shift_nudge: Option<f64>,
+    /// How far Command, Shift and an arrow key move a selection, in font units.
+    pub command_nudge: Option<f64>,
+}
+
+/// How far the arrow keys move a selection, in font units.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Nudge {
+    /// An arrow key alone.
+    pub step: f64,
+    /// Shift and an arrow key.
+    pub shift: f64,
+    /// Command, Shift and an arrow key, for large moves.
+    pub command: f64,
+}
+
+impl Nudge {
+    /// The distance for one arrow press with these modifiers.
+    pub(crate) fn for_modifiers(self, shift: bool, command: bool) -> f64 {
+        match (shift, command) {
+            (true, true) => self.command,
+            (true, false) => self.shift,
+            _ => self.step,
+        }
+    }
 }
 
 /// The nudge distances in effect, set once at startup.
-static NUDGE: std::sync::OnceLock<(f64, f64)> = std::sync::OnceLock::new();
+static NUDGE: std::sync::OnceLock<Nudge> = std::sync::OnceLock::new();
 
-/// How far an arrow key moves a selection, and how far with Shift, in font units.
-pub(crate) fn nudge() -> (f64, f64) {
+/// How far the arrow keys move a selection, in font units.
+pub(crate) fn nudge() -> Nudge {
     *NUDGE.get_or_init(|| Config::default().nudge())
 }
 
 impl Config {
     /// The nudge distances this config gives, with the defaults filled in.
-    fn nudge(&self) -> (f64, f64) {
+    fn nudge(&self) -> Nudge {
         let positive = |value: Option<f64>| value.filter(|v| v.is_finite() && *v > 0.0);
         let grid = self.grid();
         let step = positive(self.editing.nudge).unwrap_or(if grid > 0.0 { grid } else { 1.0 });
-        (
+        let shift = positive(self.editing.shift_nudge).unwrap_or(4.0 * step);
+        Nudge {
             step,
-            positive(self.editing.shift_nudge).unwrap_or(4.0 * step),
-        )
+            shift,
+            command: positive(self.editing.command_nudge).unwrap_or(8.0 * shift),
+        }
     }
 
     /// The design grid this config gives, with the default filled in.
@@ -105,19 +132,47 @@ mod tests {
     fn defaults_are_whole_units_and_four_times_with_shift() {
         let config = Config::default();
         assert_eq!(config.grid(), 1.0);
-        assert_eq!(config.nudge(), (1.0, 4.0));
+        assert_eq!(config.nudge(), nudge(1.0, 4.0, 32.0));
+    }
+
+    fn nudge(step: f64, shift: f64, command: f64) -> Nudge {
+        Nudge {
+            step,
+            shift,
+            command,
+        }
+    }
+
+    #[test]
+    fn command_shift_nudges_far_and_can_be_configured() {
+        let config = parse("[editing]\ncommand_nudge = 100\n").unwrap();
+        assert_eq!(config.nudge(), nudge(1.0, 4.0, 100.0));
+        let n = config.nudge();
+        assert_eq!(
+            [
+                n.for_modifiers(false, false),
+                n.for_modifiers(true, false),
+                n.for_modifiers(true, true),
+                n.for_modifiers(false, true),
+            ],
+            [1.0, 4.0, 100.0, 1.0],
+            "Command alone keeps the plain step"
+        );
     }
 
     #[test]
     fn a_grid_sets_the_nudge_unless_the_nudge_is_given() {
         let config = parse("[editing]\ngrid = 2\n").unwrap();
-        assert_eq!((config.grid(), config.nudge()), (2.0, (2.0, 8.0)));
+        assert_eq!(
+            (config.grid(), config.nudge()),
+            (2.0, nudge(2.0, 8.0, 64.0))
+        );
         let config = parse("[editing]\ngrid = 2\nshift_nudge = 10\n").unwrap();
-        assert_eq!(config.nudge(), (2.0, 10.0));
+        assert_eq!(config.nudge(), nudge(2.0, 10.0, 80.0));
         let config = parse("[editing]\ngrid = 0\n").unwrap();
         assert_eq!(
             (config.grid(), config.nudge()),
-            (0.0, (1.0, 4.0)),
+            (0.0, nudge(1.0, 4.0, 32.0)),
             "no snapping"
         );
     }
@@ -128,7 +183,10 @@ mod tests {
             parse("theme = \"gray\"\n[quiver]\napi_key = \"x\"\n[editing]\ngrid = 4\n").unwrap();
         assert_eq!(config.grid(), 4.0);
         let config = parse("[editing]\ngrid = -3\nnudge = 0\n").unwrap();
-        assert_eq!((config.grid(), config.nudge()), (1.0, (1.0, 4.0)));
+        assert_eq!(
+            (config.grid(), config.nudge()),
+            (1.0, nudge(1.0, 4.0, 32.0))
+        );
         assert!(
             parse("[editing]\ngird = 2\n").is_err(),
             "a misspelled key is reported"
