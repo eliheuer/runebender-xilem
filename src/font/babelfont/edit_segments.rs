@@ -9,7 +9,8 @@ impl LayerEditDraft {
     /// Insert one on-curve point on a direct segment between two stored endpoints.
     ///
     /// Existing controls retain their identities and metadata while moving to their subdivided
-    /// positions. Newly required controls and the inserted point receive fresh identities.
+    /// positions. Newly required controls and the inserted point receive fresh identities. A
+    /// point that splits a curve is smooth, since its two handles are collinear.
     /// Segments ending at implied quadratic points are handled by a later topology operation.
     pub fn insert_point_on_segment(
         &mut self,
@@ -195,7 +196,7 @@ impl LayerEditDraft {
             } => {
                 path.nodes[control].x = left_control.x;
                 path.nodes[control].y = left_control.y;
-                let split = new_document_point(split, NodeType::QCurve, false);
+                let split = new_document_point(split, NodeType::QCurve, true);
                 let right = new_document_point(right_control, NodeType::OffCurve, false);
                 let insert_index = control + 1;
                 path.nodes.insert(insert_index, split.1);
@@ -218,7 +219,7 @@ impl LayerEditDraft {
                 path.nodes[second_control].x = right_second.x;
                 path.nodes[second_control].y = right_second.y;
                 let left = new_document_point(left_second, NodeType::OffCurve, false);
-                let split = new_document_point(split, NodeType::Curve, false);
+                let split = new_document_point(split, NodeType::Curve, true);
                 let right = new_document_point(right_first, NodeType::OffCurve, false);
                 path.nodes.insert(second_control, left.1);
                 path.nodes.insert(second_control + 1, split.1);

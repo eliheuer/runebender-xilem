@@ -1964,7 +1964,7 @@ fn canonical_point_drag_matches_legacy_handle_behavior_atomically() {
         })
         .unwrap();
     let first_drag = project.encode_ufo_layer("drag", &layer_id).unwrap();
-    assert_eq!(first_drag.contours[0].points[3].x, 102.0);
+    assert_eq!(first_drag.contours[0].points[3].x, 101.0);
 
     project
         .edit_document_layer("drag", &layer_id, |draft| {
@@ -1978,9 +1978,9 @@ fn canonical_point_drag_matches_legacy_handle_behavior_atomically() {
         })
         .unwrap();
     let projected = project.encode_ufo_layer("drag", &layer_id).unwrap();
-    assert_eq!(projected.contours[0].points[2].x, 104.0);
+    assert_eq!(projected.contours[0].points[2].x, 103.0);
     assert_eq!(projected.contours[0].points[3].x, 102.0);
-    assert_eq!(projected.contours[0].points[4].x, 104.0);
+    assert_eq!(projected.contours[0].points[4].x, 103.0);
 
     let selected_handle = point_ids[4];
     project

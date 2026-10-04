@@ -1166,6 +1166,46 @@ impl Session {
         changed
     }
 
+    /// Split the segment under `at` with a new on-curve point and select it.
+    ///
+    /// A line gets a corner point. A curve gets a smooth point with a handle on
+    /// each side, and keeps its shape. Returns false when no segment lies
+    /// within `radius` design units.
+    pub(crate) fn insert_point_at(&mut self, at: Point, radius: f64) -> bool {
+        use kurbo::ParamCurveNearest as _;
+        use runebender::font::DocumentSegmentEndpoint;
+        let Some(layer) = self.current_layer() else {
+            return false;
+        };
+        let nearest = runebender::outline::segment_ops::ordinary_layer_segments(layer)
+            .into_iter()
+            .filter_map(|segment| {
+                let (DocumentSegmentEndpoint::Point(start), DocumentSegmentEndpoint::Point(end)) =
+                    (segment.start, segment.end)
+                else {
+                    return None;
+                };
+                let hit = segment.seg.nearest(at, 1e-6);
+                Some((hit.distance_sq, start, end, hit.t))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0));
+        let Some((distance_sq, start, end, t)) = nearest else {
+            return false;
+        };
+        if distance_sq > radius * radius || !(0.001..=0.999).contains(&t) {
+            return false;
+        }
+        let mut inserted = None;
+        let changed = self.stage_canonical_edit("insert point", |draft| {
+            inserted = Some(draft.insert_point_on_segment(start, end, t)?);
+            Ok(true)
+        });
+        if let (true, Some(id)) = (changed, inserted) {
+            self.selection = HashSet::from([id]);
+        }
+        changed
+    }
+
     /// The first point of the pen buffer, in design space.
     pub(crate) fn pen_first_point(&self) -> Option<Point> {
         self.pen.first().map(|p| p.point)

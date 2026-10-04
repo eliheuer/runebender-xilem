@@ -2393,10 +2393,22 @@ impl Widget for EditorWidget {
                             .pen_first_point()
                             .map(|p| (affine * p).distance(at) <= HIT_RADIUS_PX)
                             .unwrap_or(false);
+                        let on_segment = !self.session.pen_is_active()
+                            && self.hit_point(at).is_none()
+                            && self.session.insert_point_at(
+                                self.screen_to_glyph_design(at),
+                                HIT_RADIUS_PX / self.session.viewport.zoom,
+                            );
                         if near_first && self.session.pen_is_active() {
                             self.session.pen_close();
                             self.drag = Drag::None;
                             self.emit(ctx, true);
+                        } else if on_segment {
+                            // A click on an outline adds a point to that
+                            // segment rather than starting a new contour.
+                            self.drag = Drag::None;
+                            self.emit(ctx, true);
+                            ctx.request_render();
                         } else {
                             let origin = self.screen_to_glyph_design(at);
                             let (point_count, active_contour) = self.session.pen_checkpoint();
@@ -4608,6 +4620,81 @@ mod tests {
                 .unwrap();
             assert_eq!(point.smooth, !smooth, "the double click switched it");
         });
+    }
+
+    #[test]
+    fn a_pen_click_on_a_line_adds_a_corner_point_to_it() {
+        let mut editor = widget();
+        editor.tool = Tool::Pen;
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+        let at =
+            harness.edit_root_widget(|root| root.widget.glyph_affine() * Point::new(200.0, 0.0));
+        harness.mouse_move(at);
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        harness.edit_root_widget(|root| {
+            let session = &root.widget.session;
+            let points = session.points();
+            assert_eq!(
+                points.len(),
+                5,
+                "one point joined the square, no new contour"
+            );
+            assert!(!session.pen_is_active());
+            let added = points
+                .iter()
+                .find(|point| point.point == Point::new(200.0, 0.0))
+                .expect("the point sits on the bottom edge");
+            assert!(added.on_curve && !added.smooth);
+            assert_eq!(session.selection, HashSet::from([added.id]));
+        });
+    }
+
+    #[test]
+    fn a_pen_click_on_a_curve_adds_a_smooth_point_with_two_handles() {
+        let mut font = norad::Font::new();
+        let mut glyph = norad::Glyph::new("A");
+        glyph.width = 500.0;
+        let mut contour = norad::Contour::default();
+        for (x, y, typ) in [
+            (0.0, 0.0, norad::PointType::Line),
+            (0.0, 200.0, norad::PointType::OffCurve),
+            (100.0, 300.0, norad::PointType::OffCurve),
+            (300.0, 300.0, norad::PointType::Curve),
+            (300.0, 0.0, norad::PointType::Line),
+        ] {
+            contour
+                .points
+                .push(norad::ContourPoint::new(x, y, typ, false, None, None));
+        }
+        glyph.contours.push(contour);
+        font.default_layer_mut().insert_glyph(glyph);
+        let mut session = Session::new(&font, "A").expect("the glyph is there");
+        let curve = kurbo::CubicBez::new((0.0, 0.0), (0.0, 200.0), (100.0, 300.0), (300.0, 300.0));
+        let before = kurbo::ParamCurve::eval(&curve, 0.5);
+        assert!(session.insert_point_at(before, 4.0));
+        let points = session.points();
+        assert_eq!(
+            points.len(),
+            8,
+            "a smooth point and a new handle on each side"
+        );
+        let index = points
+            .iter()
+            .position(|point| session.selection.contains(&point.id))
+            .expect("the new point is selected");
+        let added = &points[index];
+        assert!(added.on_curve && added.smooth);
+        assert!(
+            added.point.distance(before) <= 1.0,
+            "the curve keeps its shape"
+        );
+        assert!(!points[index - 1].on_curve && !points[index + 1].on_curve);
+        assert!(
+            !session.insert_point_at(Point::new(150.0, 100.0), 4.0),
+            "empty space is a miss"
+        );
     }
 
     #[test]
