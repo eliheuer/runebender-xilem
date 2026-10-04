@@ -1257,6 +1257,48 @@ impl Session {
         changed
     }
 
+    /// Move the selection to the neighboring point along each contour, as Tab and Shift-Tab do
+    /// in Glyphs.
+    ///
+    /// `forward` follows the contour's direction from its start point. Every selected point
+    /// passes its selection on, handles included. Closed contours wrap around and open ones
+    /// stop at their ends. With nothing selected, the first contour's start point is chosen
+    /// going forward and its last point going back. Returns whether the selection changed.
+    pub(crate) fn select_adjacent_point(&mut self, forward: bool) -> bool {
+        let Some(layer) = self.current_layer() else {
+            return false;
+        };
+        let mut next = HashSet::new();
+        for contour in layer.contours() {
+            let ids: Vec<PointId> = contour.points().map(|point| point.id()).collect();
+            let (len, closed) = (ids.len(), contour.is_closed());
+            if self.selection.is_empty() {
+                let pick = if forward { ids.first() } else { ids.last() };
+                next.extend(pick.copied());
+                break;
+            }
+            for (index, id) in ids.iter().enumerate() {
+                if !self.selection.contains(id) {
+                    continue;
+                }
+                let neighbor = if forward {
+                    (index + 1 < len)
+                        .then_some(index + 1)
+                        .or(closed.then_some(0))
+                } else {
+                    index.checked_sub(1).or(closed.then(|| len - 1))
+                };
+                next.insert(neighbor.map_or(*id, |neighbor| ids[neighbor]));
+            }
+        }
+        if next.is_empty() || next == self.selection {
+            return false;
+        }
+        self.selection = next;
+        self.selected_anchor = None;
+        true
+    }
+
     /// Give the segment under `at` two cubic handles and select them, as Option-click
     /// does in Glyphs. Returns false unless a straight or single-control segment lies
     /// within `radius` design units.

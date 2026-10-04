@@ -3350,6 +3350,12 @@ impl Widget for EditorWidget {
             Key::Named(NamedKey::ArrowRight) => (self.session.nudge_with(step, 0.0, alt), true),
             Key::Named(NamedKey::ArrowUp) => (self.session.nudge_with(0.0, step, alt), true),
             Key::Named(NamedKey::ArrowDown) => (self.session.nudge_with(0.0, -step, alt), true),
+            // Tab and Shift-Tab walk the selection along its contour, as in Glyphs.
+            Key::Named(NamedKey::Tab) if !cmd => {
+                self.session.select_adjacent_point(!shift);
+                ctx.request_render();
+                (false, true)
+            }
             Key::Named(NamedKey::Delete) | Key::Named(NamedKey::Backspace) => {
                 if self.session.selected_anchor.is_some() {
                     (self.session.delete_selected_anchor(), true)
@@ -4875,13 +4881,13 @@ mod tests {
             (Modifiers::ALT, step, false),
             (Modifiers::ALT | Modifiers::SHIFT, shift_step, false),
             (Modifiers::empty(), step, true),
+            (Modifiers::META | Modifiers::SHIFT, command_step, true),
         ] {
             harness.process_text_event(arrow_up(modifiers));
             let handle_y = if handles_follow { 300.0 + rise } else { 300.0 };
             assert_eq!(
                 positions(&mut harness),
                 [
-            (Modifiers::META | Modifiers::SHIFT, command_step, true),
                     Point::new(200.0, handle_y),
                     Point::new(300.0, 300.0 + rise),
                     Point::new(400.0, handle_y),
@@ -5092,6 +5098,52 @@ mod tests {
             "the handle lies on the line through (200, -200) and (400, 0): {handle:?}"
         );
         assert!(handle.x > 400.0);
+    }
+
+    #[test]
+    fn tab_and_shift_tab_walk_the_selection_around_the_contour() {
+        use masonry::core::keyboard::{Code, KeyboardEvent, Modifiers};
+        use norad::PointType::{Curve, Line, OffCurve};
+        let mut editor = widget();
+        editor.session = session_with(&[
+            (0.0, 0.0, Line),
+            (0.0, 200.0, OffCurve),
+            (100.0, 300.0, OffCurve),
+            (300.0, 300.0, Curve),
+            (300.0, 0.0, Line),
+        ]);
+        let ids: Vec<_> = editor
+            .session
+            .points()
+            .iter()
+            .map(|point| point.id)
+            .collect();
+        editor.session.selection = HashSet::from([ids[0]]);
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+        harness.focus_on(Some(harness.root_id()));
+        let tab = |modifiers| {
+            TextEvent::Keyboard(KeyboardEvent {
+                state: KeyState::Down,
+                key: Key::Named(NamedKey::Tab),
+                code: Code::Tab,
+                modifiers,
+                ..KeyboardEvent::default()
+            })
+        };
+        let mut press = |modifiers| {
+            harness.process_text_event(tab(modifiers));
+            harness.edit_root_widget(|root| root.widget.session.selection.clone())
+        };
+        // Forward follows the contour, handles included.
+        assert_eq!(press(Modifiers::empty()), HashSet::from([ids[1]]));
+        assert_eq!(press(Modifiers::empty()), HashSet::from([ids[2]]));
+        // Shift-Tab goes back, and wraps past the start of a closed contour.
+        assert_eq!(press(Modifiers::SHIFT), HashSet::from([ids[1]]));
+        assert_eq!(press(Modifiers::SHIFT), HashSet::from([ids[0]]));
+        assert_eq!(press(Modifiers::SHIFT), HashSet::from([ids[4]]));
+        assert_eq!(press(Modifiers::empty()), HashSet::from([ids[0]]));
+        assert_eq!(harness.focused_widget_id(), Some(harness.root_id()));
     }
 
     #[test]
