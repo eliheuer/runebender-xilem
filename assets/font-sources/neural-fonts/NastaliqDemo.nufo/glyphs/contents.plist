@@ -2,21 +2,21 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>alif-basic</key>
+	<string>alif-basic.glif</string>
 	<key>ba-basic</key>
 	<string>ba-basic.glif</string>
-	<key>ka-basic</key>
-	<string>ka-basic.glif</string>
-	<key>ha-basic</key>
-	<string>ha-basic.glif</string>
 	<key>bismillah-001</key>
 	<string>bismillah-001.glif</string>
 	<key>bismillah-002</key>
 	<string>bismillah-002.glif</string>
 	<key>bismillah-003</key>
 	<string>bismillah-003.glif</string>
+	<key>ha-basic</key>
+	<string>ha-basic.glif</string>
+	<key>ka-basic</key>
+	<string>ka-basic.glif</string>
 	<key>word-nastaliq</key>
 	<string>word-nastaliq.glif</string>
-	<key>alif-basic</key>
-	<string>alif-basic.glif</string>
 </dict>
 </plist>
