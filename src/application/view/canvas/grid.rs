@@ -138,6 +138,45 @@ fn pack_spans(spans: &[(usize, usize)], cols: usize) -> Vec<Vec<(usize, usize)>>
     rows
 }
 
+/// How far a filled grid may stretch its rows past their natural height.
+const FILL_STRETCH_MAX: f64 = 1.3;
+
+/// Pack like [`pack_spans`], but share a short row's spare columns among all
+/// its cells rather than giving them to the last one, so no tile in a filled
+/// grid stands out for its position alone.
+fn pack_spans_evenly(spans: &[(usize, usize)], cols: usize) -> Vec<Vec<(usize, usize)>> {
+    let cols = cols.max(1);
+    let natural: std::collections::HashMap<usize, usize> = spans
+        .iter()
+        .map(|&(item, span)| (item, span.clamp(1, cols)))
+        .collect();
+    let mut rows = pack_spans(spans, cols);
+    for row in &mut rows {
+        for cell in row.iter_mut() {
+            cell.1 = natural.get(&cell.0).copied().unwrap_or(1);
+        }
+        let used: usize = row.iter().map(|cell| cell.1).sum();
+        let count = row.len();
+        for extra in 0..cols.saturating_sub(used) {
+            row[extra % count].1 += 1;
+        }
+    }
+    rows
+}
+
+/// Width over height of an outline's ink; 1 for an empty or flat outline.
+fn ink_aspect(outline: &kurbo::BezPath) -> f64 {
+    if outline.elements().is_empty() {
+        return 1.0;
+    }
+    let bounds = outline.bounding_box();
+    if bounds.height() < 1.0 || bounds.width() < 1.0 {
+        1.0
+    } else {
+        bounds.width() / bounds.height()
+    }
+}
+
 /// One drawable cell: what the grid needs without touching the font model.
 #[derive(Clone)]
 pub(crate) struct Cell {
@@ -148,6 +187,8 @@ pub(crate) struct Cell {
     pub advance: f64,
     pub mark: Option<Color>,
     caption_widths: [f64; 3],
+    /// Width over height of the ink, measured once; 1 for an empty cell.
+    aspect: f64,
 }
 
 /// The vertical metrics the cell preview is scaled against.
@@ -186,6 +227,7 @@ pub(crate) fn cells_of(font: &FontModel, palette: &Palette) -> Vec<Cell> {
             advance: g.advance,
             mark: g.mark.as_deref().and_then(|m| palette.mark(m)),
             caption_widths: caption_widths(&g.name, g.codepoint, g.advance),
+            aspect: ink_aspect(&g.outline),
         })
         .collect()
 }
@@ -245,6 +287,100 @@ pub(crate) struct GridWidget {
 
 impl GridWidget {
     fn columns(&self) -> usize {
+        self.fill_layout()
+            .map_or_else(|| self.slider_columns(), |(columns, _)| columns)
+    }
+
+    /// Whether the tiles fit the space rather than the zoom size: a grid with
+    /// no encoded glyph, such as a neural source, holds a few pieces of
+    /// writing of very different widths.
+    fn fills_space(&self) -> bool {
+        self.metrics.captions_below && !self.cells.is_empty() && !self.encoded()
+    }
+
+    /// The column count and row count of a grid that fills the space: the
+    /// fewest columns, and so the largest tiles, whose rows all fit the
+    /// height. `None` when the grid does not fill or the cells do not fit at
+    /// the zoom size, which then scrolls as usual.
+    fn fill_layout(&self) -> Option<(usize, usize)> {
+        if !self.fills_space() {
+            return None;
+        }
+        let available = (self.size.height - 2.0 * self.metrics.padding_y).max(1.0);
+        (1..=self.slider_columns()).find_map(|columns| {
+            let rows = pack_spans_evenly(&self.spans_for(columns), columns).len();
+            let natural = self.natural_row_height(columns);
+            let height = rows as f64 * natural + GAP * rows.saturating_sub(1) as f64;
+            (height <= available).then_some((columns, rows))
+        })
+    }
+
+    /// The edge of one column when the grid has `columns` of them.
+    fn edge_for(&self, columns: usize) -> f64 {
+        let columns = columns.max(1) as f64;
+        ((self.size.width - 2.0 * self.metrics.padding - GAP * (columns - 1.0)) / columns).max(1.0)
+    }
+
+    /// A square thumbnail and its caption, at `columns` columns.
+    fn natural_row_height(&self, columns: usize) -> f64 {
+        let edge = self.edge_for(columns);
+        edge + cell_label_metrics(
+            edge,
+            self.metrics.captions_below,
+            self.metrics.detail,
+            self.encoded(),
+        )
+        .2
+    }
+
+    /// Each cell's span at `columns` columns: wide enough for its caption,
+    /// and in a filled grid, about as many columns as its ink is wide.
+    fn spans_for(&self, columns: usize) -> Vec<(usize, usize)> {
+        let edge = self.edge_for(columns);
+        let span_width = |span: usize| edge * span as f64 + GAP * span.saturating_sub(1) as f64;
+        let lines = cell_label_metrics(
+            edge,
+            self.metrics.captions_below,
+            self.metrics.detail,
+            self.encoded(),
+        )
+        .1;
+        let fills = self.fills_space();
+        self.cells
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                // Without a Unicode line, the detail line sits one line up.
+                let shown = if lines > 1 && !self.encoded() {
+                    lines + 1
+                } else {
+                    lines
+                };
+                let label_width = c.caption_widths[..shown.min(3)]
+                    .iter()
+                    .copied()
+                    .fold(0.0, f64::max);
+                let label_span = if lines == 0 {
+                    1
+                } else {
+                    (1..=columns)
+                        .find(|&span| span_width(span) >= label_width + 2.0 * LABEL_TOP)
+                        .unwrap_or(columns)
+                };
+                let shape_span = if fills {
+                    // Rounded to whole columns; a thumbnail is about square per column.
+                    usize::try_from(round_units(c.aspect.round()))
+                        .unwrap_or(1)
+                        .clamp(1, columns)
+                } else {
+                    column_span(&c.name, c.advance, self.metrics.upm)
+                };
+                (i, shape_span.max(label_span))
+            })
+            .collect()
+    }
+
+    fn slider_columns(&self) -> usize {
         let ideal =
             (self.size.width - 2.0 * self.metrics.padding + GAP) / (self.metrics.cell + GAP);
         // The compact rail fits the nearest count instead of dropping a column
@@ -280,42 +416,12 @@ impl GridWidget {
     /// Packed rows of (cell-index-in-self.cells, span).
     fn packed(&self) -> Vec<Vec<(usize, usize)>> {
         let columns = self.columns();
-        let lines = cell_label_metrics(
-            self.cell_width(1),
-            self.metrics.captions_below,
-            self.metrics.detail,
-            self.encoded(),
-        )
-        .1;
-        let spans: Vec<(usize, usize)> = self
-            .cells
-            .iter()
-            .enumerate()
-            .map(|(i, c)| {
-                // Without a Unicode line, the detail line sits one line up.
-                let shown = if lines > 1 && !self.encoded() {
-                    lines + 1
-                } else {
-                    lines
-                };
-                let label_width = c.caption_widths[..shown.min(3)]
-                    .iter()
-                    .copied()
-                    .fold(0.0, f64::max);
-                let label_span = if lines == 0 {
-                    1
-                } else {
-                    (1..=columns)
-                        .find(|&span| self.cell_width(span) >= label_width + 2.0 * LABEL_TOP)
-                        .unwrap_or(columns)
-                };
-                (
-                    i,
-                    column_span(&c.name, c.advance, self.metrics.upm).max(label_span),
-                )
-            })
-            .collect();
-        pack_spans(&spans, columns)
+        let spans = self.spans_for(columns);
+        if self.fills_space() {
+            pack_spans_evenly(&spans, columns)
+        } else {
+            pack_spans(&spans, columns)
+        }
     }
 
     fn row_pitch(&self) -> f64 {
@@ -326,6 +432,9 @@ impl GridWidget {
     /// the thumbnail, as GPUI's grid fit does. The editor rail is a
     /// thumbnail index, so its short cells do not carry that band.
     fn fitted_row_count(&self) -> usize {
+        if let Some((_, rows)) = self.fill_layout() {
+            return rows.max(1);
+        }
         let caption = cell_label_metrics(
             self.cell_width(1),
             self.metrics.captions_below,
@@ -350,7 +459,13 @@ impl GridWidget {
         let available = (self.size.height - 2.0 * self.metrics.padding_y).max(1.0);
         // Keep the fractional remainder: flooring every row leaves enough
         // spare pixels at small slider sizes to expose the next row.
-        ((available - GAP * (rows - 1.0)) / rows).max(1.0)
+        let fitted = ((available - GAP * (rows - 1.0)) / rows).max(1.0);
+        // A filled grid stretches its rows down the space, but not so far
+        // that a tile turns into a tall strip.
+        match self.fill_layout() {
+            Some((columns, _)) => fitted.min(self.natural_row_height(columns) * FILL_STRETCH_MAX),
+            None => fitted,
+        }
     }
 
     fn inset_x(&self) -> f64 {
@@ -1077,6 +1192,7 @@ mod thumbnail_tests {
                         advance: 500.0,
                         mark: None,
                         caption_widths: caption_widths(&format!("glyph{index}"), None, 500.0),
+                        aspect: 1.0,
                     })
                     .collect(),
             ),
@@ -1098,6 +1214,58 @@ mod thumbnail_tests {
             size: Size::new(246.0, 538.0),
             hovered: false,
         }
+    }
+
+    /// An overview of unencoded canvases, as a neural source shows.
+    fn canvases(aspects: &[f64]) -> GridWidget {
+        let mut grid = rail();
+        grid.cells = Arc::new(
+            aspects
+                .iter()
+                .enumerate()
+                .map(|(index, &aspect)| Cell {
+                    aspect,
+                    ..grid.cells[index].clone()
+                })
+                .collect(),
+        );
+        grid.metrics.captions_below = true;
+        grid.metrics.cell = 120.0;
+        grid.size = Size::new(900.0, 700.0);
+        grid
+    }
+
+    #[test]
+    fn a_few_canvases_fill_the_grid_and_wide_ink_spans_more_columns() {
+        let grid = canvases(&[3.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
+        let (columns, rows) = grid.fill_layout().expect("six canvases fit");
+        assert!(
+            columns < grid.slider_columns(),
+            "the tiles grow past the zoom size"
+        );
+        assert_eq!(grid.packed().len(), rows);
+        assert_eq!(
+            grid.packed()[0][0],
+            (0, 3),
+            "the wide ink takes three columns"
+        );
+        for row in grid.packed() {
+            assert_eq!(row.iter().map(|cell| cell.1).sum::<usize>(), columns);
+        }
+        let used = rows as f64 * grid.row_pitch() - GAP + 2.0 * grid.inset_y();
+        assert!(used <= grid.size.height + 1e-9, "every row is on screen");
+
+        // Ink wider than the grid takes the whole row.
+        let wide = canvases(&[12.0, 1.0]);
+        let columns = wide.columns();
+        assert_eq!(wide.packed()[0], vec![(0, columns)]);
+    }
+
+    #[test]
+    fn many_canvases_keep_the_zoom_size_and_scroll() {
+        let grid = canvases(&[1.0; 100]);
+        assert_eq!(grid.fill_layout(), None);
+        assert_eq!(grid.columns(), grid.slider_columns());
     }
 
     #[test]
