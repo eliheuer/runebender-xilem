@@ -81,6 +81,16 @@ pub(crate) struct PointView {
     pub start: bool,
 }
 
+/// Where a click would split a segment; see [`Session::segment_insert_at`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct SegmentInsert {
+    pub start: PointId,
+    pub end: PointId,
+    pub t: f64,
+    pub point: Point,
+    pub curve: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SessionSyncOutcome {
     Changed,
@@ -1166,35 +1176,55 @@ impl Session {
         changed
     }
 
+    /// The segment under `at` within `radius` design units, as a place to
+    /// insert a point: the segment's endpoints, the parameter, the position
+    /// of the new point on the grid, and whether it splits a curve.
+    pub(crate) fn segment_insert_at(&self, at: Point, radius: f64) -> Option<SegmentInsert> {
+        use kurbo::{ParamCurve as _, ParamCurveNearest as _};
+        use runebender::font::DocumentSegmentEndpoint;
+        let layer = self.current_layer()?;
+        let (distance_sq, insert) =
+            runebender::outline::segment_ops::ordinary_layer_segments(layer)
+                .into_iter()
+                .filter_map(|segment| {
+                    let (
+                        DocumentSegmentEndpoint::Point(start),
+                        DocumentSegmentEndpoint::Point(end),
+                    ) = (segment.start, segment.end)
+                    else {
+                        return None;
+                    };
+                    let hit = segment.seg.nearest(at, 1e-6);
+                    Some((
+                        hit.distance_sq,
+                        SegmentInsert {
+                            start,
+                            end,
+                            t: hit.t,
+                            point: {
+                                // Snapped like the inserted point, so a preview
+                                // shows where the click lands.
+                                use runebender::outline::point_ops::snap_coord;
+                                let at = segment.seg.eval(hit.t);
+                                Point::new(snap_coord(at.x), snap_coord(at.y))
+                            },
+                            curve: !matches!(segment.seg, kurbo::PathSeg::Line(_)),
+                        },
+                    ))
+                })
+                .min_by(|a, b| a.0.total_cmp(&b.0))?;
+        (distance_sq <= radius * radius && (0.001..=0.999).contains(&insert.t)).then_some(insert)
+    }
+
     /// Split the segment under `at` with a new on-curve point and select it.
     ///
     /// A line gets a corner point. A curve gets a smooth point with a handle on
     /// each side, and keeps its shape. Returns false when no segment lies
     /// within `radius` design units.
     pub(crate) fn insert_point_at(&mut self, at: Point, radius: f64) -> bool {
-        use kurbo::ParamCurveNearest as _;
-        use runebender::font::DocumentSegmentEndpoint;
-        let Some(layer) = self.current_layer() else {
+        let Some(SegmentInsert { start, end, t, .. }) = self.segment_insert_at(at, radius) else {
             return false;
         };
-        let nearest = runebender::outline::segment_ops::ordinary_layer_segments(layer)
-            .into_iter()
-            .filter_map(|segment| {
-                let (DocumentSegmentEndpoint::Point(start), DocumentSegmentEndpoint::Point(end)) =
-                    (segment.start, segment.end)
-                else {
-                    return None;
-                };
-                let hit = segment.seg.nearest(at, 1e-6);
-                Some((hit.distance_sq, start, end, hit.t))
-            })
-            .min_by(|a, b| a.0.total_cmp(&b.0));
-        let Some((distance_sq, start, end, t)) = nearest else {
-            return false;
-        };
-        if distance_sq > radius * radius || !(0.001..=0.999).contains(&t) {
-            return false;
-        }
         let mut inserted = None;
         let changed = self.stage_canonical_edit("insert point", |draft| {
             inserted = Some(draft.insert_point_on_segment(start, end, t)?);

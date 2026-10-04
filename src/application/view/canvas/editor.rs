@@ -513,6 +513,9 @@ pub(crate) struct EditorWidget {
     drag: Drag,
     /// Last cursor position in design space, for the pen preview segment.
     hover: Option<Point>,
+    /// Where a pen click would add a point to an existing segment, and
+    /// whether that point splits a curve.
+    insert_preview: Option<(Point, bool)>,
     /// The open context-menu layer, if there is one.
     menu: Option<WidgetId>,
     view: ViewOptions,
@@ -1795,6 +1798,28 @@ impl Widget for EditorWidget {
                     .draw();
             }
 
+            // The point a pen click would add to the segment under the
+            // cursor: a faint corner on a line, a faint smooth point on a curve.
+            if let Some((position, curve)) = self.insert_preview.filter(|_| self.tool == Tool::Pen)
+            {
+                let hue = pal.role(if curve { "pointSmooth" } else { "pointCorner" });
+                let (fill, interior) = if pal.points_filled {
+                    (pal.point_outline.unwrap_or(pal.text), hue)
+                } else {
+                    (hue, pal.canvas)
+                };
+                let radius = if curve {
+                    POINT_CURVE_RADIUS
+                } else {
+                    POINT_CORNER_RADIUS
+                };
+                let shape = point_marker_shape(affine * position, radius * marker_scale, !curve);
+                painter.fill(&shape, interior.with_alpha(0.5)).draw();
+                painter
+                    .stroke(&shape, &Stroke::new(ring_width), fill.with_alpha(0.6))
+                    .draw();
+            }
+
             // Anchors use the same point construction, with solid pink inside
             // the shared dark keyline. Selection retains the node palette.
             let anchor_color = pal.mark("pink").unwrap_or_else(|| pal.role("danger"));
@@ -2404,6 +2429,7 @@ impl Widget for EditorWidget {
                             self.drag = Drag::None;
                             self.emit(ctx, true);
                         } else if on_segment {
+                            self.insert_preview = None;
                             // A click on an outline adds a point to that
                             // segment rather than starting a new contour.
                             self.drag = Drag::None;
@@ -2547,6 +2573,20 @@ impl Widget for EditorWidget {
                     if self.session.contour_drawing_is_active() {
                         ctx.request_render();
                     }
+                }
+                let insert_preview = (self.tool == Tool::Pen
+                    && matches!(self.drag, Drag::None)
+                    && !self.session.pen_is_active()
+                    && self.hit_point(at).is_none())
+                .then(|| {
+                    self.session
+                        .segment_insert_at(glyph_design, HIT_RADIUS_PX / self.session.viewport.zoom)
+                })
+                .flatten()
+                .map(|insert| (insert.point, insert.curve));
+                if insert_preview != self.insert_preview {
+                    self.insert_preview = insert_preview;
+                    ctx.request_render();
                 }
                 match &mut self.drag {
                     Drag::Sketch { last, changed } => {
@@ -3500,6 +3540,7 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
             size: Size::ZERO,
             drag: Drag::None,
             hover: None,
+            insert_preview: None,
             menu: None,
             view: self.view,
             field: None,
@@ -3721,6 +3762,7 @@ mod tests {
             size: Size::ZERO,
             drag: Drag::None,
             hover: None,
+            insert_preview: None,
             menu: None,
             view: ViewOptions::default(),
             field: None,
@@ -4648,6 +4690,39 @@ mod tests {
                 .expect("the point sits on the bottom edge");
             assert!(added.on_curve && !added.smooth);
             assert_eq!(session.selection, HashSet::from([added.id]));
+        });
+    }
+
+    #[test]
+    fn a_pen_hover_on_a_line_previews_the_new_point() {
+        let mut editor = widget();
+        editor.tool = Tool::Pen;
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+        let (on_edge, away) = harness.edit_root_widget(|root| {
+            let affine = root.widget.glyph_affine();
+            (
+                affine * Point::new(200.0, 0.0),
+                affine * Point::new(200.0, 350.0),
+            )
+        });
+        harness.mouse_move(on_edge);
+        harness.edit_root_widget(|root| {
+            assert_eq!(
+                root.widget.insert_preview,
+                Some((Point::new(200.0, 0.0), false))
+            );
+        });
+        harness.mouse_move(away);
+        harness.edit_root_widget(|root| assert_eq!(root.widget.insert_preview, None));
+
+        // While a new contour is being drawn, the pen only draws.
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        harness.mouse_move(on_edge);
+        harness.edit_root_widget(|root| {
+            assert!(root.widget.session.pen_is_active());
+            assert_eq!(root.widget.insert_preview, None);
         });
     }
 
