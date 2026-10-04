@@ -503,6 +503,8 @@ const REQUIRED_ROLES: &[&str] = &[
 const OPTIONAL_ROLES: &[&str] = &[
     "proofInk",
     "headerActiveInk",
+    "toolActiveInk",
+    "toolInactiveInk",
     "controlSelectedOutline",
     "savedInk",
     "unsavedInk",
@@ -1091,7 +1093,14 @@ mod tests {
 
     #[test]
     fn optional_appearance_roles_validate_without_changing_legacy_themes() {
-        let source = builtin_theme_source("gray").expect("gray source");
+        // Gray sets some optional roles; strip them all to model a legacy theme.
+        let mut base: toml::Value =
+            toml::from_str(builtin_theme_source("gray").expect("gray source")).expect("TOML");
+        let roles = base["roles"].as_table_mut().expect("roles table");
+        for &name in OPTIONAL_ROLES {
+            roles.remove(name);
+        }
+        let source = &toml::to_string(&base).expect("legacy TOML");
         let legacy = parse_theme(source).expect("legacy theme");
         for &name in OPTIONAL_ROLES {
             assert!(!legacy.roles.contains_key(name));

@@ -148,6 +148,9 @@ headerMutedInk = "baseUi.08"
 # Colors named by editor purpose; shared across hosts, so some are host-specific.
 # Values can reference Base UI or Rainbow, or use a literal color such as #17B870.
 [roles]
+# Editing tools in the header: the active tool, and the others three steps dimmer.
+toolActiveInk = "baseUi.08"
+toolInactiveInk = "baseUi.05"
 # Shared selected-grid color token.
 gridSelected = "baseUi.02"
 # Shared selected-cell fill token.

@@ -395,7 +395,6 @@ pub(crate) fn transformations_section(app: &Workspace) -> impl WidgetView<Worksp
                 xrow(
                     Region::List,
                     (
-                        FlexSpacer::Flex(1.0),
                         op("flip-h", |s| s.flip_horizontal()),
                         FlexSpacer::Flex(1.0),
                         op("flip-v", |s| s.flip_vertical()),
@@ -406,12 +405,13 @@ pub(crate) fn transformations_section(app: &Workspace) -> impl WidgetView<Worksp
                         FlexSpacer::Flex(1.0),
                         op("duplicate", |s| s.duplicate()),
                         FlexSpacer::Flex(1.0),
+                        // Trial sixth column: repeats the last action to test the fit.
+                        op("duplicate", |s| s.duplicate()),
                     ),
                 ),
                 xrow(
                     Region::List,
                     (
-                        FlexSpacer::Flex(1.0),
                         op("duplicate-repeat", |s| s.duplicate_repeat()),
                         FlexSpacer::Flex(1.0),
                         op("union", |s| s.remove_overlap()),
@@ -422,6 +422,7 @@ pub(crate) fn transformations_section(app: &Workspace) -> impl WidgetView<Worksp
                         FlexSpacer::Flex(1.0),
                         op("exclude", |s| s.boolean(BoolOp::Exclude)),
                         FlexSpacer::Flex(1.0),
+                        op("exclude", |s| s.boolean(BoolOp::Exclude)),
                     ),
                 ),
             ),
@@ -617,7 +618,8 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
                 },
             )
             .padding(Space::None)
-            .background_color(xilem::Color::TRANSPARENT)
+            // A solid face hides the grid lines that run through each ring.
+            .background_color(pal.panel)
             .border_width(Stroke::None.length())
             .corner_radius(ButtonShape::Circular.radius()),
         )
@@ -654,13 +656,15 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
             Region::Inline,
             (
                 sized_box(
+                    // Right-aligned, so every letter sits the same distance from its field.
                     label(name)
                         .text_size(TextSize::Body.px())
+                        .text_alignment(masonry::TextAlign::End)
                         .color(pal.text_muted),
                 )
-                .dims(Dimensions::fixed(
-                    Length::px(COORD_LABEL_WIDTH),
-                    ControlSize::Icon.length(),
+                .dims(Dimensions::new(
+                    Dim::Fixed(Length::px(COORD_LABEL_WIDTH)),
+                    Dim::Auto,
                 )),
                 sized_box(input_typography::input_typography(
                     text_input(value, move |app: &mut Workspace, v| {

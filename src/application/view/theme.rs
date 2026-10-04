@@ -245,6 +245,22 @@ impl Palette {
             .unwrap_or_else(|| self.header_ink.with_alpha(legacy_opacity))
     }
 
+    /// The active editing tool in the header; defaults to the active header ink.
+    pub(crate) fn tool_active_ink(&self) -> Color {
+        self.roles
+            .get("toolActiveInk")
+            .copied()
+            .unwrap_or_else(|| self.header_active_ink())
+    }
+
+    /// Inactive editing tools in the header; defaults to the inactive header ink.
+    pub(crate) fn tool_inactive_ink(&self) -> Color {
+        self.roles
+            .get("toolInactiveInk")
+            .copied()
+            .unwrap_or_else(|| self.header_inactive_ink(0.5))
+    }
+
     /// Active title-bar controls can use an accent independently of the document title.
     pub(crate) fn header_active_ink(&self) -> Color {
         self.roles

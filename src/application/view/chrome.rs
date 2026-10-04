@@ -137,8 +137,8 @@ pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<
     // Tool state is carried by icon contrast, not an inverted tile. This keeps
     // the header as quiet as the adjacent outlined tabs while making the
     // selected tool the brightest mark on the bar.
-    let fg = pal.header_inactive_ink(0.5);
-    let fg_active = pal.header_active_ink();
+    let fg = pal.tool_inactive_ink();
+    let fg_active = pal.tool_active_ink();
     let active_bg = Color::TRANSPARENT;
     let hover_bg = pal.header_ink.with_alpha(0.1);
     let editor_focus = app.editor_focus.clone();

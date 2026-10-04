@@ -10,7 +10,7 @@ use masonry::core::keyboard::{Key, KeyState, NamedKey};
 use masonry::core::{
     AccessCtx, ChildrenIds, EventCtx, Layer, LayerType, LayoutCtx, MeasureCtx, NewWidget, PaintCtx,
     PointerButton, PointerButtonEvent, PointerEvent, PointerUpdate, PropertiesMut, PropertiesRef,
-    RegisterCtx, TextEvent, Widget, WidgetId,
+    RegisterCtx, TextEvent, UpdateCtx, Widget, WidgetId,
 };
 use masonry::imaging::Painter;
 use masonry::kurbo::{Axis, Point, Rect, Size, Stroke, Vec2};
@@ -31,6 +31,8 @@ const MENU_SHADOW: f64 = Space::Sm.px();
 const MENU_GAP: f64 = TITLEBAR_HEIGHT - ControlSize::Icon.px();
 // The font's visible ink sits slightly below its centered line box.
 const MENU_CONTENT_RISE: f64 = 1.0;
+/// A click picks the group's tool; holding the button this long opens its menu.
+const HOLD_SECONDS: f64 = 0.3;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ToolGroup {
@@ -100,6 +102,15 @@ impl ToolGroup {
     pub(crate) fn contains(self, tool: Tool) -> bool {
         self.choices().iter().any(|choice| choice.tool == tool)
     }
+
+    /// The tool a click picks: the active one if it is in this group, else the first.
+    fn default_tool(self, active: Tool) -> Tool {
+        if self.contains(active) {
+            active
+        } else {
+            self.choices()[0].tool
+        }
+    }
 }
 
 pub(crate) struct ToolGroupView {
@@ -123,36 +134,53 @@ pub(crate) struct ToolGroupWidget {
     open: Option<WidgetId>,
     hovered: bool,
     size: Size,
+    /// Seconds the primary button has been held, until the menu opens.
+    held: Option<f64>,
+    /// The group's last chosen tool, which a click picks again.
+    last: Tool,
 }
 
 impl ToolGroupWidget {
+    fn menu(&self, creator: WidgetId) -> NewWidget<ToolMenu> {
+        NewWidget::new(ToolMenu {
+            creator,
+            group: self.group,
+            active: self.active,
+            palette: self.palette.clone(),
+            selected: self
+                .group
+                .choices()
+                .iter()
+                .position(|choice| choice.tool == self.active)
+                .unwrap_or(0),
+            hovered: None,
+            size: Size::ZERO,
+        })
+    }
+
+    fn menu_origin(&self) -> Point {
+        Point::new(-MENU_SHADOW, self.size.height + MENU_GAP)
+    }
+
     fn toggle_menu(&mut self, ctx: &mut EventCtx<'_>) {
         if let Some(id) = self.open.take() {
             ctx.remove_layer(id);
         } else {
-            let menu = NewWidget::new(ToolMenu {
-                creator: ctx.widget_id(),
-                group: self.group,
-                active: self.active,
-                palette: self.palette.clone(),
-                selected: self
-                    .group
-                    .choices()
-                    .iter()
-                    .position(|choice| choice.tool == self.active)
-                    .unwrap_or(0),
-                hovered: None,
-                size: Size::ZERO,
-            });
+            let menu = self.menu(ctx.widget_id());
             let id = menu.id();
-            ctx.create_layer(
-                LayerType::Other,
-                menu,
-                ctx.to_window(Point::new(-MENU_SHADOW, self.size.height + MENU_GAP)),
-            );
+            ctx.create_layer(LayerType::Other, menu, ctx.to_window(self.menu_origin()));
             self.open = Some(id);
             ctx.set_focus(id);
         }
+        ctx.request_render();
+    }
+
+    /// Open the menu once the button has been held; focus follows on release.
+    fn open_held_menu(&mut self, ctx: &mut UpdateCtx<'_>) {
+        let menu = self.menu(ctx.widget_id());
+        let id = menu.id();
+        ctx.create_layer(LayerType::Other, menu, ctx.to_window(self.menu_origin()));
+        self.open = Some(id);
         ctx.request_render();
     }
 }
@@ -184,12 +212,10 @@ impl Widget for ToolGroupWidget {
         painter: &mut Painter<'_>,
     ) {
         let rect = self.size.to_rect();
-        let ink = if self.group.contains(self.active) {
-            self.palette.header_active_ink()
-        } else if self.hovered || self.open.is_some() {
-            self.palette.header_ink
+        let ink = if self.group.contains(self.active) || self.hovered || self.open.is_some() {
+            self.palette.tool_active_ink()
         } else {
-            self.palette.header_inactive_ink(0.5)
+            self.palette.tool_inactive_ink()
         };
         let pad = self.size.width.min(self.size.height) * 0.10;
         icon_paint::paint(painter, self.group.icon(), rect.inset(pad), ink);
@@ -214,10 +240,49 @@ impl Widget for ToolGroupWidget {
                 button: Some(PointerButton::Primary),
                 ..
             }) => {
-                self.toggle_menu(ctx);
+                if self.open.is_some() {
+                    self.toggle_menu(ctx);
+                } else {
+                    // A click picks the group's tool; holding opens the menu.
+                    self.held = Some(0.0);
+                    ctx.capture_pointer();
+                    ctx.request_anim_frame();
+                }
                 ctx.set_handled();
             }
+            PointerEvent::Up(PointerButtonEvent {
+                button: Some(PointerButton::Primary),
+                ..
+            }) => {
+                if self.held.take().is_some() {
+                    ctx.submit_action::<Tool>(self.last);
+                } else if let Some(id) = self.open {
+                    ctx.set_focus(id);
+                }
+                ctx.set_handled();
+            }
+            PointerEvent::Cancel(_) => self.held = None,
             _ => {}
+        }
+    }
+
+    fn on_anim_frame(
+        &mut self,
+        ctx: &mut UpdateCtx<'_>,
+        _props: &mut PropertiesMut<'_>,
+        interval: u64,
+    ) {
+        let Some(held) = self.held else {
+            return;
+        };
+        // Nanoseconds as f64 lose no precision that matters for a hold delay.
+        let held = held + interval as f64 / 1e9;
+        if held >= HOLD_SECONDS {
+            self.held = None;
+            self.open_held_menu(ctx);
+        } else {
+            self.held = Some(held);
+            ctx.request_anim_frame();
         }
     }
 
@@ -543,6 +608,8 @@ impl View<Workspace, (), ViewCtx> for ToolGroupView {
             open: None,
             hovered: false,
             size: Size::ZERO,
+            held: None,
+            last: self.group.default_tool(self.active),
         };
         (ctx.with_action_widget(|ctx| ctx.create_pod(widget)), ())
     }
@@ -562,6 +629,9 @@ impl View<Workspace, (), ViewCtx> for ToolGroupView {
             el.widget.group = self.group;
             el.widget.active = self.active;
             el.widget.palette = self.palette.clone();
+            if self.group.contains(self.active) || !self.group.contains(el.widget.last) {
+                el.widget.last = self.group.default_tool(self.active);
+            }
             el.ctx.request_render();
         }
     }
@@ -605,6 +675,8 @@ mod tests {
             open: None,
             hovered: false,
             size: Size::ZERO,
+            held: None,
+            last: Tool::Select,
         };
         let widget = NewWidget::new(widget);
         let id = widget.id();
@@ -617,7 +689,11 @@ mod tests {
             .get_widget_with_id(id)
             .ctx()
             .to_window(Point::ORIGIN);
-        harness.mouse_click_on(id, Some(PointerButton::Primary));
+        // Holding the button opens the menu.
+        harness.mouse_move_to(id);
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.animate_ms(400);
+        harness.mouse_button_release(Some(PointerButton::Primary));
         assert!(
             harness
                 .get_widget_with_id(id)
@@ -640,6 +716,12 @@ mod tests {
             .pop_action::<Tool>()
             .expect("menu choice is dispatched");
         assert_eq!(chosen, Tool::Lasso);
+        // A quick click picks the group's tool without opening the menu.
+        harness.mouse_click_on(id, Some(PointerButton::Primary));
+        let (clicked, _) = harness
+            .pop_action::<Tool>()
+            .expect("a click picks the default tool");
+        assert_eq!(clicked, Tool::Select);
         assert!(
             harness
                 .get_widget_with_id(id)

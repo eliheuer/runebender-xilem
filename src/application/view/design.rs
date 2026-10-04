@@ -181,8 +181,9 @@ pub(crate) const HEADER_TAB_TEXT_INSET: f64 = 6.0;
 /// Icon tabs share a short rectangular silhouette with the text tabs.
 pub(crate) const HEADER_TAB_ICON_WIDTH: f64 = 24.0;
 
-/// Transformation icon extent measured in the reference, inside a 24-pixel tile.
-pub(crate) const TRANSFORM_ICON_SIZE: f64 = 22.0;
+/// Transformation icon extent inside its control-size tile; the row's outer tiles
+/// meet the section's content edges.
+pub(crate) const TRANSFORM_ICON_SIZE: f64 = 24.0;
 /// Five transformation actions share each inspector row on control-size targets.
 pub(crate) const TRANSFORM_TILE_SIZE: f64 = ControlSize::Control.px();
 /// Shared label width for the inspector's single-line transformation parameters.
@@ -202,7 +203,7 @@ pub(crate) const COORD_PICKER_EDGE: f64 = ControlSize::Control.px() * 2.0 + Spac
 pub(crate) const COORD_PICKER_INSET: f64 = 3.0;
 pub(crate) const COORD_PICKER_GAP: f64 =
     (COORD_PICKER_EDGE - COORD_PICKER_INSET * 2.0 - ControlSize::Dot.px() * 3.0) / 2.0;
-pub(crate) const COORD_LABEL_WIDTH: f64 = 10.0;
+pub(crate) const COORD_LABEL_WIDTH: f64 = 14.0;
 
 /// Floating metrics-card geometry, measured against the Gray reference capture.
 pub(crate) const METRICS_CARD_WIDTH: f64 = 320.0;
