@@ -165,6 +165,8 @@ struct CanonicalPointDrag {
     transaction: CanonicalLayerTransaction,
     origins: Vec<(PointId, Point)>,
     changed: bool,
+    /// Whether on-curve points move without their handles (Option held).
+    independent: bool,
 }
 
 #[derive(Clone)]
@@ -1078,21 +1080,34 @@ impl Session {
             transaction,
             origins,
             changed: false,
+            independent: false,
         });
         self.in_drag = true;
     }
 
     /// Move the selection to `total` design units from where the drag began.
-    pub(crate) fn drag_points_to(&mut self, total: (f64, f64)) -> bool {
+    ///
+    /// With `independent`, on-curve points leave their handles in place, as
+    /// Option does in Glyphs. A change of mode mid-drag restarts from the
+    /// drag's first state, so the handles return to where they began.
+    pub(crate) fn drag_points_to(&mut self, total: (f64, f64), independent: bool) -> bool {
         let selected: Vec<_> = self.selection.iter().copied().collect();
+        let base = self.canonical_base.clone();
         let Some(drag) = &mut self.active_point_drag else {
             return false;
         };
+        if drag.independent != independent {
+            let Some(base) = base else {
+                return false;
+            };
+            drag.transaction = base;
+            drag.independent = independent;
+        }
         let Ok(changed) = drag.transaction.draft_mut().translate_points(
             &selected,
             &drag.origins,
             kurbo::Vec2::new(total.0, total.1),
-            false,
+            independent,
         ) else {
             return false;
         };

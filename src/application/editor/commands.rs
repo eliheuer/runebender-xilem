@@ -1903,7 +1903,7 @@ mod tests {
 
         let mut cancelled = (*workspace.session).clone();
         cancelled.begin_point_drag();
-        assert!(cancelled.drag_points_to((20.0, 10.0)));
+        assert!(cancelled.drag_points_to((20.0, 10.0), false));
         cancelled.cancel_point_drag();
         workspace.sync_session_from(&mut cancelled);
         assert_eq!(
@@ -1920,7 +1920,7 @@ mod tests {
 
         let mut committed = (*workspace.session).clone();
         committed.begin_point_drag();
-        assert!(committed.drag_points_to((30.0, 10.0)));
+        assert!(committed.drag_points_to((30.0, 10.0), false));
         committed.end_point_drag();
         workspace.sync_session_from(&mut committed);
         assert_eq!(

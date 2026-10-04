@@ -2673,7 +2673,9 @@ impl Widget for EditorWidget {
                     Drag::Points { start } => {
                         let zoom = self.session.viewport.zoom;
                         let total = ((at.x - start.x) / zoom, -(at.y - start.y) / zoom);
-                        if self.session.drag_points_to(total) {
+                        // Option moves on-curve points without their handles.
+                        let independent = current.modifiers.alt();
+                        if self.session.drag_points_to(total, independent) {
                             ctx.request_render();
                         }
                     }
@@ -4727,6 +4729,66 @@ mod tests {
     }
 
     #[test]
+    fn an_option_drag_moves_a_smooth_point_without_its_handles() {
+        let mut font = norad::Font::new();
+        let mut glyph = norad::Glyph::new("A");
+        glyph.width = 500.0;
+        let mut contour = norad::Contour::default();
+        for (x, y, typ, smooth) in [
+            (0.0, 0.0, norad::PointType::Line, false),
+            (0.0, 200.0, norad::PointType::OffCurve, false),
+            (200.0, 300.0, norad::PointType::OffCurve, false),
+            (300.0, 300.0, norad::PointType::Curve, true),
+            (400.0, 300.0, norad::PointType::OffCurve, false),
+            (500.0, 200.0, norad::PointType::OffCurve, false),
+            (500.0, 0.0, norad::PointType::Curve, false),
+        ] {
+            contour
+                .points
+                .push(norad::ContourPoint::new(x, y, typ, smooth, None, None));
+        }
+        glyph.contours.push(contour);
+        font.default_layer_mut().insert_glyph(glyph);
+        let mut session = Session::new(&font, "A").expect("the glyph is there");
+        let smooth = session.points()[3].id;
+        session.selection.insert(smooth);
+        let positions = |session: &Session| {
+            session.points()[2..=4]
+                .iter()
+                .map(|point| point.point)
+                .collect::<Vec<_>>()
+        };
+        session.begin_point_drag();
+        assert!(session.drag_points_to((0.0, 20.0), true));
+        assert_eq!(
+            positions(&session),
+            [
+                Point::new(200.0, 300.0),
+                Point::new(300.0, 320.0),
+                Point::new(400.0, 300.0),
+            ],
+            "Option leaves both handles in place"
+        );
+        assert!(session.drag_points_to((0.0, 20.0), false));
+        assert_eq!(
+            positions(&session),
+            [
+                Point::new(200.0, 320.0),
+                Point::new(300.0, 320.0),
+                Point::new(400.0, 320.0),
+            ],
+            "without Option the handles follow"
+        );
+        assert!(session.drag_points_to((0.0, 20.0), true));
+        assert_eq!(
+            positions(&session)[0],
+            Point::new(200.0, 300.0),
+            "pressing Option mid-drag returns the handles"
+        );
+        session.end_point_drag();
+    }
+
+    #[test]
     fn a_pen_click_on_a_curve_adds_a_smooth_point_with_two_handles() {
         let mut font = norad::Font::new();
         let mut glyph = norad::Glyph::new("A");
@@ -5093,7 +5155,7 @@ mod tests {
         let mut changed = (*workspace.session).clone();
         changed.selection.insert(point);
         changed.begin_point_drag();
-        assert!(changed.drag_points_to((20.0, 0.0)));
+        assert!(changed.drag_points_to((20.0, 0.0), false));
         changed.end_point_drag();
         dispatch_editor_event(
             &mut workspace,
@@ -5131,8 +5193,8 @@ mod tests {
         let mut out_and_back = (*workspace.session).clone();
         out_and_back.selection.insert(point);
         out_and_back.begin_point_drag();
-        assert!(out_and_back.drag_points_to((20.0, 0.0)));
-        assert!(out_and_back.drag_points_to((0.0, 0.0)));
+        assert!(out_and_back.drag_points_to((20.0, 0.0), false));
+        assert!(out_and_back.drag_points_to((0.0, 0.0), false));
         out_and_back.end_point_drag();
         dispatch_editor_event(
             &mut workspace,
