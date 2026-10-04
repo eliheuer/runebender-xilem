@@ -3,3 +3,15 @@
 
 # Local worktrees
 .worktrees/
+
+# Images: screenshots and tracing images placed in font sources stay local.
+# Test fixtures may keep reference images; add any other image with `git add -f`.
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.heic
+*.tif
+*.tiff
+!/tests/fixtures/**
