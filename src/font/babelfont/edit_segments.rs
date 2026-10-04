@@ -442,6 +442,136 @@ impl LayerEditDraft {
         })
     }
 
+    /// Give a straight segment, or a curve with a single control, two cubic handles.
+    ///
+    /// This is Option-click on a segment in Glyphs. A straight segment gets handles at its
+    /// thirds. A single-control curve is read as quadratic, whether stored as a quadratic or
+    /// as a one-control cubic, and is degree-elevated so its shape does not change: the
+    /// control keeps its identity as the first handle and a new handle follows it.
+    /// A segment that already has two handles is rejected.
+    /// Returns the two handle identities in contour order.
+    pub fn add_segment_handles(
+        &mut self,
+        start: PointId,
+        end: PointId,
+    ) -> Result<[PointId; 2], DocumentEditError> {
+        let (shape_index, start_index) = self
+            .locate_point(start)
+            .ok_or(DocumentEditError::MissingPoint(start))?;
+        let Shape::Path(path) = &self.layer.shapes[shape_index] else {
+            unreachable!("located shape is a path");
+        };
+        let len = path.nodes.len();
+        let after = |index: usize, steps: usize| {
+            let next = index + steps;
+            if next < len {
+                Some(next)
+            } else if path.closed {
+                Some(next % len)
+            } else {
+                None
+            }
+        };
+        let is_end = |index: Option<usize>| {
+            index.is_some_and(|index| {
+                read_id(&path.nodes[index].format_specific) == Some(end.0)
+                    && path.nodes[index].nodetype != NodeType::OffCurve
+            })
+        };
+        if is_end(after(start_index, 1)) {
+            return self.convert_line_to_curve(start, end);
+        }
+        let (Some(control_index), end_index) = (after(start_index, 1), after(start_index, 2))
+        else {
+            return Err(DocumentEditError::NotLineSegment(start, end));
+        };
+        if path.nodes[control_index].nodetype != NodeType::OffCurve || !is_end(end_index) {
+            return Err(DocumentEditError::NotLineSegment(start, end));
+        }
+        let end_index = end_index.expect("checked end");
+        let position = |index: usize| kurbo::Point::new(path.nodes[index].x, path.nodes[index].y);
+        let (from, control, to) = (
+            position(start_index),
+            position(control_index),
+            position(end_index),
+        );
+        let snapped = |point: kurbo::Point| {
+            kurbo::Point::new(
+                crate::outline::point_ops::snap_coord(point.x),
+                crate::outline::point_ops::snap_coord(point.y),
+            )
+        };
+        let first_position = snapped(from.lerp(control, 2.0 / 3.0));
+        let second_position = snapped(to.lerp(control, 2.0 / 3.0));
+        ensure_finite(&[
+            first_position.x,
+            first_position.y,
+            second_position.x,
+            second_position.y,
+        ])?;
+        let first = PointId(
+            read_id(&path.nodes[control_index].format_specific).expect("canonical point identity"),
+        );
+        let second = PointId::next();
+        let contour_id =
+            ContourId(read_id(&path.format_specific).expect("canonical contour identity"));
+        let Shape::Path(path) = &mut self.layer.shapes[shape_index] else {
+            unreachable!("located shape is a path");
+        };
+        path.nodes[control_index].x = first_position.x;
+        path.nodes[control_index].y = first_position.y;
+        let mut node = Node {
+            x: second_position.x,
+            y: second_position.y,
+            nodetype: NodeType::OffCurve,
+            ..Node::default()
+        };
+        write_id(&mut node.format_specific, second.0);
+        let insert_index = control_index + 1;
+        path.nodes.insert(insert_index, node);
+        let end_index = if end_index >= insert_index {
+            end_index + 1
+        } else {
+            end_index
+        };
+        path.nodes[end_index].nodetype = NodeType::Curve;
+        let preserved = self
+            .preserved
+            .contours
+            .iter_mut()
+            .find(|candidate| candidate.id == contour_id)
+            .expect("canonical contour preservation");
+        preserved.points.insert(
+            insert_index,
+            PreservedPoint {
+                id: second,
+                name: None,
+                metadata: ObjectMetadata {
+                    identifier: None,
+                    lib: None,
+                },
+            },
+        );
+        Ok([first, second])
+    }
+
+    /// The path shape and node index holding a point.
+    fn locate_point(&self, id: PointId) -> Option<(usize, usize)> {
+        self.layer
+            .shapes
+            .iter()
+            .enumerate()
+            .find_map(|(shape_index, shape)| {
+                let Shape::Path(path) = shape else {
+                    return None;
+                };
+                path.nodes
+                    .iter()
+                    .position(|node| read_id(&node.format_specific) == Some(id.0))
+                    .map(|node_index| (shape_index, node_index))
+            })
+    }
+
     /// Convert one direct on-curve segment to a cubic with snapped thirds handles.
     ///
     /// The endpoints retain their stable identities and source metadata.

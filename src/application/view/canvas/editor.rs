@@ -2550,6 +2550,19 @@ impl Widget for EditorWidget {
                             return;
                         }
                         self.session.selected_anchor = None;
+                        // Option-click on a segment gives it two curve handles, as in Glyphs.
+                        if self.tool == Tool::Select
+                            && state.modifiers.alt()
+                            && self.hit_point(at).is_none()
+                            && self.session.add_segment_handles_at(
+                                self.screen_to_glyph_design(at),
+                                HIT_RADIUS_PX / self.session.viewport.zoom,
+                            )
+                        {
+                            self.emit(ctx, true);
+                            ctx.set_handled();
+                            return;
+                        }
                         match self.hit_point(at) {
                             // A double click on an on-curve point switches it between corner
                             // and smooth, as in Glyphs.
@@ -4961,6 +4974,122 @@ mod tests {
             !session.insert_point_at(Point::new(150.0, 100.0), 4.0),
             "empty space is a miss"
         );
+    }
+
+    fn session_with(points: &[(f64, f64, norad::PointType)]) -> Session {
+        let mut font = norad::Font::new();
+        let mut glyph = norad::Glyph::new("A");
+        glyph.width = 600.0;
+        let mut contour = norad::Contour::default();
+        for &(x, y, typ) in points {
+            contour
+                .points
+                .push(norad::ContourPoint::new(x, y, typ, false, None, None));
+        }
+        glyph.contours.push(contour);
+        font.default_layer_mut().insert_glyph(glyph);
+        Session::new(&font, "A").expect("the glyph is there")
+    }
+
+    #[test]
+    fn option_click_gives_lines_and_single_control_curves_two_handles() {
+        use norad::PointType::{Curve, Line, OffCurve, QCurve};
+        let contour = [
+            (0.0, 0.0, Line),
+            (0.0, 300.0, Line),
+            (150.0, 450.0, OffCurve),
+            (300.0, 300.0, QCurve),
+            (300.0, 0.0, Line),
+        ];
+        let handles = |session: &Session| {
+            let mut found: Vec<_> = session
+                .points()
+                .iter()
+                .filter(|point| session.selection.contains(&point.id))
+                .map(|point| (point.point.x, point.point.y, point.on_curve))
+                .collect();
+            found.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
+            found
+        };
+
+        // A straight segment gets handles at its thirds.
+        let mut session = session_with(&contour);
+        assert!(session.add_segment_handles_at(Point::new(0.0, 150.0), 4.0));
+        assert_eq!(
+            handles(&session),
+            [(0.0, 100.0, false), (0.0, 200.0, false)]
+        );
+        assert_eq!(session.points().len(), 7);
+
+        // A one-control curve keeps its shape: its midpoint stays at (150, 375).
+        let mut session = session_with(&contour);
+        assert!(session.add_segment_handles_at(Point::new(150.0, 375.0), 4.0));
+        assert_eq!(
+            handles(&session),
+            [(100.0, 400.0, false), (200.0, 400.0, false)]
+        );
+        let cubic =
+            kurbo::CubicBez::new((0.0, 300.0), (100.0, 400.0), (200.0, 400.0), (300.0, 300.0));
+        assert_eq!(
+            kurbo::ParamCurve::eval(&cubic, 0.5),
+            Point::new(150.0, 375.0)
+        );
+        assert_eq!(session.points().len(), 6);
+
+        // A segment that already has two handles is left alone.
+        let mut session = session_with(&[
+            (0.0, 300.0, Line),
+            (100.0, 400.0, OffCurve),
+            (200.0, 400.0, OffCurve),
+            (300.0, 300.0, Curve),
+            (300.0, 0.0, Line),
+        ]);
+        assert!(!session.add_segment_handles_at(Point::new(150.0, 375.0), 4.0));
+    }
+
+    #[test]
+    fn making_a_point_smooth_lines_up_its_handles() {
+        use norad::PointType::{Curve, Line, OffCurve};
+        let contour = [
+            (0.0, 0.0, Line),
+            (100.0, 100.0, OffCurve),
+            (150.0, 100.0, OffCurve),
+            (200.0, 0.0, Curve),
+            (250.0, 100.0, OffCurve),
+            (300.0, 100.0, OffCurve),
+            (400.0, 0.0, Curve),
+            (200.0, -200.0, Line),
+        ];
+        let id_at = |session: &Session, x: f64, y: f64| {
+            session
+                .points()
+                .iter()
+                .find(|point| point.point == Point::new(x, y))
+                .map(|point| point.id)
+                .expect("point exists")
+        };
+        let at = |session: &Session, index: usize| session.points()[index].point;
+
+        // Handles on both sides turn onto the line that bisects their directions.
+        let mut session = session_with(&contour);
+        let corner = id_at(&session, 200.0, 0.0);
+        assert!(session.toggle_smooth(corner));
+        let (before, after) = (at(&session, 2), at(&session, 4));
+        assert_eq!((before.y, after.y), (0.0, 0.0), "both handles lie on y = 0");
+        assert!(before.x < 200.0 && after.x > 200.0);
+        assert!((Point::new(200.0, 0.0).distance(before) - 50_f64.hypot(100.0)).abs() < 1.0);
+        assert!((Point::new(200.0, 0.0).distance(after) - 50_f64.hypot(100.0)).abs() < 1.0);
+
+        // Beside a straight segment, the handle continues that segment.
+        let mut session = session_with(&contour);
+        let joint = id_at(&session, 400.0, 0.0);
+        assert!(session.toggle_smooth(joint));
+        let handle = at(&session, 5);
+        assert!(
+            (handle.y - (handle.x - 400.0)).abs() <= 1.0,
+            "the handle lies on the line through (200, -200) and (400, 0): {handle:?}"
+        );
+        assert!(handle.x > 400.0);
     }
 
     #[test]

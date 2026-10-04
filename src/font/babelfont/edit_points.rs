@@ -321,6 +321,24 @@ impl LayerEditDraft {
                 changed = true;
             }
         }
+        // A point made smooth also gets collinear handles, so the curve really is smooth there.
+        for path in self
+            .layer
+            .shapes
+            .iter_mut()
+            .filter_map(|shape| match shape {
+                Shape::Path(path) => Some(path),
+                Shape::Component(_) => None,
+            })
+        {
+            for index in 0..path.nodes.len() {
+                let node = &path.nodes[index];
+                let id = read_id(&node.format_specific).expect("canonical point identity");
+                if selected.contains(&id) && node.nodetype != NodeType::OffCurve && node.smooth {
+                    align_smooth_handles(&mut path.nodes, path.closed, index);
+                }
+            }
+        }
         Ok(changed)
     }
 
@@ -904,4 +922,59 @@ fn join_segments(
     moved.insert(first, snap(p0 + t0 * a));
     moved.insert(last, snap(p3 - t1 * b));
     Some(vec![first, last])
+}
+
+/// Rotate an on-curve point's neighboring handles onto one line through it.
+///
+/// Handle lengths are kept. With handles on both sides, the line bisects their directions;
+/// beside a straight segment, the handle continues that segment. Positions snap to the grid.
+fn align_smooth_handles(nodes: &mut [Node], closed: bool, index: usize) {
+    let len = nodes.len();
+    let neighbor = |forward: bool| {
+        if forward {
+            (index + 1 < len)
+                .then_some(index + 1)
+                .or((closed && len > 1).then_some(0))
+        } else {
+            index
+                .checked_sub(1)
+                .or((closed && len > 1).then(|| len - 1))
+        }
+    };
+    let (Some(prev), Some(next)) = (neighbor(false), neighbor(true)) else {
+        return;
+    };
+    let position = |i: usize| kurbo::Point::new(nodes[i].x, nodes[i].y);
+    let (at, before, after) = (position(index), position(prev), position(next));
+    let unit = |v: kurbo::Vec2| (v.hypot() > 1e-9).then(|| v / v.hypot());
+    let prev_handle = nodes[prev].nodetype == NodeType::OffCurve;
+    let next_handle = nodes[next].nodetype == NodeType::OffCurve;
+    let direction = match (prev_handle, next_handle) {
+        (true, true) => match (unit(at - before), unit(after - at)) {
+            (Some(incoming), Some(outgoing)) => unit(incoming + outgoing),
+            (incoming, outgoing) => incoming.or(outgoing),
+        },
+        (false, true) => unit(at - before),
+        (true, false) => unit(after - at),
+        (false, false) => None,
+    };
+    let Some(direction) = direction else {
+        return;
+    };
+    let snap = |p: kurbo::Point| {
+        (
+            crate::outline::point_ops::snap_coord(p.x),
+            crate::outline::point_ops::snap_coord(p.y),
+        )
+    };
+    if prev_handle {
+        let (x, y) = snap(at - direction * (at - before).hypot());
+        nodes[prev].x = x;
+        nodes[prev].y = y;
+    }
+    if next_handle {
+        let (x, y) = snap(at + direction * (after - at).hypot());
+        nodes[next].x = x;
+        nodes[next].y = y;
+    }
 }

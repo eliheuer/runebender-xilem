@@ -1257,6 +1257,24 @@ impl Session {
         changed
     }
 
+    /// Give the segment under `at` two cubic handles and select them, as Option-click
+    /// does in Glyphs. Returns false unless a straight or single-control segment lies
+    /// within `radius` design units.
+    pub(crate) fn add_segment_handles_at(&mut self, at: Point, radius: f64) -> bool {
+        let Some(SegmentInsert { start, end, .. }) = self.segment_insert_at(at, radius) else {
+            return false;
+        };
+        let mut handles = None;
+        let changed = self.stage_canonical_edit("add handles", |draft| {
+            handles = Some(draft.add_segment_handles(start, end)?);
+            Ok(true)
+        });
+        if let (true, Some(ids)) = (changed, handles) {
+            self.selection = HashSet::from(ids);
+        }
+        changed
+    }
+
     /// The first point of the pen buffer, in design space.
     pub(crate) fn pen_first_point(&self) -> Option<Point> {
         self.pen.first().map(|p| p.point)
