@@ -194,6 +194,7 @@ pub(crate) fn glyph_preview(app: &Workspace) -> impl WidgetView<Workspace> + use
     };
     let pal = app.palette.clone();
     let background = pal.glyph_preview;
+    let neural = app.font.project.is_neural();
     sized_box(canvas(
         move |_app: &mut Workspace, _ctx, scene, size: Size| {
             let mut p = Painter::new(scene);
@@ -211,6 +212,15 @@ pub(crate) fn glyph_preview(app: &Workspace) -> impl WidgetView<Workspace> + use
                 return;
             };
             let bounds = outline.bounding_box();
+            // A neural canvas is a whole piece of writing: points would only
+            // crowd it. Fill the space with solid copies of the ink instead.
+            if neural {
+                let ink = pal.proof_ink();
+                for t in stacked_transforms(bounds, size) {
+                    p.fill(&(t * (**outline).clone()), ink).draw();
+                }
+                return;
+            }
             let scale = (size.width * design::OVERVIEW_GLYPH_PREVIEW_FILL
                 / bounds.width().max(1.0))
             .min(size.height * design::OVERVIEW_GLYPH_PREVIEW_FILL / bounds.height().max(1.0))
@@ -280,6 +290,40 @@ pub(crate) fn glyph_preview(app: &Workspace) -> impl WidgetView<Workspace> + use
     .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
 }
 
+/// Copies of `ink`, fitted to the width of `size` and stacked down it as many
+/// times as fit, with the stack centered. Ink too tall for one copy at full
+/// width is fitted to the height instead.
+fn stacked_transforms(ink: kurbo::Rect, size: kurbo::Size) -> Vec<kurbo::Affine> {
+    use masonry::kurbo::Affine;
+    const MAX_COPIES: u32 = 8;
+    let fill = design::OVERVIEW_GLYPH_PREVIEW_FILL;
+    let (width, height) = (ink.width().max(1.0), ink.height().max(1.0));
+    let room = size.height * fill;
+    let stack = |copies: u32, scale: f64| {
+        let row = height * scale;
+        row * f64::from(copies) + row * 0.3 * f64::from(copies.saturating_sub(1))
+    };
+    let mut scale = size.width * fill / width;
+    let mut copies = (1..=MAX_COPIES)
+        .take_while(|&copies| stack(copies, scale) <= room)
+        .last()
+        .unwrap_or(0);
+    if copies == 0 {
+        copies = 1;
+        scale = room / height;
+    }
+    let row = height * scale;
+    let top = (size.height - stack(copies, scale)) / 2.0;
+    (0..copies)
+        .map(|copy| {
+            let center_y = top + row * 1.3 * f64::from(copy) + row / 2.0;
+            Affine::translate(-ink.center().to_vec2())
+                .then_scale_non_uniform(scale, -scale)
+                .then_translate((size.width / 2.0, center_y).into())
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod proof_tests {
     use super::*;
@@ -314,6 +358,29 @@ mod proof_tests {
         assert_eq!(right, Point::new(184.0, 70.0));
         let tiny = proof_transform(Rect::ZERO, 0.0, Size::new(20.0, 20.0));
         assert_eq!(tiny * Point::new(10.0, 10.0), Point::new(10.0, 10.0));
+    }
+
+    #[test]
+    fn wide_ink_repeats_down_the_inspector_preview() {
+        let ink = Rect::new(0.0, 0.0, 1000.0, 250.0);
+        let size = Size::new(300.0, 400.0);
+        let copies = stacked_transforms(ink, size);
+        assert!(copies.len() >= 2, "{}", copies.len());
+        for t in &copies {
+            let placed = t.transform_rect_bbox(ink);
+            assert!(placed.x0 >= 0.0 && placed.x1 <= size.width);
+            assert!(placed.y0 >= 0.0 && placed.y1 <= size.height);
+            assert!((placed.center().x - size.width / 2.0).abs() < 1e-9);
+        }
+        // Tall ink does not fit at full width: one copy, fitted to the height.
+        let tall = stacked_transforms(Rect::new(0.0, 0.0, 100.0, 1000.0), size);
+        assert_eq!(tall.len(), 1);
+        assert!(
+            tall[0]
+                .transform_rect_bbox(Rect::new(0.0, 0.0, 100.0, 1000.0))
+                .height()
+                <= 400.0
+        );
     }
 
     #[test]
