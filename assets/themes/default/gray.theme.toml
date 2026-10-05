@@ -75,6 +75,10 @@ app = "baseUi.02"
 backdropTint = "#808080"
 # Main floating panel faces and sidebar backgrounds.
 panel = "baseUi.07"
+# Face color of frosted side panels (window.blurPanels); defaults to panel. It is lighter
+# than panel so that, mixed with the darker blur, the face lands near the solid panel value
+# and fields, tabs and rows keep their contrast.
+panelTint = "baseUi.09"
 # Floating panel shadow color; currently drawn at 50% opacity, 2 px down and left.
 # Enable or disable it with geometry.shadowPanel below.
 panelShadow = "baseUi.01"
@@ -248,6 +252,16 @@ blurTintOpacity = 0.50
 # Hide only main-panel shadows while macOS blur is active.
 # Solid mode still uses geometry.shadowPanel; glyph and other shadows are unaffected.
 shadowPanels = false
+# Let the blur show through the left and right panels too; the center panel stays solid.
+# Independent of blurTintOpacity, but it needs blurBackground.
+blurPanels = true
+# Opacity of surfaces.panelTint over the blur when blurPanels is on: 0 is clear, 1 is solid.
+panelTintOpacity = 0.75
+# The macOS material behind the blur: menu, popover, sidebar, headerView, hudWindow,
+# fullScreenUI, underWindowBackground, or windowBackground. Some let more wallpaper through.
+blurMaterial = "menu"
+# Draw that material light, dark, or "auto" to follow surfaces.app.
+blurAppearance = "auto"
 
 # Shape settings, separate from colors. All dimensions are logical pixels.
 # The three radii are independent; rendering caps them to fit the actual shape.

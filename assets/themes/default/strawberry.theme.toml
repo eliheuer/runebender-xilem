@@ -1,5 +1,5 @@
 # A light rose workspace: pink surfaces, pale fields, and deep berry ink.
-# Ten Base UI stops, 00–09, progress from darkest to lightest.
+# Ten Base UI stops, 00–09, progress from darkest to lightest; the darkest are deep berry, not black.
 # See https://runebender.org/docs/themes.html for the full format.
 formatVersion = 1
 id = "strawberry"
@@ -7,8 +7,8 @@ name = "Strawberry"
 
 # Rose is part of every Base UI stop, rather than a separate accent.
 [baseUi]
-"00" = "oklch(0.24 0.045 5)"
-"01" = "oklch(0.34 0.055 5)"
+"00" = "oklch(0.32 0.085 8)"
+"01" = "oklch(0.38 0.09 8)"
 "02" = "oklch(0.43 0.07 5)"
 "03" = "oklch(0.55 0.09 5)"
 "04" = "oklch(0.67 0.11 5)"
@@ -51,7 +51,9 @@ pointHalo = false
 
 [surfaces]
 app = "baseUi.06"
-backdropTint = "#F3B8C4"
+# Lighter and pinker than the solid ground: the gray blur dulls both, so mixed in it lands
+# near surfaces.app. Chroma is about the target divided by blurTintOpacity.
+backdropTint = "oklch(0.87 0.10 5)"
 panel = "baseUi.07"
 titlebar = "baseUi.06"
 control = "baseUi.06"
@@ -93,11 +95,11 @@ headerMutedInk = "baseUi.01"
 # Chrome colors stay as before; the brighter marks do not lighten them.
 savedInk = "oklch(0.43 0.126 152)"
 unsavedInk = "oklch(0.44 0.147 27)"
-# Selected cells and sidebar labels keep Gray's yellow ink on a dark face.
-gridSelected = "baseUi.00"
-cellSelectedFill = "baseUi.00"
+# Selected cells, sidebar rows and controls sit on a dark forest-green face.
+gridSelected = "oklch(0.38 0.08 150)"
+cellSelectedFill = "oklch(0.38 0.08 150)"
 cellSelectedInk = "baseUi.09"
-controlSelected = "baseUi.00"
+controlSelected = "oklch(0.38 0.08 150)"
 controlSelectedInk = "baseUi.09"
 # Selected glyph tiles and sidebar labels: a bright leaf green instead of Gray's yellow.
 selectedContentInk = "oklch(0.84 0.18 138)"
@@ -140,10 +142,16 @@ popcount4 = "#FF4A3D"
 
 [window]
 # Native macOS blur; Linux and other hosts retain the solid rose surfaces.
-# A strong pale tint preserves Strawberry's light appearance over dark wallpaper.
+# The dark menu material keeps the wallpaper visible, where light materials veil it in white;
+# a pale tint at high opacity keeps the theme light. Raise blurTintOpacity for a lighter,
+# pinker ground; lower it for more wallpaper.
 blurBackground = true
-blurTintOpacity = 0.75
+blurTintOpacity = 0.85
+blurMaterial = "menu"
+blurAppearance = "dark"
 shadowPanels = false
+# Solid side panels: frosted ones lose the theme's pink over the blur.
+blurPanels = false
 
 # The same rounding, strokes, and shadow behavior as Gray.
 [geometry]
