@@ -490,6 +490,10 @@ fn path_operations_controls(app: &Workspace) -> impl WidgetView<Workspace> + use
                     tbtn(pal, "Reverse", |s| s.reverse()).flex(1.0),
                 ),
             ),
+            xrow(
+                Region::Inline,
+                (tbtn(pal, "Snap to Grid", |s| s.snap_to_dot_grid()).flex(1.0),),
+            ),
             transform_parameter(
                 app,
                 "Slant °",

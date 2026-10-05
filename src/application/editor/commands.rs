@@ -728,7 +728,7 @@ impl Workspace {
         }
         // A placed picture is traced where it sits; without one, pick a file to trace.
         if self.session.has_image() {
-            self.command_trace_placed_image();
+            self.command_trace_placed_image(false);
             return;
         }
         let start = self

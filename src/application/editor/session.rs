@@ -1911,6 +1911,14 @@ impl Session {
         self.stage_canonical_edit("add extremes", |draft| draft.add_extreme_points(&selection))
     }
 
+    /// Move the selected points, or every point when none is selected, onto the dot grid.
+    pub(crate) fn snap_to_dot_grid(&mut self) -> bool {
+        let selection = self.selected_point_ids();
+        self.stage_canonical_edit("snap to grid", |draft| {
+            draft.snap_points_to_grid(&selection, runebender::outline::point_ops::DOT_GRID_SPACING)
+        })
+    }
+
     pub(crate) fn round_coordinates(&mut self) -> bool {
         self.stage_canonical_edit("round coordinates", |draft| {
             Ok(draft.round_coordinates() > 0)
@@ -3062,6 +3070,65 @@ mod tests {
         assert_eq!(projected_glyph(&session).contours[0].points[0].x, 0.0);
         assert!(session.pending_canonical.is_some());
         assert_eq!(session.pending_canonical_label, Some("round coordinates"));
+    }
+
+    fn off_grid_squares() -> Session {
+        let mut glyph = projected_glyph(&two_squares());
+        for contour in &mut glyph.contours {
+            for point in &mut contour.points {
+                point.x += 3.0;
+                point.y -= 5.0;
+            }
+        }
+        let mut font = norad::Font::new();
+        font.default_layer_mut().insert_glyph(glyph);
+        Session::new(&font, "test").expect("glyph is there")
+    }
+
+    fn point_positions(session: &Session, contour: usize) -> Vec<(f64, f64)> {
+        projected_glyph(session).contours[contour]
+            .points
+            .iter()
+            .map(|point| (point.x, point.y))
+            .collect()
+    }
+
+    #[test]
+    fn snap_to_grid_without_a_selection_moves_every_point_to_the_nearest_dot() {
+        let mut session = off_grid_squares();
+        assert!(session.snap_to_dot_grid());
+        // 3 rounds down to 0 and 103 to 104; -5 rounds to -8 and 95 to 96.
+        assert_eq!(
+            point_positions(&session, 0),
+            [(0.0, -8.0), (104.0, -8.0), (104.0, 96.0), (0.0, 96.0)]
+        );
+        assert_eq!(
+            point_positions(&session, 1),
+            [(200.0, -8.0), (304.0, -8.0), (304.0, 96.0), (200.0, 96.0)]
+        );
+        assert_eq!(session.pending_canonical_label, Some("snap to grid"));
+
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(projected_glyph(&session));
+        let mut snapped = Session::new(&font, "test").expect("glyph is there");
+        assert!(
+            !snapped.snap_to_dot_grid(),
+            "points already on the grid stay put"
+        );
+    }
+
+    #[test]
+    fn snap_to_grid_with_a_selection_moves_only_the_selected_points() {
+        let mut session = off_grid_squares();
+        let untouched = point_positions(&session, 1);
+        session.select_contour(0);
+        assert!(session.snap_to_dot_grid());
+        assert_eq!(
+            point_positions(&session, 0),
+            [(0.0, -8.0), (104.0, -8.0), (104.0, 96.0), (0.0, 96.0)]
+        );
+        assert_eq!(point_positions(&session, 1), untouched);
     }
 
     #[test]

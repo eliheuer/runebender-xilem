@@ -263,7 +263,10 @@ impl Workspace {
     }
 
     /// Add a trace of the open glyph's placed picture, where it sits, to its contours.
-    pub(crate) fn command_trace_placed_image(&mut self) {
+    ///
+    /// With `dot_grid`, the traced points land on the editor's dot grid rather than the design
+    /// grid.
+    pub(crate) fn command_trace_placed_image(&mut self, dot_grid: bool) {
         if !matches!(self.mode, Mode::Editor(_)) {
             return;
         }
@@ -281,7 +284,11 @@ impl Workspace {
                 .project
                 .document_source_image(source, image.file_name())
                 .ok_or("the placed image is missing from the source")?;
-            trace_image_placed(&bytes, image.transform(), self.trace_options())
+            let options = PlacedTraceOptions {
+                dot_grid,
+                ..self.trace_options()
+            };
+            trace_image_placed(&bytes, image.transform(), options)
         })();
         match traced {
             Ok(contours) => {
@@ -372,7 +379,7 @@ mod tests {
             profile: runebender::formats::image_trace::TraceProfile::Clean,
             ..Default::default()
         };
-        app.command_trace_placed_image();
+        app.command_trace_placed_image(false);
         assert!(app.note.starts_with("Traced 1 contour"), "{}", app.note);
         let bounds = kurbo::Shape::bounding_box(&app.session.outline());
         let near = |a: f64, b: f64| (a - b).abs() <= 30.0;
@@ -392,7 +399,7 @@ mod tests {
         );
 
         // tracing again keeps what is there: the outline now holds both traces
-        app.command_trace_placed_image();
+        app.command_trace_placed_image(false);
         assert_eq!(app.session.points().len(), 2 * traced_points);
 
         // the picture and its placement survive a save

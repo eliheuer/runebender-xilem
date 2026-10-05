@@ -463,6 +463,8 @@ pub struct PlacedTraceOptions {
     pub invert: bool,
     /// Brightness that separates ink from ground, 0 to 255; automatic when `None`.
     pub threshold: Option<u8>,
+    /// Land every point on the editor's dot grid instead of the finer design grid.
+    pub dot_grid: bool,
 }
 
 /// The largest image a placed trace accepts, in pixels.
@@ -526,6 +528,12 @@ fn placed_contours(
     let outline = img2bez::trace(image_bytes, &trace)
         .map_err(|error| format!("img2bez trace failed: {error}"))?
         .translated(dx, dy);
+    let spacing = if options.dot_grid {
+        crate::outline::point_ops::DOT_GRID_SPACING
+    } else {
+        crate::outline::point_ops::grid_spacing()
+    };
+    let snap = |value| crate::outline::point_ops::snap_to_spacing(value, spacing);
     let contours: Vec<norad::Contour> = outline
         .contours
         .into_iter()
@@ -535,10 +543,10 @@ fn placed_contours(
                     .points
                     .into_iter()
                     .map(|point| {
-                        // Land every point on the design grid, where edits keep it.
+                        // Land every point on the chosen grid, where edits keep it.
                         norad::ContourPoint::new(
-                            crate::outline::point_ops::snap_coord(point.x),
-                            crate::outline::point_ops::snap_coord(point.y),
+                            snap(point.x),
+                            snap(point.y),
                             match point.kind {
                                 PointKind::Move => norad::PointType::Move,
                                 PointKind::Line => norad::PointType::Line,
@@ -622,6 +630,25 @@ mod placed_tests {
             ..Default::default()
         };
         for contour in placed_contours(&block_png(), placement, options).unwrap() {
+            for point in contour.points {
+                assert_eq!(point.x % spacing, 0.0, "{}", point.x);
+                assert_eq!(point.y % spacing, 0.0, "{}", point.y);
+            }
+        }
+    }
+
+    #[test]
+    fn a_dot_grid_trace_lands_on_the_dot_grid() {
+        let spacing = crate::outline::point_ops::DOT_GRID_SPACING;
+        let placement = kurbo::Affine::new([3.7, 0.0, 0.0, 3.7, 11.0, -7.0]);
+        let options = PlacedTraceOptions {
+            profile: TraceProfile::Clean,
+            dot_grid: true,
+            ..Default::default()
+        };
+        let contours = placed_contours(&block_png(), placement, options).unwrap();
+        assert!(!contours.is_empty());
+        for contour in contours {
             for point in contour.points {
                 assert_eq!(point.x % spacing, 0.0, "{}", point.x);
                 assert_eq!(point.y % spacing, 0.0, "{}", point.y);

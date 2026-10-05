@@ -143,9 +143,19 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         )),
                     ),
                 ),
-                recipes::action(pal, "Trace image".into(), |app: &mut Workspace| {
-                    app.command_trace_placed_image();
-                }),
+                xrow(
+                    Region::Inline,
+                    (
+                        recipes::action(pal, "Trace image".into(), |app: &mut Workspace| {
+                            app.command_trace_placed_image(false);
+                        })
+                        .flex(1.0),
+                        recipes::action(pal, "Trace to grid".into(), |app: &mut Workspace| {
+                            app.command_trace_placed_image(true);
+                        })
+                        .flex(1.0),
+                    ),
+                ),
                 app.session.image_selected.then(|| {
                     xcolumn(
                         Region::Form,

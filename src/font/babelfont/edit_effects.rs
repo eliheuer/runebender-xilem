@@ -56,6 +56,53 @@ impl LayerEditDraft {
         removed
     }
 
+    /// Move contour points to the nearest intersection of a square grid with `spacing` units
+    /// between lines and a line through the origin.
+    ///
+    /// With an empty `selected`, every point moves; otherwise only the selected points, on-curve
+    /// or off-curve, move. Points already on the grid stay put, and a spacing that is not
+    /// positive moves nothing. Returns whether any point moved.
+    pub fn snap_points_to_grid(
+        &mut self,
+        selected: &[PointId],
+        spacing: f64,
+    ) -> Result<bool, DocumentEditError> {
+        for id in selected {
+            if self.node(*id).is_none() {
+                return Err(DocumentEditError::MissingPoint(*id));
+            }
+        }
+        if spacing.is_nan() || spacing <= 0.0 {
+            return Ok(false);
+        }
+        let selected: HashSet<_> = selected.iter().map(|id| id.0).collect();
+        let snap = |value| crate::outline::point_ops::snap_to_spacing(value, spacing);
+        let mut moved = false;
+        for node in self
+            .layer
+            .shapes
+            .iter_mut()
+            .filter_map(|shape| match shape {
+                Shape::Path(path) => Some(path),
+                Shape::Component(_) => None,
+            })
+            .flat_map(|path| &mut path.nodes)
+        {
+            if !selected.is_empty()
+                && !selected
+                    .contains(&read_id(&node.format_specific).expect("canonical point identity"))
+            {
+                continue;
+            }
+            let snapped = (snap(node.x), snap(node.y));
+            if (node.x, node.y) != snapped {
+                (node.x, node.y) = snapped;
+                moved = true;
+            }
+        }
+        Ok(moved)
+    }
+
     /// Round every canonical contour point to integer coordinates.
     ///
     /// Stable identities and source metadata remain attached to their points. Returns the number

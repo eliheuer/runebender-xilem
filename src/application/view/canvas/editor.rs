@@ -1576,9 +1576,10 @@ impl Widget for EditorWidget {
                     }
                 };
                 let (coarse, fine) = grid_dot_sizes(zoom);
-                level(8.0, 0, coarse, mid);
+                let spacing = runebender::outline::point_ops::DOT_GRID_SPACING;
+                level(spacing, 0, coarse, mid);
                 if close > 0.0 {
-                    level(2.0, 4, fine, close);
+                    level(spacing / 4.0, 4, fine, close);
                 }
             }
         }

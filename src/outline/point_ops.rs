@@ -34,6 +34,12 @@ pub(crate) struct PointState {
     pub(crate) smooth: bool,
 }
 
+/// The spacing of the editor's main dot grid, in font units, with a dot at the origin.
+///
+/// Snap to Grid moves points onto these dots; a finer grid of a quarter this spacing appears
+/// only at high zoom.
+pub const DOT_GRID_SPACING: f64 = 8.0;
+
 /// The default design grid: whole font units.
 pub const DEFAULT_GRID_SPACING: f64 = 1.0;
 
@@ -58,8 +64,13 @@ pub fn set_grid_spacing(spacing: f64) {
 
 /// Snap one coordinate to the design grid, or leave it when snapping is off.
 pub fn snap_coord(value: f64) -> f64 {
-    let spacing = grid_spacing();
-    if spacing <= 0.0 {
+    snap_to_spacing(value, grid_spacing())
+}
+
+/// Snap one coordinate to the nearest multiple of `spacing`, or leave it when `spacing` is not
+/// positive.
+pub fn snap_to_spacing(value: f64, spacing: f64) -> f64 {
+    if spacing.is_nan() || spacing <= 0.0 {
         return value;
     }
     (value / spacing).round() * spacing
