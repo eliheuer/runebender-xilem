@@ -58,7 +58,7 @@ impl Workspace {
             self.note = format!("Cannot add component {base}");
             return;
         };
-        let Ok(runebender::font::project::DocumentEditOutcome::Changed { .. }) = self
+        let Ok(runebender::font::project::DocumentEditOutcome::Changed { change, .. }) = self
             .font
             .project
             .commit_document_layer_transaction(transaction)
@@ -66,6 +66,7 @@ impl Workspace {
             self.note = "The active glyph layer changed before adding the component".into();
             return;
         };
+        self.refresh_changed_glyphs(&change);
         self.metadata_undo.push(MetadataEdit::DocumentLayer {
             glyph,
             address: address.clone(),
@@ -139,7 +140,7 @@ impl Workspace {
                 return;
             }
         }
-        let Ok(runebender::font::project::DocumentEditOutcome::Changed { .. }) = self
+        let Ok(runebender::font::project::DocumentEditOutcome::Changed { change, .. }) = self
             .font
             .project
             .commit_document_layer_transaction(transaction)
@@ -147,6 +148,7 @@ impl Workspace {
             self.note = "The active glyph layer changed before component alignment".into();
             return;
         };
+        self.refresh_changed_glyphs(&change);
         self.metadata_undo.push(MetadataEdit::DocumentLayer {
             glyph,
             address: address.clone(),
@@ -1239,7 +1241,7 @@ impl Workspace {
             self.note = "The copied contours are no longer valid".into();
             return;
         };
-        let Ok(runebender::font::project::DocumentEditOutcome::Changed { .. }) = self
+        let Ok(runebender::font::project::DocumentEditOutcome::Changed { change, .. }) = self
             .font
             .project
             .commit_document_layer_transaction(transaction)
@@ -1247,6 +1249,7 @@ impl Workspace {
             self.note = "The active glyph layer changed before pasting".into();
             return;
         };
+        self.refresh_changed_glyphs(&change);
         self.metadata_undo.push(MetadataEdit::DocumentLayer {
             glyph,
             address: address.clone(),

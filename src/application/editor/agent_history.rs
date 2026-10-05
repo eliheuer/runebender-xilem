@@ -39,7 +39,13 @@ impl Workspace {
     }
 
     /// Refresh only active-source views; switching sources rebuilds other source views canonically.
-    fn refresh_agent_change(&mut self, change: &DocumentChange) {
+    /// Refresh the cached glyph entries a document change touched in the active source,
+    /// including composites that use a changed glyph, and reload other tabs showing them.
+    ///
+    /// The grid, rail, previews and text inputs read these entries, so every committed
+    /// outline edit must pass through here. The open glyph's own session is left to its
+    /// caller. Returns the refreshed glyph names.
+    pub(crate) fn refresh_changed_glyphs(&mut self, change: &DocumentChange) -> BTreeSet<String> {
         let active_source = self.font.project.source_id(self.font.active());
         let addresses = change
             .affected_layers()
@@ -58,7 +64,21 @@ impl Workspace {
             }
         }
         for tab in &mut self.tabs {
-            if names.contains(&tab.session.glyph_name)
+            if tab.session.glyph_name != self.session.glyph_name
+                && names.contains(&tab.session.glyph_name)
+                && let Some(address) = self.font.active_layer_address(&tab.session.glyph_name)
+            {
+                Arc::make_mut(&mut tab.session).reload_from_project(&self.font.project, &address);
+            }
+        }
+        names
+    }
+
+    fn refresh_agent_change(&mut self, change: &DocumentChange) {
+        let names = self.refresh_changed_glyphs(change);
+        for tab in &mut self.tabs {
+            if tab.session.glyph_name == self.session.glyph_name
+                && names.contains(&tab.session.glyph_name)
                 && let Some(address) = self.font.active_layer_address(&tab.session.glyph_name)
             {
                 Arc::make_mut(&mut tab.session).reload_from_project(&self.font.project, &address);

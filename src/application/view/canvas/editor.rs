@@ -5446,6 +5446,71 @@ mod tests {
     }
 
     #[test]
+    fn an_outline_edit_refreshes_cached_outlines_for_the_glyph_and_its_composites() {
+        use kurbo::Shape as _;
+        let path = std::env::temp_dir().join(format!(
+            "runebender-editor-refresh-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(projected_glyph(&session()));
+        let mut composite = norad::Glyph::new("B");
+        composite.width = 500.0;
+        composite.components.push(norad::Component::new(
+            norad::Name::new("A").expect("a valid glyph name"),
+            norad::AffineTransform::default(),
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(composite);
+        font.save(&path).expect("the fixture saves");
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        let (a, b) = (
+            workspace.font.index_of("A").expect("A exists"),
+            workspace.font.index_of("B").expect("B exists"),
+        );
+        let right_edge = |workspace: &Workspace, index: usize| {
+            (
+                workspace.font.glyphs[index].outline.bounding_box().x1,
+                workspace.cells[index].outline.bounding_box().x1,
+            )
+        };
+        assert_eq!(right_edge(&workspace, a), (400.0, 400.0));
+        assert_eq!(right_edge(&workspace, b), (400.0, 400.0));
+
+        workspace.open_glyph(a);
+        let point = workspace.session.point_id_at(0, 1).unwrap();
+        let mut changed = (*workspace.session).clone();
+        changed.selection = HashSet::from([point]);
+        changed.begin_point_drag();
+        assert!(changed.drag_points_to((20.0, 0.0), false));
+        changed.end_point_drag();
+        dispatch_editor_event(
+            &mut workspace,
+            &mut changed,
+            EditorEvent::Edited,
+            |app, _| app.finish_open_glyph_refresh(),
+        );
+        // The grid, rail and previews read these caches, not the project.
+        assert_eq!(right_edge(&workspace, a), (420.0, 420.0));
+        assert_eq!(
+            right_edge(&workspace, b),
+            (420.0, 420.0),
+            "a composite using the edited glyph refreshes too"
+        );
+
+        // Undo refreshes the same caches back.
+        workspace.undo_open_glyph(false);
+        assert_eq!(right_edge(&workspace, a), (400.0, 400.0));
+        assert_eq!(right_edge(&workspace, b), (400.0, 400.0));
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
     fn unchanged_editor_release_skips_the_real_edited_callback_and_retains_redo() {
         let path = std::env::temp_dir().join(format!(
             "runebender-editor-noop-{}-{}.ufo",

@@ -573,13 +573,14 @@ impl Workspace {
                 } else {
                     HistoryDirection::Undo
                 };
-                let Ok(DocumentHistoryReplayOutcome::Changed { .. }) = self
+                let Ok(DocumentHistoryReplayOutcome::Changed { change, .. }) = self
                     .font
                     .project
                     .replay_document_layer_history(address, direction)
                 else {
                     return false;
                 };
+                self.refresh_changed_glyphs(&change);
                 if !self.reload_canonical_layer(address) {
                     return false;
                 }

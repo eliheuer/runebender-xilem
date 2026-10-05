@@ -2441,10 +2441,11 @@ impl Workspace {
         false
     }
 
-    /// After an edit, pull the glyph back out of the session and refresh
-    /// the model + grid cache so the overview preview matches.
-    /// Replace the app's session with the island's live one (called on every
-    /// editor event so save/preview see interactive edits).
+    /// Commit the island's live session to the project and make it the app's session
+    /// (called on every editor event so save and previews see interactive edits).
+    ///
+    /// A committed change refreshes the cached glyph entries it touched; callers then
+    /// rebuild the grid cells with [`Self::finish_open_glyph_refresh`].
     pub(crate) fn sync_session_from(&mut self, session: &mut Session) -> SessionSyncOutcome {
         if session.sync_rejected {
             return SessionSyncOutcome::Rejected;
@@ -2476,8 +2477,11 @@ impl Workspace {
                     .map_err(|error| error.to_string())
             });
             match commit {
-                Ok(runebender::font::project::DocumentEditOutcome::Changed { .. }) => {
+                Ok(runebender::font::project::DocumentEditOutcome::Changed { change, .. }) => {
                     outcome = SessionSyncOutcome::Changed;
+                    // The grid, rail, previews and text inputs read cached glyph entries,
+                    // not the project, so refresh this glyph and the composites using it.
+                    self.refresh_changed_glyphs(&change);
                     let layer_history_depth = self.font.project.document_layer_history_depth(
                         &address,
                         runebender::font::history::HistoryDirection::Undo,
@@ -2569,7 +2573,7 @@ impl Workspace {
     /// Undo or redo the open glyph through Project-owned history, then reload the canonical
     /// session.
     pub(crate) fn undo_open_glyph(&mut self, redo: bool) {
-        let Mode::Editor(index) = self.mode else {
+        let Mode::Editor(_) = self.mode else {
             return;
         };
         if self.metadata_history_step(redo) {
@@ -2583,12 +2587,11 @@ impl Workspace {
         } else {
             runebender::font::history::HistoryDirection::Undo
         };
-        if !matches!(
+        let Ok(runebender::font::project::DocumentHistoryReplayOutcome::Changed { change, .. }) =
             self.font
                 .project
-                .replay_document_layer_history(&address, direction),
-            Ok(runebender::font::project::DocumentHistoryReplayOutcome::Changed { .. })
-        ) {
+                .replay_document_layer_history(&address, direction)
+        else {
             self.note = if redo {
                 "Nothing to redo"
             } else {
@@ -2596,8 +2599,8 @@ impl Workspace {
             }
             .into();
             return;
-        }
-        self.font.refresh_entry(index);
+        };
+        self.refresh_changed_glyphs(&change);
         let mut session = (*self.session).clone();
         if !session.reload_from_project(&self.font.project, &address) {
             return;
