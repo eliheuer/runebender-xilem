@@ -102,6 +102,8 @@ pub(crate) struct Palette {
     slider_track_color: Color,
     pub text: Color,
     pub text_muted: Color,
+    /// Icon buttons in editor panels and footers: transformations, footer controls.
+    control_ink: Color,
     /// Glyph previews and their captions in the glyph grid.
     pub glyph_ink: Color,
     pub text_subdued: Color,
@@ -189,6 +191,7 @@ impl Palette {
             slider_track_color: color(t.surface("sliderTrack")),
             text,
             text_muted: color(t.text("muted")),
+            control_ink: color(t.text("controlInk")),
             glyph_ink: color(t.text("glyph")),
             text_subdued: color(t.text("subdued")),
             handle_line: color(t.text("secondary")),
@@ -447,7 +450,7 @@ impl Palette {
     /// Gray keeps controls quieter than structural outlines and darker than
     /// filled proof type.
     pub(crate) fn editor_control_ink(&self) -> Color {
-        self.text_muted
+        self.control_ink
     }
 
     /// The themed slider rail, separate from its thumb outline.
@@ -635,7 +638,7 @@ mod tests {
     fn gray_editor_ink_is_quieter_than_the_structural_outline() {
         let palette = Palette::load("gray");
         assert_eq!(palette.editor_ink(), palette.role("previewFill"));
-        assert_eq!(palette.editor_control_ink(), palette.text_muted);
+        assert_eq!(palette.editor_control_ink(), palette.control_ink);
         assert!(palette.editor_control_ink().components[0] > palette.outline.components[0]);
         assert!(palette.editor_ink().components[0] > palette.outline.components[0]);
         assert!(palette.editor_ink().components[0] > palette.editor_control_ink().components[0]);

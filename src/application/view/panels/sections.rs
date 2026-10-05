@@ -367,7 +367,7 @@ pub(crate) fn transformations_section(app: &Workspace) -> impl WidgetView<Worksp
     use crate::application::editor::session::BoolOp;
     use icon_button::icon_button;
     let pal = &app.palette;
-    let fg = pal.text_muted;
+    let fg = pal.editor_control_ink();
     let fga = pal.selected_ink();
     let abg = pal.selected_bg();
     let hbg = pal.control;

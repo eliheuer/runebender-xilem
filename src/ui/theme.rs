@@ -799,6 +799,7 @@ pub fn parse_theme(source: &str) -> Result<Theme, String> {
     let header_muted_ink = text_tokens.remove("headerMutedInk");
     let inactive_tab_ink = text_tokens.remove("inactiveTabInk");
     let active_tab_ink = text_tokens.remove("activeTabInk");
+    let control_ink = text_tokens.remove("controlInk");
     let mut text = resolve_map(&file, theme_id, "text", &text_tokens, REQUIRED_TEXT)?;
     let app_ink = resolve_optional(&file, theme_id, "text.appInk", app_ink.as_deref())?
         .unwrap_or_else(|| text["primary"]);
@@ -827,6 +828,9 @@ pub fn parse_theme(source: &str) -> Result<Theme, String> {
     )?
     .unwrap_or_else(|| text["primary"]);
     text.insert("activeTabInk".into(), active_tab_ink);
+    let control_ink = resolve_optional(&file, theme_id, "text.controlInk", control_ink.as_deref())?
+        .unwrap_or_else(|| text["muted"]);
+    text.insert("controlInk".into(), control_ink);
     let mut role_tokens = file.roles.clone();
     let mut optional_roles = Vec::new();
     for &name in OPTIONAL_ROLES {

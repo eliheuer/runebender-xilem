@@ -15,7 +15,7 @@ name = "Strawberry"
 "05" = "oklch(0.76 0.09 5)"
 "06" = "oklch(0.84 0.07 5)"
 "07" = "oklch(0.89 0.05 5)"
-"08" = "oklch(0.94 0.03 5)"
+"08" = "oklch(0.92 0.045 5)"
 "09" = "oklch(0.97 0.014 5)"
 
 # Glyph marks keep Gray's order and meaning, a little lighter and brighter for the rose surfaces.
@@ -86,23 +86,29 @@ secondary = "baseUi.01"
 muted = "baseUi.02"
 subdued = "baseUi.03"
 overlay = "baseUi.00"
-glyph = "baseUi.00"
+glyph = "baseUi.03"
 headerInk = "baseUi.00"
 headerMutedInk = "baseUi.01"
+# Icons: only the active tab and tool take the darker ink; the rest sit two steps lighter.
+activeTabInk = "baseUi.01"
+inactiveTabInk = "baseUi.03"
+controlInk = "baseUi.03"
 
 [roles]
+toolActiveInk = "baseUi.01"
+toolInactiveInk = "baseUi.03"
 # Save-state labels use darker hues on the pale title bar, independently of glyph marks.
 # Chrome colors stay as before; the brighter marks do not lighten them.
-savedInk = "oklch(0.43 0.126 152)"
+savedInk = "oklch(0.42 0.13 145)"
 unsavedInk = "oklch(0.44 0.147 27)"
-# Selected cells, sidebar rows and controls sit on a dark forest-green face.
-gridSelected = "oklch(0.38 0.08 150)"
-cellSelectedFill = "oklch(0.38 0.08 150)"
+# Selected cells, sidebar rows and controls sit on a dusty berry red, between baseUi.02 and 03.
+gridSelected = "oklch(0.50 0.085 5)"
+cellSelectedFill = "oklch(0.50 0.085 5)"
 cellSelectedInk = "baseUi.09"
-controlSelected = "oklch(0.38 0.08 150)"
+controlSelected = "oklch(0.50 0.085 5)"
 controlSelectedInk = "baseUi.09"
 # Selected glyph tiles and sidebar labels: a bright leaf green instead of Gray's yellow.
-selectedContentInk = "oklch(0.84 0.18 138)"
+selectedContentInk = "oklch(0.82 0.205 148)"
 designGridFine = "baseUi.07"
 designGridCoarse = "baseUi.06"
 accent = "oklch(0.52 0.106 152)"

@@ -138,9 +138,6 @@ fn pack_spans(spans: &[(usize, usize)], cols: usize) -> Vec<Vec<(usize, usize)>>
     rows
 }
 
-/// How far a filled grid may stretch its rows past their natural height.
-const FILL_STRETCH_MAX: f64 = 1.3;
-
 /// Pack like [`pack_spans`], but share a short row's spare columns among all
 /// its cells rather than giving them to the last one, so no tile in a filled
 /// grid stands out for its position alone.
@@ -459,13 +456,9 @@ impl GridWidget {
         let available = (self.size.height - 2.0 * self.metrics.padding_y).max(1.0);
         // Keep the fractional remainder: flooring every row leaves enough
         // spare pixels at small slider sizes to expose the next row.
-        let fitted = ((available - GAP * (rows - 1.0)) / rows).max(1.0);
-        // A filled grid stretches its rows down the space, but not so far
-        // that a tile turns into a tall strip.
-        match self.fill_layout() {
-            Some((columns, _)) => fitted.min(self.natural_row_height(columns) * FILL_STRETCH_MAX),
-            None => fitted,
-        }
+        // A filled grid stretches its rows down the whole space, so no empty band is left
+        // below the last row.
+        ((available - GAP * (rows - 1.0)) / rows).max(1.0)
     }
 
     fn inset_x(&self) -> f64 {
@@ -1253,7 +1246,10 @@ mod thumbnail_tests {
             assert_eq!(row.iter().map(|cell| cell.1).sum::<usize>(), columns);
         }
         let used = rows as f64 * grid.row_pitch() - GAP + 2.0 * grid.inset_y();
-        assert!(used <= grid.size.height + 1e-9, "every row is on screen");
+        assert!(
+            (used - grid.size.height).abs() < 1e-9,
+            "the rows fill the height, leaving no empty band"
+        );
 
         // Ink wider than the grid takes the whole row.
         let wide = canvases(&[12.0, 1.0]);
