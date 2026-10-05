@@ -12,10 +12,10 @@
 	<string>bismillah-002.glif</string>
 	<key>bismillah-003</key>
 	<string>bismillah-003.glif</string>
-	<key>ha-basic</key>
-	<string>ha-basic.glif</string>
-	<key>ka-basic</key>
-	<string>ka-basic.glif</string>
+	<key>ha-basic-001</key>
+	<string>ha-basic-001.glif</string>
+	<key>ha-basic-002</key>
+	<string>ha-basic-002.glif</string>
 	<key>word-nastaliq</key>
 	<string>word-nastaliq.glif</string>
 </dict>

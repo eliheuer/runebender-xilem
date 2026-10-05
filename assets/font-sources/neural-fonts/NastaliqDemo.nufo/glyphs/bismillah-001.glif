@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <glyph name="bismillah-001" format="2">
+	<image fileName="Minimalist Arabic Calligraphy in Gray.png" xScale="2.772511986690655" yScale="2.772511986690655" xOffset="2207.165165670155" yOffset="-1539.1898095260365"/>
 	<outline>
 		<contour>
 			<point x="-4258" y="-512" type="curve" smooth="yes"/>
