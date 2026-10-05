@@ -110,10 +110,7 @@ pub(crate) fn run(
             workspace.fullscreen = crate::application::platform::window::is_fullscreen();
         }
         #[cfg(target_os = "macos")]
-        crate::application::platform::window::set_backdrop(
-            app.palette.blur_background,
-            app.palette.app,
-        );
+        crate::application::platform::window::set_backdrop(app.palette.backdrop_style());
         let background = app.background();
         #[cfg(target_os = "macos")]
         let background = if crate::application::platform::window::backdrop_active() {
@@ -128,10 +125,7 @@ pub(crate) fn run(
                 if let Some(workspace) = app.workspace.as_mut() {
                     workspace.fullscreen = crate::application::platform::window::is_fullscreen();
                 }
-                crate::application::platform::window::set_backdrop(
-                    app.palette.blur_background,
-                    app.palette.app,
-                );
+                crate::application::platform::window::set_backdrop(app.palette.backdrop_style());
             },
             content,
         );

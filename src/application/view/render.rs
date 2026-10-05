@@ -19,11 +19,13 @@ use crate::application::view::panels::nodes::nodes_pane;
 use crate::application::view::panels::preview::{glyph_preview, preview_strip};
 use crate::application::view::panels::tabs::{editor_nav, sidebar};
 use crate::application::view::{design, label};
+use crate::application::widgets::ground::ground;
 use crate::application::widgets::menu_shell;
 use crate::application::widgets::scroll_viewport::portal;
 #[cfg(target_os = "macos")]
 use crate::application::widgets::shortcuts;
 use crate::application::workspace::{AppState, Mode, Workspace};
+use masonry::kurbo::Insets;
 use masonry::layout::UnitPoint;
 use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
@@ -120,6 +122,8 @@ where
 fn floating_panel<State, V>(
     content: V,
     pal: &crate::application::view::theme::Palette,
+    face: Color,
+    ground_color: Color,
 ) -> impl WidgetView<State, Widget: Sized> + use<State, V>
 where
     State: 'static,
@@ -130,26 +134,29 @@ where
     // outline's inner edge with a concentric radius, so antialiased corner pixels
     // never mix the light face into the outline's outer edge.
     let outline = Stroke::Hairline.px();
-    sized_box(xilem::view::zstack((
-        sized_box(crate::application::widgets::rounded_clip::rounded_clip(
-            clip_split(sized_box(content).background_color(pal.panel)),
-            (radius - outline).max(0.0),
-        ))
-        .padding(Length::px(outline))
-        .alignment(UnitPoint::TOP_LEFT),
-        crate::application::widgets::panel_frame::panel_frame(
-            pal.outline,
-            radius,
-            pal.main_panel_shadow(),
-        )
-        .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
-        .alignment(UnitPoint::TOP_LEFT),
-    )))
-    .padding(masonry::properties::Padding {
-        left: Length::px(design::PANEL_SHADOW_OFFSET),
-        bottom: Length::px(design::PANEL_SHADOW_OFFSET),
-        ..Default::default()
-    })
+    // The lower-left shadow extent is ground: it, and the corners outside the panel's
+    // rounded shape, take the window ground; the panel's own face is never tinted beneath.
+    let shadow = design::PANEL_SHADOW_OFFSET;
+    ground(
+        xilem::view::zstack((
+            sized_box(crate::application::widgets::rounded_clip::rounded_clip(
+                clip_split(sized_box(content).background_color(face)),
+                (radius - outline).max(0.0),
+            ))
+            .padding(Length::px(outline))
+            .alignment(UnitPoint::TOP_LEFT),
+            crate::application::widgets::panel_frame::panel_frame(
+                pal.outline,
+                radius,
+                pal.main_panel_shadow(),
+            )
+            .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
+            .alignment(UnitPoint::TOP_LEFT),
+        )),
+        ground_color,
+        Insets::new(shadow, 0.0, 0.0, shadow),
+        Some(radius),
+    )
 }
 
 /// Native splitters retain dragged sizes across view rebuilds and window resizes.
@@ -158,6 +165,7 @@ fn workspace_columns<State, A, B, C>(
     middle: B,
     right: C,
     collapsed: bool,
+    ground_color: Color,
 ) -> impl WidgetView<State, Widget: Sized> + use<State, A, B, C>
 where
     State: 'static,
@@ -177,14 +185,19 @@ where
     } else {
         panel_width + left_gutter
     };
-    let left = sized_box(left).padding(masonry::properties::Padding {
-        right: Length::px(left_gutter),
-        ..Default::default()
-    });
-    let middle = sized_box(middle).padding(masonry::properties::Padding {
-        right: Length::px(panel_gutter),
-        ..Default::default()
-    });
+    // The gutters between columns paint the window ground; each panel cuts its own corners.
+    let left = ground(
+        left,
+        ground_color,
+        Insets::new(0.0, 0.0, left_gutter, 0.0),
+        None,
+    );
+    let middle = ground(
+        middle,
+        ground_color,
+        Insets::new(0.0, 0.0, panel_gutter, 0.0),
+        None,
+    );
     let columns = crate::application::widgets::quiet_split::split(left, middle)
         .split_point_from_start(Length::px(left_width))
         .min_lengths(
@@ -342,26 +355,30 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         // the section tree is already near rustc's recursive trait limit.
         .boxed();
     let columns = workspace_columns(
-        floating_panel(left.boxed(), pal),
-        floating_panel(middle.boxed(), pal),
-        floating_panel(inspector, pal),
+        floating_panel(
+            left.boxed(),
+            pal,
+            pal.side_panel_face(),
+            pal.app_background(),
+        ),
+        floating_panel(middle.boxed(), pal, pal.panel, pal.app_background()),
+        floating_panel(inspector, pal, pal.side_panel_face(), pal.app_background()),
         app.left_collapsed,
+        pal.app_background(),
     );
     // The native header already centers its controls between the window edge
     // and this panel edge. A second top gutter makes the space below them
     // larger than the space above, especially beside the macOS traffic lights.
-    let gutter = Length::px(design::WORKSPACE_GUTTER);
-    let columns = sized_box(columns).padding(masonry::properties::Padding {
-        left: Length::px(design::WORKSPACE_GUTTER - design::PANEL_SHADOW_OFFSET),
-        right: gutter,
-        top: if menu_shell::in_window() {
-            gutter
-        } else {
-            Length::ZERO
-        },
-        // Each panel reserves its own shadow extent inside the clipped columns.
-        bottom: Length::px(design::WORKSPACE_GUTTER - design::PANEL_SHADOW_OFFSET),
-    });
+    let gutter = design::WORKSPACE_GUTTER;
+    // Each panel reserves its own shadow extent inside the clipped columns.
+    let inner_gutter = design::WORKSPACE_GUTTER - design::PANEL_SHADOW_OFFSET;
+    let top = if menu_shell::in_window() { gutter } else { 0.0 };
+    let columns = ground(
+        columns,
+        pal.app_background(),
+        Insets::new(inner_gutter, top, gutter, inner_gutter),
+        None,
+    );
 
     // Boxed on purpose, and not for tidiness. Every wrapper here adds a
     // layer to a monomorphized view type that is already enormous, and
@@ -376,7 +393,8 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(Space::None)
-    .background_color(pal.app_background());
+    // The ground is painted in the gutters and title bar, never beneath the panels.
+    .background_color(pal.window_root_background());
     // Erase the chrome before the async pumps add their own generic layers;
     // otherwise the macOS linker receives multi-megabyte symbol names.
     let content = content.boxed();
@@ -1326,9 +1344,14 @@ mod panel_resize_tests {
                 .background_color(palette.panel)
                 .border_width(Length::ZERO)
                 .dims(Dimensions::new(Dim::Stretch, Dim::Stretch));
-            let view = sized_box(floating_panel(content, &palette))
-                .padding(Length::px(8.0))
-                .background_color(palette.app);
+            let view = sized_box(floating_panel(
+                content,
+                &palette,
+                palette.panel,
+                xilem::Color::TRANSPARENT,
+            ))
+            .padding(Length::px(8.0))
+            .background_color(palette.app);
             let mut ctx = context();
             let (pod, _) = view.build(&mut ctx, &mut ());
             let mut harness = TestHarness::create_with_size(
@@ -1369,6 +1392,8 @@ mod panel_resize_tests {
         let view = sized_box(floating_panel(
             sized_box(label("")).dims(Dimensions::new(Dim::Stretch, Dim::Stretch)),
             &palette,
+            palette.panel,
+            xilem::Color::TRANSPARENT,
         ))
         .padding(Length::px(8.0))
         .background_color(palette.app);
@@ -1417,9 +1442,14 @@ mod panel_resize_tests {
         let shadow = palette.panel_shadow;
         palette.panel_shadow = None;
         let logic = |pal: &Palette| {
-            sized_box(floating_panel(label(""), pal))
-                .padding(Length::px(8.0))
-                .background_color(pal.app)
+            sized_box(floating_panel(
+                label(""),
+                pal,
+                pal.panel,
+                xilem::Color::TRANSPARENT,
+            ))
+            .padding(Length::px(8.0))
+            .background_color(pal.app)
         };
         let mut ctx = context();
         let off = logic(&palette);
@@ -1517,7 +1547,13 @@ mod panel_resize_tests {
                         )
                         .draw();
                 }),
-                sized_box(floating_panel(label(""), pal)).padding(Length::px(8.0)),
+                sized_box(floating_panel(
+                    label(""),
+                    pal,
+                    pal.panel,
+                    Color::TRANSPARENT,
+                ))
+                .padding(Length::px(8.0)),
             ))
         };
         let mut ctx = context();
@@ -1557,7 +1593,15 @@ mod panel_resize_tests {
     fn both_docks_drag_and_retain_widths_after_rebuild_and_window_resize() {
         use xilem::core::View;
         use xilem::view::label;
-        let logic = || workspace_columns(label("Left"), label("Canvas"), label("Right"), false);
+        let logic = || {
+            workspace_columns(
+                label("Left"),
+                label("Canvas"),
+                label("Right"),
+                false,
+                xilem::Color::TRANSPARENT,
+            )
+        };
         let mut ctx = context();
         let view = logic();
         let (pod, mut state) = view.build(&mut ctx, &mut ());
@@ -1614,13 +1658,58 @@ mod panel_resize_tests {
     }
 
     #[test]
+    fn a_translucent_ground_is_painted_exactly_once_in_every_gutter() {
+        use masonry_testing::TestHarnessParams;
+        use xilem::core::View;
+        use xilem::view::label;
+        let mut palette = crate::application::view::theme::Palette::load("gray");
+        // Over the native backdrop, Gray draws no panel shadow; it would darken the gutter.
+        palette.panel_shadow = None;
+        let ground = xilem::Color::from_rgba8(255, 0, 0, 128);
+        let panel = || floating_panel(label(""), &palette, palette.panel, ground);
+        let view = workspace_columns(panel(), panel(), panel(), false, ground);
+        let mut ctx = context();
+        let (pod, _) = view.build(&mut ctx, &mut ());
+        // An odd width splits the center into a fractional width, as dragging does.
+        let mut h = TestHarness::create_with(
+            crate::application::view::default_property_set(),
+            pod.new_widget,
+            TestHarnessParams::default()
+                .with_size((1281, 400))
+                .with_background(xilem::Color::TRANSPARENT),
+        );
+        let image = h.render();
+        // Rows away from the rounded corners cross every vertical gutter; columns through
+        // each panel cross the horizontal edges. Outline antialiasing only occurs at corners.
+        let rows = [100, 200, 300]
+            .into_iter()
+            .flat_map(|y| (0..image.width()).map(move |x| (x, y)));
+        let columns = [100, 640, 1200]
+            .into_iter()
+            .flat_map(|x| (0..image.height()).map(move |y| (x, y)));
+        for (x, y) in rows.chain(columns) {
+            let alpha = image.get_pixel(x, y).0[3];
+            assert!(
+                alpha == 128 || alpha == 255,
+                "pixel ({x}, {y}) has alpha {alpha}: the ground overlaps itself or a panel"
+            );
+        }
+    }
+
+    #[test]
     fn minimum_window_width_keeps_dragged_docks_at_their_minimums() {
         use crate::application::view::design::{
             CENTER_MIN_WIDTH, DOCK_WIDTH, PANEL_SHADOW_OFFSET, WORKSPACE_GUTTER,
         };
         use xilem::core::View;
         use xilem::view::label;
-        let view = workspace_columns(label("Left"), label("Canvas"), label("Right"), false);
+        let view = workspace_columns(
+            label("Left"),
+            label("Canvas"),
+            label("Right"),
+            false,
+            xilem::Color::TRANSPARENT,
+        );
         let mut ctx = context();
         let (pod, _) = view.build(&mut ctx, &mut ());
         let mut h = TestHarness::create_with_size(
@@ -1663,7 +1752,13 @@ mod panel_resize_tests {
         use xilem::core::View;
         use xilem::view::label;
         let logic = |collapsed| {
-            workspace_columns(label("Left"), label("Canvas"), label("Right"), collapsed)
+            workspace_columns(
+                label("Left"),
+                label("Canvas"),
+                label("Right"),
+                collapsed,
+                xilem::Color::TRANSPARENT,
+            )
         };
         let mut ctx = context();
         let view = logic(true);
@@ -1867,7 +1962,7 @@ mod panel_resize_tests {
             }
         }
         check(
-            workspace_columns(pane(), pane(), pane(), false),
+            workspace_columns(pane(), pane(), pane(), false, xilem::Color::TRANSPARENT),
             (1296, 666),
             Point::new(1041.5, 108.0),
             Point::new(961.5, 108.0),

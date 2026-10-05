@@ -94,7 +94,7 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         // of vertical padding lets its fixed height center those controls;
         // horizontal padding retains the established leading/trailing inset.
         .padding(Padding::horizontal(Space::Md.length()))
-        .background_color(pal.header_background()),
+        .background_color(pal.titlebar_background()),
     )
     .dims(Dimensions::new(
         Dim::Stretch,

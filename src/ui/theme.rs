@@ -239,6 +239,52 @@ fn merge_drawing_setting<T>(
     Ok(())
 }
 
+/// The macOS material behind a blurred window, from lightest-touch to most opaque varies by
+/// appearance; `menu` is the default.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+pub enum BlurMaterial {
+    /// The menu material, the long-standing default.
+    #[default]
+    #[serde(rename = "menu")]
+    Menu,
+    /// The popover material.
+    #[serde(rename = "popover")]
+    Popover,
+    /// The sidebar material, as in Finder and Glyphs.
+    #[serde(rename = "sidebar")]
+    Sidebar,
+    /// The header-view material.
+    #[serde(rename = "headerView")]
+    HeaderView,
+    /// The heads-up-display material.
+    #[serde(rename = "hudWindow")]
+    HudWindow,
+    /// The full-screen interface material.
+    #[serde(rename = "fullScreenUI")]
+    FullScreenUi,
+    /// The material beneath window content.
+    #[serde(rename = "underWindowBackground")]
+    UnderWindowBackground,
+    /// The window-background material.
+    #[serde(rename = "windowBackground")]
+    WindowBackground,
+}
+
+/// Whether the macOS material is drawn light or dark.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+pub enum BlurAppearance {
+    /// Follow the theme's window ground: dark material under a dark ground.
+    #[default]
+    #[serde(rename = "auto")]
+    Auto,
+    /// Always the light material.
+    #[serde(rename = "light")]
+    Light,
+    /// Always the dark material.
+    #[serde(rename = "dark")]
+    Dark,
+}
+
 /// Optional native window effects; unsupported hosts keep flat theme colors.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
@@ -252,6 +298,18 @@ pub struct WindowStyle {
     /// Allow main-panel shadows over native blur; other shadows are unaffected.
     #[serde(rename = "shadowPanels")]
     pub shadow_panels: bool,
+    /// Let the native blur show through the left and right panels; needs `blurBackground`.
+    #[serde(rename = "blurPanels")]
+    pub blur_panels: bool,
+    /// Opacity of the side panels' face over native blur, from 0 (clear) to 1 (solid).
+    #[serde(rename = "panelTintOpacity")]
+    pub panel_tint_opacity: f32,
+    /// The macOS material behind the blur.
+    #[serde(rename = "blurMaterial")]
+    pub blur_material: BlurMaterial,
+    /// Whether that material is drawn light, dark, or to match the window ground.
+    #[serde(rename = "blurAppearance")]
+    pub blur_appearance: BlurAppearance,
 }
 
 impl Default for WindowStyle {
@@ -260,6 +318,10 @@ impl Default for WindowStyle {
             blur_background: false,
             blur_tint_opacity: 0.8,
             shadow_panels: true,
+            blur_panels: false,
+            panel_tint_opacity: 0.8,
+            blur_material: BlurMaterial::Menu,
+            blur_appearance: BlurAppearance::Auto,
         }
     }
 }
@@ -650,6 +712,11 @@ pub fn parse_theme(source: &str) -> Result<Theme, String> {
             "theme '{theme_id}' window.blurTintOpacity must be between 0 and 1"
         ));
     }
+    if !(0.0..=1.0).contains(&file.window.panel_tint_opacity) {
+        return Err(format!(
+            "theme '{theme_id}' window.panelTintOpacity must be between 0 and 1"
+        ));
+    }
     if file.format_version != 1 {
         return Err(format!(
             "theme '{}' uses unsupported formatVersion {}",
@@ -696,6 +763,7 @@ pub fn parse_theme(source: &str) -> Result<Theme, String> {
     let panel_shadow = surface_tokens.remove("panelShadow");
     let backdrop_tint = surface_tokens.remove("backdropTint");
     let glyph_preview = surface_tokens.remove("glyphPreview");
+    let panel_tint = surface_tokens.remove("panelTint");
     let proof_strip = surface_tokens.remove("proofStrip");
     let slider_thumb = surface_tokens.remove("sliderThumb");
     let slider_thumb_active = surface_tokens.remove("sliderThumbActive");
@@ -717,6 +785,7 @@ pub fn parse_theme(source: &str) -> Result<Theme, String> {
     for (name, token, fallback) in [
         ("backdropTint", backdrop_tint, "app"),
         ("glyphPreview", glyph_preview, "canvas"),
+        ("panelTint", panel_tint, "panel"),
         ("proofStrip", proof_strip, "panel"),
         ("sliderThumb", slider_thumb, "button"),
         ("sliderThumbActive", slider_thumb_active, "buttonHover"),
@@ -1078,9 +1147,11 @@ mod tests {
             }
             for section in ["surfaces", "text"] {
                 for (role, value) in file[section].as_table().unwrap() {
-                    // The native backdrop overlay is intentionally independent of Base UI.
-                    // load_theme_checked above still validates its color.
-                    if section == "surfaces" && role == "backdropTint" {
+                    // Overlays on the native backdrop are intentionally independent of Base UI.
+                    // load_theme_checked above still validates their colors.
+                    if section == "surfaces"
+                        && matches!(role.as_str(), "backdropTint" | "panelTint")
+                    {
                         continue;
                     }
                     assert!(
@@ -1552,14 +1623,18 @@ mod geometry_tests {
                 .window
                 .blur_background
         );
-        let opacity_line = source
-            .lines()
-            .find(|line| line.starts_with("blurTintOpacity = "))
-            .expect("Gray backdrop opacity");
-        let legacy = source
-            .replace("blurBackground = true\n", "")
-            .replace(opacity_line, "")
-            .replace("shadowPanels = false\n", "");
+        let legacy = without_settings(
+            &source,
+            &[
+                "blurBackground",
+                "blurTintOpacity",
+                "shadowPanels",
+                "blurPanels",
+                "panelTintOpacity",
+                "blurMaterial",
+                "blurAppearance",
+            ],
+        );
         assert_eq!(
             parse_theme(&legacy).expect("optional backdrop").window,
             WindowStyle::default()
@@ -1590,6 +1665,77 @@ mod geometry_tests {
         }
         let legacy = source.replace(opacity_line, "");
         assert_eq!(parse_theme(&legacy).unwrap().window.blur_tint_opacity, 0.8);
+    }
+
+    #[test]
+    fn blur_material_and_appearance_are_named_choices() {
+        let source = without_settings(
+            include_str!("../../assets/themes/default/gray.theme.toml"),
+            &["blurMaterial", "blurAppearance"],
+        );
+        let defaults = parse_theme(&source).expect("a theme without the settings");
+        assert_eq!(defaults.window.blur_material, BlurMaterial::Menu);
+        assert_eq!(defaults.window.blur_appearance, BlurAppearance::Auto);
+        let with = |settings: &str| {
+            source.replace(
+                "shadowPanels = false",
+                &format!("shadowPanels = false\n{settings}"),
+            )
+        };
+        let chosen = parse_theme(&with(
+            "blurMaterial = \"sidebar\"\nblurAppearance = \"light\"",
+        ))
+        .expect("a named material and appearance");
+        assert_eq!(chosen.window.blur_material, BlurMaterial::Sidebar);
+        assert_eq!(chosen.window.blur_appearance, BlurAppearance::Light);
+        let unknown = with("blurMaterial = \"glass\"");
+        assert!(parse_theme(&unknown).unwrap_err().contains("glass"));
+    }
+
+    #[test]
+    fn side_panel_frosting_is_optional_and_validated() {
+        let source = without_settings(
+            include_str!("../../assets/themes/default/gray.theme.toml"),
+            &["blurPanels", "panelTintOpacity"],
+        );
+        let legacy = parse_theme(&source).expect("a theme without the settings");
+        assert!(
+            !legacy.window.blur_panels,
+            "panels stay solid unless a theme asks"
+        );
+        assert_eq!(legacy.window.panel_tint_opacity, 0.8);
+        let with = |settings: &str| {
+            source.replace(
+                "shadowPanels = false",
+                &format!("shadowPanels = false\n{settings}"),
+            )
+        };
+        let frosted = parse_theme(&with("blurPanels = true\npanelTintOpacity = 0.6"))
+            .expect("frosted panels");
+        assert!(frosted.window.blur_panels);
+        assert_eq!(frosted.window.panel_tint_opacity, 0.6);
+        for value in ["-0.1", "1.1", "nan"] {
+            assert!(
+                parse_theme(&with(&format!("panelTintOpacity = {value}")))
+                    .unwrap_err()
+                    .contains("window.panelTintOpacity"),
+                "invalid opacity {value}"
+            );
+        }
+    }
+
+    /// A theme source with the named settings removed, so a test can rely on defaults
+    /// rather than on a built-in theme's current choices.
+    fn without_settings(source: &str, keys: &[&str]) -> String {
+        source
+            .lines()
+            .filter(|line| {
+                !keys
+                    .iter()
+                    .any(|key| line.starts_with(&format!("{key} = ")))
+            })
+            .map(|line| format!("{line}\n"))
+            .collect()
     }
 
     #[test]

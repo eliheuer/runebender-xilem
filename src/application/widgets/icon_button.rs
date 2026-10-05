@@ -88,37 +88,13 @@ impl Widget for IconWidget {
             // Open at the bottom, with outward curves joining the panel below.
             let r = radius.max(0.5).min(size.width.min(size.height) / 2.0);
             if self.active {
-                let mut face = BezPath::new();
-                // Quarter-circle control points match Kurbo's rounded rectangles.
-                let k = r * 0.552_284_749_830_793_6;
-                let flare = design::rail_tab_flare(r);
-                let kf = flare * 0.552_284_749_830_793_6;
-                let left = rect.x0 + 0.5;
-                let right = rect.x1 - 0.5;
-                let top = rect.y0 + 0.5;
-                let bottom = rect.y1 - 0.5;
-                face.move_to((left - flare, bottom));
-                face.curve_to(
-                    (left - flare + kf, bottom),
-                    (left, bottom - flare + kf),
-                    (left, bottom - flare),
-                );
-                face.line_to((left, top + r));
-                face.curve_to((left, top + r - k), (left + r - k, top), (left + r, top));
-                face.line_to((right - r, top));
-                face.curve_to((right - r + k, top), (right, top + r - k), (right, top + r));
-                face.line_to((right, bottom - flare));
-                face.curve_to(
-                    (right, bottom - flare + kf),
-                    (right + flare - kf, bottom),
-                    (right + flare, bottom),
-                );
-                let mut fill = face.clone();
-                fill.line_to((right + flare, rect.y1 + 1.0));
-                fill.line_to((left - flare, rect.y1 + 1.0));
-                fill.close_path();
-                painter.fill(&fill, background).draw();
-                painter.stroke(&face, &Stroke::new(1.0), border).draw();
+                // The rail leaves this shape open, so the panel's face shows through it;
+                // a background is painted only when the caller asks for one.
+                let (outline, fill) = rail_tab_face(rect, radius);
+                if background != Color::TRANSPARENT {
+                    painter.fill(&fill, background).draw();
+                }
+                painter.stroke(&outline, &Stroke::new(1.0), border).draw();
             } else if radius > 0.0 {
                 // Kurbo insets grow a rectangle for positive values. Move the stroke
                 // inward so inactive tops align with the active tab's top edge.
@@ -227,6 +203,45 @@ impl Widget for IconWidget {
     fn children_ids(&self) -> ChildrenIds {
         ChildrenIds::new()
     }
+}
+
+/// The active rail tab's outline and filled area for its box `rect`.
+///
+/// The outline rises from outward flares at the bottom to rounded top corners, so the tab
+/// opens onto the panel below. The fill closes the outline just below `rect`, covering the
+/// rail's bottom keyline. Returns `(outline, fill)`.
+pub(crate) fn rail_tab_face(rect: Rect, radius: f64) -> (BezPath, BezPath) {
+    let r = radius.max(0.5).min(rect.width().min(rect.height()) / 2.0);
+    // Quarter-circle control points match Kurbo's rounded rectangles.
+    let k = r * 0.552_284_749_830_793_6;
+    let flare = design::rail_tab_flare(r);
+    let kf = flare * 0.552_284_749_830_793_6;
+    let left = rect.x0 + 0.5;
+    let right = rect.x1 - 0.5;
+    let top = rect.y0 + 0.5;
+    let bottom = rect.y1 - 0.5;
+    let mut outline = BezPath::new();
+    outline.move_to((left - flare, bottom));
+    outline.curve_to(
+        (left - flare + kf, bottom),
+        (left, bottom - flare + kf),
+        (left, bottom - flare),
+    );
+    outline.line_to((left, top + r));
+    outline.curve_to((left, top + r - k), (left + r - k, top), (left + r, top));
+    outline.line_to((right - r, top));
+    outline.curve_to((right - r + k, top), (right, top + r - k), (right, top + r));
+    outline.line_to((right, bottom - flare));
+    outline.curve_to(
+        (right, bottom - flare + kf),
+        (right + flare - kf, bottom),
+        (right + flare, bottom),
+    );
+    let mut fill = outline.clone();
+    fill.line_to((right + flare, rect.y1 + 1.0));
+    fill.line_to((left - flare, rect.y1 + 1.0));
+    fill.close_path();
+    (outline, fill)
 }
 
 pub(crate) struct IconView<F> {

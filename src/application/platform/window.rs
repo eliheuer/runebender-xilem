@@ -3,6 +3,7 @@
 
 //! macOS window state and optional native backdrop, outside the font engine.
 
+use crate::application::view::theme::BackdropStyle;
 use crate::application::workspace::AppState;
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
@@ -12,6 +13,7 @@ use objc2_app_kit::{
     NSVisualEffectState, NSVisualEffectView, NSWindow, NSWindowButton, NSWindowOrderingMode,
     NSWindowStyleMask, NSWorkspace,
 };
+use runebender::ui::theme::{BlurAppearance, BlurMaterial};
 use std::cell::RefCell;
 
 struct Backdrop {
@@ -58,7 +60,7 @@ pub(crate) fn with_backdrop<V: xilem::WidgetView<AppState>>(
                         }
                     }
                 },
-                |app: &mut AppState, ()| set_backdrop(app.palette.blur_background, app.palette.app),
+                |app: &mut AppState, ()| set_backdrop(app.palette.backdrop_style()),
             )
         }),
     )
@@ -82,7 +84,7 @@ pub(crate) fn with_backdrop<V: xilem::WidgetView<AppState>>(
 /// Earlier application tint opacity 0.8 and 0.65 produced washed-out gray.
 /// Dark and Gray now enable the backdrop with independent 25% gray overlays.
 /// Xilem dependency/workaround report: <https://github.com/linebender/xilem/issues/1852>.
-pub(crate) fn set_backdrop(enabled: bool, background: xilem::Color) {
+pub(crate) fn set_backdrop(style: BackdropStyle) {
     let Some(main_thread) = MainThreadMarker::new() else {
         return;
     };
@@ -98,8 +100,8 @@ pub(crate) fn set_backdrop(enabled: bool, background: xilem::Color) {
                 .iter()
                 .find(|window| window.isVisible())
         });
-    let enabled =
-        enabled && !NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceTransparency();
+    let enabled = style.enabled
+        && !NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceTransparency();
     BACKDROP.with(|state| {
         let mut state = state.borrow_mut();
         if let Some(backdrop) = state.as_ref()
@@ -112,7 +114,7 @@ pub(crate) fn set_backdrop(enabled: bool, background: xilem::Color) {
             return;
         }
         if let Some(backdrop) = state.as_ref() {
-            set_backdrop_appearance(&backdrop.effect, background);
+            apply_backdrop_style(&backdrop.effect, style);
             // Full-screen transitions can move the content into a new native parent.
             if let Some(parent) = backdrop_parent(&backdrop.window, &backdrop.content) {
                 if !parent.subviews().containsObject(&backdrop.effect) {
@@ -137,9 +139,7 @@ pub(crate) fn set_backdrop(enabled: bool, background: xilem::Color) {
             return;
         };
         let effect = NSVisualEffectView::initWithFrame(main_thread.alloc(), content.frame());
-        // Menu material was verified in the native probe and full editor.
-        effect.setMaterial(NSVisualEffectMaterial::Menu);
-        set_backdrop_appearance(&effect, background);
+        apply_backdrop_style(&effect, style);
         effect.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
         effect.setState(NSVisualEffectState::FollowsWindowActiveState);
         effect.setAutoresizingMask(
@@ -169,12 +169,32 @@ pub(crate) fn set_backdrop(enabled: bool, background: xilem::Color) {
     });
 }
 
-/// Keep the native material consistent with the theme's window ground.
-/// System light mode must not put a pale material beneath a dark application theme.
-fn set_backdrop_appearance(effect: &NSVisualEffectView, background: xilem::Color) {
-    let name = match crate::application::view::theme::window_theme_for_color(background) {
-        winit::window::Theme::Dark => "NSAppearanceNameVibrantDark",
-        winit::window::Theme::Light => "NSAppearanceNameVibrantLight",
+/// Apply the theme's material and appearance, also when a theme switch changes them.
+/// An automatic appearance follows the window ground, so system light mode does not put a
+/// pale material beneath a dark application theme.
+fn apply_backdrop_style(effect: &NSVisualEffectView, style: BackdropStyle) {
+    effect.setMaterial(match style.material {
+        BlurMaterial::Menu => NSVisualEffectMaterial::Menu,
+        BlurMaterial::Popover => NSVisualEffectMaterial::Popover,
+        BlurMaterial::Sidebar => NSVisualEffectMaterial::Sidebar,
+        BlurMaterial::HeaderView => NSVisualEffectMaterial::HeaderView,
+        BlurMaterial::HudWindow => NSVisualEffectMaterial::HUDWindow,
+        BlurMaterial::FullScreenUi => NSVisualEffectMaterial::FullScreenUI,
+        BlurMaterial::UnderWindowBackground => NSVisualEffectMaterial::UnderWindowBackground,
+        BlurMaterial::WindowBackground => NSVisualEffectMaterial::WindowBackground,
+    });
+    let dark = match style.appearance {
+        BlurAppearance::Dark => true,
+        BlurAppearance::Light => false,
+        BlurAppearance::Auto => {
+            crate::application::view::theme::window_theme_for_color(style.ground)
+                == winit::window::Theme::Dark
+        }
+    };
+    let name = if dark {
+        "NSAppearanceNameVibrantDark"
+    } else {
+        "NSAppearanceNameVibrantLight"
     };
     effect
         .setAppearance(NSAppearance::appearanceNamed(&NSAppearanceName::from_str(name)).as_deref());

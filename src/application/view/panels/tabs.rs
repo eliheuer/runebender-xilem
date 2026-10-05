@@ -233,12 +233,31 @@ fn shapes_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
 
 /// One navigation strip for the font, node, and glyph workspaces.
 fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use<> {
+    use crate::application::view::design::{
+        RAIL_TAB_ICON, RAIL_TAB_ICON_FULL_FRAME, RAIL_TAB_INSET,
+    };
     let pal = &app.palette;
+    let radius = design::rail_tab_radius(pal.corner_radius);
+    let is_active = |which: Rail| {
+        app.rail == which || (!editing && app.rail == Rail::Shapes && which == Rail::Glyphs)
+    };
     // Inset icons such as `invert` use the full rail size; icons that fill their
     // whole frame use a smaller one so all tab icons look the same size.
-    let tab = |icon: &'static str, which: Rail, size: f64| {
-        let active =
-            app.rail == which || (!editing && app.rail == Rail::Shapes && which == Rail::Glyphs);
+    let specs: Vec<(&'static str, Rail, f64)> = [
+        Some(("hyperpen", Rail::Glyphs, RAIL_TAB_ICON)),
+        editing.then_some(("shapes", Rail::Shapes, RAIL_TAB_ICON_FULL_FRAME)),
+        (!app.font.axes.is_empty()).then_some(("measure", Rail::Axes, RAIL_TAB_ICON_FULL_FRAME)),
+        Some(("invert", Rail::LocalAi, RAIL_TAB_ICON)),
+        Some(("text", Rail::Chat, RAIL_TAB_ICON_FULL_FRAME)),
+        Some(("save", Rail::Scripts, RAIL_TAB_ICON_FULL_FRAME)),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    let count = specs.len();
+    let active_slot = specs.iter().position(|&(_, which, _)| is_active(which));
+    let tab = |(icon, which, size): (&'static str, Rail, f64)| {
+        let active = is_active(which);
         sized_box(
             icon_button(
                 icon,
@@ -251,10 +270,15 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
             )
             .icon_size(size)
             .rail_tab(
-                if active { pal.panel } else { pal.inactive_tab },
+                // The active tab is the panel face showing through the rail's opening.
+                if active {
+                    Palette::FLAT
+                } else {
+                    pal.inactive_tab
+                },
                 pal.outline,
                 design::RAIL_TAB_ICON_RISE,
-                design::rail_tab_radius(pal.corner_radius),
+                radius,
             ),
         )
         .dims(Dimensions::new(
@@ -266,45 +290,56 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
             })),
         ))
     };
-    let has_axes = !app.font.axes.is_empty();
     sized_box(xilem::view::zstack((
         sized_box(canvas({
-            let background = pal.tab_rail;
+            let background = pal.tab_rail.with_alpha(pal.side_panel_alpha());
             let outline = pal.outline;
             move |_: &mut Workspace, _, scene, size| {
+                use crate::application::widgets::{even_row::slot_widths, icon_button};
                 use masonry::imaging::Painter;
-                use masonry::kurbo::Rect;
+                use masonry::kurbo::{Rect, Shape as _};
                 let mut painter = Painter::new(scene);
                 let stroke = Stroke::Hairline.px();
+                let keyline =
+                    |x0: f64, x1: f64| Rect::new(x0, size.height - stroke, x1, size.height);
+                let mut ground = Rect::new(0.0, 0.0, size.width, size.height).to_path(0.1);
+                // The same whole-pixel slots the tab row uses locate the active tab, whose
+                // shape the rail leaves open; its keyline stops at the tab's flares.
+                let opening = active_slot.map(|index| {
+                    let widths = slot_widths(size.width, count, RAIL_TAB_INSET, RAIL_TAB_INSET);
+                    let x = RAIL_TAB_INSET
+                        + widths[..index].iter().sum::<f64>()
+                        + RAIL_TAB_INSET * index as f64;
+                    let tab = Rect::new(
+                        x,
+                        RAIL_TAB_INSET,
+                        x + widths[index],
+                        RAIL_TAB_INSET + RAIL_TAB_ACTIVE_HEIGHT,
+                    );
+                    icon_button::rail_tab_face(tab, radius).1
+                });
                 // The floating panel frame owns the side outlines; a strip here
                 // would double the panel edge beside the rail.
-                painter
-                    .fill(Rect::new(0.0, 0.0, size.width, size.height), background)
-                    .draw();
-                painter
-                    .fill(
-                        Rect::new(0.0, size.height - stroke, size.width, size.height),
-                        outline,
-                    )
-                    .draw();
+                if let Some(hole) = &opening {
+                    ground.extend(hole.reverse_subpaths().elements().iter().copied());
+                }
+                painter.fill(&ground, background).draw();
+                match opening {
+                    Some(hole) => {
+                        let span = hole.bounding_box();
+                        painter.fill(keyline(0.0, span.x0), outline).draw();
+                        painter.fill(keyline(span.x1, size.width), outline).draw();
+                    }
+                    None => painter.fill(keyline(0.0, size.width), outline).draw(),
+                }
             }
         }))
         .dims(Dimensions::new(Dim::Stretch, Dim::Stretch)),
         // Whole-pixel tab widths keep every gap and inset at exactly the rail inset.
         even_row(
-            [
-                Some(tab("hyperpen", Rail::Glyphs, design::RAIL_TAB_ICON)),
-                editing.then(|| tab("shapes", Rail::Shapes, design::RAIL_TAB_ICON_FULL_FRAME)),
-                has_axes.then(|| tab("measure", Rail::Axes, design::RAIL_TAB_ICON_FULL_FRAME)),
-                Some(tab("invert", Rail::LocalAi, design::RAIL_TAB_ICON)),
-                Some(tab("text", Rail::Chat, design::RAIL_TAB_ICON_FULL_FRAME)),
-                Some(tab("save", Rail::Scripts, design::RAIL_TAB_ICON_FULL_FRAME)),
-            ]
-            .into_iter()
-            .flatten()
-            .collect(),
-            design::RAIL_TAB_INSET,
-            design::RAIL_TAB_INSET,
+            specs.into_iter().map(tab).collect(),
+            RAIL_TAB_INSET,
+            RAIL_TAB_INSET,
         ),
     )))
     .dims(Dimensions::new(

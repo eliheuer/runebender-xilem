@@ -19,7 +19,7 @@ use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewId, ViewMarker, View
 use xilem::{Pod, ViewCtx, WidgetView};
 
 /// Whole-pixel slot widths for `count` slots sharing `width` after the insets and gaps.
-fn slot_widths(width: f64, count: usize, inset: f64, gap: f64) -> Vec<f64> {
+pub(crate) fn slot_widths(width: f64, count: usize, inset: f64, gap: f64) -> Vec<f64> {
     if count == 0 {
         return Vec::new();
     }

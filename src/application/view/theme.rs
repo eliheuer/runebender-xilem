@@ -27,6 +27,19 @@ pub(crate) fn window_theme_for_color(background: Color) -> winit::window::Theme 
     }
 }
 
+/// The theme's request for the native window backdrop.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct BackdropStyle {
+    /// Whether the theme asks for the backdrop at all.
+    pub enabled: bool,
+    /// The window ground, which an automatic appearance follows.
+    pub ground: Color,
+    /// The material behind the blur.
+    pub material: runebender::ui::theme::BlurMaterial,
+    /// Light, dark, or automatic.
+    pub appearance: runebender::ui::theme::BlurAppearance,
+}
+
 /// A resolved palette: named surfaces, text, roles, and mark colors.
 pub(crate) struct Palette {
     pub app: Color,
@@ -36,6 +49,15 @@ pub(crate) struct Palette {
     pub blur_background: bool,
     /// Opacity of the independent tint over the native backdrop.
     blur_tint_opacity: f32,
+    /// Whether the side panels let the native backdrop show through.
+    blur_panels: bool,
+    /// Opacity of the side panels' face over the native backdrop.
+    panel_tint_opacity: f32,
+    /// The side panels' face color when they are frosted.
+    panel_tint: Color,
+    /// The macOS material and its appearance behind the blur.
+    blur_material: runebender::ui::theme::BlurMaterial,
+    blur_appearance: runebender::ui::theme::BlurAppearance,
     /// Text on the window ground; custom themes can supply the optional `appInk` token.
     pub app_ink: Color,
     pub panel: Color,
@@ -127,6 +149,11 @@ impl Palette {
             blur_background: t.window.blur_background,
             shadow_panels_over_backdrop: t.window.shadow_panels,
             blur_tint_opacity: t.window.blur_tint_opacity,
+            blur_panels: t.window.blur_panels,
+            panel_tint_opacity: t.window.panel_tint_opacity,
+            panel_tint: color(t.surface("panelTint")),
+            blur_material: t.window.blur_material,
+            blur_appearance: t.window.blur_appearance,
             app_ink: color(t.text("appInk")),
             panel,
             tab_rail: color(t.surface("tabRail")),
@@ -207,7 +234,63 @@ impl Palette {
         }
     }
 
-    /// Let the title bar show the same ground rather than apply a second tint.
+    /// The face of the left and right panels: the panel color, or the theme's `panelTint` at
+    /// `panelTintOpacity` over the native backdrop when it sets `blurPanels`. The center
+    /// panel stays solid.
+    pub(crate) fn side_panel_face(&self) -> Color {
+        let alpha = self.side_panel_alpha();
+        if alpha < 1.0 {
+            self.panel_tint.with_alpha(alpha)
+        } else {
+            self.panel
+        }
+    }
+
+    /// How opaque side-panel surfaces are: 1 unless the theme frosts the side panels and
+    /// the native backdrop is active. Surfaces drawn on a side panel scale by this too.
+    pub(crate) fn side_panel_alpha(&self) -> f32 {
+        self.side_panel_alpha_for_backdrop(self.native_backdrop_active())
+    }
+
+    fn side_panel_alpha_for_backdrop(&self, active: bool) -> f32 {
+        if self.blur_panels && active {
+            self.panel_tint_opacity
+        } else {
+            1.0
+        }
+    }
+
+    /// Everything the native backdrop needs from the theme.
+    pub(crate) fn backdrop_style(&self) -> BackdropStyle {
+        BackdropStyle {
+            enabled: self.blur_background,
+            ground: self.app,
+            material: self.blur_material,
+            appearance: self.blur_appearance,
+        }
+    }
+
+    /// The window root beneath everything: clear over the native backdrop, where the
+    /// gutters and title bar paint the ground themselves so no panel sits on the tint.
+    pub(crate) fn window_root_background(&self) -> Color {
+        if self.native_backdrop_active() {
+            Color::TRANSPARENT
+        } else {
+            self.app
+        }
+    }
+
+    /// The title bar row: the window ground over the native backdrop, else the header.
+    pub(crate) fn titlebar_background(&self) -> Color {
+        if self.native_backdrop_active() {
+            self.app_background()
+        } else {
+            self.header
+        }
+    }
+
+    /// Controls on the title bar: clear over the native backdrop, where the bar already
+    /// carries the ground, else the header.
     pub(crate) fn header_background(&self) -> Color {
         if self.native_backdrop_active() {
             Color::TRANSPARENT
@@ -571,6 +654,20 @@ mod tests {
             assert!(*component < (*ink).max(*surface));
         }
     }
+    #[test]
+    fn side_panels_frost_only_when_the_theme_asks_and_the_backdrop_is_active() {
+        let mut palette = Palette::load("gray");
+        palette.blur_panels = false;
+        // Without the request, panels stay solid whether or not the backdrop is active.
+        assert_eq!(palette.side_panel_alpha_for_backdrop(false), 1.0);
+        assert_eq!(palette.side_panel_alpha_for_backdrop(true), 1.0);
+        palette.blur_panels = true;
+        palette.panel_tint_opacity = 0.6;
+        // A theme's request takes effect only over the native backdrop.
+        assert_eq!(palette.side_panel_alpha_for_backdrop(false), 1.0);
+        assert_eq!(palette.side_panel_alpha_for_backdrop(true), 0.6);
+    }
+
     #[test]
     fn translucent_panels_can_hide_shadows_without_affecting_glyph_shadows() {
         let mut palette = Palette::load("gray");
