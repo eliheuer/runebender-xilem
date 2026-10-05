@@ -18,18 +18,18 @@ name = "Strawberry"
 "08" = "oklch(0.94 0.03 5)"
 "09" = "oklch(0.97 0.014 5)"
 
-# Glyph marks keep the same colors, order, and meaning as Gray.
+# Glyph marks keep Gray's order and meaning, a little lighter and brighter for the rose surfaces.
 [rainbow]
 marks = ["red", "orange", "yellow", "green", "blue", "purple", "pink"]
 
 [rainbow.hues]
-red = "oklch(0.61 0.167 27)"
-orange = "oklch(0.68 0.15 46)"
-yellow = "oklch(0.82 0.135 96)"
-green = "oklch(0.69 0.126 152)"
-blue = "oklch(0.64 0.119 248)"
-purple = "oklch(0.61 0.15 292)"
-pink = "oklch(0.68 0.15 350)"
+red = "oklch(0.66 0.19 24)"
+orange = "oklch(0.74 0.17 50)"
+yellow = "oklch(0.87 0.16 98)"
+green = "oklch(0.75 0.15 150)"
+blue = "oklch(0.70 0.14 248)"
+purple = "oklch(0.67 0.17 296)"
+pink = "oklch(0.74 0.17 350)"
 
 # Signed OKLCH offsets added to each hue; the final 0 preserves the hue.
 [rainbow.steps]
@@ -44,9 +44,10 @@ markStep = "base"
 markStyle = "fill"
 markOutline = "baseUi.00"
 markInk = "baseUi.00"
-# Darker Rainbow rings keep outline points legible on the pale rose canvas.
-pointStyle = "ring"
-pointHalo = true
+# Filled points like Gray's: leaf-green interiors with a deep stem-green keyline.
+pointStyle = "fill"
+pointOutline = "oklch(0.36 0.07 145)"
+pointHalo = false
 
 [surfaces]
 app = "baseUi.06"
@@ -89,27 +90,31 @@ headerMutedInk = "baseUi.01"
 
 [roles]
 # Save-state labels use darker hues on the pale title bar, independently of glyph marks.
-savedInk = "rainbow.green.deep"
-unsavedInk = "rainbow.red.dim"
+# Chrome colors stay as before; the brighter marks do not lighten them.
+savedInk = "oklch(0.43 0.126 152)"
+unsavedInk = "oklch(0.44 0.147 27)"
 # Selected cells and sidebar labels keep Gray's yellow ink on a dark face.
 gridSelected = "baseUi.00"
 cellSelectedFill = "baseUi.00"
 cellSelectedInk = "baseUi.09"
 controlSelected = "baseUi.00"
 controlSelectedInk = "baseUi.09"
+# Selected glyph tiles and sidebar labels: a bright leaf green instead of Gray's yellow.
+selectedContentInk = "oklch(0.84 0.18 138)"
 designGridFine = "baseUi.07"
 designGridCoarse = "baseUi.06"
-accent = "rainbow.green.dim"
-warning = "rainbow.orange.dim"
-danger = "rainbow.red.dim"
-selection = "rainbow.orange.dim"
+accent = "oklch(0.52 0.106 152)"
+warning = "rainbow.orange.base"
+danger = "oklch(0.44 0.147 27)"
+selection = "rainbow.orange.base"
 component = "rainbow.purple.dim"
 componentSelected = "rainbow.pink.dim"
-pointSmooth = "rainbow.blue.dim"
-pointCorner = "rainbow.green.dim"
-pointOffcurve = "rainbow.purple.dim"
-pointHyper = "rainbow.blue.dim"
-pointSelected = "rainbow.orange.dim"
+# Strawberry leaves and stems: every unselected point is a green, selection is orange.
+pointSmooth = "oklch(0.76 0.14 126)"
+pointCorner = "oklch(0.66 0.15 138)"
+pointOffcurve = "oklch(0.86 0.10 118)"
+pointHyper = "oklch(0.74 0.11 162)"
+pointSelected = "rainbow.orange.base"
 pointInner = "baseUi.08"
 startNode = "rainbow.orange.dim"
 textCursor = "rainbow.orange.dim"
