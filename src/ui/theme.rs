@@ -505,6 +505,7 @@ const OPTIONAL_ROLES: &[&str] = &[
     "headerActiveInk",
     "toolActiveInk",
     "toolInactiveInk",
+    "selectedContentInk",
     "controlSelectedOutline",
     "savedInk",
     "unsavedInk",
@@ -1770,10 +1771,12 @@ mod ui_contrast {
         for &id in BUILTIN_THEME_IDS {
             let theme = load_theme(id).expect("theme");
             let fill = theme.role("controlSelected");
-            for ink in [
-                theme.role("controlSelectedInk"),
-                theme.mark("yellow").expect("yellow mark"),
-            ] {
+            let content_ink = theme
+                .roles
+                .get("selectedContentInk")
+                .copied()
+                .unwrap_or_else(|| theme.mark("yellow").expect("yellow mark"));
+            for ink in [theme.role("controlSelectedInk"), content_ink] {
                 let ratio = contrast(ink, fill);
                 assert!(
                     ratio >= SELECTED_LABEL_FLOOR,

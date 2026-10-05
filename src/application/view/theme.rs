@@ -300,9 +300,14 @@ impl Palette {
             .unwrap_or(fallback)
     }
 
-    /// The selected glyph or sidebar label, matching GPUI's yellow mark ink.
+    /// The selected glyph or sidebar label: the theme's `selectedContentInk`, or else GPUI's
+    /// yellow mark ink.
     pub(crate) fn selected_content_ink(&self) -> Color {
-        self.mark("yellow").unwrap_or_else(|| self.selected_ink())
+        self.roles
+            .get("selectedContentInk")
+            .copied()
+            .or_else(|| self.mark("yellow"))
+            .unwrap_or_else(|| self.selected_ink())
     }
 
     /// The ground behind both glyph grids, recessed from the application surface.
