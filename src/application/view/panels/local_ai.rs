@@ -228,5 +228,4 @@ pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + us
             xcolumn(Region::List, files),
         ),
     )
-    .background_color(pal.panel)
 }

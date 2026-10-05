@@ -272,8 +272,7 @@ pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace, Widget: S
                 count,
             ),
         ))
-        .gap(Space::None)
-        .background_color(pal.panel),
+        .gap(Space::None),
     )
     .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
 }

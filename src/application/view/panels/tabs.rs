@@ -393,7 +393,6 @@ pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
     flex_col((rail_tabs(app, true), content.flex(1.0)))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
         .gap(Space::None)
-        .background_color(app.palette.panel)
 }
 
 /// Curves: the two analyses that are about shape quality rather than
@@ -607,7 +606,6 @@ pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     flex_col((rail_tabs(app, false), content.flex(1.0)))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
         .gap(Space::None)
-        .background_color(app.palette.panel)
 }
 
 fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
@@ -803,5 +801,4 @@ fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)
     .gap(Space::None)
-    .background_color(pal.panel)
 }

@@ -309,8 +309,7 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
                 notice,
             ),
         )
-        .gap(Space::Md)
-        .background_color(pal.panel),
+        .gap(Space::Md),
     )
     .constrain_horizontal(true)
 }

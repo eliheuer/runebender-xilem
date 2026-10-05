@@ -107,6 +107,10 @@ pub(crate) struct Palette {
 }
 
 impl Palette {
+    /// The fill of a flat control or container drawn on a panel: none, so the panel's face
+    /// shows through, whether it is solid or frosted.
+    pub(crate) const FLAT: Color = Color::TRANSPARENT;
+
     pub(crate) fn load(theme_id: &str) -> Self {
         let t = crate::application::platform::themes::catalog()
             .get(theme_id)

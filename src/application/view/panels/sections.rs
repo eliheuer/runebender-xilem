@@ -43,7 +43,7 @@ pub(crate) fn layers_section(app: &Workspace) -> Option<impl WidgetView<Workspac
             let (bg, fg) = if shown {
                 (pal.role("reference").with_alpha(0.28), pal.text)
             } else {
-                (pal.panel, pal.text_muted)
+                (Palette::FLAT, pal.text_muted)
             };
             sized_box(
                 button(
@@ -139,7 +139,7 @@ pub(crate) fn masters_section(app: &Workspace) -> Option<impl WidgetView<Workspa
             let (bg, fg, border) = if active {
                 (pal.selected_bg(), pal.selected_content_ink(), pal.outline)
             } else {
-                (pal.panel, pal.text, xilem::Color::TRANSPARENT)
+                (Palette::FLAT, pal.text, xilem::Color::TRANSPARENT)
             };
             sized_box(
                 button(

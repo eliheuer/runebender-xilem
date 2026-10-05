@@ -112,7 +112,7 @@ fn styled_chip<F: Fn(&mut Workspace) + Send + Sync + 'static>(
             move |app: &mut Workspace| on_click(app),
         )
         .padding(Space::Sm)
-        .background_color(pal.panel)
+        .background_color(Palette::FLAT)
         .border_color(pal.outline)
         .border_width(Stroke::Hairline.length())
         .corner_radius(Length::px(pal.control_radius)),
@@ -235,7 +235,7 @@ pub(crate) fn kerning_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                             app.kern_value_buf = format!("{v3}");
                         },
                     )
-                    .background_color(pal.panel)
+                    .background_color(Palette::FLAT)
                     .border_width(Stroke::None.length())
                     .padding(Space::None)
                     .flex(1.0),
@@ -244,7 +244,7 @@ pub(crate) fn kerning_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                         icon_paint::view("close", "Delete kerning pair", pal.text_muted, 12.0),
                         move |app: &mut Workspace| app.delete_kern_pair(&f2, &s2),
                     )
-                    .background_color(pal.panel)
+                    .background_color(Palette::FLAT)
                     .border_width(Stroke::None.length())
                     .padding(masonry::properties::Padding::from_vh(
                         Space::None.length(),

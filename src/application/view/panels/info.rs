@@ -17,7 +17,6 @@ use crate::application::view::{design, recipes};
 use crate::application::workspace::{Mode, Tool, Workspace};
 use runebender::outline::glyph_paths::round_units;
 use xilem::WidgetView;
-use xilem::style::Style;
 
 pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
@@ -252,5 +251,4 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         )),
         editing.then(|| recipes::panel_group(pal, measure_section(app))),
     ))
-    .background_color(pal.panel)
 }

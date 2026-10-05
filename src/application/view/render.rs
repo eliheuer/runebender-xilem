@@ -331,7 +331,6 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         bottom_keyline(
             portal(sized_box(info_panel(app)).dims(Dimensions::new(Dim::Stretch, Dim::Auto)))
                 .constrain_horizontal(true)
-                .background_color(pal.panel)
                 .boxed(),
             pal.outline,
         )

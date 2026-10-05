@@ -72,7 +72,7 @@ where
             ),
             move |app: &mut Workspace| on_click(app),
         )
-        .background_color(pal.panel)
+        .background_color(Palette::FLAT)
         .border_width(Stroke::None.length())
         .padding(Space::None),
     )
@@ -104,6 +104,7 @@ where
             Dim::Stretch,
             Dim::Fixed(Length::px(FOOTER_HEIGHT)),
         ))
+        // The center column paints the window ground, so its footer needs its own face.
         .background_color(pal.panel),
         pal.outline,
     )
@@ -393,7 +394,7 @@ pub(crate) fn list_row_marked<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     let (fg, border, bg) = if active {
         (pal.selected_content_ink(), pal.outline, pal.selected_bg())
     } else {
-        (pal.text, xilem::Color::TRANSPARENT, pal.panel)
+        (pal.text, xilem::Color::TRANSPARENT, Palette::FLAT)
     };
     let trailing_color = if active {
         pal.selected_content_ink()
@@ -454,7 +455,7 @@ pub(crate) fn toggle<F: Fn(&mut Workspace) + Send + Sync + 'static>(
             pal.selected_bg(),
         )
     } else {
-        (pal.text, pal.outline, pal.panel)
+        (pal.text, pal.outline, Palette::FLAT)
     };
     sized_box(
         button(

@@ -242,7 +242,6 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             xrow(Region::Inline, (send, cancel, clear)),
         ),
     )
-    .background_color(pal.panel)
 }
 
 #[cfg(test)]
