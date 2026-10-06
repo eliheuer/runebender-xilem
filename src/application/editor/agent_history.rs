@@ -60,17 +60,7 @@ impl Workspace {
             .collect::<BTreeSet<_>>();
         for name in &names {
             if let Some(index) = self.font.index_of(name) {
-                self.font.refresh_entry(index);
-                // The grid and rail cells mirror the entries one to one; refresh only the
-                // changed ones instead of measuring every caption in the font again.
-                if index < self.cells.len() {
-                    Arc::make_mut(&mut self.cells)[index] =
-                        crate::application::view::canvas::grid::cell_of(
-                            &self.font,
-                            index,
-                            &self.palette,
-                        );
-                }
+                self.refresh_glyph_entry(index);
             }
         }
         for tab in &mut self.tabs {
@@ -82,6 +72,26 @@ impl Workspace {
             }
         }
         names
+    }
+
+    /// Re-read one glyph's cached entry and its grid cell after its layer changed.
+    ///
+    /// The grid and rail cells mirror the entries one to one; refreshing only the changed
+    /// one avoids measuring every caption in the font again.
+    pub(crate) fn refresh_glyph_entry(&mut self, index: usize) {
+        self.font.refresh_entry(index);
+        if index < self.cells.len() {
+            Arc::make_mut(&mut self.cells)[index] =
+                crate::application::view::canvas::grid::cell_of(&self.font, index, &self.palette);
+        }
+    }
+
+    /// Rebuild every grid cell when the glyph list changed shape; a commit has already
+    /// refreshed the cells of the glyphs it touched.
+    pub(crate) fn refresh_cells_if_reshaped(&mut self) {
+        if self.cells.len() != self.font.glyphs.len() {
+            self.cells = Arc::new(cells_of(&self.font, &self.palette));
+        }
     }
 
     fn refresh_agent_change(&mut self, change: &DocumentChange) {

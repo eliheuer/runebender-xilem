@@ -509,6 +509,9 @@ pub(crate) struct EditorWidget {
     tool: Tool,
     sketch: Arc<Mutex<SketchLayer>>,
     sketch_source: usize,
+    /// The sketch ink last rasterized for the canvas, by sketch revision and ink alpha,
+    /// so a zoom or hover repaint does not rebuild and re-upload a 512 px image.
+    sketch_image: Option<(u64, u32, ImageData)>,
     /// Space is held: pan while showing only the filled design.
     preview_mode: bool,
     ghosts: Arc<Vec<Arc<kurbo::BezPath>>>,
@@ -2174,20 +2177,29 @@ impl Widget for EditorWidget {
                 .lock()
                 .unwrap_or_else(|error| error.into_inner());
             if sketch.matches(&self.session.glyph_name, self.sketch_source) && sketch.has_ink() {
-                let image = ImageData {
-                    data: Blob::new(Arc::new(sketch.display_rgba(
-                        pal.tool_feedback().with_alpha(
-                            if self.underlay.brush_candidate.is_some() {
-                                0.18
-                            } else {
-                                0.55
-                            },
-                        ),
-                    ))),
-                    format: ImageFormat::Rgba8,
-                    alpha_type: ImageAlphaType::Alpha,
-                    width: 512,
-                    height: 512,
+                let alpha: f32 = if self.underlay.brush_candidate.is_some() {
+                    0.18
+                } else {
+                    0.55
+                };
+                let key = (sketch.revision(), alpha.to_bits());
+                let image = match &self.sketch_image {
+                    Some((revision, alpha_bits, image)) if (*revision, *alpha_bits) == key => {
+                        image.clone()
+                    }
+                    _ => {
+                        let image = ImageData {
+                            data: Blob::new(Arc::new(
+                                sketch.display_rgba(pal.tool_feedback().with_alpha(alpha)),
+                            )),
+                            format: ImageFormat::Rgba8,
+                            alpha_type: ImageAlphaType::Alpha,
+                            width: 512,
+                            height: 512,
+                        };
+                        self.sketch_image = Some((key.0, key.1, image.clone()));
+                        image
+                    }
                 };
                 let pixel_to_glyph = Affine::new([2.0, 0.0, 0.0, -2.0, sketch.left(), 800.0]);
                 painter.draw_image(&image, self.glyph_affine() * pixel_to_glyph);
@@ -3628,6 +3640,7 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
             tool: self.tool,
             sketch: self.sketch.clone(),
             sketch_source: self.sketch_source,
+            sketch_image: None,
             preview_mode: self.preview_mode,
             ghosts: self.ghosts.clone(),
             interp: self.interp.clone(),
@@ -3861,6 +3874,7 @@ mod tests {
             tool: Tool::Select,
             sketch: Arc::new(Mutex::new(SketchLayer::new("A".into(), 0, 500.0))),
             sketch_source: 0,
+            sketch_image: None,
             preview_mode: false,
             ghosts: Arc::new(Vec::new()),
             interp: None,
@@ -6074,6 +6088,12 @@ mod tests {
         headless.rebuild(logic);
         let settled = start.elapsed();
         let start = Instant::now();
+        headless.app.undo_open_glyph(false);
+        let undo = start.elapsed();
+        let start = Instant::now();
+        headless.rebuild(logic);
+        let undo_rebuild = start.elapsed();
+        let start = Instant::now();
         let snapshot = headless.app.font.project.babelfont_snapshot();
         let snapshot_time = start.elapsed();
         assert!(snapshot.is_ok());
@@ -6126,6 +6146,8 @@ mod tests {
         println!("release rebuild              {:.2} ms", ms(rebuild));
         println!("release paint pass           {:.2} ms", ms(paint));
         println!("next rebuild                 {:.2} ms", ms(settled));
+        println!("undo                         {:.2} ms", ms(undo));
+        println!("undo rebuild                 {:.2} ms", ms(undo_rebuild));
         println!("font snapshot for preview    {:.2} ms", ms(snapshot_time));
         println!("preview compile (threaded)   {:.2} ms", ms(compile));
     }

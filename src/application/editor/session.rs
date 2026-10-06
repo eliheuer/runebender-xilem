@@ -2569,9 +2569,8 @@ impl Workspace {
             tab.session = self.session.clone();
         }
         if let Some(index) = self.font.index_of(&address.glyph) {
-            self.font.refresh_entry(index);
+            self.refresh_glyph_entry(index);
         }
-        self.cells = Arc::new(cells_of(&self.font, &self.palette));
         self.refresh_metric_bufs();
         self.refresh_coord_bufs();
         self.selected_points = self.session.selection.len();
@@ -2618,7 +2617,7 @@ impl Workspace {
         if let Some(tab) = self.tabs.get_mut(self.active_tab) {
             tab.session = self.session.clone();
         }
-        self.cells = Arc::new(cells_of(&self.font, &self.palette));
+        self.refresh_cells_if_reshaped();
         self.refresh_metric_bufs();
         self.refresh_coord_bufs();
         self.selected_points = self.session.selection.len();
@@ -2890,11 +2889,7 @@ impl Workspace {
         if let Some(source) = self.font.project.source_id(self.font.active()) {
             self.font.project.prune_document_source_images(source);
         }
-        // A committed edit has already refreshed the cells of the glyphs it changed; only a
-        // glyph list of a different shape needs them all again.
-        if self.cells.len() != self.font.glyphs.len() {
-            self.cells = Arc::new(cells_of(&self.font, &self.palette));
-        }
+        self.refresh_cells_if_reshaped();
         self.modified = true;
         self.note.clear();
     }
