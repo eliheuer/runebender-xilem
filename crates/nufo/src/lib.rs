@@ -37,12 +37,16 @@ pub struct NeuralRegion {
     /// Indices of the owning letters, counted in characters of the sample's text.
     pub owners: Vec<u32>,
     /// Corners of a polygon in font units; the owners own the ink inside it.
-    /// Empty for a region that names a whole contour.
+    ///
+    /// For a seed region the editor writes the piece's outline here, grown across its cuts
+    /// by the overlap, so a reader needs no cutting of its own. Empty for an older seed
+    /// region, which then owns the whole contour around its seed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub polygon: Vec<[f64; 2]>,
-    /// A point inside one whole contour that the owners own, such as a dot.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub contour_at: Option<[f64; 2]>,
+    /// A point inside the piece of ink the owners own: the sample's contour around it, cut
+    /// by the sample's cuts. Version two wrote this as `contour_at`.
+    #[serde(default, alias = "contour_at", skip_serializing_if = "Option::is_none")]
+    pub seed: Option<[f64; 2]>,
 }
 
 impl NeuralRegion {
@@ -78,6 +82,10 @@ pub struct NeuralSample {
     /// The Unicode text the ink spells, in logical order.
     #[serde(default)]
     pub text: String,
+    /// Lines across the ink where one letter ends and the next begins, each two points in
+    /// font units. They split the sample's contours into pieces that seeds name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cuts: Vec<[[f64; 2]; 2]>,
     /// Labeled regions; they can overlap and need not cover the ink.
     #[serde(default)]
     pub regions: Vec<NeuralRegion>,
@@ -162,6 +170,9 @@ impl NeuralSample {
         if !self.boundary.iter().all(finite) {
             return Err("a neural sample boundary has a nonfinite or unbounded corner".into());
         }
+        if self.cuts.len() > 4096 || !self.cuts.iter().flatten().all(finite) {
+            return Err("a neural sample has too many cuts or a nonfinite cut".into());
+        }
         for region in &self.regions {
             if region.owners.is_empty()
                 || region.owners.iter().any(|owner| *owner as usize >= length)
@@ -169,13 +180,13 @@ impl NeuralSample {
                 return Err("a neural region names a letter outside its sample's text".into());
             }
             let polygon = !region.polygon.is_empty();
-            if polygon == region.contour_at.is_some() {
-                return Err("a neural region needs a polygon or a contour point, not both".into());
+            if !polygon && region.seed.is_none() {
+                return Err("a neural region needs a polygon or a seed".into());
             }
             if polygon && (region.polygon.len() < 3 || region.polygon.len() > 4096) {
                 return Err("a neural region polygon needs 3 to 4096 corners".into());
             }
-            if !region.polygon.iter().all(finite) || !region.contour_at.iter().all(finite) {
+            if !region.polygon.iter().all(finite) || !region.seed.iter().all(finite) {
                 return Err("a neural region has a nonfinite or unbounded coordinate".into());
             }
         }
@@ -193,7 +204,7 @@ fn finite(point: &[f64; 2]) -> bool {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NeuralItem {
-    /// Schema version; currently only version two is supported.
+    /// Schema version. Version three adds cuts and seeds; version two reads as three.
     pub version: u32,
     /// The canvas's samples, in the order they were made.
     pub samples: Vec<NeuralSample>,
@@ -202,7 +213,7 @@ pub struct NeuralItem {
 impl Default for NeuralItem {
     fn default() -> Self {
         Self {
-            version: 2,
+            version: 3,
             samples: Vec::new(),
         }
     }
@@ -237,7 +248,7 @@ impl NeuralItem {
     ///
     /// At most 4096 samples are accepted; each sample has the limits of its own validation.
     pub fn validate(&self) -> Result<(), String> {
-        if self.version != 2 {
+        if !matches!(self.version, 2 | 3) {
             return Err(format!("unsupported neural item version {}", self.version));
         }
         if self.samples.len() > 4096 {
@@ -358,12 +369,13 @@ mod tests {
         NeuralRegion {
             owners: vec![owner],
             polygon: vec![[x, 0.0], [x + 100.0, 0.0], [x + 100.0, 100.0], [x, 100.0]],
-            contour_at: None,
+            seed: None,
         }
     }
 
     fn sample(text: &str) -> NeuralSample {
         NeuralSample {
+            cuts: Vec::new(),
             boundary: vec![
                 [-50.0, -50.0],
                 [400.0, -50.0],
@@ -397,13 +409,16 @@ mod tests {
         assert!(item.validate().is_err());
         let region = &mut item.samples[0].regions[1];
         region.owners = vec![1];
-        region.contour_at = Some([1.0, 1.0]);
-        assert!(
-            item.validate().is_err(),
-            "polygon and contour point together"
+        region.seed = Some([1.0, 1.0]);
+        assert_eq!(
+            item.validate(),
+            Ok(()),
+            "a seed region carries its derived polygon"
         );
         item.samples[0].regions[1].polygon.clear();
-        assert_eq!(item.validate(), Ok(()));
+        assert_eq!(item.validate(), Ok(()), "an older seed region has none");
+        item.samples[0].regions[1].seed = None;
+        assert!(item.validate().is_err(), "neither polygon nor seed");
         item.samples[0].boundary.truncate(2);
         assert!(item.validate().is_err(), "a sample needs a boundary");
     }
@@ -424,7 +439,7 @@ mod tests {
             NeuralRegion {
                 owners: vec![0, 1],
                 polygon: Vec::new(),
-                contour_at: Some([12.5, -40.0]),
+                seed: Some([12.5, -40.0]),
             },
         ];
         let item = NeuralItem {

@@ -17,6 +17,7 @@ pub mod embolden;
 pub mod glyph_ops;
 pub mod glyph_paths;
 pub mod knife;
+pub mod label_pieces;
 pub mod path;
 pub mod point_ops;
 pub mod segment_ops;

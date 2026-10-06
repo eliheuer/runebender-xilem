@@ -407,23 +407,24 @@ fn dispatch_editor_event(
 }
 
 /// One color per letter for the label tool, cycling through the theme's mark colors.
-fn label_colors(pal: &Palette) -> Vec<xilem::Color> {
-    let marks: Vec<xilem::Color> = pal
-        .mark_list()
-        .into_iter()
-        .map(|(_, color)| color)
-        .collect();
-    if marks.is_empty() {
-        vec![pal.tool_feedback()]
-    } else if marks.len().is_multiple_of(3) {
-        marks
-    } else {
-        // Step through the hues three at a time, so letters next to each other in the text
-        // do not get neighboring hues such as red and orange.
-        (0..marks.len())
-            .map(|index| marks[index * 3 % marks.len()])
-            .collect()
-    }
+/// Ten hues for labeled letters, chosen to read on the gray canvas in both themes. Letters
+/// within three places of each other in the text never share one.
+pub(crate) fn label_colors(_pal: &Palette) -> Vec<xilem::Color> {
+    const HUES: [u32; 10] = [
+        0xD94F3D, 0x3A7BD5, 0xE0A826, 0x3C9D5E, 0x8A5BD6, 0xE6702E, 0xD9529C, 0x2A9DA8, 0x9C7A2E,
+        0x5E6BD8,
+    ];
+    let color = |value: u32| {
+        xilem::Color::from_rgba8(
+            ((value >> 16) & 0xFF) as u8,
+            ((value >> 8) & 0xFF) as u8,
+            (value & 0xFF) as u8,
+            255,
+        )
+    };
+    (0..HUES.len())
+        .map(|index| color(HUES[index * 3 % HUES.len()]))
+        .collect()
 }
 
 enum Drag {
@@ -473,10 +474,18 @@ enum Drag {
     /// and a polygon corner when it does not.
     Label {
         points: Vec<Point>,
+        /// Option was held at the press: a click unpaints instead of painting.
+        erase: bool,
     },
     /// A polygon corner of a label region follows the pointer; the session holds where.
     LabelCorner {
         region: usize,
+    },
+    /// A cut, or one end of it, follows the pointer; the session holds where.
+    LabelCut {
+        cut: usize,
+        end: Option<usize>,
+        start: Point,
     },
     /// Drawing a shape; endpoints in design space.
     Shape {
@@ -532,6 +541,8 @@ pub(crate) struct EditorWidget {
     /// Where a pen click would add a point to an existing segment, and
     /// whether that point splits a curve.
     insert_preview: Option<(Point, bool)>,
+    /// What the label tool's pointer is over, for the glow, the cursor and the caption.
+    label_hover: Option<crate::application::editor::tools::label::LabelHit>,
     /// The open context-menu layer, if there is one.
     menu: Option<WidgetId>,
     view: ViewOptions,
@@ -1020,85 +1031,176 @@ impl EditorWidget {
     /// of the active letter, and the polygon being placed. Ink no letter owns keeps the plain
     /// outline, so what is left to label is what is not colored.
     fn paint_labels(&self, painter: &mut Painter<'_>, affine: Affine) {
+        use crate::application::editor::tools::label::{LabelHit, LabelSelection};
         let pal = &self.palette;
         let colors = label_colors(pal);
         let outline = affine * self.session.outline();
         let selected = self.session.label.sample;
         let active = self.session.label.active;
+        let lit_letter = self.session.label.hover_letter;
         // Every sample's boundary, the selected one strongest.
         for (position, sample) in self.session.neural_item().samples.iter().enumerate() {
             let (width, alpha) = if Some(position) == selected {
-                (1.5, 0.9)
+                (1.0, 0.6)
             } else {
-                (1.0, 0.45)
+                (1.0, 0.3)
             };
             painter
                 .stroke(
                     affine * sample.boundary_path(),
                     &Stroke::new(width),
-                    pal.tool_feedback().with_alpha(alpha),
+                    pal.text_muted.with_alpha(alpha),
                 )
                 .draw();
         }
+        // Labeled ink in its letter's color. Shared ink shows both colors, one over the other.
         for area in self.session.label_areas() {
             let color = colors[area.letter % colors.len()];
+            let lit = Some(area.sample) == selected && lit_letter == Some(area.letter);
             let path = affine * area.area;
             painter.with_fill_clip(&path, |painter| {
-                painter.fill(&outline, color.with_alpha(0.9)).draw();
+                painter.fill(&outline, color.with_alpha(0.85)).draw();
+                if lit {
+                    painter.fill(&outline, pal.canvas.with_alpha(0.35)).draw();
+                }
             });
-            if Some(area.sample) == selected {
-                let (width, alpha) = if area.letter == active {
-                    (1.5, 0.9)
-                } else {
-                    (1.0, 0.35)
-                };
-                painter
-                    .stroke(&path, &Stroke::new(width), color.with_alpha(alpha))
-                    .draw();
+        }
+        // The piece under the pointer glows.
+        if let Some(LabelHit::Piece(piece)) = &self.label_hover {
+            painter
+                .fill(&(affine * piece.clone()), pal.text.with_alpha(0.18))
+                .draw();
+        }
+        // Cuts: thin lines; the selected or hovered one carries its end handles.
+        let picked_cut = match (self.session.label.selected, &self.label_hover) {
+            (Some(LabelSelection::Cut(cut)), _) => Some(cut),
+            (_, Some(LabelHit::Cut { cut } | LabelHit::CutEnd { cut, .. })) => Some(*cut),
+            _ => None,
+        };
+        for (index, cut) in self.session.label_cuts().into_iter().enumerate() {
+            let picked = picked_cut == Some(index);
+            let line = Line::new(affine * cut.p0, affine * cut.p1);
+            painter
+                .stroke(
+                    line,
+                    &Stroke::new(if picked { 1.5 } else { 1.0 }),
+                    pal.text.with_alpha(if picked { 0.9 } else { 0.5 }),
+                )
+                .draw();
+            if picked {
+                for end in [line.p0, line.p1] {
+                    let handle = Circle::new(end, 3.5);
+                    painter.fill(handle, pal.canvas).draw();
+                    painter.stroke(handle, &Stroke::new(1.5), pal.text).draw();
+                }
             }
         }
-        // The selected sample's polygons carry handles: a corner can be dragged.
+        // The active letter's lasso polygons carry corner handles; the selected one too.
         for polygon in self.session.label_polygons() {
+            let editable = polygon.letter == active
+                || self.session.label.selected == Some(LabelSelection::Region(polygon.region));
+            if !editable {
+                continue;
+            }
             let color = colors[polygon.letter % colors.len()];
-            let radius = if polygon.letter == active { 3.5 } else { 2.5 };
-            for corner in &polygon.corners {
-                let handle = Circle::new(affine * *corner, radius);
+            let mut path = kurbo::BezPath::new();
+            for (index, corner) in polygon.corners.iter().enumerate() {
+                let at = affine * *corner;
+                if index == 0 {
+                    path.move_to(at);
+                } else {
+                    path.line_to(at);
+                }
+            }
+            path.close_path();
+            painter.stroke(&path, &Stroke::new(1.0), color).draw();
+            for (index, corner) in polygon.corners.iter().enumerate() {
+                let picked = self.session.label.selected
+                    == Some(LabelSelection::Corner(polygon.region, index));
+                let handle = Circle::new(affine * *corner, if picked { 4.5 } else { 3.5 });
                 painter.fill(handle, pal.canvas).draw();
                 painter.stroke(handle, &Stroke::new(1.5), color).draw();
             }
+            // A corner would go here: the edge under the pointer shows it.
+            if let Some(LabelHit::Edge { region, at, .. }) = &self.label_hover
+                && *region == polygon.region
+            {
+                let ghost = Circle::new(affine * *at, 3.5);
+                painter
+                    .stroke(ghost, &Stroke::new(1.0), color.with_alpha(0.7))
+                    .draw();
+            }
         }
-        // Each labeled letter says what it is, above its ink.
-        for area in self.session.label_areas() {
-            let bounds = (affine * area.area).bounding_box();
-            text_label::draw(
-                painter,
-                Point::new(bounds.center().x, bounds.y0 - 12.0),
-                // Code first: a leading Arabic letter would reorder the tag.
-                &format!("U+{:04X}  {}", area.character as u32, area.character),
-                13.0,
-                pal.text,
-                Anchor::Middle,
-            );
-        }
-        let draft = &self.session.label.draft;
-        if let Some(first) = draft.first() {
+        // A freehand drag in progress: a cut is a straight line, a lasso a loop.
+        if let Drag::Label { points, .. } = &self.drag
+            && points.len() >= 2
+        {
             let color = if selected.is_some() {
                 colors[active % colors.len()]
             } else {
                 pal.tool_feedback()
             };
+            let design: Vec<Point> = points
+                .iter()
+                .map(|p| self.screen_to_glyph_design(*p))
+                .collect();
+            let is_cut = selected.is_some()
+                && crate::application::editor::tools::label::drag_is_cut(
+                    &design,
+                    &self.session.label_contours(),
+                );
             let mut path = kurbo::BezPath::new();
-            path.move_to(affine * *first);
-            for corner in &draft[1..] {
-                path.line_to(affine * *corner);
+            if is_cut {
+                path.move_to(points[0]);
+                path.line_to(points[points.len() - 1]);
+            } else {
+                path.move_to(points[0]);
+                for point in &points[1..] {
+                    path.line_to(*point);
+                }
+                path.close_path();
+                painter.fill(&path, color.with_alpha(0.12)).draw();
             }
             painter.stroke(&path, &Stroke::new(1.5), color).draw();
-            for corner in draft {
-                painter
-                    .fill(Circle::new(affine * *corner, 3.0), color)
-                    .draw();
-            }
         }
+        // What a click does, in the corner of the canvas.
+        if let Some(caption) = self.label_caption() {
+            text_label::draw(
+                painter,
+                Point::new(PANEL_PAD + 2.0, self.size.height - PANEL_PAD - 10.0),
+                &caption,
+                12.0,
+                pal.text_muted,
+                Anchor::Start,
+            );
+        }
+    }
+
+    /// What a click would do where the label tool's pointer is.
+    fn label_caption(&self) -> Option<String> {
+        use crate::application::editor::tools::label::LabelHit;
+        if self.session.label.sample.is_none() {
+            return Some(match self.label_hover {
+                Some(LabelHit::Piece(_)) => {
+                    "Click a sample to label it. Drag a loop around writing for a new one".into()
+                }
+                _ => "Drag a loop around writing to make a sample".into(),
+            });
+        }
+        let letter = self.session.active_letter().map(|(_, c)| c);
+        let Some(letter) = letter else {
+            return Some("Type the sample's text in the panel".into());
+        };
+        Some(match &self.label_hover {
+            Some(LabelHit::Piece(_)) => {
+                format!("Click: paint {letter}. Option-click: unpaint. Drag across: cut")
+            }
+            Some(LabelHit::Corner { .. }) => "Drag: move the corner. Delete: remove it".into(),
+            Some(LabelHit::Edge { .. }) => "Click: add a corner".into(),
+            Some(LabelHit::CutEnd { .. }) => "Drag: move the end of the cut".into(),
+            Some(LabelHit::Cut { .. }) => "Drag: move the cut. Delete: remove it".into(),
+            _ => format!("Painting {letter}. Drag a loop: lasso. Enter: next letter"),
+        })
     }
 
     /// The layer's picture as shown: its transform and its size in pixels. None while it is
@@ -2118,7 +2220,7 @@ impl Widget for EditorWidget {
             self.paint_labels(painter, affine);
         }
 
-        if let Drag::Lasso { points, .. } | Drag::Label { points } = &self.drag
+        if let Drag::Lasso { points, .. } | Drag::Label { points, .. } = &self.drag
             && let Some(first) = points.first()
         {
             let mut path = kurbo::BezPath::new();
@@ -2400,35 +2502,90 @@ impl Widget for EditorWidget {
                         return;
                     }
                     Some(PointerButton::Primary) if self.tool == Tool::Label => {
+                        use crate::application::editor::tools::label::{
+                            LabelHit, LabelMoving, LabelSelection,
+                        };
                         ctx.request_focus();
                         let design = self.screen_to_glyph_design(at);
-                        if state.modifiers.alt() {
-                            // a whole contour, such as a dot
-                            let changed = self.session.assign_label_contour(design);
-                            self.emit(ctx, changed);
-                        } else if state.count >= 2 {
-                            let changed = self.session.close_label_polygon();
-                            self.emit(ctx, changed);
-                        } else if self.session.label.draft.is_empty()
-                            && let Some((region, corner)) = self
-                                .session
-                                .label_corner_at(design, HIT_RADIUS_PX / self.session.viewport.zoom)
-                        {
-                            // An existing corner: drag it, and work on its letter.
-                            self.session.activate_label_region(region);
-                            self.session.label.moving = Some((region, corner, design));
-                            self.drag = Drag::LabelCorner { region };
-                            ctx.capture_pointer();
-                            self.emit(ctx, false);
-                        } else if self.session.label.sample.is_none()
-                            && self.session.label.draft.is_empty()
-                            && let Some(sample) = self.session.sample_at(design)
-                        {
-                            // A click on a sample selects it.
-                            self.session.select_sample(Some(sample));
-                            self.emit(ctx, false);
-                        } else {
-                            self.drag = Drag::Label { points: vec![at] };
+                        let reach = HIT_RADIUS_PX / self.session.viewport.zoom;
+                        match self.session.label_hit(design, reach) {
+                            LabelHit::Corner { region, corner } => {
+                                self.session.activate_label_region(region);
+                                self.session.label.selected =
+                                    Some(LabelSelection::Corner(region, corner));
+                                self.session.label.moving = Some(LabelMoving::Corner {
+                                    region,
+                                    corner,
+                                    to: design,
+                                });
+                                self.drag = Drag::LabelCorner { region };
+                                ctx.capture_pointer();
+                                self.emit(ctx, false);
+                            }
+                            LabelHit::Edge {
+                                region,
+                                after,
+                                at: on,
+                            } => {
+                                // A corner appears on the edge and follows the pointer.
+                                if let Some(corner) =
+                                    self.session.add_label_corner(region, after, on)
+                                {
+                                    self.session.label.selected =
+                                        Some(LabelSelection::Corner(region, corner));
+                                    self.session.label.moving = Some(LabelMoving::Corner {
+                                        region,
+                                        corner,
+                                        to: on,
+                                    });
+                                    self.drag = Drag::LabelCorner { region };
+                                    ctx.capture_pointer();
+                                    self.emit(ctx, true);
+                                }
+                            }
+                            LabelHit::CutEnd { cut, end } => {
+                                self.session.label.selected = Some(LabelSelection::Cut(cut));
+                                self.session.label.moving = Some(LabelMoving::CutEnd {
+                                    cut,
+                                    end,
+                                    to: design,
+                                });
+                                self.drag = Drag::LabelCut {
+                                    cut,
+                                    end: Some(end),
+                                    start: design,
+                                };
+                                ctx.capture_pointer();
+                                self.emit(ctx, false);
+                            }
+                            LabelHit::Cut { cut } => {
+                                self.session.label.selected = Some(LabelSelection::Cut(cut));
+                                self.session.label.moving = Some(LabelMoving::Cut {
+                                    cut,
+                                    by: kurbo::Vec2::ZERO,
+                                });
+                                self.drag = Drag::LabelCut {
+                                    cut,
+                                    end: None,
+                                    start: design,
+                                };
+                                ctx.capture_pointer();
+                                self.emit(ctx, false);
+                            }
+                            LabelHit::Piece(_) | LabelHit::Nothing => {
+                                if self.session.label.sample.is_none()
+                                    && let Some(sample) = self.session.sample_at(design)
+                                {
+                                    // A click on a sample selects it.
+                                    self.session.select_sample(Some(sample));
+                                    self.emit(ctx, false);
+                                } else {
+                                    self.drag = Drag::Label {
+                                        points: vec![at],
+                                        erase: state.modifiers.alt(),
+                                    };
+                                }
+                            }
                         }
                         ctx.request_render();
                         ctx.set_handled();
@@ -2669,6 +2826,17 @@ impl Widget for EditorWidget {
                     self.insert_preview = insert_preview;
                     ctx.request_render();
                 }
+                if self.tool == Tool::Label && matches!(self.drag, Drag::None) {
+                    use crate::application::editor::tools::label::LabelHit;
+                    let hit = self
+                        .session
+                        .label_hit(glyph_design, HIT_RADIUS_PX / self.session.viewport.zoom);
+                    let hover = (hit != LabelHit::Nothing).then_some(hit);
+                    if hover != self.label_hover {
+                        self.label_hover = hover;
+                        ctx.request_render();
+                    }
+                }
                 match &mut self.drag {
                     Drag::Sketch { last, changed } => {
                         let mut sketch = self
@@ -2771,18 +2939,37 @@ impl Widget for EditorWidget {
                         ctx.request_render();
                     }
                     Drag::LabelCorner { region } => {
+                        use crate::application::editor::tools::label::LabelMoving;
                         let region = *region;
-                        if let Some((_, corner, _)) = self.session.label.moving {
+                        if let Some(LabelMoving::Corner { corner, .. }) = self.session.label.moving
+                        {
                             let to = self.session.snapped_label_corner(
                                 glyph_design,
                                 HIT_RADIUS_PX / self.session.viewport.zoom,
                                 Some(region),
                             );
-                            self.session.label.moving = Some((region, corner, to));
+                            self.session.label.moving =
+                                Some(LabelMoving::Corner { region, corner, to });
                             ctx.request_render();
                         }
                     }
-                    Drag::Lasso { points, .. } | Drag::Label { points } => {
+                    Drag::LabelCut { cut, end, start } => {
+                        use crate::application::editor::tools::label::LabelMoving;
+                        let (cut, end, start) = (*cut, *end, *start);
+                        self.session.label.moving = Some(match end {
+                            Some(end) => LabelMoving::CutEnd {
+                                cut,
+                                end,
+                                to: glyph_design,
+                            },
+                            None => LabelMoving::Cut {
+                                cut,
+                                by: glyph_design - start,
+                            },
+                        });
+                        ctx.request_render();
+                    }
+                    Drag::Lasso { points, .. } | Drag::Label { points, .. } => {
                         if points.last().is_none_or(|last| last.distance(at) >= 2.0) {
                             points.push(at);
                             ctx.request_render();
@@ -2878,37 +3065,46 @@ impl Widget for EditorWidget {
                         self.drag = Drag::None;
                         self.emit(ctx, changed);
                     }
-                    Drag::LabelCorner { .. } => {
-                        let changed = self.session.finish_label_corner_move(!cancelled);
+                    Drag::LabelCorner { .. } | Drag::LabelCut { .. } => {
+                        let changed = self.session.finish_label_move(!cancelled);
                         self.drag = Drag::None;
                         self.emit(ctx, changed);
                     }
-                    Drag::Label { points } => {
+                    Drag::Label { points, erase } => {
+                        let erase = *erase;
                         let mut changed = false;
                         if !cancelled {
+                            let design: Vec<Point> = points
+                                .iter()
+                                .map(|p| self.screen_to_glyph_design(*p))
+                                .collect();
                             let travelled = points
                                 .iter()
                                 .fold(Rect::from_points(points[0], points[0]), |r, p| {
                                     r.union_pt(*p)
                                 });
-                            if points.len() >= 6 && travelled.width().max(travelled.height()) > 12.0
+                            let moved = travelled.width().max(travelled.height()) > 4.0;
+                            let contours = self.session.label_contours();
+                            if !moved {
+                                // A click: paint the piece, or with Option, unpaint it.
+                                if self.session.label.sample.is_some() {
+                                    self.session.label.selected = None;
+                                    changed = self.session.paint_piece(design[0], erase);
+                                }
+                            } else if self.session.label.sample.is_some()
+                                && crate::application::editor::tools::label::drag_is_cut(
+                                    &design, &contours,
+                                )
                             {
-                                let design: Vec<Point> = points
-                                    .iter()
-                                    .map(|p| self.screen_to_glyph_design(*p))
-                                    .collect();
+                                changed = self.session.add_cut(design[0], design[design.len() - 1]);
+                            } else if points.len() >= 6
+                                && travelled.width().max(travelled.height()) > 12.0
+                            {
                                 changed = self.session.add_label_lasso(&design);
-                            } else {
-                                // A corner placed on a neighbor's corner shares it exactly.
-                                let corner = self.session.snapped_label_corner(
-                                    self.screen_to_glyph_design(points[0]),
-                                    HIT_RADIUS_PX / self.session.viewport.zoom,
-                                    None,
-                                );
-                                self.session.add_label_corner(corner);
                             }
                         }
                         self.drag = Drag::None;
+                        self.label_hover = None;
                         self.emit(ctx, changed);
                     }
                     Drag::Lasso { points, additive } => {
@@ -3151,20 +3347,20 @@ impl Widget for EditorWidget {
         if self.tool == Tool::Label && self.field.is_none() && !cmd {
             let mut edited = false;
             let handled = match &key.key {
-                Key::Named(NamedKey::Tab) => {
-                    self.session.step_label_letter(if shift { -1 } else { 1 });
+                Key::Named(NamedKey::Tab) if shift => {
+                    self.session.step_label_letter(-1);
                     true
                 }
-                Key::Named(NamedKey::Enter) => {
-                    edited = self.session.close_label_polygon();
+                Key::Named(NamedKey::Tab | NamedKey::Enter) => {
+                    self.session.next_label_letter();
                     true
                 }
                 Key::Named(NamedKey::Backspace | NamedKey::Delete) => {
-                    edited = self.session.delete_label_region();
+                    edited = self.session.delete_label_selection();
                     true
                 }
-                Key::Named(NamedKey::Escape) if !self.session.label.draft.is_empty() => {
-                    self.session.label.draft.clear();
+                Key::Named(NamedKey::Escape) if self.session.label.selected.is_some() => {
+                    self.session.label.selected = None;
                     true
                 }
                 Key::Named(NamedKey::Escape) if self.session.label.sample.is_some() => {
@@ -3655,6 +3851,7 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
             drag: Drag::None,
             hover: None,
             insert_preview: None,
+            label_hover: None,
             menu: None,
             view: self.view,
             field: None,
@@ -3886,6 +4083,7 @@ mod tests {
             drag: Drag::None,
             hover: None,
             insert_preview: None,
+            label_hover: None,
             menu: None,
             view: ViewOptions::default(),
             field: None,
@@ -5175,39 +5373,51 @@ mod tests {
     }
 
     #[test]
-    fn label_press_is_a_corner_and_a_drag_is_a_loop() {
+    fn a_label_loop_makes_a_sample_and_hovered_ink_glows() {
+        // The harness holds no document, so each edit stages from the same base; the
+        // painting and cutting gestures are covered by the session's own tests.
         let mut editor = widget();
         editor.tool = Tool::Label;
         let original = projected_glyph(&editor.session);
         let mut harness =
             TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
-        // two presses that do not travel: two corners of a polygon
-        for at in [Point::new(200.0, 150.0), Point::new(260.0, 150.0)] {
-            harness.mouse_move(at);
-            harness.mouse_button_press(Some(PointerButton::Primary));
-            harness.mouse_button_release(Some(PointerButton::Primary));
-        }
+        let affine = harness.edit_root_widget(|root| root.widget.glyph_affine());
+        let screen = |x: f64, y: f64| affine * Point::new(x, y);
+
+        // hovering the square's ink glows and the caption says what a click does
+        harness.mouse_move(screen(200.0, 350.0));
         harness.edit_root_widget(|root| {
-            assert_eq!(root.widget.session.label.draft.len(), 2);
-            assert!(root.widget.session.label.error.is_none());
-            root.widget.session.label.draft.clear();
+            assert!(matches!(
+                root.widget.label_hover,
+                Some(crate::application::editor::tools::label::LabelHit::Piece(_))
+            ));
+            assert!(
+                root.widget
+                    .label_caption()
+                    .unwrap()
+                    .starts_with("Click a sample")
+            );
         });
-        // a press that travels: a loop. With no sample selected, it makes a sample.
-        harness.mouse_move(Point::new(200.0, 150.0));
+
+        // a loop around the square, with no sample selected: a new sample
+        harness.mouse_move(screen(-60.0, -60.0));
         harness.mouse_button_press(Some(PointerButton::Primary));
-        for step in 1..=12 {
-            let turn = f64::from(step) * std::f64::consts::TAU / 12.0;
-            harness.mouse_move(Point::new(
-                260.0 + 60.0 * turn.cos(),
-                150.0 + 60.0 * turn.sin(),
+        for step in 1..=16 {
+            let turn = f64::from(step) * std::f64::consts::TAU / 16.0;
+            harness.mouse_move(screen(
+                200.0 + 460.0 * turn.cos(),
+                350.0 + 520.0 * turn.sin(),
             ));
         }
         harness.mouse_button_release(Some(PointerButton::Primary));
         harness.edit_root_widget(|root| {
             let session = &root.widget.session;
-            assert!(session.label.draft.is_empty(), "a loop places no corner");
             assert_eq!(session.neural_item().samples.len(), 1);
             assert_eq!(session.label.sample, Some(0), "the new sample is selected");
+            assert!(
+                session.neural_item().samples[0].boundary.len() <= 16,
+                "the loop became a polygon with few corners"
+            );
             assert_eq!(
                 projected_glyph(session).contours,
                 original.contours,

@@ -45,36 +45,34 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         })
         .collect::<Vec<_>>();
     let sample_controls = selected.map(|(position, sample)| {
+        use crate::application::widgets::letter_chips::{Chip, ChipEvent, letter_chips};
+        let colors = crate::application::view::canvas::editor::label_colors(pal);
         let letters = sample.letters();
         let active = app
             .session
             .label
             .active
             .min(letters.len().saturating_sub(1));
-        let rows = letters
+        let text: Vec<char> = sample.text.chars().collect();
+        let chips: Vec<Chip> = letters
             .iter()
             .enumerate()
-            .map(|(letter, (index, character))| {
-                let regions = sample.regions_of(*index).count();
-                let trailing = if regions == 0 {
-                    "—".into()
-                } else {
-                    regions.to_string()
-                };
-                recipes::list_row(
-                    pal,
-                    format!("U+{:04X}  {character}", *character as u32),
-                    trailing,
-                    letter == active,
-                    move |app: &mut Workspace| {
-                        let session = Arc::make_mut(&mut app.session);
-                        session.label.active = letter;
-                        session.label.draft.clear();
-                    },
-                )
-                .boxed()
+            .map(|(letter, (index, character))| Chip {
+                character: *character,
+                color: colors[letter % colors.len()],
+                done: sample.regions_of(*index).next().is_some(),
+                word_start: (*index as usize)
+                    .checked_sub(1)
+                    .is_some_and(|before| text[before].is_whitespace()),
             })
-            .collect::<Vec<_>>();
+            .collect();
+        let done = chips.iter().filter(|chip| chip.done).count();
+        let cuts = sample.cuts.len();
+        let summary = format!(
+            "{done} of {} letters painted, {cuts} {}",
+            letters.len(),
+            if cuts == 1 { "cut" } else { "cuts" }
+        );
         xcolumn(
             Region::Form,
             (
@@ -90,7 +88,22 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         app.edit_label(|session| session.set_sample_text(text));
                     },
                 ),
-                xcolumn(Region::List, rows),
+                letter_chips(
+                    Arc::new(chips),
+                    active,
+                    (pal.text, pal.panel, pal.text_muted),
+                    |app: &mut Workspace, event| {
+                        let session = Arc::make_mut(&mut app.session);
+                        match event {
+                            ChipEvent::Pick(letter) => {
+                                session.label.active = letter;
+                                session.label.selected = None;
+                            }
+                            ChipEvent::Hover(letter) => session.label.hover_letter = letter,
+                        }
+                    },
+                ),
+                caption(summary),
                 recipes::action(pal, "Delete sample".into(), |app: &mut Workspace| {
                     app.edit_label(|session| session.delete_sample());
                 }),
@@ -99,14 +112,10 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     });
     let hints: &[&str] = if app.session.label.sample.is_some() {
         &[
-            "Click: place a corner",
-            "Double-click or Enter: close",
-            "Drag a corner: move it",
-            "Drag: loop a letter's ink",
-            "Option-click: whole contour",
-            "Tab: next letter",
-            "Delete: remove the last region",
-            "Escape: leave the sample",
+            "Click ink: paint. Option-click: unpaint",
+            "Drag across a stroke: cut",
+            "Drag a loop: lasso",
+            "Enter: next letter. Delete: remove",
         ]
     } else {
         &[

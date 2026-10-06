@@ -32,6 +32,13 @@ pub(crate) fn run(
         && let Some(index) = workspace.font.index_of(&name)
     {
         workspace.open_glyph(index);
+        // RUNEBENDER_LABEL_SAMPLE=<n> opens the label tool on that sample.
+        if let Some(sample) = std::env::var("RUNEBENDER_LABEL_SAMPLE")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+        {
+            Arc::make_mut(&mut workspace.session).select_sample(Some(sample));
+        }
     }
     if std::env::var("RUNEBENDER_SELECTALL").is_ok()
         && let Some(workspace) = app.workspace.as_mut()

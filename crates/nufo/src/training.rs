@@ -69,7 +69,10 @@ pub fn prepare(sample: &NeuralSample, contours: &[BezPath]) -> Result<TrainingSa
         };
         for position in sample.regions_of(index) {
             let region = &sample.regions[position];
-            if let Some(at) = region.contour_at {
+            if region.polygon.is_empty()
+                && let Some(at) = region.seed
+            {
+                // An older seed region without its derived polygon: the whole contour.
                 let at = kurbo::Point::new(at[0], at[1]);
                 let owned = own
                     .iter()
@@ -119,6 +122,7 @@ mod tests {
             rect(1000.0, 0.0, 1200.0, 100.0),
         ];
         let sample = NeuralSample {
+            cuts: Vec::new(),
             boundary: vec![
                 [-50.0, -50.0],
                 [350.0, -50.0],
@@ -130,17 +134,17 @@ mod tests {
                 NeuralRegion {
                     owners: vec![0],
                     polygon: polygon(-10.0, 120.0),
-                    contour_at: None,
+                    seed: None,
                 },
                 NeuralRegion {
                     owners: vec![0],
                     polygon: Vec::new(),
-                    contour_at: Some([50.0, 160.0]),
+                    seed: Some([50.0, 160.0]),
                 },
                 NeuralRegion {
                     owners: vec![1, 4],
                     polygon: polygon(90.0, 310.0),
-                    contour_at: None,
+                    seed: None,
                 },
             ],
         };
@@ -162,12 +166,13 @@ mod tests {
     #[test]
     fn an_unlabeled_letter_or_an_empty_boundary_is_named_in_the_error() {
         let mut sample = NeuralSample {
+            cuts: Vec::new(),
             boundary: vec![[-5.0, -5.0], [15.0, -5.0], [15.0, 15.0], [-5.0, 15.0]],
             text: "ab".into(),
             regions: vec![NeuralRegion {
                 owners: vec![0],
                 polygon: vec![[0.0, 0.0], [10.0, 0.0], [10.0, 10.0]],
-                contour_at: None,
+                seed: None,
             }],
         };
         let error = prepare(&sample, &[rect(0.0, 0.0, 10.0, 10.0)]).unwrap_err();
