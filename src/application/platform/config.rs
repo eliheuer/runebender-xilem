@@ -19,6 +19,7 @@
 //! post_opentype = "/Users/me/GH/repos/post-opentype"  # default ~/GH/repos/post-opentype
 //! train_host = "kiln"   # ssh host that trains; "" for this machine; default kiln
 //! epochs = 800
+//! sample_epochs = 200   # a run on one sample alone
 //! ```
 
 use std::path::PathBuf;
@@ -45,6 +46,8 @@ pub(crate) struct NeuralConfig {
     pub train_host: Option<String>,
     /// Epochs of one training run.
     pub epochs: Option<u32>,
+    /// Epochs of a run on one sample alone.
+    pub sample_epochs: Option<u32>,
 }
 
 /// Where training happens and for how long, with the defaults filled in.
@@ -53,6 +56,7 @@ pub(crate) struct Neural {
     pub post_opentype: PathBuf,
     pub train_host: Option<String>,
     pub epochs: u32,
+    pub sample_epochs: u32,
 }
 
 /// The training settings in effect, set once at startup.
@@ -130,7 +134,7 @@ impl Config {
     }
 
     /// The training settings this config gives, with the defaults filled in: the checkout at
-    /// `~/GH/repos/post-opentype`, kiln, 800 epochs.
+    /// `~/GH/repos/post-opentype`, kiln, 800 epochs, 200 for one sample.
     fn neural(&self) -> Neural {
         let home = std::env::var_os("HOME")
             .map(PathBuf::from)
@@ -147,6 +151,7 @@ impl Config {
                 Some(host) => Some(host.into()),
             },
             epochs: self.neural.epochs.filter(|e| *e > 0).unwrap_or(800),
+            sample_epochs: self.neural.sample_epochs.filter(|e| *e > 0).unwrap_or(200),
         }
     }
 

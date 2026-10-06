@@ -79,37 +79,61 @@ pub(crate) fn models_dir(source: &Path) -> PathBuf {
         .join(format!("{stem}.models"))
 }
 
-/// The versions in `dir`, oldest first, read from their logs and manifests.
+/// The versions in `dir`, oldest first: the numbered runs on the whole source, and under
+/// each `sample-…` folder the numbered runs on that sample alone, named `sample-…/NNN`.
 pub(crate) fn versions(dir: &Path) -> Vec<ModelVersion> {
-    let mut names: Vec<PathBuf> = std::fs::read_dir(dir)
-        .into_iter()
-        .flatten()
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| path.is_dir())
-        .collect();
-    names.sort();
-    names
-        .into_iter()
-        .map(|path| {
-            let log = std::fs::read_to_string(path.join("train.log")).unwrap_or_default();
-            let last_epoch = log
-                .lines()
-                .rfind(|line| line.starts_with("epoch"))
-                .map(str::to_string);
-            let font = path.join("font.ntf");
-            ModelVersion {
-                name: path
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned(),
-                font: font.exists().then_some(font),
-                path,
-                last_epoch,
+    let folders = |dir: &Path| -> Vec<PathBuf> {
+        let mut names: Vec<PathBuf> = std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.is_dir())
+            .collect();
+        names.sort();
+        names
+    };
+    let folder_name = |path: &Path| {
+        path.file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned()
+    };
+    let mut versions: Vec<ModelVersion> = Vec::new();
+    for path in folders(dir) {
+        let folder = folder_name(&path);
+        if folder.starts_with("sample-") {
+            for run in folders(&path) {
+                let name = format!("{folder}/{}", folder_name(&run));
+                versions.push(version_at(run, name));
             }
-        })
-        .collect()
+        } else {
+            versions.push(version_at(path, folder));
+        }
+    }
+    // Oldest first by when the run began, so the newest run of any kind is last.
+    versions.sort_by_key(|version| {
+        std::fs::metadata(&version.path)
+            .and_then(|meta| meta.created().or_else(|_| meta.modified()))
+            .ok()
+    });
+    versions
+}
+
+/// One version folder, read from its log.
+fn version_at(path: PathBuf, name: String) -> ModelVersion {
+    let log = std::fs::read_to_string(path.join("train.log")).unwrap_or_default();
+    let last_epoch = log
+        .lines()
+        .rfind(|line| line.starts_with("epoch"))
+        .map(str::to_string);
+    let font = path.join("font.ntf");
+    ModelVersion {
+        name,
+        font: font.exists().then_some(font),
+        path,
+        last_epoch,
+    }
 }
 
 /// The host answers ssh within a few seconds.
@@ -142,6 +166,27 @@ impl Workspace {
     /// Start a training run on the saved source. Unsaved edits are saved first, because the
     /// script reads the file on disk.
     pub(crate) fn command_train(&mut self) {
+        let epochs = crate::application::platform::config::neural().epochs;
+        self.start_training(epochs, None);
+    }
+
+    /// A short run on the open sample alone, into `<Name>.models/sample-<canvas>-<n>/`.
+    pub(crate) fn command_train_sample(&mut self) {
+        let Some((position, sample)) = self.session.selected_sample() else {
+            self.note = "Open a sample to train on it alone".into();
+            return;
+        };
+        if !sample.unlabeled().is_empty() {
+            self.note = "Label every letter of the sample first".into();
+            return;
+        }
+        let epochs = crate::application::platform::config::neural().sample_epochs;
+        let only = format!("{} #{}", self.session.glyph_name, position + 1);
+        self.start_training(epochs, Some(only));
+    }
+
+    /// Start a run of `epochs`, on `only` one sample ("canvas #n") or on every sample.
+    fn start_training(&mut self, epochs: u32, only: Option<String>) {
         if self.train.job.is_some() {
             self.note = "a training run is already going".into();
             return;
@@ -164,7 +209,21 @@ impl Workspace {
             );
             return;
         }
-        let out_dir = models_dir(&source);
+        let mut out_dir = models_dir(&source);
+        if let Some(only) = &only {
+            // "ba-basic #2" runs go under sample-ba-basic-2.
+            let folder: String = only
+                .chars()
+                .map(|c| {
+                    if c.is_alphanumeric() || c == '-' {
+                        c
+                    } else {
+                        '-'
+                    }
+                })
+                .collect();
+            out_dir = out_dir.join(format!("sample-{}", folder.trim_matches('-')));
+        }
         let job = TrainJob {
             lines: Arc::new(Mutex::new(Vec::new())),
             finished: Arc::new(Mutex::new(None)),
@@ -175,7 +234,16 @@ impl Workspace {
         {
             let worker = job.clone();
             std::thread::spawn(move || {
-                let result = run(&worker, &settings, &script, &source, &name, &out_dir);
+                let result = run(
+                    &worker,
+                    &settings,
+                    epochs,
+                    only.as_deref(),
+                    &script,
+                    &source,
+                    &name,
+                    &out_dir,
+                );
                 *worker.finished.lock().unwrap_or_else(|e| e.into_inner()) = Some(result);
             });
         }
@@ -255,9 +323,15 @@ fn status_of(line: &str, place: &str) -> Option<String> {
 /// Run the script and stream its lines. Returns the script's last line on success, or the
 /// last few lines on failure.
 #[cfg(not(target_arch = "wasm32"))]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one call site, each a distinct setting"
+)]
 fn run(
     job: &TrainJob,
     settings: &crate::application::platform::config::Neural,
+    epochs: u32,
+    only: Option<&str>,
     script: &Path,
     source: &Path,
     name: &str,
@@ -276,9 +350,10 @@ fn run(
         .arg(script)
         .arg(source)
         .arg(name)
-        .arg(settings.epochs.to_string())
+        .arg(epochs.to_string())
         .current_dir(&settings.post_opentype)
         .env("OUT_DIR", out_dir)
+        .env("NTF_ONLY", only.unwrap_or_default())
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
@@ -355,8 +430,11 @@ mod tests {
         std::fs::create_dir_all(&source).unwrap();
         let models = models_dir(&source);
         assert_eq!(models, dir.join("Demo.models"));
-        std::fs::create_dir_all(models.join("002")).unwrap();
         std::fs::create_dir_all(models.join("001")).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::create_dir_all(models.join("002")).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::create_dir_all(models.join("sample-ba-basic-2/001")).unwrap();
         std::fs::write(
             models.join("001/train.log"),
             "device: Cpu\nepoch   1  train loss 0.5  val mse NaN  val IoU NaN  labeled IoU 0.1234  disp err 9.0u  (1s)\nepoch   2  train loss 0.4  val mse NaN  val IoU NaN  labeled IoU 0.9900  disp err 0.5u  (1s)\nsaved\n",
@@ -364,7 +442,8 @@ mod tests {
         .unwrap();
         std::fs::write(models.join("001/font.ntf"), b"NTF0").unwrap();
         let versions = versions(&models);
-        assert_eq!(versions.len(), 2);
+        assert_eq!(versions.len(), 3);
+        assert_eq!(versions[2].name, "sample-ba-basic-2/001");
         assert_eq!(versions[0].name, "001");
         assert_eq!(versions[0].score().as_deref(), Some("0.9900"));
         assert_eq!(versions[0].epochs().as_deref(), Some("2"));
@@ -383,7 +462,7 @@ mod tests {
         let script = dir.join("scripts/train-nufo.sh");
         std::fs::write(
             &script,
-            "#!/bin/sh\necho \"source $1 name $2 epochs $3 out $OUT_DIR host ${TRAIN_HOST:-none}\"\necho 'epoch   1  train loss 0.5  val mse NaN  val IoU NaN  labeled IoU 0.5000  disp err 9.0u  (1s)'\necho 'wrote 001/font.ntf'\n",
+            "#!/bin/sh\necho \"source $1 name $2 epochs $3 out $OUT_DIR host ${TRAIN_HOST:-none} only ${NTF_ONLY:-all}\"\necho 'epoch   1  train loss 0.5  val mse NaN  val IoU NaN  labeled IoU 0.5000  disp err 9.0u  (1s)'\necho 'wrote 001/font.ntf'\n",
         )
         .unwrap();
         let job = TrainJob {
@@ -396,11 +475,14 @@ mod tests {
             post_opentype: dir.clone(),
             train_host: None,
             epochs: 7,
+            sample_epochs: 3,
         };
         let out = dir.join("Demo.models");
         let result = run(
             &job,
             &settings,
+            7,
+            Some("ba #2"),
             &script,
             &dir.join("Demo.nufo"),
             "Demo",
@@ -410,7 +492,7 @@ mod tests {
         let lines = job.lines.lock().unwrap().clone();
         assert_eq!(lines.len(), 3);
         assert!(lines[0].ends_with("name Demo epochs 7 out ") || lines[0].contains("epochs 7 out"));
-        assert!(lines[0].ends_with("host none"));
+        assert!(lines[0].ends_with("host none only ba #2"), "{}", lines[0]);
         assert_eq!(*job.place.lock().unwrap(), "this machine");
         std::fs::remove_dir_all(&dir).ok();
     }

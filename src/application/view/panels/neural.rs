@@ -31,6 +31,12 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         })
         .boxed()
     };
+    // A short run on the open sample alone, to check one drawing.
+    let sample_button = (!running && app.session.selected_sample().is_some()).then(|| {
+        recipes::action(pal, "Train this sample".into(), |app: &mut Workspace| {
+            app.command_train_sample();
+        })
+    });
     // The versions, newest first; the one the model view draws with is marked.
     let chosen = app.model_font();
     let versions = (!train.versions.is_empty()).then(|| {
@@ -97,6 +103,7 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             clear_pulls,
             status,
             button,
+            sample_button,
         ),
     )
     .boxed()
