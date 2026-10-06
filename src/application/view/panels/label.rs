@@ -126,7 +126,6 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     xcolumn(
         Region::Form,
         (
-            label("Samples").color(pal.text),
             xcolumn(Region::List, samples),
             sample_controls,
             xcolumn(

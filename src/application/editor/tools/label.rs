@@ -17,8 +17,9 @@ use crate::application::editor::session::Session;
 use crate::application::workspace::Workspace;
 use kurbo::{BezPath, Line, Point, Shape as _};
 use runebender::font::model::neural_item::{NeuralItem, NeuralRegion, NeuralSample};
+pub(crate) use runebender::outline::label_pieces::DragKind;
 use runebender::outline::label_pieces::{
-    OVERLAP, is_cut_gesture, nearest_on_segment, piece_at, pieces, seed_polygon, simplify_loop,
+    OVERLAP, drag_kind, nearest_on_segment, piece_at, pieces, seed_polygon, simplify_loop,
 };
 use runebender::outline::path::Path;
 use std::sync::Arc;
@@ -69,6 +70,10 @@ pub(crate) enum LabelHit {
     Cut {
         cut: usize,
     },
+    /// Inside a lasso polygon: a click selects it and makes its letter active.
+    Lasso {
+        region: usize,
+    },
     /// A piece of ink, with its outline for the glow.
     Piece(BezPath),
     Nothing,
@@ -110,6 +115,8 @@ pub(crate) struct LabelArea {
 pub(crate) struct LabelPolygon {
     /// The region's position in the sample.
     pub region: usize,
+    /// The region's owner is the active letter, or the region is selected.
+    pub editable: bool,
     /// The owner's position in the sample's letters.
     pub letter: usize,
     /// The corners, in font units.
@@ -403,6 +410,20 @@ impl Session {
         if let Some((_, hit)) = best.0.take() {
             return hit;
         }
+        // Inside a lasso polygon: that region, the smallest when they nest.
+        let lasso = sample
+            .regions
+            .iter()
+            .enumerate()
+            .filter(|(_, region)| region.seed.is_none() && region.polygon_path().contains(at))
+            .min_by(|a, b| {
+                let area = |r: &NeuralRegion| r.polygon_path().area().abs();
+                area(a.1).total_cmp(&area(b.1))
+            })
+            .map(|(position, _)| position);
+        if let Some(region) = lasso {
+            return LabelHit::Lasso { region };
+        }
         match self.label_piece_at(at) {
             Some(piece) => LabelHit::Piece(piece),
             None => LabelHit::Nothing,
@@ -511,6 +532,10 @@ impl Session {
         let tolerance = (bounds.width().hypot(bounds.height()) * 0.015).max(2.0);
         let corners = simplify_loop(&spaced, tolerance, LASSO_MAX_CORNERS);
         let polygon: Vec<[f64; 2]> = corners.iter().map(|p| [p.x.round(), p.y.round()]).collect();
+        if polygon.len() < 3 {
+            self.label.error = Some("Drag a loop to lasso, or across a stroke to cut".into());
+            return false;
+        }
         if self.label.sample.is_none() {
             return self.add_sample(polygon);
         }
@@ -755,6 +780,7 @@ impl Session {
             return Vec::new();
         };
         let letters = sample.letters();
+        let active = letters.get(self.label.active).map(|(index, _)| *index);
         sample
             .regions
             .iter()
@@ -764,6 +790,8 @@ impl Session {
                 let owner = region.owners.first()?;
                 Some(LabelPolygon {
                     region: position,
+                    editable: active.is_some_and(|index| region.owners.contains(&index))
+                        || self.label.selected == Some(LabelSelection::Region(position)),
                     letter: letters.iter().position(|(index, _)| index == owner)?,
                     corners: region
                         .polygon
@@ -827,9 +855,9 @@ fn cut_line(cut: [[f64; 2]; 2]) -> Line {
     Line::new((cut[0][0], cut[0][1]), (cut[1][0], cut[1][1]))
 }
 
-/// Whether a freehand drag over this layer's ink is a cut.
-pub(crate) fn drag_is_cut(points: &[Point], contours: &[BezPath]) -> bool {
-    is_cut_gesture(points, contours)
+/// What a freehand drag over this layer's ink is, with `near` in font units.
+pub(crate) fn drag_is(points: &[Point], contours: &[BezPath], near: f64) -> DragKind {
+    drag_kind(points, contours, near)
 }
 
 impl Workspace {
@@ -1058,12 +1086,10 @@ mod tests {
             ),
             "{edge:?}"
         );
-        assert!(
-            matches!(
-                app.session.label_hit(Point::new(200.0, 50.0), 8.0),
-                LabelHit::Piece(_)
-            ),
-            "the other letter's polygon is not editable"
+        assert_eq!(
+            app.session.label_hit(Point::new(200.0, 50.0), 8.0),
+            LabelHit::Lasso { region: 0 },
+            "inside the other letter's polygon: a click picks it up"
         );
 
         // add a corner on the edge and drag it; a drag near a neighbor snaps

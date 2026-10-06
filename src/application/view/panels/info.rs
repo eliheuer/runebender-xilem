@@ -206,8 +206,12 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             // The picture's properties belong to the picture: they show while it is selected.
             (editing && app.session.image_selected && app.image_frame().is_some())
                 .then(|| recipes::panel_group(pal, super::image::panel(app))),
-            (editing && app.tool == Tool::Label)
-                .then(|| recipes::panel_group(pal, super::label::panel(app))),
+            (editing && app.tool == Tool::Label).then(|| {
+                recipes::panel_group(
+                    pal,
+                    recipes::section(app, "Samples", "Samples", super::label::panel(app)),
+                )
+            }),
             (editing && app.tool == Tool::Metaball)
                 .then(|| recipes::panel_group(pal, super::metaballs::panel(app))),
             (editing && app.tool == Tool::Sketch)

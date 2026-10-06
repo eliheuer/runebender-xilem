@@ -61,8 +61,21 @@ pub fn seed_polygon(
         .collect();
     let pieces = pieces(contours, &grown);
     let index = piece_at(&pieces, seed)?;
-    Some(flatten(&pieces[index], 1.0))
+    // Few enough corners for the record, within a unit of the piece's edge.
+    let corners: Vec<Point> = flatten(&pieces[index], 0.5)
+        .into_iter()
+        .map(|p| Point::new(p[0], p[1]))
+        .collect();
+    Some(
+        simplify_loop(&corners, 1.0, SEED_POLYGON_MAX_CORNERS)
+            .into_iter()
+            .map(|p| [p.x, p.y])
+            .collect(),
+    )
 }
+
+/// A seed's polygon keeps at most this many corners.
+pub const SEED_POLYGON_MAX_CORNERS: usize = 1024;
 
 /// A closed path as a polygon, flattened to within `tolerance` font units.
 pub fn flatten(path: &BezPath, tolerance: f64) -> Vec<[f64; 2]> {
@@ -155,13 +168,55 @@ pub fn nearest_on_segment(point: Point, line: Line) -> (Point, f64) {
     (at, point.distance(at))
 }
 
+/// What a freehand drag is: a cut when it is an open stroke that crosses the edge of the
+/// ink, a lasso when it comes back near where it started, and nothing otherwise.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DragKind {
+    /// An open stroke that crosses the edge of the ink.
+    Cut,
+    /// A loop that comes back near where it started.
+    Lasso,
+    /// Too short, or a stroke that never crosses an edge.
+    Nothing,
+}
+
+/// Classify a freehand drag. `near` is how close the end must come to the start, in the same
+/// units as the points, for the drag to be a loop.
+pub fn drag_kind(points: &[Point], ink: &[BezPath], near: f64) -> DragKind {
+    let (Some(first), Some(last)) = (points.first(), points.last()) else {
+        return DragKind::Nothing;
+    };
+    let length: f64 = points.windows(2).map(|w| w[0].distance(w[1])).sum();
+    if length < near {
+        return DragKind::Nothing;
+    }
+    let closed = first.distance(*last) <= near.max(length * 0.2) && length > near * 3.0;
+    if closed {
+        return DragKind::Lasso;
+    }
+    let inside = |p: &Point| ink.iter().any(|contour| contour.contains(*p));
+    let crosses = {
+        let mut seen_in = false;
+        let mut seen_out = false;
+        for p in points {
+            if inside(p) {
+                seen_in = true;
+            } else {
+                seen_out = true;
+            }
+        }
+        seen_in && seen_out
+    };
+    if crosses {
+        DragKind::Cut
+    } else {
+        DragKind::Nothing
+    }
+}
+
 /// Whether a freehand drag is a cut: it starts and ends outside the ink and crosses it.
 pub fn is_cut_gesture(points: &[Point], ink: &[BezPath]) -> bool {
-    let (Some(first), Some(last)) = (points.first(), points.last()) else {
-        return false;
-    };
-    let inside = |p: &Point| ink.iter().any(|contour| contour.contains(*p));
-    !inside(first) && !inside(last) && points.iter().any(inside)
+    drag_kind(points, ink, 8.0) == DragKind::Cut
 }
 
 #[cfg(test)]
