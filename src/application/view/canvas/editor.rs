@@ -25,6 +25,7 @@ use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
 use crate::application::editor::session::{Session, SessionSyncOutcome};
+use crate::application::editor::tools::label::LABEL_GRID;
 use crate::application::editor::tools::sketch::SketchLayer;
 use crate::application::view::theme::Palette;
 use crate::application::widgets::context_menu::{ContextMenu, MenuAction, MenuRow, MenuTarget};
@@ -1114,6 +1115,7 @@ impl EditorWidget {
         // outline as the drawing. The active letter's and the selected one carry colored
         // corner handles.
         let picked_corners = self.session.selected_corners();
+        let shared = self.session.shared_corners();
         let picked_region = match &self.session.label.selected {
             Some(LabelSelection::Region(region)) => Some(*region),
             _ => None,
@@ -1142,6 +1144,12 @@ impl EditorWidget {
                     .iter()
                     .any(|(region, _)| *region == polygon.region);
             for (index, corner) in polygon.corners.iter().enumerate() {
+                if shared
+                    .iter()
+                    .any(|(at, _)| at.distance(*corner) <= LABEL_GRID / 2.0)
+                {
+                    continue;
+                }
                 let picked = picked_corners.contains(&(polygon.region, index));
                 let radius = if picked {
                     5.0
@@ -1166,6 +1174,36 @@ impl EditorWidget {
                     .stroke(ghost, &Stroke::new(1.0), pal.role("pathStroke"))
                     .draw();
             }
+        }
+        // Where corners of different shapes meet: one node in wedges, one color each.
+        for (at, letters) in &shared {
+            let picked = picked_corners.iter().any(|(region, corner)| {
+                self.session
+                    .corner_point(*region, *corner)
+                    .is_some_and(|p| p.distance(*at) <= LABEL_GRID / 2.0)
+            });
+            let center = affine * *at;
+            let radius = if picked { 6.0 } else { 4.5 };
+            let step = std::f64::consts::TAU / letters.len() as f64;
+            for (slice, letter) in letters.iter().enumerate() {
+                let start = -std::f64::consts::FRAC_PI_2 + step * slice as f64;
+                let mut wedge = kurbo::BezPath::new();
+                wedge.move_to(center);
+                wedge.extend(
+                    kurbo::Arc::new(center, (radius, radius), start, step, 0.0)
+                        .append_iter(0.1)
+                        .skip(1),
+                );
+                wedge.close_path();
+                painter.fill(&wedge, colors[*letter % colors.len()]).draw();
+            }
+            painter
+                .stroke(
+                    Circle::new(center, radius),
+                    &Stroke::new(1.0),
+                    pal.role("pathStroke"),
+                )
+                .draw();
         }
         if let Drag::LabelMarquee { start, current } = &self.drag {
             let rect = affine.transform_rect_bbox(Rect::from_points(*start, *current));
@@ -1242,8 +1280,7 @@ impl EditorWidget {
                 format!("Click: paint {letter}. Option-click: unpaint. Drag across: cut")
             }
             Some(LabelHit::Corner { .. }) => {
-                "Drag: move the corner, with any that meet it. Shift-click: add to the selection"
-                    .into()
+                "Drag: move the corner with any that meet it. Option-drag: only this one".into()
             }
             Some(LabelHit::Edge { .. }) => "Click: add a corner".into(),
             Some(LabelHit::CutEnd { .. }) => "Drag: move the end of the cut".into(),
@@ -2575,12 +2612,17 @@ impl Widget for EditorWidget {
                                         Some(LabelSelection::Corners(picked));
                                     self.emit(ctx, false);
                                 } else {
-                                    if !picked.contains(&(region, corner)) {
-                                        // Corners that meet here move as one.
+                                    if state.modifiers.alt() || !picked.contains(&(region, corner))
+                                    {
+                                        // Corners that meet here move as one; Option takes
+                                        // only the one on top, to pull it away.
                                         let at = self.session.corner_point(region, corner);
-                                        picked = at
-                                            .map(|at| self.session.corners_at(at))
-                                            .unwrap_or_default();
+                                        picked = if state.modifiers.alt() {
+                                            Vec::new()
+                                        } else {
+                                            at.map(|at| self.session.corners_at(at))
+                                                .unwrap_or_default()
+                                        };
                                         if picked.is_empty() {
                                             picked.push((region, corner));
                                         }

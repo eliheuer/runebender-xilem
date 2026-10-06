@@ -232,6 +232,26 @@ impl Session {
         out
     }
 
+    /// Where corners of different shapes meet, as shown: each spot with the letters of the
+    /// shapes meeting there, in region order.
+    pub(crate) fn shared_corners(&self) -> Vec<(Point, Vec<usize>)> {
+        let polygons = self.label_polygons();
+        let mut spots: Vec<(Point, Vec<usize>)> = Vec::new();
+        for polygon in &polygons {
+            for corner in &polygon.corners {
+                match spots
+                    .iter_mut()
+                    .find(|(at, _)| at.distance(*corner) <= LABEL_GRID / 2.0)
+                {
+                    Some((_, letters)) => letters.push(polygon.letter),
+                    None => spots.push((*corner, vec![polygon.letter])),
+                }
+            }
+        }
+        spots.retain(|(_, letters)| letters.len() > 1);
+        spots
+    }
+
     /// Every lasso corner of the selected sample inside `rect`.
     pub(crate) fn corners_in(&self, rect: kurbo::Rect) -> Vec<(usize, usize)> {
         let Some((_, sample)) = self.selected_sample() else {
@@ -470,14 +490,19 @@ impl Session {
         let consider = |best: &mut Nearest, distance: f64, hit: LabelHit| {
             best.consider(reach, distance, hit);
         };
+        let active = self.active_letter().map(|(index, _)| index);
         for (position, region) in sample.regions.iter().enumerate() {
             if !editable(position, region) {
                 continue;
             }
+            // The active letter's corner is on top where corners meet: a hair nearer.
+            let on_top = active.is_some_and(|index| region.owners.contains(&index));
             for (corner, p) in region.polygon.iter().enumerate() {
+                let distance =
+                    Point::new(p[0], p[1]).distance(at) - if on_top { 1e-3 } else { 0.0 };
                 consider(
                     &mut best,
-                    Point::new(p[0], p[1]).distance(at),
+                    distance,
                     LabelHit::Corner {
                         region: position,
                         corner,
@@ -1294,6 +1319,30 @@ mod tests {
         assert_eq!(
             app.session.neural_item().samples[0].regions[1].polygon[1],
             [472.0, -120.0]
+        );
+
+        // two shapes meeting at a corner share one node; the active letter's corner is on top
+        let meet = app.session.neural_item().samples[0].regions[0].polygon[0];
+        let meet = Point::new(meet[0], meet[1]);
+        let session = Arc::make_mut(&mut app.session);
+        session.label.moving = Some(LabelMoving::Corner {
+            region: 1,
+            corner: 0,
+            to: meet,
+        });
+        app.edit_label(|s| s.finish_label_move(true));
+        let shared = app.session.shared_corners();
+        assert_eq!(shared.len(), 1, "{shared:?}");
+        assert_eq!(shared[0].0, meet);
+        assert_eq!(shared[0].1.len(), 2);
+        assert_eq!(app.session.corners_at(meet).len(), 2);
+        assert_eq!(
+            app.session.label_hit(meet, 8.0),
+            LabelHit::Corner {
+                region: 1,
+                corner: 0
+            },
+            "the active letter's corner is on top"
         );
 
         // Delete removes the selected corner; a triangle loses the whole region instead
