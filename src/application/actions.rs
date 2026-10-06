@@ -1202,12 +1202,17 @@ mod platform {
     use super::{MENUS, actions};
     use crate::application::widgets::shortcuts::AppAction;
 
+    /// A native menu bar with its items and their last applied states, in action order.
+    type InstalledMenu = (Menu, Vec<MenuItemKind>, Vec<(bool, bool)>);
+
     thread_local! {
         /// The menu is built once and held for the life of the process:
         /// dropping it would take the menu bar with it. It is not `Send`,
         /// which is fine, because it is only ever touched from the main
         /// thread, and it is also why this cannot be a `static`.
-        static MENU: RefCell<Option<(Menu, Vec<MenuItemKind>)>> = const { RefCell::new(None) };
+        /// The bar, its items in action order, and the enabled and checked state each
+        /// item was last given, so a rebuild only calls into AppKit for what changed.
+        static MENU: RefCell<Option<InstalledMenu>> = const { RefCell::new(None) };
     }
     /// Menu item ids, in the same order as [`actions()`]. These are plain
     /// strings, so the event pump on another thread can read them.
@@ -1242,20 +1247,26 @@ mod platform {
     pub(crate) fn install(app: &crate::application::workspace::AppState) {
         if IDS.get().is_some() {
             MENU.with(|slot| {
-                if let Some((_, items)) = slot.borrow().as_ref() {
-                    for (entry, item) in actions()
+                if let Some((_, items, states)) = slot.borrow_mut().as_mut() {
+                    for ((entry, item), state) in actions()
                         .iter()
                         .filter(|entry| entry.menu != "Runebender" && MENUS.contains(&entry.menu))
                         .zip(items)
+                        .zip(states)
                     {
+                        let wanted = (entry.enabled(app), entry.checked(app).unwrap_or(false));
+                        if *state == wanted {
+                            continue;
+                        }
                         match item {
-                            MenuItemKind::MenuItem(item) => item.set_enabled(entry.enabled(app)),
+                            MenuItemKind::MenuItem(item) => item.set_enabled(wanted.0),
                             MenuItemKind::Check(item) => {
-                                item.set_enabled(entry.enabled(app));
-                                item.set_checked(entry.checked(app).unwrap_or(false));
+                                item.set_enabled(wanted.0);
+                                item.set_checked(wanted.1);
                             }
                             _ => {}
                         }
+                        *state = wanted;
                     }
                 }
             });
@@ -1264,6 +1275,7 @@ mod platform {
         let bar = Menu::new();
         let mut ids = Vec::with_capacity(actions().len());
         let mut items = Vec::with_capacity(actions().len());
+        let mut states = Vec::with_capacity(actions().len());
         // The first submenu on macOS is the application menu, and it is
         // where the platform expects Quit to live.
         let app_menu = Submenu::new("Runebender", true);
@@ -1303,12 +1315,9 @@ mod platform {
                         }
                         first = false;
                         let accelerator = accelerator(entry);
-                        let item = CheckMenuItem::new(
-                            entry.title,
-                            entry.enabled(app),
-                            entry.checked(app).unwrap_or(false),
-                            accelerator,
-                        );
+                        let state = (entry.enabled(app), entry.checked(app).unwrap_or(false));
+                        let item = CheckMenuItem::new(entry.title, state.0, state.1, accelerator);
+                        states.push(state);
                         ids.push(item.id().clone());
                         let _ = nested.append(&item);
                         items.push(MenuItemKind::Check(item));
@@ -1321,20 +1330,18 @@ mod platform {
                     let _ = submenu.append(&muda::PredefinedMenuItem::separator());
                 }
                 let accelerator = accelerator(entry);
-                let item = if let Some(checked) = entry.checked(app) {
+                let state = (entry.enabled(app), entry.checked(app).unwrap_or(false));
+                let item = if entry.checked(app).is_some() {
                     MenuItemKind::Check(CheckMenuItem::new(
                         entry.title,
-                        entry.enabled(app),
-                        checked,
+                        state.0,
+                        state.1,
                         accelerator,
                     ))
                 } else {
-                    MenuItemKind::MenuItem(MenuItem::new(
-                        entry.title,
-                        entry.enabled(app),
-                        accelerator,
-                    ))
+                    MenuItemKind::MenuItem(MenuItem::new(entry.title, state.0, accelerator))
                 };
+                states.push(state);
                 ids.push(item.id().clone());
                 match &item {
                     MenuItemKind::MenuItem(item) => {
@@ -1353,7 +1360,7 @@ mod platform {
         // On macOS the bar belongs to the application, not to a window,
         // so this needs no window handle. Xilem does not hand one out.
         bar.init_for_nsapp();
-        MENU.with(|slot| *slot.borrow_mut() = Some((bar, items)));
+        MENU.with(|slot| *slot.borrow_mut() = Some((bar, items, states)));
         let _ = IDS.set(ids);
     }
 

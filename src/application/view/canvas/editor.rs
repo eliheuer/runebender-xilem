@@ -511,7 +511,7 @@ pub(crate) struct EditorWidget {
     sketch_source: usize,
     /// Space is held: pan while showing only the filled design.
     preview_mode: bool,
-    ghosts: Arc<Vec<kurbo::BezPath>>,
+    ghosts: Arc<Vec<Arc<kurbo::BezPath>>>,
     /// Read-only interpolated instance overlay at the current axis location.
     interp: Option<Arc<kurbo::BezPath>>,
     /// Background layer and reference glyph, drawn under everything.
@@ -1292,18 +1292,18 @@ impl Widget for EditorWidget {
                 }
             } else if let Some(interp) = &self.interp {
                 painter
-                    .fill(&(view_affine * (**interp).clone()), pal.editor_ink())
+                    .fill(&**interp, pal.editor_ink())
+                    .transform(view_affine)
                     .draw();
             } else {
                 painter
-                    .fill(&(view_affine * self.session.outline()), pal.editor_ink())
+                    .fill(self.session.outline(), pal.editor_ink())
+                    .transform(view_affine)
                     .draw();
                 if !self.session.components.elements().is_empty() {
                     painter
-                        .fill(
-                            &(view_affine * self.session.components.clone()),
-                            pal.editor_ink(),
-                        )
+                        .fill(&self.session.components, pal.editor_ink())
+                        .transform(view_affine)
                         .draw();
                 }
             }
@@ -1462,10 +1462,8 @@ impl Widget for EditorWidget {
         }
         if let Some(reference) = &self.underlay.reference {
             painter
-                .fill(
-                    &(affine * (**reference).clone()),
-                    pal.text_muted.with_alpha(0.18),
-                )
+                .fill(&**reference, pal.text_muted.with_alpha(0.18))
+                .transform(affine)
                 .draw();
         }
         if let Some(background) = &self.underlay.background {
@@ -1479,10 +1477,8 @@ impl Widget for EditorWidget {
         }
         for mark in &self.underlay.mark_cloud {
             painter
-                .fill(
-                    &(affine * (**mark).clone()),
-                    pal.role("component").with_alpha(0.10),
-                )
+                .fill(&**mark, pal.role("component").with_alpha(0.10))
+                .transform(affine)
                 .draw();
         }
         if let Some(proposal) = &self.underlay.proposal {
@@ -1512,7 +1508,7 @@ impl Widget for EditorWidget {
         for ghost in self.ghosts.iter() {
             painter
                 .stroke(
-                    &(affine * ghost.clone()),
+                    &(affine * (**ghost).clone()),
                     &Stroke::new(1.0),
                     pal.role("reference").with_alpha(0.55),
                 )
@@ -1637,9 +1633,10 @@ impl Widget for EditorWidget {
             if !self.session.components.elements().is_empty() {
                 painter
                     .fill(
-                        &(affine * self.session.components.clone()),
+                        &self.session.components,
                         pal.role("component").with_alpha(0.5),
                     )
+                    .transform(affine)
                     .draw();
                 if let Some(selected) = self.session.selected_component_path() {
                     painter
@@ -3471,7 +3468,7 @@ pub(crate) struct EditorView<F> {
     sketch_revision: u64,
     preview_mode: bool,
     view: ViewOptions,
-    ghosts: Arc<Vec<kurbo::BezPath>>,
+    ghosts: Arc<Vec<Arc<kurbo::BezPath>>>,
     interp: Option<Arc<kurbo::BezPath>>,
     underlay: Underlay,
     text: Option<crate::application::editor::tools::text::TextInputs>,
@@ -3495,7 +3492,7 @@ pub(crate) fn editor<F: Fn(&mut Workspace, EditorEvent) + 'static>(
     sketch_source: usize,
     preview_mode: bool,
     view: ViewOptions,
-    ghosts: Arc<Vec<kurbo::BezPath>>,
+    ghosts: Arc<Vec<Arc<kurbo::BezPath>>>,
     interp: Option<Arc<kurbo::BezPath>>,
     underlay: Underlay,
     text: Option<crate::application::editor::tools::text::TextInputs>,
@@ -3716,7 +3713,15 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
             element.widget.view = self.view;
             dirty = true;
         }
-        if !Arc::ptr_eq(&self.ghosts, &prev.ghosts) {
+        // The pane allocates the ghost list on every rebuild; the paths inside it are shared
+        // with the font, so the same set of them means the same ghosts.
+        let same_ghosts = self.ghosts.len() == prev.ghosts.len()
+            && self
+                .ghosts
+                .iter()
+                .zip(prev.ghosts.iter())
+                .all(|(a, b)| Arc::ptr_eq(a, b));
+        if !same_ghosts {
             element.widget.ghosts = self.ghosts.clone();
             dirty = true;
         }
@@ -5829,6 +5834,47 @@ mod tests {
             );
         }
 
+        /// Print what each inspector section costs to build, so a slow one stands out.
+        fn section_costs(app: &Workspace, editing: bool) {
+            use crate::application::view::panels::{editor_info, sections};
+            fn cost<V>(label: &str, build: impl FnOnce() -> V) {
+                let start = Instant::now();
+                let view = build();
+                let elapsed = start.elapsed();
+                drop(view);
+                println!(
+                    "  section {label:<18} {:>8.1} µs",
+                    elapsed.as_secs_f64() * 1e6
+                );
+            }
+            println!("inspector sections:");
+            cost("layers", || sections::layers_section(app));
+            cost("masters", || sections::masters_section(app));
+            cost("mark", || sections::mark_section(app));
+            if editing {
+                cost("coordinates", || sections::coordinates_section(app));
+                cost("transformations", || sections::transformations_section(app));
+                cost("curves", || sections::curves_section(app));
+                cost("path operations", || sections::path_operations_section(app));
+                cost("background", || sections::background_section(app));
+                cost("shaping", || sections::shaping_section(app));
+                cost("related", || editor_info::related_section(app));
+                cost("axes", || sections::axes_section(app));
+                cost("measure", || sections::measure_section(app));
+                cost("interpolation status", || app.interpolation_status());
+                cost("preview request", || app.font.preview_font());
+            } else {
+                cost("font info", || sections::font_info_section(app));
+                cost("dimensions", || editor_info::dimensions_section(app));
+                cost("font advanced", || sections::font_advanced_section(app));
+                cost("kerning", || editor_info::kerning_section(app));
+                cost("groups", || editor_info::groups_section(app));
+                cost("compare", || editor_info::compare_section(app));
+                cost("features", || editor_info::features_section(app));
+                cost("filtered cells", || app.filtered_cells());
+            }
+        }
+
         let glyph = std::env::var("RUNEBENDER_BENCH_GLYPH").unwrap_or_else(|_| "a".into());
         let sources = std::env::var_os("RUNEBENDER_TEST_FONTS")
             .map(std::path::PathBuf::from)
@@ -5838,8 +5884,78 @@ mod tests {
         let mut app = Workspace::open(&sources.join("VirtuaGrotesk.designspace"))
             .expect("the designspace opens");
         let index = app.font.index_of(&glyph).expect("the glyph exists");
-        app.open_glyph(index);
         let logic = |app: &mut Workspace| sized_box(app_logic(app));
+        let ms = |d: Duration| d.as_secs_f64() * 1e3;
+        if std::env::var_os("RUNEBENDER_BENCH_OVERVIEW").is_some() {
+            // The overview: the whole glyph grid, repainted when the pointer enters or
+            // leaves it.
+            let mut headless = Headless::new(app, logic, (1400, 900), 1.0);
+            headless.rebuild(logic);
+            headless.anim_frame(Duration::from_millis(500));
+            let start = Instant::now();
+            headless.redraw();
+            let first_paint = start.elapsed();
+            let grid_center = headless
+                .find_widget::<crate::application::view::canvas::grid::GridWidget>()
+                .map(|grid| grid.ctx().window_transform() * grid.ctx().border_box().center())
+                .expect("the overview has a grid");
+            let hover = |at: Point| {
+                PointerEvent::Move(PointerUpdate {
+                    pointer: PRIMARY_MOUSE,
+                    current: PointerState {
+                        position: PhysicalPosition::new(at.x, at.y),
+                        ..PointerState::default()
+                    },
+                    coalesced: vec![],
+                    predicted: vec![],
+                })
+            };
+            let mut paints = Vec::new();
+            let mut clicks = Vec::new();
+            for step in 0..20 {
+                let at = if step % 2 == 0 {
+                    grid_center
+                } else {
+                    Point::new(2.0, 2.0)
+                };
+                headless.pointer(hover(at));
+                let start = Instant::now();
+                headless.redraw();
+                paints.push(start.elapsed());
+            }
+            for step in 0..10 {
+                // Selecting a cell repaints the grid.
+                let at = grid_center + (f64::from(step) * 40.0 - 200.0, 0.0);
+                let state = PointerState {
+                    position: PhysicalPosition::new(at.x, at.y),
+                    ..PointerState::default()
+                };
+                headless.pointer(PointerEvent::Down(PointerButtonEvent {
+                    pointer: PRIMARY_MOUSE,
+                    button: Some(PointerButton::Primary),
+                    state: state.clone(),
+                }));
+                headless.pointer(PointerEvent::Up(PointerButtonEvent {
+                    pointer: PRIMARY_MOUSE,
+                    button: Some(PointerButton::Primary),
+                    state,
+                }));
+                let start = Instant::now();
+                headless.redraw();
+                clicks.push(start.elapsed());
+            }
+            let start = Instant::now();
+            headless.rebuild(logic);
+            let rebuild = start.elapsed();
+            println!("overview: {} glyphs", headless.app.font.glyphs.len());
+            section_costs(&headless.app, false);
+            println!("overview first paint         {:.2} ms", ms(first_paint));
+            stats("overview hover paint pass", &mut paints);
+            stats("overview click paint pass", &mut clicks);
+            println!("overview rebuild             {:.2} ms", ms(rebuild));
+            return;
+        }
+        app.open_glyph(index);
         let mut headless = Headless::new(app, logic, (1400, 900), 1.0);
         headless.rebuild(logic);
         headless.anim_frame(Duration::from_millis(500));
@@ -5967,7 +6083,7 @@ mod tests {
         assert!(headless.app.font.project.compile().is_ok());
         let compile = start.elapsed();
 
-        let ms = |d: Duration| d.as_secs_f64() * 1e3;
+        section_costs(&headless.app, true);
         if !headless.app.preview_text.is_empty() {
             use crate::application::editor::tools::text::{TextInputs, TextState};
             let app = &headless.app;

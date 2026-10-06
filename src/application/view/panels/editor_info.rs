@@ -617,25 +617,8 @@ pub(crate) fn related_section(app: &Workspace) -> impl WidgetView<Workspace> + u
     if !siblings.is_empty() {
         groups.push(("Siblings", siblings));
     }
-    let used_by: Vec<String> = app
-        .font
-        .glyphs
-        .iter()
-        .filter(|g| {
-            active_layer.as_ref().is_some_and(|address| {
-                app.font
-                    .project
-                    .document_layer(&g.name, &address.layer)
-                    .is_some_and(|layer| {
-                        layer
-                            .components()
-                            .any(|component| component.reference() == name)
-                    })
-            })
-        })
-        .map(|g| g.name.clone())
-        .take(24)
-        .collect();
+    let mut used_by = app.font.composites_using(&name);
+    used_by.truncate(24);
     if !used_by.is_empty() {
         groups.push(("Used by", used_by));
     }

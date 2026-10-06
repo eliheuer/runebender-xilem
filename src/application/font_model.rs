@@ -67,6 +67,24 @@ pub(crate) struct FontModel {
     /// The compiled preview's outlines and advances at the location last asked for.
     pub(crate) text_location:
         std::sync::Mutex<Option<crate::application::editor::tools::text::CachedTextLocation>>,
+    /// Inspector readouts that walk the whole font, kept until the document changes.
+    readouts: std::sync::Mutex<Readouts>,
+}
+
+/// The document state a readout was taken from: its revision and the active source.
+type ReadoutKey = (u64, usize);
+
+/// Glyph count, missing glyphs, and advance differences of one source against the active one.
+type GeometryComparison = Option<(usize, usize, usize)>;
+
+/// Readouts the inspector asks for on every rebuild. Each walks every glyph, so each is
+/// kept with the document state it was read from and served until that moves on.
+#[derive(Default)]
+struct Readouts {
+    /// The composites that use one glyph, by its name.
+    used_by: Option<(ReadoutKey, String, Vec<String>)>,
+    /// Geometry comparisons against the active source, by source index.
+    comparisons: Option<(ReadoutKey, HashMap<usize, GeometryComparison>)>,
 }
 
 /// The theme whose mark names label glyph entries, parsed once.
@@ -183,6 +201,7 @@ impl FontModel {
             axes,
             text_inputs: std::sync::Mutex::new(None),
             text_location: std::sync::Mutex::new(None),
+            readouts: std::sync::Mutex::new(Readouts::default()),
         };
         model.rebuild_cache();
         model
@@ -483,7 +502,7 @@ impl FontModel {
         &self,
         glyph_name: &str,
         which: &std::collections::HashSet<usize>,
-    ) -> Vec<BezPath> {
+    ) -> Vec<Arc<BezPath>> {
         self.project
             .document_sources()
             .enumerate()
@@ -493,7 +512,7 @@ impl FontModel {
                     .document_source_glyph_entry(source.id(), glyph_name)
                     .ok()
                     .flatten()
-                    .map(|glyph| glyph.outline().as_ref().clone())
+                    .map(|glyph| glyph.outline().clone())
             })
             .collect()
     }
@@ -610,6 +629,60 @@ impl FontModel {
 
     /// Compare one source's default-layer coverage and advances with the active source.
     pub(crate) fn source_geometry_comparison(&self, index: usize) -> Option<(usize, usize, usize)> {
+        let key = self.readout_key();
+        let mut readouts = self
+            .readouts
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let comparisons = match &mut readouts.comparisons {
+            Some((at, comparisons)) if *at == key => comparisons,
+            slot => &mut slot.insert((key, HashMap::new())).1,
+        };
+        *comparisons
+            .entry(index)
+            .or_insert_with(|| self.compare_source_geometry(index))
+    }
+
+    fn readout_key(&self) -> ReadoutKey {
+        (self.project.document_revision(), self.active())
+    }
+
+    /// The glyphs whose active layer places `glyph` as a component, in display order.
+    pub(crate) fn composites_using(&self, glyph: &str) -> Vec<String> {
+        let key = self.readout_key();
+        let mut readouts = self
+            .readouts
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if let Some((at, name, users)) = &readouts.used_by
+            && *at == key
+            && name == glyph
+        {
+            return users.clone();
+        }
+        let users = self
+            .active_layer_address(glyph)
+            .map(|address| {
+                self.glyphs
+                    .iter()
+                    .filter(|entry| {
+                        self.project
+                            .document_layer(&entry.name, &address.layer)
+                            .is_some_and(|layer| {
+                                layer
+                                    .components()
+                                    .any(|component| component.reference() == glyph)
+                            })
+                    })
+                    .map(|entry| entry.name.clone())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        readouts.used_by = Some((key, glyph.to_owned(), users.clone()));
+        users
+    }
+
+    fn compare_source_geometry(&self, index: usize) -> Option<(usize, usize, usize)> {
         let project = &self.project;
         let reference_layer = project
             .source_id(self.active())
