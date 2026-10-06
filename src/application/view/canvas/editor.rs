@@ -1187,13 +1187,12 @@ impl EditorWidget {
             let step = std::f64::consts::TAU / letters.len() as f64;
             for (slice, letter) in letters.iter().enumerate() {
                 let start = -std::f64::consts::FRAC_PI_2 + step * slice as f64;
+                // From the center to the rim, around the arc, and back.
+                let arc = kurbo::Arc::new(center, (radius, radius), start, step, 0.0);
                 let mut wedge = kurbo::BezPath::new();
                 wedge.move_to(center);
-                wedge.extend(
-                    kurbo::Arc::new(center, (radius, radius), start, step, 0.0)
-                        .append_iter(0.1)
-                        .skip(1),
-                );
+                wedge.line_to(center + kurbo::Vec2::new(start.cos(), start.sin()) * radius);
+                wedge.extend(arc.append_iter(0.1));
                 wedge.close_path();
                 painter.fill(&wedge, colors[*letter % colors.len()]).draw();
             }
@@ -6679,5 +6678,29 @@ mod tests {
         println!("undo rebuild                 {:.2} ms", ms(undo_rebuild));
         println!("font snapshot for preview    {:.2} ms", ms(snapshot_time));
         println!("preview compile (threaded)   {:.2} ms", ms(compile));
+    }
+}
+
+#[cfg(test)]
+mod wedge_check {
+    #[test]
+    fn a_wedge_fills_half_a_circle() {
+        use kurbo::Shape as _;
+        let center = kurbo::Point::new(0.0, 0.0);
+        let radius = 10.0;
+        let step = std::f64::consts::PI;
+        let start = -std::f64::consts::FRAC_PI_2;
+        let arc = kurbo::Arc::new(center, (radius, radius), start, step, 0.0);
+        let mut wedge = kurbo::BezPath::new();
+        wedge.move_to(center);
+        wedge.line_to(center + kurbo::Vec2::new(start.cos(), start.sin()) * radius);
+        wedge.extend(arc.append_iter(0.1));
+        wedge.close_path();
+        let half = std::f64::consts::PI * radius * radius / 2.0;
+        assert!(
+            (wedge.area().abs() - half).abs() < half * 0.02,
+            "{}",
+            wedge.area()
+        );
     }
 }
