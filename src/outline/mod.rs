@@ -19,6 +19,7 @@ pub mod glyph_paths;
 pub mod knife;
 pub mod label_pieces;
 pub mod path;
+pub mod piece_assembly;
 pub mod point_ops;
 pub mod segment_ops;
 

@@ -303,6 +303,14 @@ where
 
 pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use<> {
     use xilem::core::one_of::{Either, OneOf3};
+    // The piece view cuts its pieces before any view borrows the workspace.
+    if matches!(app.mode, Mode::Editor(_))
+        && app.preview_visible
+        && app.preview_view == crate::application::pieces::PreviewView::Pieces
+        && app.font.project.is_neural()
+    {
+        app.refresh_pieces();
+    }
     let pal = &app.palette;
 
     // Left column: category sidebar in overview only. In the editor the

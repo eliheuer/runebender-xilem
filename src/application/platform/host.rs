@@ -367,6 +367,8 @@ impl Workspace {
             live_nodes_pending: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             export_job: None,
             train: crate::application::platform::train::TrainState::default(),
+            preview_view: crate::application::pieces::PreviewView::default(),
+            pieces: crate::application::pieces::PieceCache::default(),
             ai: local_ai::LocalAiState::default(),
             chat: chat::ChatState::default(),
             scripts: scripts::ScriptsState::default(),

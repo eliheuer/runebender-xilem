@@ -301,6 +301,10 @@ pub(crate) struct Workspace {
     pub(crate) preview_visible: bool,
     /// Reverse the proof foreground and background contrast.
     pub(crate) preview_invert: bool,
+    /// What the proof strip shows for a neural source: the outline, or the labeled pieces.
+    pub(crate) preview_view: crate::application::pieces::PreviewView,
+    /// The labeled pieces of every sample, for the piece view.
+    pub(crate) pieces: crate::application::pieces::PieceCache,
     /// Search scope: 0 name and unicode, 1 name only, 2 unicode only.
     pub(crate) search_mode: u8,
     /// Case-sensitive search.

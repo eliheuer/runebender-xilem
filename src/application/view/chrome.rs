@@ -480,6 +480,28 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
                     .corner_radius(pal.control_radius)
                     .icon_size(STATUS_ICON_SIZE)
                     .tile_size(STATUS_ICON_SIZE),
+                    // A neural source can show its text set from the labeled pieces.
+                    app.font.project.is_neural().then(|| {
+                        use crate::application::pieces::PreviewView;
+                        named_icon_button(
+                            "Pieces",
+                            "shapes",
+                            app.preview_view == PreviewView::Pieces,
+                            pal.editor_control_ink(),
+                            pal.editor_control_ink(),
+                            Color::TRANSPARENT,
+                            Color::TRANSPARENT,
+                            |app: &mut Workspace| {
+                                app.preview_view = match app.preview_view {
+                                    PreviewView::Pieces => PreviewView::Outline,
+                                    PreviewView::Outline => PreviewView::Pieces,
+                                };
+                            },
+                        )
+                        .corner_radius(pal.control_radius)
+                        .icon_size(STATUS_ICON_SIZE)
+                        .tile_size(STATUS_ICON_SIZE)
+                    }),
                 ),
             )
             .gap(Space::Sm),

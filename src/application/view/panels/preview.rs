@@ -15,6 +15,60 @@ use xilem::style::Style;
 use xilem::view::{canvas, sized_box};
 
 pub(crate) fn preview_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    use xilem::core::one_of::Either;
+    if app.preview_view == crate::application::pieces::PreviewView::Pieces
+        && app.font.project.is_neural()
+    {
+        return Either::A(piece_strip(app));
+    }
+    Either::B(outline_strip(app))
+}
+
+/// The typed text set from the labeled pieces of every sample; a box stands for a letter no
+/// sample has.
+fn piece_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    use masonry::imaging::Painter;
+    use masonry::kurbo::{Shape, Size, Stroke};
+    use runebender::outline::piece_assembly::assemble;
+    let fill = if app.preview_invert {
+        app.palette.selected_ink()
+    } else {
+        app.palette.proof_ink()
+    };
+    let background = if app.preview_invert {
+        app.palette.selected_bg()
+    } else {
+        app.palette.proof_strip
+    };
+    let missing = app.palette.text_muted;
+    let placed = assemble(&app.piece_preview_text(), &app.pieces.pieces);
+    let bounds = placed
+        .iter()
+        .map(|letter| letter.frame)
+        .reduce(|bounds, next| bounds.union(next));
+    let drawing = canvas(move |_app: &mut Workspace, _ctx, scene, size: Size| {
+        let mut p = Painter::new(scene);
+        let Some(bounds) = bounds else {
+            return;
+        };
+        let t = proof_transform(bounds, 0.0, size);
+        for letter in &placed {
+            match &letter.ink {
+                Some(ink) => p.fill(&(t * ink.clone()), fill).draw(),
+                None => p
+                    .stroke(
+                        t.transform_rect_bbox(letter.frame).to_path(0.1),
+                        &Stroke::new(1.0),
+                        missing,
+                    )
+                    .draw(),
+            }
+        }
+    });
+    drawing.background_color(background)
+}
+
+fn outline_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     use masonry::imaging::Painter;
     use masonry::kurbo::{Affine, Shape, Size};
     // Off-master preview remains the interpolated current glyph.

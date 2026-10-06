@@ -58,6 +58,18 @@ pub(crate) fn run(
         {
             workspace.grid_select(index, false, false);
         }
+        // RUNEBENDER_PREVIEW_TEXT=<text> sets the proof strip's text.
+        if let Ok(text) = std::env::var("RUNEBENDER_PREVIEW_TEXT")
+            && let Some(workspace) = app.workspace.as_mut()
+        {
+            workspace.preview_text = text;
+        }
+        // RUNEBENDER_PREVIEW=pieces shows the proof strip's piece view.
+        if std::env::var("RUNEBENDER_PREVIEW").as_deref() == Ok("pieces")
+            && let Some(workspace) = app.workspace.as_mut()
+        {
+            workspace.preview_view = crate::application::pieces::PreviewView::Pieces;
+        }
         // RUNEBENDER_NEURAL_STATUS=<text> shows the Neural section mid-run, for review captures.
         if let Ok(status) = std::env::var("RUNEBENDER_NEURAL_STATUS")
             && let Some(workspace) = app.workspace.as_mut()
