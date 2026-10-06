@@ -481,6 +481,11 @@ enum Drag {
     LabelCorner {
         region: usize,
     },
+    /// A whole lasso polygon follows the pointer; the session holds where.
+    LabelRegion {
+        region: usize,
+        start: Point,
+    },
     /// A cut, or one end of it, follows the pointer; the session holds where.
     LabelCut {
         cut: usize,
@@ -1095,25 +1100,17 @@ impl EditorWidget {
                 }
             }
         }
-        // Every lasso polygon shows its edge; the active letter's carry corner handles.
+        // Every lasso polygon: a translucent fill in its letter's color and the same dark
+        // outline as the drawing. The active letter's and the selected one carry colored
+        // corner handles.
+        let picked_region = match self.session.label.selected {
+            Some(LabelSelection::Region(region) | LabelSelection::Corner(region, _)) => {
+                Some(region)
+            }
+            _ => None,
+        };
         for polygon in self.session.label_polygons() {
             let color = colors[polygon.letter % colors.len()];
-            if !polygon.editable {
-                let mut path = kurbo::BezPath::new();
-                for (index, corner) in polygon.corners.iter().enumerate() {
-                    let at = affine * *corner;
-                    if index == 0 {
-                        path.move_to(at);
-                    } else {
-                        path.line_to(at);
-                    }
-                }
-                path.close_path();
-                painter
-                    .stroke(&path, &Stroke::new(1.0), color.with_alpha(0.45))
-                    .draw();
-                continue;
-            }
             let mut path = kurbo::BezPath::new();
             for (index, corner) in polygon.corners.iter().enumerate() {
                 let at = affine * *corner;
@@ -1124,21 +1121,31 @@ impl EditorWidget {
                 }
             }
             path.close_path();
-            painter.stroke(&path, &Stroke::new(1.0), color).draw();
+            painter.fill(&path, color.with_alpha(0.14)).draw();
+            painter
+                .stroke(&path, &Stroke::new(1.0), pal.role("pathStroke"))
+                .draw();
+            let handles = polygon.letter == active || picked_region == Some(polygon.region);
+            if !handles {
+                continue;
+            }
             for (index, corner) in polygon.corners.iter().enumerate() {
                 let picked = self.session.label.selected
                     == Some(LabelSelection::Corner(polygon.region, index));
-                let handle = Circle::new(affine * *corner, if picked { 4.5 } else { 3.5 });
-                painter.fill(handle, pal.canvas).draw();
-                painter.stroke(handle, &Stroke::new(1.5), color).draw();
+                let handle = Circle::new(affine * *corner, if picked { 5.0 } else { 3.5 });
+                painter.fill(handle, color).draw();
+                painter
+                    .stroke(handle, &Stroke::new(1.0), pal.role("pathStroke"))
+                    .draw();
             }
             // A corner would go here: the edge under the pointer shows it.
             if let Some(LabelHit::Edge { region, at, .. }) = &self.label_hover
                 && *region == polygon.region
             {
                 let ghost = Circle::new(affine * *at, 3.5);
+                painter.fill(ghost, color.with_alpha(0.5)).draw();
                 painter
-                    .stroke(ghost, &Stroke::new(1.0), color.with_alpha(0.7))
+                    .stroke(ghost, &Stroke::new(1.0), pal.role("pathStroke"))
                     .draw();
             }
         }
@@ -1211,7 +1218,7 @@ impl EditorWidget {
             Some(LabelHit::Edge { .. }) => "Click: add a corner".into(),
             Some(LabelHit::CutEnd { .. }) => "Drag: move the end of the cut".into(),
             Some(LabelHit::Cut { .. }) => "Drag: move the cut. Delete: remove it".into(),
-            Some(LabelHit::Lasso { .. }) => "Click: pick this shape to edit its corners".into(),
+            Some(LabelHit::Lasso { .. }) => "Click: pick this shape. Drag: move it".into(),
             _ => format!("Painting {letter}. Drag a loop: lasso. Enter: next letter"),
         })
     }
@@ -2541,6 +2548,7 @@ impl Widget for EditorWidget {
                                 at: on,
                             } => {
                                 // A corner appears on the edge and follows the pointer.
+                                self.session.activate_label_region(region);
                                 if let Some(corner) =
                                     self.session.add_label_corner(region, after, on)
                                 {
@@ -2586,10 +2594,19 @@ impl Widget for EditorWidget {
                                 self.emit(ctx, false);
                             }
                             LabelHit::Lasso { region } => {
-                                // A click inside a lasso picks it up: its letter becomes
-                                // active and its corners show.
+                                // A press inside a lasso picks it up: its letter becomes
+                                // active and its corners show. A drag moves the whole shape.
                                 self.session.activate_label_region(region);
                                 self.session.label.selected = Some(LabelSelection::Region(region));
+                                self.session.label.moving = Some(LabelMoving::Region {
+                                    region,
+                                    by: kurbo::Vec2::ZERO,
+                                });
+                                self.drag = Drag::LabelRegion {
+                                    region,
+                                    start: design,
+                                };
+                                ctx.capture_pointer();
                                 self.emit(ctx, false);
                             }
                             LabelHit::Piece(_) | LabelHit::Nothing => {
@@ -2973,6 +2990,15 @@ impl Widget for EditorWidget {
                             ctx.request_render();
                         }
                     }
+                    Drag::LabelRegion { region, start } => {
+                        use crate::application::editor::tools::label::LabelMoving;
+                        let (region, start) = (*region, *start);
+                        self.session.label.moving = Some(LabelMoving::Region {
+                            region,
+                            by: glyph_design - start,
+                        });
+                        ctx.request_render();
+                    }
                     Drag::LabelCut { cut, end, start } => {
                         use crate::application::editor::tools::label::LabelMoving;
                         let (cut, end, start) = (*cut, *end, *start);
@@ -3085,7 +3111,7 @@ impl Widget for EditorWidget {
                         self.drag = Drag::None;
                         self.emit(ctx, changed);
                     }
-                    Drag::LabelCorner { .. } | Drag::LabelCut { .. } => {
+                    Drag::LabelCorner { .. } | Drag::LabelCut { .. } | Drag::LabelRegion { .. } => {
                         let changed = self.session.finish_label_move(!cancelled);
                         self.drag = Drag::None;
                         self.emit(ctx, changed);
@@ -5522,7 +5548,7 @@ mod tests {
         assert!(workspace.session.selected_sample().is_some());
 
         // a click inside one of the file's lasso polygons picks it up
-        harness.mouse_move(screen(-1100.0, 300.0));
+        harness.mouse_move(screen(-1280.0, 300.0));
         harness.mouse_button_press(Some(PointerButton::Primary));
         harness.mouse_button_release(Some(PointerButton::Primary));
         dispatch(&mut harness, &mut workspace);

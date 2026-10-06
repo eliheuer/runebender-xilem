@@ -48,6 +48,8 @@ pub(crate) enum LabelMoving {
     CutEnd { cut: usize, end: usize, to: Point },
     /// A whole cut, moved by this much.
     Cut { cut: usize, by: kurbo::Vec2 },
+    /// A whole lasso polygon, moved by this much.
+    Region { region: usize, by: kurbo::Vec2 },
 }
 
 /// What is under the pointer, in order of what a press would take first.
@@ -96,6 +98,17 @@ pub(crate) struct LabelState {
     pub hover_letter: Option<usize>,
 }
 
+/// Corners and cut ends sit on this grid, in font units, so neighbors meet exactly.
+pub(crate) const LABEL_GRID: f64 = 8.0;
+
+/// `p` on the label grid.
+pub(crate) fn on_grid(p: Point) -> Point {
+    Point::new(
+        (p.x / LABEL_GRID).round() * LABEL_GRID,
+        (p.y / LABEL_GRID).round() * LABEL_GRID,
+    )
+}
+
 /// A freehand loop keeps a corner only when it is this far from the last one, in font units.
 const LASSO_SPACING: f64 = 4.0;
 /// A lasso polygon keeps at most this many corners.
@@ -115,8 +128,6 @@ pub(crate) struct LabelArea {
 pub(crate) struct LabelPolygon {
     /// The region's position in the sample.
     pub region: usize,
-    /// The region's owner is the active letter, or the region is selected.
-    pub editable: bool,
     /// The owner's position in the sample's letters.
     pub letter: usize,
     /// The corners, in font units.
@@ -155,6 +166,14 @@ impl Session {
                         for end in cut {
                             end[0] += by.x;
                             end[1] += by.y;
+                        }
+                    }
+                }
+                LabelMoving::Region { region, by } => {
+                    if let Some(region) = sample.regions.get_mut(region) {
+                        for corner in &mut region.polygon {
+                            corner[0] += by.x;
+                            corner[1] += by.y;
                         }
                     }
                 }
@@ -331,12 +350,8 @@ impl Session {
                 None => LabelHit::Nothing,
             };
         };
-        let active = self.active_letter().map(|(index, _)| index);
-        let editable = |position: usize, region: &NeuralRegion| {
-            region.seed.is_none()
-                && (active.is_some_and(|index| region.owners.contains(&index))
-                    || self.label.selected == Some(LabelSelection::Region(position)))
-        };
+        // Every lasso polygon can be edited; a press on it makes its letter active.
+        let editable = |_position: usize, region: &NeuralRegion| region.seed.is_none();
         // The nearest of one kind within reach, each kind tried in turn.
         struct Nearest(Option<(f64, LabelHit)>);
         impl Nearest {
@@ -501,9 +516,8 @@ impl Session {
         let Some(sample) = item.samples.get_mut(position) else {
             return false;
         };
-        sample
-            .cuts
-            .push([[a.x.round(), a.y.round()], [b.x.round(), b.y.round()]]);
+        let (a, b) = (on_grid(a), on_grid(b));
+        sample.cuts.push([[a.x, a.y], [b.x, b.y]]);
         self.label.selected = Some(LabelSelection::Cut(sample.cuts.len() - 1));
         self.derive_and_store(item)
     }
@@ -531,7 +545,13 @@ impl Session {
             });
         let tolerance = (bounds.width().hypot(bounds.height()) * 0.015).max(2.0);
         let corners = simplify_loop(&spaced, tolerance, LASSO_MAX_CORNERS);
-        let polygon: Vec<[f64; 2]> = corners.iter().map(|p| [p.x.round(), p.y.round()]).collect();
+        let mut polygon: Vec<[f64; 2]> = Vec::new();
+        for p in corners.iter().map(|p| on_grid(*p)).map(|p| [p.x, p.y]) {
+            // Corners that the grid pulls together are one corner.
+            if polygon.last() != Some(&p) && polygon.first() != Some(&p) {
+                polygon.push(p);
+            }
+        }
         if polygon.len() < 3 {
             self.label.error = Some("Drag a loop to lasso, or across a stroke to cut".into());
             return false;
@@ -591,7 +611,8 @@ impl Session {
         if after >= polygon.len() {
             return None;
         }
-        polygon.insert(after + 1, [at.x.round(), at.y.round()]);
+        let at = on_grid(at);
+        polygon.insert(after + 1, [at.x, at.y]);
         let corner = after + 1;
         self.store_label(item).then_some(corner)
     }
@@ -611,7 +632,7 @@ impl Session {
             .map(|p| Point::new(p[0], p[1]))
             .filter(|corner| corner.distance(at) <= reach)
             .min_by(|a, b| a.distance(at).total_cmp(&b.distance(at)))
-            .unwrap_or(at)
+            .unwrap_or_else(|| on_grid(at))
     }
 
     /// Make the owner of a region of the selected sample the active letter.
@@ -642,7 +663,10 @@ impl Session {
         let Some(sample) = item.samples.get_mut(position) else {
             return false;
         };
-        let round = |p: Point| [p.x.round(), p.y.round()];
+        let round = |p: Point| {
+            let p = on_grid(p);
+            [p.x, p.y]
+        };
         match moving {
             LabelMoving::Corner { region, corner, to } => {
                 let Some(at) = sample
@@ -676,9 +700,23 @@ impl Session {
                     return false;
                 }
                 for end in line.iter_mut() {
-                    *end = [(end[0] + by.x).round(), (end[1] + by.y).round()];
+                    let moved = on_grid(Point::new(end[0] + by.x, end[1] + by.y));
+                    *end = [moved.x, moved.y];
                 }
                 self.derive_and_store(item)
+            }
+            LabelMoving::Region { region, by } => {
+                let Some(polygon) = sample.regions.get_mut(region).map(|r| &mut r.polygon) else {
+                    return false;
+                };
+                if by.hypot() < 0.5 {
+                    return false;
+                }
+                for corner in polygon.iter_mut() {
+                    let moved = on_grid(Point::new(corner[0] + by.x, corner[1] + by.y));
+                    *corner = [moved.x, moved.y];
+                }
+                self.store_label(item)
             }
         }
     }
@@ -780,7 +818,6 @@ impl Session {
             return Vec::new();
         };
         let letters = sample.letters();
-        let active = letters.get(self.label.active).map(|(index, _)| *index);
         sample
             .regions
             .iter()
@@ -790,8 +827,6 @@ impl Session {
                 let owner = region.owners.first()?;
                 Some(LabelPolygon {
                     region: position,
-                    editable: active.is_some_and(|index| region.owners.contains(&index))
-                        || self.label.selected == Some(LabelSelection::Region(position)),
                     letter: letters.iter().position(|(index, _)| index == owner)?,
                     corners: region
                         .polygon
@@ -1108,24 +1143,24 @@ mod tests {
         assert_eq!(
             app.session
                 .snapped_label_corner(Point::new(403.0, 148.0), 8.0, Some(1)),
-            Point::new(403.0, 148.0),
-            "the wobbly loop has no corner there"
+            Point::new(400.0, 152.0),
+            "no neighbor corner in reach: the grid"
         );
         let session = Arc::make_mut(&mut app.session);
         session.label.moving = Some(LabelMoving::Corner {
             region: 1,
             corner: 1,
-            to: Point::new(475.0, -120.0),
+            to: Point::new(472.0, -120.0),
         });
         assert_eq!(
             session.label_polygons()[1].corners[1],
-            Point::new(475.0, -120.0),
+            Point::new(472.0, -120.0),
             "shown at once"
         );
         app.edit_label(|s| s.finish_label_move(true));
         assert_eq!(
             app.session.neural_item().samples[0].regions[1].polygon[1],
-            [475.0, -120.0]
+            [472.0, -120.0]
         );
 
         // Delete removes the selected corner; a triangle loses the whole region instead
@@ -1174,7 +1209,8 @@ mod tests {
         // the trainer gets polygons it can clip with, grown across the cut
         let right = &prepared.letters[1].regions[0];
         let min_x = right.iter().map(|p| p.x).fold(f64::MAX, f64::min);
-        assert!((min_x - (350.0 - OVERLAP)).abs() < 1.5, "{min_x}");
+        // the cut sits on the grid at 352
+        assert!((min_x - (352.0 - OVERLAP)).abs() < 1.5, "{min_x}");
         std::fs::remove_dir_all(&path).ok();
     }
 }
