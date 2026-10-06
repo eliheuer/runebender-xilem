@@ -213,8 +213,8 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-780</real>
-										<real>-430</real>
+										<real>-784</real>
+										<real>-432</real>
 									</array>
 									<array>
 										<real>780</real>
@@ -265,7 +265,7 @@
 								<array>
 									<array>
 										<real>-1440</real>
-										<real>-100</real>
+										<real>-96</real>
 									</array>
 									<array>
 										<real>-960</real>
@@ -289,8 +289,8 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-1500</real>
-										<real>-420</real>
+										<real>-1504</real>
+										<real>-416</real>
 									</array>
 									<array>
 										<real>-1150</real>
@@ -314,8 +314,8 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-1690</real>
-										<real>-100</real>
+										<real>-1688</real>
+										<real>-96</real>
 									</array>
 									<array>
 										<real>-1380</real>
@@ -365,7 +365,7 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-2450</real>
+										<real>-2448</real>
 										<real>-200</real>
 									</array>
 									<array>
@@ -391,7 +391,7 @@
 								<array>
 									<array>
 										<real>-3640</real>
-										<real>-60</real>
+										<real>-64</real>
 									</array>
 									<array>
 										<real>-2390</real>
@@ -415,8 +415,8 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-3100</real>
-										<real>-420</real>
+										<real>-3104</real>
+										<real>-416</real>
 									</array>
 									<array>
 										<real>-2700</real>

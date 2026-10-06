@@ -25,10 +25,11 @@ use runebender::outline::path::Path;
 use std::sync::Arc;
 
 /// Something of the selected sample the designer picked, to move or delete.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum LabelSelection {
-    /// A corner of a lasso polygon: the region and the corner.
-    Corner(usize, usize),
+    /// Corners of lasso polygons, each a region and a corner. Corners that sit on one spot
+    /// are picked together, and Shift adds to the set.
+    Corners(Vec<(usize, usize)>),
     /// A cut, by its position in the sample's cuts.
     Cut(usize),
     /// A whole region.
@@ -44,6 +45,8 @@ pub(crate) enum LabelMoving {
         corner: usize,
         to: Point,
     },
+    /// Several corners, moved by this much.
+    Corners { by: kurbo::Vec2 },
     /// One end of a cut, now at this point.
     CutEnd { cut: usize, end: usize, to: Point },
     /// A whole cut, moved by this much.
@@ -177,9 +180,108 @@ impl Session {
                         }
                     }
                 }
+                LabelMoving::Corners { by } => {
+                    for (region, corner) in self.selected_corners() {
+                        if let Some(at) = sample
+                            .regions
+                            .get_mut(region)
+                            .and_then(|region| region.polygon.get_mut(corner))
+                        {
+                            at[0] += by.x;
+                            at[1] += by.y;
+                        }
+                    }
+                }
             }
         }
         item
+    }
+
+    /// Where a lasso corner of the selected sample is.
+    pub(crate) fn corner_point(&self, region: usize, corner: usize) -> Option<Point> {
+        let (_, sample) = self.selected_sample()?;
+        let p = sample.regions.get(region)?.polygon.get(corner)?;
+        Some(Point::new(p[0], p[1]))
+    }
+
+    /// The selected corners, if the selection is corners.
+    pub(crate) fn selected_corners(&self) -> Vec<(usize, usize)> {
+        match &self.label.selected {
+            Some(LabelSelection::Corners(corners)) => corners.clone(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Every lasso corner of the selected sample on the same spot as `at`, within half a
+    /// grid step: corners of neighbors that meet there move as one.
+    pub(crate) fn corners_at(&self, at: Point) -> Vec<(usize, usize)> {
+        let Some((_, sample)) = self.selected_sample() else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for (position, region) in sample.regions.iter().enumerate() {
+            if region.seed.is_some() {
+                continue;
+            }
+            for (corner, p) in region.polygon.iter().enumerate() {
+                if Point::new(p[0], p[1]).distance(at) <= LABEL_GRID / 2.0 {
+                    out.push((position, corner));
+                }
+            }
+        }
+        out
+    }
+
+    /// Every lasso corner of the selected sample inside `rect`.
+    pub(crate) fn corners_in(&self, rect: kurbo::Rect) -> Vec<(usize, usize)> {
+        let Some((_, sample)) = self.selected_sample() else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for (position, region) in sample.regions.iter().enumerate() {
+            if region.seed.is_some() {
+                continue;
+            }
+            for (corner, p) in region.polygon.iter().enumerate() {
+                if rect.contains(Point::new(p[0], p[1])) {
+                    out.push((position, corner));
+                }
+            }
+        }
+        out
+    }
+
+    /// Snap every lasso corner and cut end of the selected sample to the grid, as one edit.
+    /// Older files were drawn off the grid.
+    pub(crate) fn snap_sample_to_grid(&mut self) -> bool {
+        let Some(position) = self.label.sample else {
+            return false;
+        };
+        let mut item = self.neural_item();
+        let Some(sample) = item.samples.get_mut(position) else {
+            return false;
+        };
+        let mut changed = false;
+        let mut snap = |p: &mut [f64; 2]| {
+            let on = on_grid(Point::new(p[0], p[1]));
+            if *p != [on.x, on.y] {
+                *p = [on.x, on.y];
+                changed = true;
+            }
+        };
+        for region in &mut sample.regions {
+            if region.seed.is_none() {
+                for corner in &mut region.polygon {
+                    snap(corner);
+                }
+            }
+        }
+        for cut in &mut sample.cuts {
+            for end in cut {
+                snap(end);
+            }
+        }
+        changed && self.store_label(item)
     }
 
     /// The sample whose boundary holds `at`, the smallest when they nest.
@@ -210,6 +312,9 @@ impl Session {
         self.label.moving = None;
         self.label.selected = None;
         self.step_to_unlabeled_letter();
+        if position.is_some() {
+            self.snap_sample_to_grid();
+        }
     }
 
     /// The text index and character of the active letter of the selected sample.
@@ -705,6 +810,22 @@ impl Session {
                 }
                 self.derive_and_store(item)
             }
+            LabelMoving::Corners { by } => {
+                if by.hypot() < 0.5 {
+                    return false;
+                }
+                for (region, corner) in self.selected_corners() {
+                    if let Some(at) = sample
+                        .regions
+                        .get_mut(region)
+                        .and_then(|region| region.polygon.get_mut(corner))
+                    {
+                        let moved = on_grid(Point::new(at[0] + by.x, at[1] + by.y));
+                        *at = [moved.x, moved.y];
+                    }
+                }
+                self.store_label(item)
+            }
             LabelMoving::Region { region, by } => {
                 let Some(polygon) = sample.regions.get_mut(region).map(|r| &mut r.polygon) else {
                     return false;
@@ -733,16 +854,28 @@ impl Session {
         };
         let selected = self.label.selected.take();
         match selected {
-            Some(LabelSelection::Corner(region, corner)) => {
-                let Some(polygon) = sample.regions.get_mut(region).map(|r| &mut r.polygon) else {
-                    return false;
-                };
-                if polygon.len() <= 3 {
+            Some(LabelSelection::Corners(corners)) => {
+                // Highest corner first within a region, so earlier ones keep their index;
+                // a region left with fewer than three corners goes entirely.
+                let mut corners = corners;
+                corners.sort_unstable_by(|a, b| b.cmp(a));
+                corners.dedup();
+                let mut gone: Vec<usize> = Vec::new();
+                for (region, corner) in corners {
+                    let Some(polygon) = sample.regions.get_mut(region).map(|r| &mut r.polygon)
+                    else {
+                        continue;
+                    };
+                    if polygon.len() <= 3 {
+                        gone.push(region);
+                    } else if corner < polygon.len() {
+                        polygon.remove(corner);
+                    }
+                }
+                gone.sort_unstable();
+                gone.dedup();
+                for region in gone.into_iter().rev() {
                     sample.regions.remove(region);
-                } else if corner < polygon.len() {
-                    polygon.remove(corner);
-                } else {
-                    return false;
                 }
                 self.store_label(item)
             }
@@ -1164,7 +1297,8 @@ mod tests {
         );
 
         // Delete removes the selected corner; a triangle loses the whole region instead
-        Arc::make_mut(&mut app.session).label.selected = Some(LabelSelection::Corner(1, 1));
+        Arc::make_mut(&mut app.session).label.selected =
+            Some(LabelSelection::Corners(vec![(1, 1)]));
         app.edit_label(|s| s.delete_label_selection());
         assert_eq!(
             app.session.neural_item().samples[0].regions[1]

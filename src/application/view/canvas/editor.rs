@@ -481,6 +481,16 @@ enum Drag {
     LabelCorner {
         region: usize,
     },
+    /// Shift-drag in the label tool: a box that selects the corners inside it, in design
+    /// space.
+    LabelMarquee {
+        start: Point,
+        current: Point,
+    },
+    /// Several label corners follow the pointer; the session holds where.
+    LabelCorners {
+        start: Point,
+    },
     /// A whole lasso polygon follows the pointer; the session holds where.
     LabelRegion {
         region: usize,
@@ -1077,8 +1087,8 @@ impl EditorWidget {
                 .draw();
         }
         // Cuts: thin lines; the selected or hovered one carries its end handles.
-        let picked_cut = match (self.session.label.selected, &self.label_hover) {
-            (Some(LabelSelection::Cut(cut)), _) => Some(cut),
+        let picked_cut = match (&self.session.label.selected, &self.label_hover) {
+            (Some(LabelSelection::Cut(cut)), _) => Some(*cut),
             (_, Some(LabelHit::Cut { cut } | LabelHit::CutEnd { cut, .. })) => Some(*cut),
             _ => None,
         };
@@ -1103,10 +1113,9 @@ impl EditorWidget {
         // Every lasso polygon: a translucent fill in its letter's color and the same dark
         // outline as the drawing. The active letter's and the selected one carry colored
         // corner handles.
-        let picked_region = match self.session.label.selected {
-            Some(LabelSelection::Region(region) | LabelSelection::Corner(region, _)) => {
-                Some(region)
-            }
+        let picked_corners = self.session.selected_corners();
+        let picked_region = match &self.session.label.selected {
+            Some(LabelSelection::Region(region)) => Some(*region),
             _ => None,
         };
         for polygon in self.session.label_polygons() {
@@ -1125,13 +1134,16 @@ impl EditorWidget {
             painter
                 .stroke(&path, &Stroke::new(1.0), pal.role("pathStroke"))
                 .draw();
-            let handles = polygon.letter == active || picked_region == Some(polygon.region);
+            let handles = polygon.letter == active
+                || picked_region == Some(polygon.region)
+                || picked_corners
+                    .iter()
+                    .any(|(region, _)| *region == polygon.region);
             if !handles {
                 continue;
             }
             for (index, corner) in polygon.corners.iter().enumerate() {
-                let picked = self.session.label.selected
-                    == Some(LabelSelection::Corner(polygon.region, index));
+                let picked = picked_corners.contains(&(polygon.region, index));
                 let handle = Circle::new(affine * *corner, if picked { 5.0 } else { 3.5 });
                 painter.fill(handle, color).draw();
                 painter
@@ -1148,6 +1160,15 @@ impl EditorWidget {
                     .stroke(ghost, &Stroke::new(1.0), pal.role("pathStroke"))
                     .draw();
             }
+        }
+        if let Drag::LabelMarquee { start, current } = &self.drag {
+            let rect = affine.transform_rect_bbox(Rect::from_points(*start, *current));
+            painter
+                .fill(rect, pal.role("selection").with_alpha(0.1))
+                .draw();
+            painter
+                .stroke(rect, &Stroke::new(1.0), pal.role("selection"))
+                .draw();
         }
         // A freehand drag in progress: a cut is a straight line, a lasso a loop.
         if let Drag::Label { points, .. } = &self.drag
@@ -1214,7 +1235,10 @@ impl EditorWidget {
             Some(LabelHit::Piece(_)) => {
                 format!("Click: paint {letter}. Option-click: unpaint. Drag across: cut")
             }
-            Some(LabelHit::Corner { .. }) => "Drag: move the corner. Delete: remove it".into(),
+            Some(LabelHit::Corner { .. }) => {
+                "Drag: move the corner, with any that meet it. Shift-click: add to the selection"
+                    .into()
+            }
             Some(LabelHit::Edge { .. }) => "Click: add a corner".into(),
             Some(LabelHit::CutEnd { .. }) => "Drag: move the end of the cut".into(),
             Some(LabelHit::Cut { .. }) => "Drag: move the cut. Delete: remove it".into(),
@@ -2531,16 +2555,48 @@ impl Widget for EditorWidget {
                         match self.session.label_hit(design, reach) {
                             LabelHit::Corner { region, corner } => {
                                 self.session.activate_label_region(region);
-                                self.session.label.selected =
-                                    Some(LabelSelection::Corner(region, corner));
-                                self.session.label.moving = Some(LabelMoving::Corner {
-                                    region,
-                                    corner,
-                                    to: design,
-                                });
-                                self.drag = Drag::LabelCorner { region };
-                                ctx.capture_pointer();
-                                self.emit(ctx, false);
+                                let shift = state.modifiers.shift();
+                                let mut picked = self.session.selected_corners();
+                                if shift {
+                                    // Shift adds a corner to the set, or takes it out.
+                                    match picked.iter().position(|c| *c == (region, corner)) {
+                                        Some(at) => {
+                                            picked.remove(at);
+                                        }
+                                        None => picked.push((region, corner)),
+                                    }
+                                    self.session.label.selected =
+                                        Some(LabelSelection::Corners(picked));
+                                    self.emit(ctx, false);
+                                } else {
+                                    if !picked.contains(&(region, corner)) {
+                                        // Corners that meet here move as one.
+                                        let at = self.session.corner_point(region, corner);
+                                        picked = at
+                                            .map(|at| self.session.corners_at(at))
+                                            .unwrap_or_default();
+                                        if picked.is_empty() {
+                                            picked.push((region, corner));
+                                        }
+                                        self.session.label.selected =
+                                            Some(LabelSelection::Corners(picked.clone()));
+                                    }
+                                    if picked.len() == 1 {
+                                        self.session.label.moving = Some(LabelMoving::Corner {
+                                            region,
+                                            corner,
+                                            to: design,
+                                        });
+                                        self.drag = Drag::LabelCorner { region };
+                                    } else {
+                                        self.session.label.moving = Some(LabelMoving::Corners {
+                                            by: kurbo::Vec2::ZERO,
+                                        });
+                                        self.drag = Drag::LabelCorners { start: design };
+                                    }
+                                    ctx.capture_pointer();
+                                    self.emit(ctx, false);
+                                }
                             }
                             LabelHit::Edge {
                                 region,
@@ -2553,7 +2609,7 @@ impl Widget for EditorWidget {
                                     self.session.add_label_corner(region, after, on)
                                 {
                                     self.session.label.selected =
-                                        Some(LabelSelection::Corner(region, corner));
+                                        Some(LabelSelection::Corners(vec![(region, corner)]));
                                     self.session.label.moving = Some(LabelMoving::Corner {
                                         region,
                                         corner,
@@ -2608,6 +2664,17 @@ impl Widget for EditorWidget {
                                 };
                                 ctx.capture_pointer();
                                 self.emit(ctx, false);
+                            }
+                            LabelHit::Piece(_) | LabelHit::Nothing
+                                if state.modifiers.shift()
+                                    && self.session.label.sample.is_some() =>
+                            {
+                                // Shift-drag: a box that selects corners.
+                                self.drag = Drag::LabelMarquee {
+                                    start: design,
+                                    current: design,
+                                };
+                                ctx.capture_pointer();
                             }
                             LabelHit::Piece(_) | LabelHit::Nothing => {
                                 if self.session.label.sample.is_none()
@@ -2990,6 +3057,18 @@ impl Widget for EditorWidget {
                             ctx.request_render();
                         }
                     }
+                    Drag::LabelCorners { start } => {
+                        use crate::application::editor::tools::label::LabelMoving;
+                        let start = *start;
+                        self.session.label.moving = Some(LabelMoving::Corners {
+                            by: glyph_design - start,
+                        });
+                        ctx.request_render();
+                    }
+                    Drag::LabelMarquee { current, .. } => {
+                        *current = glyph_design;
+                        ctx.request_render();
+                    }
                     Drag::LabelRegion { region, start } => {
                         use crate::application::editor::tools::label::LabelMoving;
                         let (region, start) = (*region, *start);
@@ -3111,7 +3190,24 @@ impl Widget for EditorWidget {
                         self.drag = Drag::None;
                         self.emit(ctx, changed);
                     }
-                    Drag::LabelCorner { .. } | Drag::LabelCut { .. } | Drag::LabelRegion { .. } => {
+                    Drag::LabelMarquee { start, current } => {
+                        use crate::application::editor::tools::label::LabelSelection;
+                        let rect = Rect::from_points(*start, *current);
+                        if !cancelled {
+                            let picked = self.session.corners_in(rect);
+                            self.session.label.selected = if picked.is_empty() {
+                                None
+                            } else {
+                                Some(LabelSelection::Corners(picked))
+                            };
+                        }
+                        self.drag = Drag::None;
+                        self.emit(ctx, false);
+                    }
+                    Drag::LabelCorner { .. }
+                    | Drag::LabelCorners { .. }
+                    | Drag::LabelCut { .. }
+                    | Drag::LabelRegion { .. } => {
                         let changed = self.session.finish_label_move(!cancelled);
                         self.drag = Drag::None;
                         self.emit(ctx, changed);
