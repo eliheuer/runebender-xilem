@@ -919,6 +919,10 @@ impl Session {
                 self.store_label(item)
             }
             None => {
+                // Nothing picked: the active letter's newest region, or an empty sample itself.
+                if sample.regions.is_empty() && sample.cuts.is_empty() {
+                    return self.delete_sample();
+                }
                 let Some((index, _)) = self.active_letter() else {
                     return false;
                 };

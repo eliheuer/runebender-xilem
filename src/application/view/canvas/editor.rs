@@ -408,24 +408,19 @@ fn dispatch_editor_event(
 }
 
 /// One color per letter for the label tool, cycling through the theme's mark colors.
-/// Ten hues for labeled letters, chosen to read on the gray canvas in both themes. Letters
-/// within three places of each other in the text never share one.
-pub(crate) fn label_colors(_pal: &Palette) -> Vec<xilem::Color> {
-    const HUES: [u32; 10] = [
-        0xD94F3D, 0x3A7BD5, 0xE0A826, 0x3C9D5E, 0x8A5BD6, 0xE6702E, 0xD9529C, 0x2A9DA8, 0x9C7A2E,
-        0x5E6BD8,
-    ];
-    let color = |value: u32| {
-        xilem::Color::from_rgba8(
-            ((value >> 16) & 0xFF) as u8,
-            ((value >> 8) & 0xFF) as u8,
-            (value & 0xFF) as u8,
-            255,
-        )
-    };
-    (0..HUES.len())
-        .map(|index| color(HUES[index * 3 % HUES.len()]))
-        .collect()
+/// The colors of labeled letters: the theme's mark palette in its own order, cycling from
+/// red through the rainbow and back. The same colors the glyph grid uses.
+pub(crate) fn label_colors(pal: &Palette) -> Vec<xilem::Color> {
+    let marks: Vec<xilem::Color> = pal
+        .mark_list()
+        .into_iter()
+        .map(|(_, color)| color)
+        .collect();
+    if marks.is_empty() {
+        vec![pal.tool_feedback()]
+    } else {
+        marks
+    }
 }
 
 enum Drag {

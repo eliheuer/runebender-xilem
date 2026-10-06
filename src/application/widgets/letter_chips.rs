@@ -40,17 +40,30 @@ pub(crate) enum ChipEvent {
     Hover(Option<usize>),
 }
 
-const CHIP: f64 = 30.0;
-const GAP: f64 = 5.0;
-const WORD_GAP: f64 = 16.0;
-const ROW: f64 = CHIP + 8.0;
+const CHIP: f64 = 28.0;
+const GAP: f64 = 4.0;
+const WORD_GAP: f64 = 14.0;
+const ROW: f64 = CHIP + 6.0;
+
+/// The colors a chip is drawn with, from the theme's mark treatment.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ChipInks {
+    /// The letter on a colored chip.
+    pub ink: Color,
+    /// The letter and edge of a chip whose letter has no ink yet.
+    pub hollow: Color,
+    /// The face of such a chip.
+    pub face: Color,
+    /// The edge of every chip.
+    pub outline: Color,
+    /// The ring around the active chip.
+    pub ring: Color,
+}
 
 pub(crate) struct LetterChipsWidget {
     chips: Arc<Vec<Chip>>,
     active: usize,
-    ink: Color,
-    canvas: Color,
-    muted: Color,
+    inks: ChipInks,
     size: Size,
     hovered: Option<usize>,
 }
@@ -131,30 +144,40 @@ impl Widget for LetterChipsWidget {
         for (index, (chip, center)) in self.chips.iter().zip(&centers).enumerate() {
             let active = index == self.active;
             let hovered = self.hovered == Some(index);
-            let radius = CHIP / 2.0 - 2.0 + if active { 2.0 } else { 0.0 };
+            let radius = CHIP / 2.0 - 3.0;
             let face = Circle::new(*center, radius);
+            // Like the grid's mark swatches: a filled disc with a thin edge.
             if chip.done {
                 painter.fill(face, chip.color).draw();
+                painter
+                    .stroke(face, &Stroke::new(1.0), self.inks.outline)
+                    .draw();
             } else {
-                painter.fill(face, self.canvas).draw();
-                painter.stroke(face, &Stroke::new(1.5), self.muted).draw();
+                painter.fill(face, self.inks.face).draw();
+                painter
+                    .stroke(face, &Stroke::new(1.0), self.inks.hollow)
+                    .draw();
             }
             if active || hovered {
-                let ring = Circle::new(*center, radius + 3.0);
                 painter
                     .stroke(
-                        ring,
-                        &Stroke::new(if active { 2.0 } else { 1.0 }),
-                        if chip.done { chip.color } else { self.ink },
+                        Circle::new(*center, radius + 3.0),
+                        &Stroke::new(if active { 1.5 } else { 1.0 }),
+                        self.inks.ring,
                     )
                     .draw();
             }
-            let ink = if chip.done { self.canvas } else { self.muted };
+            let ink = if chip.done {
+                self.inks.ink
+            } else {
+                self.inks.hollow
+            };
+            // Small, and a little above center: Arabic letters sit low in their box.
             text_label::draw(
                 painter,
-                Point::new(center.x, center.y),
+                Point::new(center.x, center.y - 1.0),
                 &chip.character.to_string(),
-                17.0,
+                13.0,
                 ink,
                 Anchor::Middle,
             );
@@ -222,16 +245,14 @@ impl Widget for LetterChipsWidget {
 pub(crate) struct LetterChips<F> {
     chips: Arc<Vec<Chip>>,
     active: usize,
-    ink: Color,
-    canvas: Color,
-    muted: Color,
+    inks: ChipInks,
     on_event: F,
 }
 
 pub(crate) fn letter_chips<F, Workspace: 'static>(
     chips: Arc<Vec<Chip>>,
     active: usize,
-    (ink, canvas, muted): (Color, Color, Color),
+    inks: ChipInks,
     on_event: F,
 ) -> LetterChips<F>
 where
@@ -240,9 +261,7 @@ where
     LetterChips {
         chips,
         active,
-        ink,
-        canvas,
-        muted,
+        inks,
         on_event,
     }
 }
@@ -260,9 +279,7 @@ where
         let widget = LetterChipsWidget {
             chips: self.chips.clone(),
             active: self.active,
-            ink: self.ink,
-            canvas: self.canvas,
-            muted: self.muted,
+            inks: self.inks,
             size: Size::ZERO,
             hovered: None,
         };
@@ -287,10 +304,8 @@ where
             element.widget.active = self.active;
             changed = true;
         }
-        if (self.ink, self.canvas, self.muted) != (prev.ink, prev.canvas, prev.muted) {
-            element.widget.ink = self.ink;
-            element.widget.canvas = self.canvas;
-            element.widget.muted = self.muted;
+        if self.inks != prev.inks {
+            element.widget.inks = self.inks;
             changed = true;
         }
         if changed {

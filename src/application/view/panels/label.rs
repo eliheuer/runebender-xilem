@@ -20,30 +20,35 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             .text_size(TextSize::Caption.px())
             .color(pal.text_muted)
     };
-    let samples = item
-        .samples
-        .iter()
-        .enumerate()
-        .map(|(position, sample)| {
-            let letters = sample.letters().len();
-            let done = letters - sample.unlabeled().len();
-            let text = if sample.text.trim().is_empty() {
-                format!("{}  (no text)", position + 1)
-            } else {
-                format!("{}  {}", position + 1, sample.text)
-            };
-            recipes::list_row(
-                pal,
-                text,
-                format!("{done}/{letters}"),
-                selected.as_ref().is_some_and(|(at, _)| *at == position),
-                move |app: &mut Workspace| {
-                    Arc::make_mut(&mut app.session).select_sample(Some(position));
-                },
-            )
-            .boxed()
-        })
-        .collect::<Vec<_>>();
+    // The list of samples shows only while none is open: an open sample is its text.
+    let samples = selected.is_none().then(|| {
+        xcolumn(
+            Region::List,
+            item.samples
+                .iter()
+                .enumerate()
+                .map(|(position, sample)| {
+                    let letters = sample.letters().len();
+                    let done = letters - sample.unlabeled().len();
+                    let text = if sample.text.trim().is_empty() {
+                        format!("{}  (no text)", position + 1)
+                    } else {
+                        format!("{}  {}", position + 1, sample.text)
+                    };
+                    recipes::list_row(
+                        pal,
+                        text,
+                        format!("{done}/{letters}"),
+                        false,
+                        move |app: &mut Workspace| {
+                            Arc::make_mut(&mut app.session).select_sample(Some(position));
+                        },
+                    )
+                    .boxed()
+                })
+                .collect::<Vec<_>>(),
+        )
+    });
     let sample_controls = selected.map(|(position, sample)| {
         use crate::application::widgets::letter_chips::{Chip, ChipEvent, letter_chips};
         let colors = crate::application::view::canvas::editor::label_colors(pal);
@@ -67,12 +72,7 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             })
             .collect();
         let done = chips.iter().filter(|chip| chip.done).count();
-        let cuts = sample.cuts.len();
-        let summary = format!(
-            "{done} of {} letters painted, {cuts} {}",
-            letters.len(),
-            if cuts == 1 { "cut" } else { "cuts" }
-        );
+        let summary = format!("{done} of {} letters have ink", letters.len());
         xcolumn(
             Region::Form,
             (
@@ -91,7 +91,13 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 letter_chips(
                     Arc::new(chips),
                     active,
-                    (pal.text, pal.panel, pal.text_muted),
+                    crate::application::widgets::letter_chips::ChipInks {
+                        ink: pal.mark_ink.unwrap_or(pal.text),
+                        hollow: pal.text_muted,
+                        face: pal.panel,
+                        outline: pal.mark_outline.unwrap_or(pal.outline),
+                        ring: pal.text,
+                    },
                     |app: &mut Workspace, event| {
                         let session = Arc::make_mut(&mut app.session);
                         match event {
@@ -104,30 +110,22 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     },
                 ),
                 caption(summary),
-                recipes::action(pal, "Delete sample".into(), |app: &mut Workspace| {
-                    app.edit_label(|session| session.delete_sample());
-                }),
             ),
         )
     });
     let hints: &[&str] = if app.session.label.sample.is_some() {
         &[
-            "Click ink: paint. Option-click: unpaint",
-            "Drag across a stroke: cut. Drag a loop: lasso",
-            "Drag a corner: move it with any that meet it",
-            "Option-drag a corner: pull it away on its own",
-            "Shift-drag: select corners. Delete: remove",
+            "Pick a letter. Click its ink, or drag",
+            "a loop around it. Drag corners to adjust.",
+            "Option-drag pulls a shared corner away.",
         ]
     } else {
-        &[
-            "Loop around writing: new sample",
-            "Click a sample to label it",
-        ]
+        &["Drag a loop around writing to start."]
     };
     xcolumn(
         Region::Form,
         (
-            xcolumn(Region::List, samples),
+            samples,
             sample_controls,
             xcolumn(
                 Region::List,
