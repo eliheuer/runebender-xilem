@@ -1268,6 +1268,9 @@ impl EditorWidget {
     /// What a click would do where the label tool's pointer is.
     fn label_caption(&self) -> Option<String> {
         use crate::application::editor::tools::label::LabelHit;
+        if let Some(error) = &self.session.label.error {
+            return Some(error.clone());
+        }
         if self.session.label.sample.is_none() {
             return Some(match self.label_hover {
                 Some(LabelHit::Piece(_)) => {

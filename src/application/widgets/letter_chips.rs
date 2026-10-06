@@ -29,8 +29,6 @@ pub(crate) struct Chip {
     pub color: Color,
     /// The letter owns some ink.
     pub done: bool,
-    /// A space in the text comes before this letter.
-    pub word_start: bool,
 }
 
 /// What the chips report upward.
@@ -40,9 +38,9 @@ pub(crate) enum ChipEvent {
     Hover(Option<usize>),
 }
 
-const CHIP: f64 = 28.0;
+const CHIP: f64 = 26.0;
+/// The least gutter between chips; the real one grows to fill the row.
 const GAP: f64 = 4.0;
-const WORD_GAP: f64 = 14.0;
 const ROW: f64 = CHIP + 6.0;
 
 /// The colors a chip is drawn with, from the theme's mark treatment.
@@ -69,28 +67,33 @@ pub(crate) struct LetterChipsWidget {
 }
 
 impl LetterChipsWidget {
-    /// The center of every chip at the current width, laid right to left, wrapping.
+    /// The center of every chip at the current width: as many per row as fit, with one even
+    /// gutter between and beside them, laid right to left and wrapping. Like the mark
+    /// swatches under the glyph grid.
     fn centers(&self, width: f64) -> Vec<Point> {
-        let mut centers = Vec::with_capacity(self.chips.len());
-        let (mut x, mut y) = (width - CHIP / 2.0, ROW / 2.0);
-        for (index, chip) in self.chips.iter().enumerate() {
-            if index > 0 {
-                x -= CHIP + if chip.word_start { WORD_GAP } else { GAP };
-            }
-            if x < CHIP / 2.0 {
-                x = width - CHIP / 2.0;
-                y += ROW;
-            }
-            centers.push(Point::new(x, y));
-        }
-        centers
+        let per_row = ((width + GAP) / (CHIP + GAP)).floor().max(1.0);
+        let gutter = ((width - per_row * CHIP) / (per_row + 1.0)).max(0.0);
+        let pitch = CHIP + gutter;
+        self.chips
+            .iter()
+            .enumerate()
+            .map(|(index, _)| {
+                let column = (index as f64) % per_row;
+                let row = ((index as f64) / per_row).floor();
+                Point::new(
+                    width - gutter - CHIP / 2.0 - column * pitch,
+                    ROW / 2.0 + row * ROW,
+                )
+            })
+            .collect()
     }
 
     fn rows(&self, width: f64) -> usize {
+        // Count the rows the centers fall on, so no float is cast to a count.
         let mut rows = 1;
         let mut last_y = ROW / 2.0;
         for center in self.centers(width) {
-            if center.y > last_y {
+            if center.y > last_y + 1.0 {
                 rows += 1;
                 last_y = center.y;
             }
@@ -177,7 +180,7 @@ impl Widget for LetterChipsWidget {
                 painter,
                 Point::new(center.x, center.y - 1.0),
                 &chip.character.to_string(),
-                13.0,
+                11.0,
                 ink,
                 Anchor::Middle,
             );

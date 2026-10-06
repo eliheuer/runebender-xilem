@@ -3,23 +3,16 @@
 
 //! The label inspector, shown beside a neural canvas while the label tool is active.
 
-use crate::application::view::design::{Region, TextSize, column as xcolumn};
-use crate::application::view::label;
+use crate::application::view::design::{Region, column as xcolumn};
 use crate::application::view::recipes;
 use crate::application::workspace::Workspace;
 use std::sync::Arc;
 use xilem::WidgetView;
-use xilem::style::Style;
 
 pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     let item = app.session.neural_item();
     let selected = app.session.selected_sample();
-    let caption = |text: String| {
-        label(text)
-            .text_size(TextSize::Caption.px())
-            .color(pal.text_muted)
-    };
     // The list of samples shows only while none is open: an open sample is its text.
     let samples = selected.is_none().then(|| {
         xcolumn(
@@ -58,7 +51,6 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             .label
             .active
             .min(letters.len().saturating_sub(1));
-        let text: Vec<char> = sample.text.chars().collect();
         let chips: Vec<Chip> = letters
             .iter()
             .enumerate()
@@ -66,13 +58,9 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 character: *character,
                 color: colors[letter % colors.len()],
                 done: sample.regions_of(*index).next().is_some(),
-                word_start: (*index as usize)
-                    .checked_sub(1)
-                    .is_some_and(|before| text[before].is_whitespace()),
             })
             .collect();
-        let done = chips.iter().filter(|chip| chip.done).count();
-        let summary = format!("{done} of {} letters have ink", letters.len());
+
         xcolumn(
             Region::Form,
             (
@@ -109,37 +97,8 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         }
                     },
                 ),
-                caption(summary),
             ),
         )
     });
-    let hints: &[&str] = if app.session.label.sample.is_some() {
-        &[
-            "Pick a letter. Click its ink, or drag",
-            "a loop around it. Drag corners to adjust.",
-            "Option-drag pulls a shared corner away.",
-        ]
-    } else {
-        &["Drag a loop around writing to start."]
-    };
-    xcolumn(
-        Region::Form,
-        (
-            samples,
-            sample_controls,
-            xcolumn(
-                Region::List,
-                hints
-                    .iter()
-                    .map(|hint| caption((*hint).to_string()))
-                    .collect::<Vec<_>>(),
-            ),
-            app.session.label.error.clone().map(|error| {
-                label(error)
-                    .text_size(TextSize::Caption.px())
-                    .color(pal.role("danger"))
-            }),
-        ),
-    )
-    .boxed()
+    xcolumn(Region::Form, (samples, sample_controls)).boxed()
 }
