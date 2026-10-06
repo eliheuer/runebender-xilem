@@ -15,13 +15,37 @@ use xilem::style::Style;
 use xilem::view::{canvas, sized_box};
 
 pub(crate) fn preview_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
-    use xilem::core::one_of::Either;
-    if app.preview_view == crate::application::pieces::PreviewView::Pieces
-        && app.font.project.is_neural()
-    {
-        return Either::A(piece_strip(app));
+    use crate::application::pieces::PreviewView;
+    use xilem::core::one_of::OneOf3;
+    if app.font.project.is_neural() {
+        match app.preview_view {
+            PreviewView::Pieces => return OneOf3::A(piece_strip(app)),
+            PreviewView::Model => return OneOf3::B(model_strip_view(app)),
+            PreviewView::Outline => {}
+        }
     }
-    Either::B(outline_strip(app))
+    OneOf3::C(outline_strip(app))
+}
+
+/// The text drawn by the trained font, with a draggable node at every caret.
+fn model_strip_view(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    use crate::application::widgets::model_strip::{StripInks, model_strip};
+    let pal = &app.palette;
+    let (ink, background) = if app.preview_invert {
+        (pal.selected_ink(), pal.selected_bg())
+    } else {
+        (pal.proof_ink(), pal.proof_strip)
+    };
+    model_strip(
+        app.model.render.clone(),
+        StripInks {
+            ink,
+            background,
+            node: pal.role("pointSmooth"),
+            node_outline: pal.point_outline.unwrap_or(pal.text),
+        },
+        |app: &mut Workspace, event| app.model_strip_event(event),
+    )
 }
 
 /// The typed text set from the labeled pieces of every sample; a box stands for a letter no
@@ -181,7 +205,11 @@ fn outline_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
 /// proof does. Sidebearings stay meaningful; empty descender space does not
 /// displace the visible ink from the middle of the pane. With no advance, as
 /// on a neural canvas, the ink is centered on both axes.
-fn proof_transform(bounds: kurbo::Rect, advance: f64, size: kurbo::Size) -> kurbo::Affine {
+pub(crate) fn proof_transform(
+    bounds: kurbo::Rect,
+    advance: f64,
+    size: kurbo::Size,
+) -> kurbo::Affine {
     use masonry::kurbo::Affine;
     let padding = Space::Xl.px();
     let by_height = (size.height - padding * 2.0).max(0.0) / bounds.height().max(1.0);

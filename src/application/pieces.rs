@@ -19,6 +19,8 @@ pub(crate) enum PreviewView {
     Outline,
     /// The typed text assembled from labeled pieces.
     Pieces,
+    /// The typed text drawn by the latest trained font.
+    Model,
 }
 
 /// The pieces of every sample, kept until the labels or the ink change.

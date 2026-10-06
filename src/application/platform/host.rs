@@ -369,6 +369,7 @@ impl Workspace {
             train: crate::application::platform::train::TrainState::default(),
             preview_view: crate::application::pieces::PreviewView::default(),
             pieces: crate::application::pieces::PieceCache::default(),
+            model: crate::application::platform::model::ModelState::default(),
             ai: local_ai::LocalAiState::default(),
             chat: chat::ChatState::default(),
             scripts: scripts::ScriptsState::default(),

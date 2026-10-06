@@ -2899,6 +2899,17 @@ dependencies = [
 
 [[package]]
 name = "kurbo"
+version = "0.11.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c62026ae44756f8a599ba21140f350303d4f08dcdcc71b5ad9c9bb8128c13c62"
+dependencies = [
+ "arrayvec",
+ "euclid",
+ "smallvec",
+]
+
+[[package]]
+name = "kurbo"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4b60dfc32f652b926df6192e55525b16d186c69d47876c3ead4da5cc9f8450e2"
@@ -3332,6 +3343,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee6cda3051665f1fb8d9e08fc35c96d5a244fb1be711a03b71118828afc9a873"
 dependencies = [
  "jni-sys 0.3.1",
+]
+
+[[package]]
+name = "neuraltype-core"
+version = "0.1.0"
+source = "git+https://github.com/eliheuer/post-opentype?rev=7fcacc3119ee1790c75270846fb442f49a14d50d#7fcacc3119ee1790c75270846fb442f49a14d50d"
+dependencies = [
+ "kurbo 0.11.3",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -4567,6 +4588,7 @@ dependencies = [
  "masonry_testing",
  "masonry_winit",
  "muda",
+ "neuraltype-core",
  "norad",
  "notify",
  "nufo",

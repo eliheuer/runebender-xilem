@@ -8,6 +8,7 @@ use crate::application::editor::tools::{chat, local_ai, nodes, scripts};
 use crate::application::platform::export;
 #[cfg(unix)]
 use crate::application::platform::live;
+use crate::application::platform::model;
 use crate::application::platform::train;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::application::platform::watch;
@@ -303,13 +304,14 @@ where
 
 pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use<> {
     use xilem::core::one_of::{Either, OneOf3};
-    // The piece view cuts its pieces before any view borrows the workspace.
-    if matches!(app.mode, Mode::Editor(_))
-        && app.preview_visible
-        && app.preview_view == crate::application::pieces::PreviewView::Pieces
-        && app.font.project.is_neural()
-    {
-        app.refresh_pieces();
+    // The piece view cuts its pieces, and the model view asks its worker, before any view
+    // borrows the workspace.
+    if matches!(app.mode, Mode::Editor(_)) && app.preview_visible && app.font.project.is_neural() {
+        match app.preview_view {
+            crate::application::pieces::PreviewView::Pieces => app.refresh_pieces(),
+            crate::application::pieces::PreviewView::Model => app.refresh_model(),
+            crate::application::pieces::PreviewView::Outline => {}
+        }
     }
     let pal = &app.palette;
 
@@ -426,17 +428,23 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         ai_pump(
             script_pump(
                 chat_pump(
-                    train_pump(
-                        export_pump(
-                            nodes_pump(
-                                preview_pump(content, app.font.project.preview_pending()).boxed(),
-                                app.nodes.job.clone(),
-                            ),
-                            app.export_job.clone(),
+                    model_pump(
+                        train_pump(
+                            export_pump(
+                                nodes_pump(
+                                    preview_pump(content, app.font.project.preview_pending())
+                                        .boxed(),
+                                    app.nodes.job.clone(),
+                                ),
+                                app.export_job.clone(),
+                            )
+                            // Boxed: another nested pump makes a symbol name the linker refuses.
+                            .boxed(),
+                            app.train.job.clone(),
                         )
-                        // Boxed: another nested pump makes a symbol name the linker refuses.
                         .boxed(),
-                        app.train.job.clone(),
+                        app.model.job.is_some()
+                            && app.preview_view == crate::application::pieces::PreviewView::Model,
                     ),
                     app.chat.job.clone(),
                 ),
@@ -445,6 +453,28 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
             app.ai.job.clone(),
         ),
         app.font.master_paths().clone(),
+    )
+}
+
+/// Poll the model worker while the model view shows, so its drawings reach the strip.
+fn model_pump<V: WidgetView<Workspace>>(view: V, on: bool) -> impl WidgetView<Workspace> + use<V> {
+    use xilem::core::{MessageProxy, fork};
+    use xilem::view::task_raw;
+    fork(
+        view,
+        on.then(|| {
+            task_raw(
+                move |proxy: MessageProxy<model::ModelProgress>, _: &mut Workspace| async move {
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+                        if proxy.message(model::ModelProgress).is_err() {
+                            return;
+                        }
+                    }
+                },
+                |app: &mut Workspace, _: model::ModelProgress| app.model_pump(),
+            )
+        }),
     )
 }
 

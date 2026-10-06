@@ -305,6 +305,8 @@ pub(crate) struct Workspace {
     pub(crate) preview_view: crate::application::pieces::PreviewView,
     /// The labeled pieces of every sample, for the piece view.
     pub(crate) pieces: crate::application::pieces::PieceCache,
+    /// The trained font's drawing, for the model view.
+    pub(crate) model: crate::application::platform::model::ModelState,
     /// Search scope: 0 name and unicode, 1 name only, 2 unicode only.
     pub(crate) search_mode: u8,
     /// Case-sensitive search.

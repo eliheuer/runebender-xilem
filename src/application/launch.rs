@@ -64,11 +64,27 @@ pub(crate) fn run(
         {
             workspace.preview_text = text;
         }
-        // RUNEBENDER_PREVIEW=pieces shows the proof strip's piece view.
-        if std::env::var("RUNEBENDER_PREVIEW").as_deref() == Ok("pieces")
+        // RUNEBENDER_PREVIEW=pieces|model shows that view of the proof strip; the model view
+        // waits for the worker's first drawing.
+        if let Ok(view) = std::env::var("RUNEBENDER_PREVIEW")
             && let Some(workspace) = app.workspace.as_mut()
         {
-            workspace.preview_view = crate::application::pieces::PreviewView::Pieces;
+            use crate::application::pieces::PreviewView;
+            workspace.preview_view = match view.as_str() {
+                "pieces" => PreviewView::Pieces,
+                "model" => PreviewView::Model,
+                _ => PreviewView::Outline,
+            };
+            if workspace.preview_view == PreviewView::Model {
+                workspace.refresh_model();
+                for _ in 0..400 {
+                    workspace.model_pump();
+                    if workspace.model.render.is_some() || workspace.model.error.is_some() {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+            }
         }
         // RUNEBENDER_NEURAL_STATUS=<text> shows the Neural section mid-run, for review captures.
         if let Ok(status) = std::env::var("RUNEBENDER_NEURAL_STATUS")

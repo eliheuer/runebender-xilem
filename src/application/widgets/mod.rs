@@ -14,6 +14,7 @@ pub(crate) mod icon_button;
 pub(crate) mod icon_paint;
 pub(crate) mod letter_chips;
 pub(crate) mod menu_shell;
+pub(crate) mod model_strip;
 pub(crate) mod panel_frame;
 pub(crate) mod quadrant_picker;
 pub(crate) mod rounded_clip;
