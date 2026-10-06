@@ -457,10 +457,9 @@ impl Workspace {
             self.note = "Apply or Revert feature edits before saving".into();
             return false;
         }
-        if source_fingerprint(&self.source_roots) != self.source_fingerprint {
-            self.note = "Save blocked: sources changed on disk; use Save As to preserve your edits or Revert to Saved to accept disk changes".into();
-            return false;
-        }
+        // The editor's version wins: when the sources changed on disk since they were
+        // opened, Save still writes, and says so.
+        let disk_changed = source_fingerprint(&self.source_roots) != self.source_fingerprint;
         match self.font.save() {
             Ok(()) => {
                 self.source_fingerprint = source_fingerprint(&self.source_roots);
@@ -470,7 +469,11 @@ impl Workspace {
                     .file_name()
                     .map(|name| name.to_string_lossy())
                     .unwrap_or_else(|| source.as_os_str().to_string_lossy());
-                self.note = format!("Saved {label}");
+                self.note = if disk_changed {
+                    format!("Saved {label} over changes made on disk")
+                } else {
+                    format!("Saved {label}")
+                };
                 true
             }
             Err(e) => {
@@ -1157,14 +1160,24 @@ mod tests {
             "sources changed on disk; Save As preserves your edits, or Revert to Saved accepts disk changes"
         );
         assert!(workspace.modified);
+        // Save writes the editor's version over the external change, and says so.
+        assert!(workspace.save(), "Save writes the editor's version");
         assert!(
-            !workspace.save(),
-            "Save cannot overwrite the external change"
+            workspace.note.ends_with("over changes made on disk"),
+            "{}",
+            workspace.note
         );
-        let still_external =
-            norad::Font::load(&path).expect("the external source remains readable");
-        assert_eq!(still_external.get_glyph("A").unwrap().width, 712.0);
+        let written = norad::Font::load(&path).expect("the source remains readable");
+        assert_eq!(written.get_glyph("A").unwrap().width, unsaved_width);
 
+        // an external change after that is taken by Revert to Saved
+        let mut external = norad::Font::load(&path).expect("the saved source loads");
+        external
+            .default_layer_mut()
+            .get_glyph_mut("A")
+            .expect("A exists")
+            .width = 712.0;
+        external.save(&path).expect("the external change saves");
         workspace.revert_to_saved();
         assert_eq!(workspace.session.advance(), 712.0);
         assert!(!workspace.modified);
@@ -1198,17 +1211,19 @@ mod tests {
         std::fs::write(&dependency, "# external replacement\n")
             .expect("the dependency changes externally");
 
-        assert!(!workspace.save());
-        assert_eq!(
-            workspace.note,
-            "Save blocked: sources changed on disk; use Save As to preserve your edits or Revert to Saved to accept disk changes"
+        // The editor's version wins: Save writes, and the note says the disk had changed.
+        assert!(workspace.save());
+        assert!(
+            workspace.note.ends_with("over changes made on disk"),
+            "{}",
+            workspace.note
         );
         assert!(
             norad::Font::load(&source)
                 .expect("the source remains readable")
                 .get_glyph("A")
-                .is_none(),
-            "the blocked save leaves the source untouched"
+                .is_some(),
+            "the save wrote the editor's version"
         );
         std::fs::remove_dir_all(directory).expect("the fixture directory is removed");
     }
