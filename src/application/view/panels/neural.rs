@@ -48,16 +48,24 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 .rev()
                 .map(|version| {
                     let name = version.name.clone();
-                    // The labeled match and the epochs it took, such as "0.99 after 800".
+                    // A sample run "sample-ba-basic-2/001" shows as "ba-basic-2 · 001".
+                    let shown = name
+                        .strip_prefix("sample-")
+                        .unwrap_or(&name)
+                        .replace('/', " \u{b7} ");
+                    // The labeled match and the epochs it took, such as "0.99 · 800 ep".
                     let score = match (version.score(), version.epochs()) {
-                        (Some(score), Some(epochs)) => format!("{score} after {epochs}"),
+                        (Some(score), Some(epochs)) => {
+                            let short: String = score.chars().take(4).collect();
+                            format!("{short} \u{b7} {epochs} ep")
+                        }
                         (Some(score), None) => score,
                         _ => String::new(),
                     };
                     let active = version.font.is_some() && version.font == chosen;
                     recipes::list_row(
                         pal,
-                        name.clone(),
+                        shown,
                         if version.font.is_some() {
                             score
                         } else {
