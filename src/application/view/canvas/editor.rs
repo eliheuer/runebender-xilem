@@ -481,6 +481,9 @@ enum Drag {
     /// A polygon corner of a label region follows the pointer; the session holds where.
     LabelCorner {
         region: usize,
+        /// Option is held: the corner is being pulled away from others, so it does not snap
+        /// back onto a neighbor's corner.
+        detach: bool,
     },
     /// Shift-drag in the label tool: a box that selects the corners inside it, in design
     /// space.
@@ -2634,7 +2637,10 @@ impl Widget for EditorWidget {
                                             corner,
                                             to: design,
                                         });
-                                        self.drag = Drag::LabelCorner { region };
+                                        self.drag = Drag::LabelCorner {
+                                            region,
+                                            detach: state.modifiers.alt(),
+                                        };
                                     } else {
                                         self.session.label.moving = Some(LabelMoving::Corners {
                                             by: kurbo::Vec2::ZERO,
@@ -2662,7 +2668,10 @@ impl Widget for EditorWidget {
                                         corner,
                                         to: on,
                                     });
-                                    self.drag = Drag::LabelCorner { region };
+                                    self.drag = Drag::LabelCorner {
+                                        region,
+                                        detach: false,
+                                    };
                                     ctx.capture_pointer();
                                     self.emit(ctx, true);
                                 }
@@ -3089,16 +3098,20 @@ impl Widget for EditorWidget {
                         *current = at;
                         ctx.request_render();
                     }
-                    Drag::LabelCorner { region } => {
-                        use crate::application::editor::tools::label::LabelMoving;
-                        let region = *region;
+                    Drag::LabelCorner { region, detach } => {
+                        use crate::application::editor::tools::label::{LabelMoving, on_grid};
+                        let (region, detach) = (*region, *detach);
                         if let Some(LabelMoving::Corner { corner, .. }) = self.session.label.moving
                         {
-                            let to = self.session.snapped_label_corner(
-                                glyph_design,
-                                HIT_RADIUS_PX / self.session.viewport.zoom,
-                                Some(region),
-                            );
+                            let to = if detach {
+                                on_grid(glyph_design)
+                            } else {
+                                self.session.snapped_label_corner(
+                                    glyph_design,
+                                    HIT_RADIUS_PX / self.session.viewport.zoom,
+                                    Some(region),
+                                )
+                            };
                             self.session.label.moving =
                                 Some(LabelMoving::Corner { region, corner, to });
                             ctx.request_render();

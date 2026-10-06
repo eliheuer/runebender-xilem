@@ -113,9 +113,10 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let hints: &[&str] = if app.session.label.sample.is_some() {
         &[
             "Click ink: paint. Option-click: unpaint",
-            "Drag across a stroke: cut",
-            "Drag a loop: lasso",
-            "Enter: next letter. Delete: remove",
+            "Drag across a stroke: cut. Drag a loop: lasso",
+            "Drag a corner: move it with any that meet it",
+            "Option-drag a corner: pull it away on its own",
+            "Shift-drag: select corners. Delete: remove",
         ]
     } else {
         &[
