@@ -5962,6 +5962,38 @@ mod tests {
             headless.rebuild(logic);
             let rebuild = start.elapsed();
             println!("overview: {} glyphs", headless.app.font.glyphs.len());
+            let mut opens = Vec::new();
+            for name in ["a", "B", "ampersand", "g", "at"] {
+                let Some(index) = headless.app.font.index_of(name) else {
+                    continue;
+                };
+                let start = Instant::now();
+                headless.app.open_glyph(index);
+                let opened = start.elapsed();
+                let start = Instant::now();
+                headless.rebuild(logic);
+                let rebuilt = start.elapsed();
+                headless.redraw();
+                println!(
+                    "  open {name:<10} session {:>7.2} ms   rebuild {:>7.2} ms",
+                    ms(opened),
+                    ms(rebuilt)
+                );
+                opens.push(opened + rebuilt);
+                headless.app.back_to_overview();
+                headless.rebuild(logic);
+            }
+            stats("open glyph + rebuild + paint", &mut opens);
+            let masters = headless.app.font.master_count();
+            if masters > 1 {
+                let start = Instant::now();
+                headless.app.set_master(1);
+                headless.rebuild(logic);
+                headless.redraw();
+                println!("switch master + rebuild      {:.2} ms", ms(start.elapsed()));
+                headless.app.set_master(0);
+                headless.rebuild(logic);
+            }
             section_costs(&headless.app, false);
             println!("overview first paint         {:.2} ms", ms(first_paint));
             stats("overview hover paint pass", &mut paints);
