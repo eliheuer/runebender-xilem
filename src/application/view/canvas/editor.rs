@@ -51,9 +51,12 @@ fn cursor_visible_at(elapsed_ns: u64) -> bool {
     elapsed_ns.rem_euclid(CURSOR_BLINK_CYCLE_NS) <= CURSOR_BLINK_HALF_CYCLE_NS
 }
 
-/// Build one round design-grid dot in screen coordinates.
-fn round_grid_dot(at: Point, diameter: f64) -> kurbo::BezPath {
-    kurbo::Shape::to_path(&Circle::new(at, diameter / 2.0), 0.1)
+/// Append one round design-grid dot in screen coordinates to `marks`.
+///
+/// The visible grid holds thousands of dots, so each one is appended to the shared path
+/// rather than built as a path of its own.
+fn push_grid_dot(marks: &mut kurbo::BezPath, at: Point, diameter: f64) {
+    marks.extend(Circle::new(at, diameter / 2.0).path_elements(0.1));
 }
 
 /// A horizontal rule whose visual centre stays on the supplied coordinate.
@@ -147,7 +150,7 @@ fn point_grid_marks(
                     dx * dx + dy * dy <= radius * radius
                 };
                 if inside {
-                    marks.extend(round_grid_dot(at, dot_size));
+                    push_grid_dot(&mut marks, at, dot_size);
                 }
             }
         }
@@ -1555,6 +1558,10 @@ impl Widget for EditorWidget {
                             }
                         }
                     } else {
+                        let columns = usize::try_from(ix1 - ix0 + 1).unwrap_or_default();
+                        let rows = usize::try_from(iy1 - iy0 + 1).unwrap_or_default();
+                        // Six elements per dot: a move, four curves, and a close.
+                        marks = kurbo::BezPath::with_capacity(columns * rows * 6);
                         for ix in ix0..=ix1 {
                             for iy in iy0..=iy1 {
                                 if skip_every > 0 && ix % skip_every == 0 && iy % skip_every == 0 {
@@ -1562,7 +1569,7 @@ impl Widget for EditorWidget {
                                 }
                                 let at =
                                     affine * Point::new(ix as f64 * spacing, iy as f64 * spacing);
-                                marks.extend(round_grid_dot(at, size));
+                                push_grid_dot(&mut marks, at, size);
                             }
                         }
                     }
@@ -3871,7 +3878,8 @@ mod tests {
 
     #[test]
     fn design_grid_dot_is_round_instead_of_a_square_tile() {
-        let dot = round_grid_dot(Point::new(10.0, 10.0), 4.0);
+        let mut dot = kurbo::BezPath::new();
+        push_grid_dot(&mut dot, Point::new(10.0, 10.0), 4.0);
         assert_eq!(dot.bounding_box(), Rect::new(8.0, 8.0, 12.0, 12.0));
         assert_ne!(dot.winding(Point::new(10.0, 10.0)), 0);
         assert_eq!(
@@ -5789,5 +5797,220 @@ mod tests {
             after_selection, selection,
             "panning does not select or move points"
         );
+    }
+
+    /// Time every step of a point drag on a real glyph and print the budget.
+    ///
+    /// Run by hand with `cargo test --profile fast frame_budget -- --ignored --nocapture`.
+    /// `RUNEBENDER_BENCH_GLYPH` picks the glyph, and `RUNEBENDER_SCREENSHOT=1` with
+    /// `RUNEBENDER_EDITOR_ZOOM=<zoom>` frames the canvas at a chosen zoom, as a screenshot does.
+    #[test]
+    #[ignore = "prints frame timings for a point drag on the Virtua Grotesk sources"]
+    fn frame_budget_report() {
+        use crate::application::platform::screenshot::Headless;
+        use crate::application::view::render::app_logic;
+        use masonry::core::{PointerButton, PointerButtonEvent, PointerEvent, PointerUpdate};
+        use std::time::{Duration, Instant};
+        use xilem::view::sized_box;
+
+        fn stats(label: &str, samples: &mut [Duration]) {
+            samples.sort();
+            let micros = |d: Duration| d.as_secs_f64() * 1e6;
+            let median = samples[samples.len() / 2];
+            let worst = samples[samples.len() - 1];
+            let count = u32::try_from(samples.len()).expect("a few hundred samples");
+            let mean = samples.iter().sum::<Duration>() / count;
+            println!(
+                "{label:<28} median {:>9.1} µs   mean {:>9.1} µs   max {:>9.1} µs   (n={})",
+                micros(median),
+                micros(mean),
+                micros(worst),
+                samples.len()
+            );
+        }
+
+        let glyph = std::env::var("RUNEBENDER_BENCH_GLYPH").unwrap_or_else(|_| "a".into());
+        let sources = std::env::var_os("RUNEBENDER_TEST_FONTS")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../virtua-grotesk/sources")
+            });
+        let mut app = Workspace::open(&sources.join("VirtuaGrotesk.designspace"))
+            .expect("the designspace opens");
+        let index = app.font.index_of(&glyph).expect("the glyph exists");
+        app.open_glyph(index);
+        let logic = |app: &mut Workspace| sized_box(app_logic(app));
+        let mut headless = Headless::new(app, logic, (1400, 900), 1.0);
+        headless.rebuild(logic);
+        headless.anim_frame(Duration::from_millis(500));
+        headless.redraw();
+
+        let (origin, transform) = {
+            let canvas = headless
+                .find_widget::<EditorWidget>()
+                .expect("the editor canvas is in the tree");
+            let transform = canvas.ctx().window_transform();
+            let visible = canvas.ctx().border_box().inset(-20.0);
+            let widget = canvas.inner();
+            let point = widget
+                .screen_points()
+                .into_iter()
+                .find(|(_, at, on_curve, ..)| *on_curve && visible.contains(*at))
+                .expect("an on-curve point is on screen");
+            println!(
+                "glyph {glyph}: {} points, zoom {:.2}",
+                widget.session.points().len(),
+                widget.session.viewport.zoom
+            );
+            (transform * point.1, transform)
+        };
+        let _ = transform;
+        let state_at = |at: Point, down: bool| {
+            let mut buttons = masonry::ui_events::pointer::PointerButtons::default();
+            if down {
+                buttons.insert(PointerButton::Primary);
+            }
+            PointerState {
+                position: PhysicalPosition::new(at.x, at.y),
+                buttons,
+                ..PointerState::default()
+            }
+        };
+
+        // No change: how long a rebuild and a paint take when nothing happened.
+        let mut idle_rebuild = Vec::new();
+        let mut idle_paint = Vec::new();
+        for _ in 0..20 {
+            let start = Instant::now();
+            headless.rebuild(logic);
+            idle_rebuild.push(start.elapsed());
+            let start = Instant::now();
+            headless.redraw();
+            idle_paint.push(start.elapsed());
+        }
+
+        let start = Instant::now();
+        headless.pointer(PointerEvent::Move(PointerUpdate {
+            pointer: PRIMARY_MOUSE,
+            current: state_at(origin, false),
+            coalesced: vec![],
+            predicted: vec![],
+        }));
+        headless.pointer(PointerEvent::Down(PointerButtonEvent {
+            pointer: PRIMARY_MOUSE,
+            button: Some(PointerButton::Primary),
+            state: state_at(origin, true),
+        }));
+        let press = start.elapsed();
+
+        let moves = 240;
+        let mut move_handling = Vec::with_capacity(moves);
+        let mut move_paint = Vec::with_capacity(moves);
+        for step in 1..=moves {
+            let at = origin + (step as f64 * 0.5, (step as f64 * 0.25).sin() * 3.0);
+            let start = Instant::now();
+            headless.pointer(PointerEvent::Move(PointerUpdate {
+                pointer: PRIMARY_MOUSE,
+                current: state_at(at, true),
+                coalesced: vec![],
+                predicted: vec![],
+            }));
+            move_handling.push(start.elapsed());
+            let start = Instant::now();
+            headless.redraw();
+            move_paint.push(start.elapsed());
+        }
+
+        let end = origin + (moves as f64 * 0.5, 0.0);
+        let start = Instant::now();
+        headless.pointer(PointerEvent::Up(PointerButtonEvent {
+            pointer: PRIMARY_MOUSE,
+            button: Some(PointerButton::Primary),
+            state: state_at(end, false),
+        }));
+        let release = start.elapsed();
+
+        // The window delivers the widget's actions to the app; do that by hand.
+        let mut session = headless
+            .find_widget::<EditorWidget>()
+            .expect("the editor canvas is in the tree")
+            .inner()
+            .session
+            .clone();
+        let start = Instant::now();
+        let outcome = headless.app.sync_session_from(&mut session);
+        let sync = start.elapsed();
+        assert_eq!(
+            outcome,
+            SessionSyncOutcome::Changed,
+            "the drag moved the point"
+        );
+        let start = Instant::now();
+        headless.app.finish_open_glyph_refresh();
+        let refresh = start.elapsed();
+        let start = Instant::now();
+        headless.rebuild(logic);
+        let rebuild = start.elapsed();
+        let start = Instant::now();
+        headless.redraw();
+        let paint = start.elapsed();
+        let start = Instant::now();
+        headless.rebuild(logic);
+        let settled = start.elapsed();
+        let start = Instant::now();
+        let snapshot = headless.app.font.project.babelfont_snapshot();
+        let snapshot_time = start.elapsed();
+        assert!(snapshot.is_ok());
+        // Tests compile the preview synchronously inside the rebuild; the window does it on
+        // a thread. Its cost is reported so the rebuild figure above can be read without it.
+        let start = Instant::now();
+        assert!(headless.app.font.project.compile().is_ok());
+        let compile = start.elapsed();
+
+        let ms = |d: Duration| d.as_secs_f64() * 1e3;
+        if !headless.app.preview_text.is_empty() {
+            use crate::application::editor::tools::text::{TextInputs, TextState};
+            let app = &headless.app;
+            let start = Instant::now();
+            let inputs = TextInputs::new(&app.font);
+            let new = start.elapsed();
+            let start = Instant::now();
+            let inputs = inputs.with_location(&app.font, &app.axis_values);
+            let location = start.elapsed();
+            let start = Instant::now();
+            let placed = TextState::new(&inputs.with_text(&app.preview_text)).placed();
+            let shaped = start.elapsed();
+            println!();
+            println!("proof text inputs            {:.2} ms", ms(new));
+            println!("proof text location          {:.2} ms", ms(location));
+            println!(
+                "proof text shape and place   {:.2} ms ({} sorts)",
+                ms(shaped),
+                placed.len()
+            );
+            if let Ok(Some(compiled)) = app.font.preview_font() {
+                let start = Instant::now();
+                let font =
+                    runebender::text::shape::ShapingFont::from_bytes((*compiled.bytes).clone());
+                let parsed = start.elapsed();
+                assert!(font.is_ok());
+                println!("proof shaping font parse     {:.2} ms", ms(parsed));
+            }
+        }
+
+        println!();
+        stats("idle rebuild", &mut idle_rebuild);
+        stats("idle paint pass", &mut idle_paint);
+        stats("drag move handling", &mut move_handling);
+        stats("drag move paint pass", &mut move_paint);
+        println!("press                        {:.2} ms", ms(press));
+        println!("release (widget)             {:.2} ms", ms(release));
+        println!("release sync_session_from    {:.2} ms", ms(sync));
+        println!("release glyph refresh        {:.2} ms", ms(refresh));
+        println!("release rebuild              {:.2} ms", ms(rebuild));
+        println!("release paint pass           {:.2} ms", ms(paint));
+        println!("next rebuild                 {:.2} ms", ms(settled));
+        println!("font snapshot for preview    {:.2} ms", ms(snapshot_time));
+        println!("preview compile (threaded)   {:.2} ms", ms(compile));
     }
 }

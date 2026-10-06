@@ -61,6 +61,18 @@ pub(crate) struct FontModel {
     /// Constant-time lookup into the display-ordered canonical entries.
     name_map: HashMap<String, usize>,
     pub axes: Vec<Axis>,
+    /// The text inputs last read from this model, reused while nothing they read has changed.
+    pub(crate) text_inputs:
+        std::sync::Mutex<Option<crate::application::editor::tools::text::CachedTextInputs>>,
+    /// The compiled preview's outlines and advances at the location last asked for.
+    pub(crate) text_location:
+        std::sync::Mutex<Option<crate::application::editor::tools::text::CachedTextLocation>>,
+}
+
+/// The theme whose mark names label glyph entries, parsed once.
+fn mark_theme() -> Option<&'static Theme> {
+    static THEME: std::sync::OnceLock<Option<Theme>> = std::sync::OnceLock::new();
+    THEME.get_or_init(|| theme::load_theme("gray")).as_ref()
 }
 
 impl FontModel {
@@ -169,6 +181,8 @@ impl FontModel {
             glyphs: Vec::new(),
             name_map: HashMap::new(),
             axes,
+            text_inputs: std::sync::Mutex::new(None),
+            text_location: std::sync::Mutex::new(None),
         };
         model.rebuild_cache();
         model
@@ -180,13 +194,13 @@ impl FontModel {
             .project
             .source_id(self.active())
             .expect("the active source has a stable identity");
-        let mark_theme = theme::load_theme("gray");
+        let mark_theme = mark_theme();
         self.glyphs = self
             .project
             .document_source_glyph_entries(source)
             .expect("the active source remains canonical")
             .iter()
-            .map(|entry| GlyphEntry::from_core(entry, mark_theme.as_ref()))
+            .map(|entry| GlyphEntry::from_core(entry, mark_theme))
             .collect();
         self.name_map = self
             .glyphs
@@ -212,8 +226,8 @@ impl FontModel {
         else {
             return;
         };
-        let mark_theme = theme::load_theme("gray");
-        self.glyphs[index] = GlyphEntry::from_core(&entry, mark_theme.as_ref());
+        let mark_theme = mark_theme();
+        self.glyphs[index] = GlyphEntry::from_core(&entry, mark_theme);
     }
 
     /// Materialize the active source only for assertions at the UFO boundary.

@@ -1091,18 +1091,19 @@ impl Session {
     /// Option does in Glyphs. A change of mode mid-drag restarts from the
     /// drag's first state, so the handles return to where they began.
     pub(crate) fn drag_points_to(&mut self, total: (f64, f64), independent: bool) -> bool {
-        let selected: Vec<_> = self.selection.iter().copied().collect();
-        let base = self.canonical_base.clone();
         let Some(drag) = &mut self.active_point_drag else {
             return false;
         };
         if drag.independent != independent {
-            let Some(base) = base else {
+            // Only a change of mode restarts from the base; cloning it on every move would
+            // copy the whole layer twice per pointer event.
+            let Some(base) = self.canonical_base.clone() else {
                 return false;
             };
             drag.transaction = base;
             drag.independent = independent;
         }
+        let selected: Vec<_> = self.selection.iter().copied().collect();
         let Ok(changed) = drag.transaction.draft_mut().translate_points(
             &selected,
             &drag.origins,
@@ -2889,7 +2890,11 @@ impl Workspace {
         if let Some(source) = self.font.project.source_id(self.font.active()) {
             self.font.project.prune_document_source_images(source);
         }
-        self.cells = Arc::new(cells_of(&self.font, &self.palette));
+        // A committed edit has already refreshed the cells of the glyphs it changed; only a
+        // glyph list of a different shape needs them all again.
+        if self.cells.len() != self.font.glyphs.len() {
+            self.cells = Arc::new(cells_of(&self.font, &self.palette));
+        }
         self.modified = true;
         self.note.clear();
     }

@@ -5,6 +5,33 @@
 
 use super::*;
 
+/// A parsed compiled preview with the bytes it was parsed from.
+type ParsedPreview = (std::sync::Arc<Vec<u8>>, Rc<ShapingFont>);
+
+thread_local! {
+    /// The compiled preview last parsed for shaping.
+    ///
+    /// Every text line builds its own buffer, and a view rebuild builds a new line, so the
+    /// same compiled font would otherwise be parsed again for every rebuild. Holding the
+    /// bytes keeps the pointer they are compared by from being reused.
+    static PARSED_PREVIEW: RefCell<Option<ParsedPreview>> = const { RefCell::new(None) };
+}
+
+/// Parse a compiled preview font once per binary.
+fn parsed_preview(bytes: &std::sync::Arc<Vec<u8>>) -> Option<Rc<ShapingFont>> {
+    PARSED_PREVIEW.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if let Some((parsed_from, font)) = slot.as_ref()
+            && std::sync::Arc::ptr_eq(parsed_from, bytes)
+        {
+            return Some(font.clone());
+        }
+        let font = Rc::new(ShapingFont::from_bytes((**bytes).clone()).ok()?);
+        *slot = Some((bytes.clone(), font.clone()));
+        Some(font)
+    })
+}
+
 impl TextBuffer {
     /// The compiled shaping font for the current inventory, or `None`
     /// when there is no features.fea or it does not compile. Built once
@@ -14,9 +41,8 @@ impl TextBuffer {
             if let Some(cached) = self.shaping_font.get() {
                 return cached;
             }
-            let built = ShapingFont::from_bytes((**bytes).clone())
-                .map(|font| Rc::new(font.at_normalized(self.normalized.clone())))
-                .ok();
+            let built = parsed_preview(bytes)
+                .map(|font| Rc::new((*font).clone().at_normalized(self.normalized.clone())));
             self.shaping_font.set(built.clone());
             return built;
         }

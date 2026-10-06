@@ -61,6 +61,16 @@ impl Workspace {
         for name in &names {
             if let Some(index) = self.font.index_of(name) {
                 self.font.refresh_entry(index);
+                // The grid and rail cells mirror the entries one to one; refresh only the
+                // changed ones instead of measuring every caption in the font again.
+                if index < self.cells.len() {
+                    Arc::make_mut(&mut self.cells)[index] =
+                        crate::application::view::canvas::grid::cell_of(
+                            &self.font,
+                            index,
+                            &self.palette,
+                        );
+                }
             }
         }
         for tab in &mut self.tabs {

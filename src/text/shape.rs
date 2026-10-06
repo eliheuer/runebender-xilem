@@ -72,7 +72,7 @@ pub struct ShapedGlyph {
 }
 
 /// A compiled shaping font, ready to shape with.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ShapingFont {
     bytes: Vec<u8>,
     names: Vec<String>,

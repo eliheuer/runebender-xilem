@@ -32,7 +32,19 @@ pub(super) struct CompileCache {
     result: Option<Result<Arc<CompiledFont>, String>>,
     pending: Option<PreviewJob>,
     queued: Option<babelfont::Font>,
+    /// When the sources last changed while a preview was wanted; the snapshot and compile
+    /// wait until the edits pause.
+    #[cfg(not(target_arch = "wasm32"))]
+    wanted: Option<std::time::Instant>,
 }
+
+/// How long the sources have to stay unchanged before a preview compile starts.
+///
+/// A drag ends with a commit, and the next one often follows within a second. Compiling
+/// after every commit would take the snapshot on the UI thread each time and keep a compiler
+/// thread busy while the next drag wants the frame budget.
+#[cfg(not(target_arch = "wasm32"))]
+const PREVIEW_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(250);
 
 struct CompileSourceInput {
     id: SourceId,
@@ -577,6 +589,13 @@ impl Project {
             if cache.key.as_ref() != Some(&key) {
                 cache.result = None;
                 cache.key = Some(key);
+                cache.wanted = Some(std::time::Instant::now());
+            }
+            if cache
+                .wanted
+                .is_some_and(|since| since.elapsed() >= PREVIEW_DEBOUNCE)
+            {
+                cache.wanted = None;
                 match self.babelfont_snapshot() {
                     Ok(font) => {
                         if cache.pending.is_some() {
@@ -618,5 +637,20 @@ impl Project {
             .unwrap_or_else(|error| error.into_inner())
             .pending
             .clone()
+    }
+
+    /// Whether a preview is still on its way: a compile is running, or edits are waiting
+    /// for their pause before one starts. The UI polls [`Self::request_preview`] while true.
+    pub fn preview_pending(&self) -> bool {
+        let cache = self
+            .variable
+            .compiled
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        #[cfg(not(target_arch = "wasm32"))]
+        let waiting = cache.wanted.is_some();
+        #[cfg(target_arch = "wasm32")]
+        let waiting = false;
+        cache.pending.is_some() || waiting
     }
 }

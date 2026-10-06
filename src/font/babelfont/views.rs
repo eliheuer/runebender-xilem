@@ -359,16 +359,29 @@ impl<'a> ContourView<'a> {
 
     /// Canonical points in contour order.
     pub fn points(self) -> impl DoubleEndedIterator<Item = PointView<'a>> + 'a {
-        self.path.nodes.iter().map(move |node| {
-            let id = PointId(read_id(&node.format_specific).expect("canonical point identity"));
-            let preserved = self
-                .preserved
-                .points
-                .iter()
-                .find(|candidate| candidate.id == id)
-                .expect("point preservation identity");
-            PointView { node, preserved }
-        })
+        self.path
+            .nodes
+            .iter()
+            .enumerate()
+            .map(move |(index, node)| {
+                let id = PointId(read_id(&node.format_specific).expect("canonical point identity"));
+                // Edits keep the preserved records in node order, so the match is normally at the
+                // same index; the search behind it keeps the identity authoritative. A scan per
+                // point made every walk of a contour quadratic.
+                let preserved = self
+                    .preserved
+                    .points
+                    .get(index)
+                    .filter(|candidate| candidate.id == id)
+                    .or_else(|| {
+                        self.preserved
+                            .points
+                            .iter()
+                            .find(|candidate| candidate.id == id)
+                    })
+                    .expect("point preservation identity");
+                PointView { node, preserved }
+            })
     }
 }
 

@@ -213,20 +213,24 @@ pub(crate) struct CellMetrics {
 }
 
 pub(crate) fn cells_of(font: &FontModel, palette: &Palette) -> Vec<Cell> {
-    font.glyphs
-        .iter()
-        .enumerate()
-        .map(|(index, g)| Cell {
-            index,
-            name: Arc::from(g.name.as_str()),
-            codepoint: g.codepoint,
-            outline: g.outline.clone(),
-            advance: g.advance,
-            mark: g.mark.as_deref().and_then(|m| palette.mark(m)),
-            caption_widths: caption_widths(&g.name, g.codepoint, g.advance),
-            aspect: ink_aspect(&g.outline),
-        })
+    (0..font.glyphs.len())
+        .map(|index| cell_of(font, index, palette))
         .collect()
+}
+
+/// The cell for one glyph entry; `index` must be in range.
+pub(crate) fn cell_of(font: &FontModel, index: usize, palette: &Palette) -> Cell {
+    let g = &font.glyphs[index];
+    Cell {
+        index,
+        name: Arc::from(g.name.as_str()),
+        codepoint: g.codepoint,
+        outline: g.outline.clone(),
+        advance: g.advance,
+        mark: g.mark.as_deref().and_then(|m| palette.mark(m)),
+        caption_widths: caption_widths(&g.name, g.codepoint, g.advance),
+        aspect: ink_aspect(&g.outline),
+    }
 }
 
 /// Tile face, drawing ink, and keyline for the theme's mark treatment.

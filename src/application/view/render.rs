@@ -419,7 +419,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
                 chat_pump(
                     export_pump(
                         nodes_pump(
-                            preview_pump(content, app.font.project.preview_job().is_some()).boxed(),
+                            preview_pump(content, app.font.project.preview_pending()).boxed(),
                             app.nodes.job.clone(),
                         ),
                         app.export_job.clone(),

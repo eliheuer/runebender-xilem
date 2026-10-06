@@ -56,9 +56,49 @@ pub(crate) struct TextInputs {
     language: Option<String>,
 }
 
+/// What `TextInputs::new` last read, with the document state it read it from.
+///
+/// Every rebuild of a view with a text line asks for the inputs again, and reading them walks
+/// every glyph of the font. The document revision moves on any edit, so the same inputs
+/// serve until it does.
+pub(crate) struct CachedTextInputs {
+    key: (u64, usize, usize),
+    inputs: TextInputs,
+}
+
+/// The compiled preview font read at one normalized location: every glyph's outline and
+/// advance, which take a pass over the whole binary to extract.
+pub(crate) struct CachedTextLocation {
+    compiled: Arc<runebender::font::compiler::CompiledFont>,
+    normalized: Vec<f64>,
+    outlines: Arc<Vec<(String, Arc<BezPath>)>>,
+    advances: Vec<(String, f64)>,
+}
+
 impl TextInputs {
     /// Read a master: glyph advances, kerning, outlines, metrics.
     pub(crate) fn new(font: &FontModel) -> Self {
+        let key = (
+            font.project.document_revision(),
+            font.active(),
+            font.glyphs.len(),
+        );
+        let mut cache = font
+            .text_inputs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if let Some(cached) = cache.as_ref().filter(|cached| cached.key == key) {
+            return cached.inputs.clone();
+        }
+        let inputs = Self::read(font);
+        *cache = Some(CachedTextInputs {
+            key,
+            inputs: inputs.clone(),
+        });
+        inputs
+    }
+
+    fn read(font: &FontModel) -> Self {
         let source = font
             .project
             .document_sources()
@@ -129,23 +169,38 @@ impl TextInputs {
                         .unwrap_or(0.0)
                 })
                 .collect();
-            match compiled.outlines(&self.normalized) {
-                Ok(outlines) => self.outlines = Arc::new(outlines),
-                Err(error) => {
-                    runebender::text::shape::log_shaping_failure(&error);
-                    return self;
-                }
-            }
-            self.compiled = Some(compiled.bytes.clone());
-            if let Ok(advances) = compiled.advances(&self.normalized) {
-                for (name, advance) in advances {
-                    if let Some((active, _, width)) = &mut self.active_glyph
-                        && *active == name
-                    {
-                        *width = advance;
+            let mut cache = font
+                .text_location
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let fresh = cache.as_ref().is_some_and(|c| {
+                Arc::ptr_eq(&c.compiled, &compiled) && c.normalized == self.normalized
+            });
+            if !fresh {
+                let outlines = match compiled.outlines(&self.normalized) {
+                    Ok(outlines) => Arc::new(outlines),
+                    Err(error) => {
+                        runebender::text::shape::log_shaping_failure(&error);
+                        return self;
                     }
-                    self.inventory.set_advance(name, advance);
+                };
+                *cache = Some(CachedTextLocation {
+                    compiled: compiled.clone(),
+                    normalized: self.normalized.clone(),
+                    outlines,
+                    advances: compiled.advances(&self.normalized).unwrap_or_default(),
+                });
+            }
+            let located = cache.as_ref().expect("the location was just read");
+            self.outlines = located.outlines.clone();
+            self.compiled = Some(compiled.bytes.clone());
+            for (name, advance) in &located.advances {
+                if let Some((active, _, width)) = &mut self.active_glyph
+                    && active == name
+                {
+                    *width = *advance;
                 }
+                self.inventory.set_advance(name.clone(), *advance);
             }
         }
         self
