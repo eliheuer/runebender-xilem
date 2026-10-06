@@ -1052,20 +1052,18 @@ impl EditorWidget {
         let selected = self.session.label.sample;
         let active = self.session.label.active;
         let lit_letter = self.session.label.hover_letter;
-        // Every sample's boundary, the selected one strongest.
-        for (position, sample) in self.session.neural_item().samples.iter().enumerate() {
-            let (width, alpha) = if Some(position) == selected {
-                (1.0, 0.6)
-            } else {
-                (1.0, 0.3)
-            };
-            painter
-                .stroke(
-                    affine * sample.boundary_path(),
-                    &Stroke::new(width),
-                    pal.text_muted.with_alpha(alpha),
-                )
-                .draw();
+        // The samples' loops show what can be picked while no sample is open. Inside a
+        // sample, the tinted ink says what belongs to it, and the loop would only be clutter.
+        if selected.is_none() {
+            for sample in &self.session.neural_item().samples {
+                painter
+                    .stroke(
+                        affine * sample.boundary_path(),
+                        &Stroke::new(1.0),
+                        pal.text_muted.with_alpha(0.4),
+                    )
+                    .draw();
+            }
         }
         // Labeled ink in its letter's color. Shared ink shows both colors, one over the other.
         for area in self.session.label_areas() {
