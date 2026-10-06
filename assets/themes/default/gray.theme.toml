@@ -152,6 +152,10 @@ headerMutedInk = "baseUi.08"
 # Colors named by editor purpose; shared across hosts, so some are host-specific.
 # Values can reference Base UI or Rainbow, or use a literal color such as #17B870.
 [roles]
+# The save state beside the file name: lighter than the marks, so it reads like the
+# header's light ink on the dark header.
+savedInk = "oklch(0.84 0.12 152)"
+unsavedInk = "oklch(0.80 0.13 27)"
 # Editing tools in the header: the active tool, and the others three steps dimmer.
 toolActiveInk = "baseUi.08"
 toolInactiveInk = "baseUi.05"

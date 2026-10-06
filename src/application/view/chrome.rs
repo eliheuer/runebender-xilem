@@ -171,7 +171,7 @@ pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<
             tile("preview", Tool::Hand),
             tile("pen", Tool::Pen),
             tile("hyperpen", Tool::HyperPen),
-            tile("brush", Tool::Sketch),
+            tile("invert", Tool::Sketch),
             tool_group(ToolGroup::Shapes, app.tool, app.palette.clone()),
             tile("knife", Tool::Knife),
             tile("measure", Tool::Measure),
