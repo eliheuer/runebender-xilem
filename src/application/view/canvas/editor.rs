@@ -1134,17 +1134,23 @@ impl EditorWidget {
             painter
                 .stroke(&path, &Stroke::new(1.0), pal.role("pathStroke"))
                 .draw();
-            let handles = polygon.letter == active
+            // Every shape shows its corners; the active letter's and the picked ones are
+            // larger.
+            let strong = polygon.letter == active
                 || picked_region == Some(polygon.region)
                 || picked_corners
                     .iter()
                     .any(|(region, _)| *region == polygon.region);
-            if !handles {
-                continue;
-            }
             for (index, corner) in polygon.corners.iter().enumerate() {
                 let picked = picked_corners.contains(&(polygon.region, index));
-                let handle = Circle::new(affine * *corner, if picked { 5.0 } else { 3.5 });
+                let radius = if picked {
+                    5.0
+                } else if strong {
+                    3.5
+                } else {
+                    2.5
+                };
+                let handle = Circle::new(affine * *corner, radius);
                 painter.fill(handle, color).draw();
                 painter
                     .stroke(handle, &Stroke::new(1.0), pal.role("pathStroke"))
