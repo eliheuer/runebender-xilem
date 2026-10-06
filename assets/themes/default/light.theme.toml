@@ -149,7 +149,7 @@ popcount4 = "#FF4A3D"
 
 [window]
 # Native macOS blur; unsupported hosts keep the flat app/header colors.
-# Restart when changing native transparency.
+# View > Translucent Window flips this while the application runs.
 blurBackground = true
 # A stronger light tint keeps the Light theme light over dark wallpaper.
 blurTintOpacity = 0.65

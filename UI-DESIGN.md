@@ -96,7 +96,7 @@ Headless proofs cover solid-mode layout and colors; wallpaper blur still needs n
 
 All built-ins enable the optional macOS `[window] blurBackground` setting.
 Keep it `false` or omit it for the supported solid background; Gray uses `surfaces.app` and `surfaces.header`, both `baseUi.02`.
-Native window transparency is chosen at startup, so enabling the experiment from a solid window requires restarting the application.
+View > Translucent Window flips the setting while the application runs, for comparing the two; the theme's own value applies again at the next start.
 Linux, browser, and headless hosts always use flat colors.
 The native experiment places an AppKit behind-window effect below the GPU view and adds a `surfaces.backdropTint` overlay.
 That optional color defaults to `surfaces.app` in older themes.
@@ -109,7 +109,8 @@ On 2026-09-30, the user's desktop capture `1852-005` confirmed wallpaper blur in
 `window.shadowPanels = false` suppresses only main-panel shadows when the native backdrop is active.
 Solid mode retains `geometry.shadowPanel`; glyph tile shadows and other application shadows are independent.
 The independent tint gently lifts dark wallpaper and reduces its color influence.
-To use the backdrop, enable `blurBackground` and restart; its color and opacity are independent of the solid background.
+To use the backdrop, enable `blurBackground`; its color and opacity are independent of the solid background.
+Run with `RUNEBENDER_FRAME_STATS=1` to have the window render every frame and report its frame cadence on stderr, which is how the backdrop's cost is measured.
 The original zero-overlay test can be reproduced with `blurTintOpacity = 0.0`.
 Earlier 0.8 and 0.65 tint settings appeared washed out.
 The small Xilem example in `examples/macos_vibrancy.rs` reproduced bright, jagged edges on translucent text and shapes.

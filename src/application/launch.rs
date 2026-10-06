@@ -119,6 +119,13 @@ pub(crate) fn run(
             background
         };
         let content = root_logic(app);
+        // RUNEBENDER_FRAME_STATS=1 renders every frame and reports the cadence on stderr.
+        let content = match std::env::var_os(crate::application::widgets::frame_stats::ENV) {
+            Some(_) => xilem::core::one_of::OneOf2::A(
+                crate::application::widgets::frame_stats::frame_stats(content),
+            ),
+            None => xilem::core::one_of::OneOf2::B(content),
+        };
         #[cfg(target_os = "macos")]
         let content = xilem::view::resize_observer(
             |app: &mut AppState, _| {
@@ -159,8 +166,8 @@ pub(crate) fn run(
                     use xilem::WindowOptionsExtMacOS as _;
                     options
                         // Preserve the opaque native window while blur is disabled.
-                        // This option applies at creation; enabling the experiment
-                        // from an opaque window requires restarting the application.
+                        // The backdrop setup makes the window clear itself when the
+                        // View menu turns blur on later.
                         .with_transparent(initial_transparency)
                         .with_titlebar_transparent(true)
                         .with_fullsize_content_view(true)

@@ -1048,6 +1048,9 @@ impl Workspace {
             A::FilterSlant => self.command_filter_slant(),
             A::NewFont => self.new_font(),
             A::CycleTheme => self.cycle_theme(),
+            A::ToggleTranslucency => {
+                unreachable!("window translucency is handled at the application shell")
+            }
             A::Theme(id) => self.set_theme(id),
             A::ZoomToFit => {
                 let mut session = (*self.session).clone();

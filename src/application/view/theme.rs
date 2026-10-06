@@ -40,6 +40,31 @@ pub(crate) struct BackdropStyle {
     pub appearance: runebender::ui::theme::BlurAppearance,
 }
 
+/// The View menu's answer to every theme's `blurBackground`, until the application quits.
+///
+/// 0 follows the theme, 1 keeps the window solid, 2 keeps it translucent. It lives here
+/// rather than on the application state so every palette load, on any screen, reads it.
+static TRANSLUCENCY_OVERRIDE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// Whether the View menu has overridden the theme's window translucency.
+pub(crate) fn translucency_override() -> Option<bool> {
+    match TRANSLUCENCY_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) {
+        1 => Some(false),
+        2 => Some(true),
+        _ => None,
+    }
+}
+
+/// Override, or with `None` follow again, the theme's window translucency for later loads.
+pub(crate) fn set_translucency_override(translucent: Option<bool>) {
+    let value = match translucent {
+        None => 0,
+        Some(false) => 1,
+        Some(true) => 2,
+    };
+    TRANSLUCENCY_OVERRIDE.store(value, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// A resolved palette: named surfaces, text, roles, and mark colors.
 pub(crate) struct Palette {
     pub app: Color,
@@ -139,7 +164,11 @@ impl Palette {
         let t = crate::application::platform::themes::catalog()
             .get(theme_id)
             .unwrap_or_else(|| panic!("unknown Runebender theme '{theme_id}'"));
-        Self::from_theme(t)
+        let mut palette = Self::from_theme(t);
+        if let Some(translucent) = translucency_override() {
+            palette.blur_background = translucent;
+        }
+        palette
     }
 
     fn from_theme(t: &CoreTheme) -> Self {

@@ -93,6 +93,8 @@ pub(crate) enum AppAction {
     NewFont,
     CycleTheme,
     Theme(&'static str),
+    /// Flip the native window blur the current theme asks for, without restarting.
+    ToggleTranslucency,
     ZoomToFit,
     ShowAllMasters,
     NextMaster,

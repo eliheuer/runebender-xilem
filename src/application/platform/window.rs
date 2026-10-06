@@ -9,7 +9,7 @@ use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_app_kit::{
     NSAppearance, NSAppearanceCustomization, NSAppearanceName, NSApplication,
-    NSAutoresizingMaskOptions, NSView, NSVisualEffectBlendingMode, NSVisualEffectMaterial,
+    NSAutoresizingMaskOptions, NSColor, NSView, NSVisualEffectBlendingMode, NSVisualEffectMaterial,
     NSVisualEffectState, NSVisualEffectView, NSWindow, NSWindowButton, NSWindowOrderingMode,
     NSWindowStyleMask, NSWorkspace,
 };
@@ -108,6 +108,8 @@ pub(crate) fn set_backdrop(style: BackdropStyle) {
             && (!enabled || window.as_ref() != Some(&backdrop.window))
         {
             backdrop.effect.removeFromSuperview();
+            // The GPU view paints the whole window again, so the window can be solid.
+            backdrop.window.setOpaque(true);
             *state = None;
         }
         if !enabled {
@@ -138,6 +140,10 @@ pub(crate) fn set_backdrop(style: BackdropStyle) {
         let Some(parent) = backdrop_parent(&window, &content) else {
             return;
         };
+        // A window created solid, with the theme's blur off, has to go clear for the effect
+        // to show through; this is what winit's transparent option does at creation.
+        window.setOpaque(false);
+        window.setBackgroundColor(Some(&NSColor::clearColor()));
         let effect = NSVisualEffectView::initWithFrame(main_thread.alloc(), content.frame());
         apply_backdrop_style(&effect, style);
         effect.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);

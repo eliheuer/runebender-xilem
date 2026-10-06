@@ -521,6 +521,15 @@ impl AppState {
             self.request_quit();
             return;
         }
+        if action == shortcuts::AppAction::ToggleTranslucency {
+            // The native window follows the palette on the next view rebuild; the theme's
+            // own setting applies again after a restart.
+            crate::application::view::theme::set_translucency_override(Some(
+                !self.palette.blur_background,
+            ));
+            self.dispatch(shortcuts::AppAction::Theme(self.theme_id));
+            return;
+        }
         if let shortcuts::AppAction::Theme(id) = action {
             self.theme_id = id;
             self.palette = Arc::new(Palette::load(id));

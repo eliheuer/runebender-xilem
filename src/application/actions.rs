@@ -79,6 +79,7 @@ impl Entry {
                     | A::GridDots
                     | A::MeasureColorize
                     | A::Theme(_)
+                    | A::ToggleTranslucency
                     | A::MeasurePopcount
                     | A::MeasureAllOn
             )
@@ -92,7 +93,7 @@ impl Entry {
                 Some("Metaballs")
             }
             A::GridDots | A::GridLines => Some("Grid"),
-            A::Theme(_) => Some("Theme"),
+            A::Theme(_) | A::ToggleTranslucency => Some("Theme"),
             A::MeasureColorize
             | A::MeasureHandles
             | A::MeasureSegments
@@ -112,7 +113,7 @@ impl Entry {
         let Some(app) = app.workspace.as_ref() else {
             return matches!(
                 self.action,
-                A::Quit | A::NewFont | A::OpenFont | A::Theme(_)
+                A::Quit | A::NewFont | A::OpenFont | A::Theme(_) | A::ToggleTranslucency
             );
         };
         let editor = matches!(app.mode, Mode::Editor(_));
@@ -205,6 +206,7 @@ impl Entry {
             A::SortByName => workspace.map(|app| app.sort == Sort::Name),
             A::SortByUnicode => workspace.map(|app| app.sort == Sort::Unicode),
             A::Theme(id) => Some(app.theme_id == id),
+            A::ToggleTranslucency => Some(app.palette.blur_background),
             A::ShowAllMasters => workspace.map(|app| app.show_all_masters),
             A::GridDots => workspace.map(|app| !app.view.grid_lines),
             A::GridLines => workspace.map(|app| app.view.grid_lines),
@@ -863,6 +865,12 @@ pub(crate) fn actions() -> &'static [Entry] {
                 action: AppAction::Theme(id),
             });
         }
+        entries.push(Entry {
+            menu: "View",
+            title: "Translucent Window",
+            accelerator: None,
+            action: AppAction::ToggleTranslucency,
+        });
         entries
     })
 }

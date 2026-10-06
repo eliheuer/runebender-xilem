@@ -132,7 +132,7 @@ popcount4 = "#FF4A3D"
 
 [window]
 # Native macOS blur; other hosts retain the solid app/header colors.
-# Changing transparency requires restarting the application.
+# View > Translucent Window flips this while the application runs.
 blurBackground = true
 blurTintOpacity = 0.25
 # Hide only main-panel shadows while macOS blur is active.

@@ -85,7 +85,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 [target.'cfg(target_os = "macos")'.dependencies]
 muda = { version = "0.19", optional = true }
 objc2 = { version = "0.6.4", optional = true }
-objc2-app-kit = { version = "0.3.2", optional = true, default-features = false, features = ["std", "NSApplication", "NSWindow", "NSView", "NSVisualEffectView", "NSGraphics", "NSButton", "NSWorkspace", "NSAccessibility", "NSAppearance"] }
+objc2-app-kit = { version = "0.3.2", optional = true, default-features = false, features = ["std", "NSApplication", "NSWindow", "NSView", "NSVisualEffectView", "NSGraphics", "NSButton", "NSWorkspace", "NSAccessibility", "NSAppearance", "NSColor"] }
 
 [dev-dependencies]
 masonry_testing = { git = "https://github.com/eliheuer/xilem", rev = "5a813cb5cddad24edcf80c62b9dd16ced1dbbc4c" }

@@ -241,7 +241,7 @@ popcount4 = "#FF4A3D"
 # Native macOS wallpaper blur; disable for the solid app/header background.
 # See src/application/platform/window.rs and Xilem issue #1852 for the integration evidence.
 # false (or omission) keeps the solid surfaces.app/header colors (baseUi.02 in Gray).
-# Changing native window transparency requires restarting the application.
+# View > Translucent Window flips this while the application runs.
 # Linux, browser, and headless proofs always use flat colors.
 blurBackground = true
 # Opacity of surfaces.backdropTint over the blur: 0 is clear, 1 is solid.
