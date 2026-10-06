@@ -14,6 +14,11 @@
 //! nudge = 2         # an arrow key moves this far; default one grid step
 //! shift_nudge = 8   # Shift and an arrow key; default four nudges
 //! command_nudge = 64 # Command, Shift and an arrow key; default eight Shift nudges
+//!
+//! [neural]
+//! post_opentype = "/Users/me/GH/repos/post-opentype"  # default ~/GH/repos/post-opentype
+//! train_host = "kiln"   # ssh host that trains; "" for this machine; default kiln
+//! epochs = 800
 //! ```
 
 use std::path::PathBuf;
@@ -26,6 +31,36 @@ use serde::Deserialize;
 pub(crate) struct Config {
     /// How points move and snap.
     pub editing: Editing,
+    /// Training neural fonts from a `.nufo` source.
+    pub neural: NeuralConfig,
+}
+
+/// The `[neural]` section.
+#[derive(Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct NeuralConfig {
+    /// The post-opentype checkout that holds the training script and tools.
+    pub post_opentype: Option<PathBuf>,
+    /// The ssh host that trains; empty for this machine only.
+    pub train_host: Option<String>,
+    /// Epochs of one training run.
+    pub epochs: Option<u32>,
+}
+
+/// Where training happens and for how long, with the defaults filled in.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Neural {
+    pub post_opentype: PathBuf,
+    pub train_host: Option<String>,
+    pub epochs: u32,
+}
+
+/// The training settings in effect, set once at startup.
+static NEURAL: std::sync::OnceLock<Neural> = std::sync::OnceLock::new();
+
+/// Where training happens and for how long.
+pub(crate) fn neural() -> Neural {
+    NEURAL.get_or_init(|| Config::default().neural()).clone()
 }
 
 /// The `[editing]` section.
@@ -94,10 +129,32 @@ impl Config {
             .unwrap_or(runebender::outline::point_ops::DEFAULT_GRID_SPACING)
     }
 
+    /// The training settings this config gives, with the defaults filled in: the checkout at
+    /// `~/GH/repos/post-opentype`, kiln, 800 epochs.
+    fn neural(&self) -> Neural {
+        let home = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_default();
+        Neural {
+            post_opentype: self
+                .neural
+                .post_opentype
+                .clone()
+                .unwrap_or_else(|| home.join("GH/repos/post-opentype")),
+            train_host: match self.neural.train_host.as_deref() {
+                None => Some("kiln".into()),
+                Some("") => None,
+                Some(host) => Some(host.into()),
+            },
+            epochs: self.neural.epochs.filter(|e| *e > 0).unwrap_or(800),
+        }
+    }
+
     /// Put this config into effect for the whole process. Only the first call sets the nudge.
     pub(crate) fn apply(&self) {
         runebender::outline::point_ops::set_grid_spacing(self.grid());
         let _ = NUDGE.set(self.nudge());
+        let _ = NEURAL.set(self.neural());
     }
 }
 

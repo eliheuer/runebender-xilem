@@ -8,6 +8,7 @@ use crate::application::editor::tools::{chat, local_ai, nodes, scripts};
 use crate::application::platform::export;
 #[cfg(unix)]
 use crate::application::platform::live;
+use crate::application::platform::train;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::application::platform::watch;
 use crate::application::view::chrome::{marks_bar, status, titlebar};
@@ -417,12 +418,17 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         ai_pump(
             script_pump(
                 chat_pump(
-                    export_pump(
-                        nodes_pump(
-                            preview_pump(content, app.font.project.preview_pending()).boxed(),
-                            app.nodes.job.clone(),
-                        ),
-                        app.export_job.clone(),
+                    train_pump(
+                        export_pump(
+                            nodes_pump(
+                                preview_pump(content, app.font.project.preview_pending()).boxed(),
+                                app.nodes.job.clone(),
+                            ),
+                            app.export_job.clone(),
+                        )
+                        // Boxed: another nested pump makes a symbol name the linker refuses.
+                        .boxed(),
+                        app.train.job.clone(),
                     ),
                     app.chat.job.clone(),
                 ),
@@ -431,6 +437,39 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
             app.ai.job.clone(),
         ),
         app.font.master_paths().clone(),
+    )
+}
+
+/// Poll a training run: its streamed lines reach the Neural section, and its exit ends the run.
+fn train_pump<V: WidgetView<Workspace>>(
+    view: V,
+    job: Option<train::TrainJob>,
+) -> impl WidgetView<Workspace> + use<V> {
+    use xilem::core::{MessageProxy, fork};
+    use xilem::view::task_raw;
+    fork(
+        view,
+        job.map(|job| {
+            task_raw(
+                move |proxy: MessageProxy<train::TrainProgress>, _: &mut Workspace| {
+                    let job = job.clone();
+                    async move {
+                        loop {
+                            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                            let done = job
+                                .finished
+                                .lock()
+                                .unwrap_or_else(|error| error.into_inner())
+                                .is_some();
+                            if proxy.message(train::TrainProgress).is_err() || done {
+                                return;
+                            }
+                        }
+                    }
+                },
+                |app: &mut Workspace, _: train::TrainProgress| app.train_pump(),
+            )
+        }),
     )
 }
 

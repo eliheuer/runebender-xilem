@@ -321,6 +321,8 @@ pub(crate) struct Workspace {
     pub(crate) live_nodes_pending: Arc<std::sync::atomic::AtomicBool>,
     /// A font build running outside the UI thread.
     pub(crate) export_job: Option<export::ExportJob>,
+    /// Training a neural font from the open source: the run, its status, the versions.
+    pub(crate) train: crate::application::platform::train::TrainState,
     /// The Local AI panel: models, tasks, a run, proposals.
     pub(crate) ai: local_ai::LocalAiState,
     /// Local chat transcript, model choice, and current process.

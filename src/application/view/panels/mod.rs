@@ -18,3 +18,4 @@ pub(crate) mod tabs;
 pub(crate) mod image;
 pub(crate) mod label;
 pub(crate) mod metaballs;
+pub(crate) mod neural;

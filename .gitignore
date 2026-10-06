@@ -15,3 +15,6 @@
 *.tif
 *.tiff
 !/tests/fixtures/**
+
+# Trained neural font versions beside a .nufo source
+*.models/

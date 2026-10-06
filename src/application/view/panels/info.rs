@@ -212,6 +212,12 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                     recipes::section(app, "Samples", "Samples", super::label::panel(app)),
                 )
             }),
+            (editing && app.font.project.is_neural()).then(|| {
+                recipes::panel_group(
+                    pal,
+                    recipes::section(app, "Neural", "Neural", super::neural::panel(app)),
+                )
+            }),
             (editing && app.tool == Tool::Metaball)
                 .then(|| recipes::panel_group(pal, super::metaballs::panel(app))),
             (editing && app.tool == Tool::Sketch)

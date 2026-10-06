@@ -366,6 +366,7 @@ impl Workspace {
             #[cfg(unix)]
             live_nodes_pending: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             export_job: None,
+            train: crate::application::platform::train::TrainState::default(),
             ai: local_ai::LocalAiState::default(),
             chat: chat::ChatState::default(),
             scripts: scripts::ScriptsState::default(),
@@ -389,6 +390,9 @@ impl Workspace {
         };
         app.park();
         app.init_nodes();
+        if app.font.project.is_neural() {
+            app.refresh_model_versions();
+        }
         app.rescan_models();
         app.scan_chat_models();
         app.refresh_proposals();

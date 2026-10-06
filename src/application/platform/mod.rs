@@ -10,6 +10,7 @@ pub(crate) mod dialogs;
 #[path = "browser_dialogs.rs"]
 pub(crate) mod dialogs;
 pub(crate) mod export;
+pub(crate) mod train;
 
 pub(crate) mod host;
 pub(crate) mod screenshot;

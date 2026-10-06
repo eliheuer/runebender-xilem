@@ -58,6 +58,12 @@ pub(crate) fn run(
         {
             workspace.grid_select(index, false, false);
         }
+        // RUNEBENDER_NEURAL_STATUS=<text> shows the Neural section mid-run, for review captures.
+        if let Ok(status) = std::env::var("RUNEBENDER_NEURAL_STATUS")
+            && let Some(workspace) = app.workspace.as_mut()
+        {
+            workspace.train.status = status;
+        }
         if let Ok(section) = std::env::var("RUNEBENDER_EXPAND")
             && let Some(workspace) = app.workspace.as_mut()
         {
