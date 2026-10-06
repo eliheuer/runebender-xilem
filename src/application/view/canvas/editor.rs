@@ -1187,8 +1187,16 @@ impl EditorWidget {
             });
             let center = affine * *at;
             let radius = if picked { 6.0 } else { 4.5 };
+            // A full disc in the first color under the wedges, so the seams between wedges
+            // and the rim show no ground.
+            painter
+                .fill(
+                    Circle::new(center, radius),
+                    colors[letters[0] % colors.len()],
+                )
+                .draw();
             let step = std::f64::consts::TAU / letters.len() as f64;
-            for (slice, letter) in letters.iter().enumerate() {
+            for (slice, letter) in letters.iter().enumerate().skip(1) {
                 let start = -std::f64::consts::FRAC_PI_2 + step * slice as f64;
                 // From the center to the rim, around the arc, and back.
                 let arc = kurbo::Arc::new(center, (radius, radius), start, step, 0.0);
