@@ -318,6 +318,14 @@ impl Session {
             .map(|(position, _)| position)
     }
 
+    /// Whether `at` lies inside the loop of the sample at `position`.
+    pub(crate) fn sample_contains(&self, position: usize, at: Point) -> bool {
+        self.neural_item()
+            .samples
+            .get(position)
+            .is_some_and(|sample| sample.boundary_path().contains(at))
+    }
+
     /// The selected sample and its position, while it exists.
     pub(crate) fn selected_sample(&self) -> Option<(usize, NeuralSample)> {
         let position = self.label.sample?;

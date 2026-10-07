@@ -2737,10 +2737,19 @@ impl Widget for EditorWidget {
                                 ctx.capture_pointer();
                             }
                             LabelHit::Piece(_) | LabelHit::Nothing => {
-                                if self.session.label.sample.is_none()
-                                    && let Some(sample) = self.session.sample_at(design)
-                                {
-                                    // A click on a sample selects it.
+                                // Words are not a mode: a press outside the open word
+                                // opens the word under it, or closes the open one.
+                                let open = self.session.label.sample;
+                                let inside_open = open
+                                    .is_some_and(|open| self.session.sample_contains(open, design));
+                                let under = (!inside_open)
+                                    .then(|| self.session.sample_at(design))
+                                    .flatten();
+                                if open.is_some() && !inside_open && under.is_none() {
+                                    self.session.select_sample(None);
+                                }
+                                if let Some(sample) = under {
+                                    // A click on a word opens it.
                                     self.session.select_sample(Some(sample));
                                     self.emit(ctx, false);
                                 } else {
@@ -5643,6 +5652,54 @@ mod tests {
                 "labeling never edits the outline"
             );
         });
+    }
+
+    #[test]
+    fn a_click_on_another_word_opens_it_and_a_click_outside_every_word_closes_it() {
+        let path = std::path::Path::new("assets/font-sources/neural-fonts/NastaliqDemo.nufo");
+        let mut workspace = Workspace::open(path).expect("the demo source opens");
+        workspace.open_glyph(workspace.font.index_of("ba-basic").unwrap());
+        workspace.select_tool(Tool::Label);
+        let item = workspace.session.neural_item();
+        assert!(item.samples.len() >= 2, "ba-basic has two words or more");
+        Arc::make_mut(&mut workspace.session).select_sample(Some(0));
+        let before = item.samples[0].clone();
+        let mut editor = widget();
+        editor.session = (*workspace.session).clone();
+        editor.tool = Tool::Label;
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), editor.prepare(), (1200, 700));
+        let dispatch = |harness: &mut TestHarness<EditorWidget>, workspace: &mut Workspace| {
+            while let Some((event, _)) = harness.pop_action::<EditorEvent>() {
+                harness.edit_root_widget(|root| {
+                    dispatch_editor_event(workspace, &mut root.widget.session, event, |_, _| {});
+                });
+            }
+        };
+        let affine = harness.edit_root_widget(|root| root.widget.glyph_affine());
+        let click = |harness: &mut TestHarness<EditorWidget>, at: Point| {
+            harness.mouse_move(affine * at);
+            harness.mouse_button_press(Some(PointerButton::Primary));
+            harness.mouse_button_release(Some(PointerButton::Primary));
+        };
+
+        // The middle of the second word's loop: that word opens, the first is untouched.
+        let second = item.samples[1].boundary_path().bounding_box().center();
+        click(&mut harness, second);
+        dispatch(&mut harness, &mut workspace);
+        assert_eq!(workspace.session.label.sample, Some(1));
+        assert_eq!(workspace.session.neural_item().samples[0], before);
+
+        // Far from every word: no word is open.
+        let all = item
+            .samples
+            .iter()
+            .map(|sample| sample.boundary_path().bounding_box())
+            .reduce(|a, b| a.union(b))
+            .unwrap();
+        click(&mut harness, Point::new(all.x0 - 2000.0, all.center().y));
+        dispatch(&mut harness, &mut workspace);
+        assert_eq!(workspace.session.label.sample, None);
     }
 
     #[test]
