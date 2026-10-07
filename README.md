@@ -11,6 +11,10 @@ For documentation and installation instructions, see [runebender.org](https://ru
 
 ![Runebender Nodes workflow](https://runebender.org/images/runebender-xilem-nodes.png)
 
+![Runebender Arabic calligraphy editing with a glyph browser](https://runebender.org/images/runebender-xilem-nufo-glyphs.png)
+
+![Runebender Arabic calligraphy editing with a rendered preview](https://runebender.org/images/runebender-xilem-nufo-editing.png)
+
 ## Local native builds
 
 For UI development, use an optimized build with incremental compilation:
