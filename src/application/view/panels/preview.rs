@@ -36,13 +36,16 @@ fn model_strip_view(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     } else {
         (pal.proof_ink(), pal.proof_strip)
     };
+    // The names and roles of docs/VIEWER.md section 3.
     model_strip(
         app.model.render.clone(),
         StripInks {
+            ground: background,
             ink,
-            background,
-            node: pal.role("pointSmooth"),
-            node_outline: pal.point_outline.unwrap_or(pal.text),
+            strand: pal.role("danger"),
+            active: pal.role("selection"),
+            ring: pal.role("pointSelected"),
+            cloud: pal.role("previewFill").with_alpha(0.22),
         },
         |app: &mut Workspace, event| app.model_strip_event(event),
     )

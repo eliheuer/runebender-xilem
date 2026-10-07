@@ -7,7 +7,8 @@
 //! workspace sends it the text and the pulled nodes; the worker composes the words, traces
 //! the field and hands back paths in font units, y up, with one node per caret index on the
 //! chain of letters. Dragging a node pulls its letter and the rest of the word, and the join
-//! before it stretches, as in the web demo.
+//! before it stretches, as in the web demo. `post-opentype/docs/VIEWER.md` is the contract
+//! between the two viewers.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -24,6 +25,8 @@ pub(crate) struct ModelRequest {
     pub text: String,
     /// Node index to its pull, in field pixels, y down.
     pub offsets: Vec<(usize, (f64, f64))>,
+    /// The selected caret indices, `(anchor, caret)`; equal for a plain caret.
+    pub selection: (usize, usize),
 }
 
 /// The drawn text: paths and nodes in font units, y up, the first word's right edge at x = 0.
@@ -33,6 +36,16 @@ pub(crate) struct ModelRender {
     pub paths: Vec<BezPath>,
     /// One point per caret index, 0 ..= the text's character count.
     pub nodes: Vec<Point>,
+    /// For each node, whether it touches a word boundary; it is drawn hollow.
+    pub gaps: Vec<bool>,
+    /// The strand through the nodes, densely sampled, each point with its parameter.
+    pub strand: Vec<(f64, Point)>,
+    /// Each node's parameter on the strand.
+    pub node_t: Vec<f64>,
+    /// The selection cloud, or with a plain caret the hint around the letter before it.
+    pub outline: Vec<BezPath>,
+    /// `outline` is the hint, not a selection.
+    pub outline_is_hint: bool,
     /// Field pixels per font unit, to turn a dragged distance into a pull.
     pub px_per_unit: f64,
 }
@@ -68,6 +81,10 @@ pub(crate) struct ModelState {
     pub offsets: HashMap<usize, (f64, f64)>,
     /// A node drag in progress: the node, and its pull when the drag began.
     pub drag: Option<(usize, (f64, f64))>,
+    /// The selected caret indices, `(anchor, caret)`.
+    pub selection: (usize, usize),
+    /// The text the pulls belong to; another text clears them.
+    pub text: String,
 }
 
 impl ModelJob {
@@ -134,6 +151,37 @@ fn draw(font: &FieldFont, request: ModelRequest) -> ModelRender {
     let line = field_line::build_field_line(font, &request.text, &offsets);
     // The chain's own frame: the first word's right edge at x = 0, the baseline at y = 0.
     let marks = field_line::marks(font, &line, 0.0, 0.0);
+    let chars: Vec<char> = request.text.chars().collect();
+    let gaps = (0..marks.nodes.len())
+        .map(|i| field_line::is_gap(&chars, i))
+        .collect();
+    let strand = field_line::Strand::new(&marks.nodes);
+    let node_t: Vec<f64> = (0..marks.nodes.len()).map(|i| strand.t_of(i)).collect();
+    let mut samples = Vec::new();
+    let end = strand.t_end();
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "a strand is a few thousand field pixels long at most"
+    )]
+    let steps = (end / 3.0).ceil().max(2.0) as usize;
+    for k in 0..=steps {
+        let u = end * k as f64 / steps as f64;
+        samples.push((u, strand.sample(u)));
+    }
+    // With a plain caret after a letter, the hint outlines that letter; else the selection.
+    let (anchor, caret) = request.selection;
+    let (start, stop) = (anchor.min(caret), anchor.max(caret));
+    let hint = start == stop && caret > 0 && caret <= chars.len() && chars[caret - 1] != ' ';
+    let (from, to) = if hint {
+        (caret - 1, caret)
+    } else {
+        (start, stop)
+    };
+    let outline: Vec<BezPath> = field_line::selection_paths(font, &line, from, to, 0.0, 0.0)
+        .iter()
+        .filter_map(|path| BezPath::from_svg(&path.to_svg()).ok())
+        .collect();
     let mut paths = Vec::new();
     for word in &line.words {
         let field = &word.wf;
@@ -155,6 +203,14 @@ fn draw(font: &FieldFont, request: ModelRequest) -> ModelRender {
             .into_iter()
             .map(|(x, y)| to_units * Point::new(x, y))
             .collect(),
+        gaps,
+        strand: samples
+            .into_iter()
+            .map(|(u, (x, y))| (u, to_units * Point::new(x, y)))
+            .collect(),
+        node_t,
+        outline: outline.into_iter().map(|path| to_units * path).collect(),
+        outline_is_hint: hint,
         px_per_unit: em / font.canvas.upm,
     }
 }
@@ -191,9 +247,25 @@ impl crate::application::workspace::Workspace {
         let mut offsets: Vec<(usize, (f64, f64))> =
             self.model.offsets.iter().map(|(i, p)| (*i, *p)).collect();
         offsets.sort_by_key(|(i, _)| *i);
+        let text = self.piece_preview_text();
+        if text != self.model.text {
+            // Pulls belong to one text. The caret opens one node in, after the first letter,
+            // as in the web demo.
+            self.model.text = text.clone();
+            self.model.offsets.clear();
+            let first = text.chars().count().min(1);
+            self.model.selection = (first, first);
+            offsets.clear();
+        }
+        let count = text.chars().count();
+        let selection = (
+            self.model.selection.0.min(count),
+            self.model.selection.1.min(count),
+        );
         let request = ModelRequest {
-            text: self.piece_preview_text(),
+            text,
             offsets,
+            selection,
         };
         if let Some(job) = self.model.job.as_mut() {
             job.request(request);
@@ -239,6 +311,14 @@ impl crate::application::workspace::Workspace {
                     .insert(node, (start.0 + delta.x * px, start.1 - delta.y * px));
             }
             ModelStripEvent::DragEnd => self.model.drag = None,
+            ModelStripEvent::Caret { index, extend } => {
+                let anchor = if extend {
+                    self.model.selection.0
+                } else {
+                    index
+                };
+                self.model.selection = (anchor, index);
+            }
         }
     }
 }
@@ -266,6 +346,7 @@ mod tests {
             ModelRequest {
                 text: "با ب".into(),
                 offsets: Vec::new(),
+                selection: (2, 2),
             },
         );
         assert_eq!(render.paths.len(), 2);
@@ -281,8 +362,14 @@ mod tests {
             ModelRequest {
                 text: "با".into(),
                 offsets: vec![(1, (-30.0, 0.0))],
+                selection: (0, 0),
             },
         );
         assert_ne!(pulled.paths, render.paths);
+        // The strand passes through every node; the gaps are the ends and the space's sides.
+        assert_eq!(render.gaps, vec![true, false, true, true, true]);
+        assert_eq!(render.node_t.len(), render.nodes.len());
+        // A plain caret after a letter outlines that letter.
+        assert!(render.outline_is_hint && !render.outline.is_empty());
     }
 }
