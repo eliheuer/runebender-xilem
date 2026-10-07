@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 
 use kurbo::{Affine, BezPath, Point};
 use neuraltype_core::field_model::FieldFont;
-use neuraltype_core::field_text;
+use neuraltype_core::{field_line, field_text};
 
 /// What the worker is asked to draw.
 #[derive(Clone, Debug, PartialEq)]
@@ -127,232 +127,33 @@ fn worker(
     }
 }
 
-/// One word placed on the line, in field pixels.
-struct PlacedWord {
-    field: field_text::WordField,
-    /// Added to the word's own x to put it on the line.
-    dx: f64,
-    /// The index of the word's first character in the text.
-    char_base: usize,
-    n_chars: usize,
-    /// The ink's edges and the heights where its ink enters and leaves, in the word's frame.
-    ink_l: f64,
-    ink_r: f64,
-    exit_y: f64,
-    entry_y: f64,
-}
-
-/// The ink's bounds in a field: left, right, top, bottom cells, or None for no ink.
-fn ink_bounds(field: &field_text::WordField) -> Option<(usize, usize, usize, usize)> {
-    let (mut x0, mut x1, mut y0, mut y1) = (usize::MAX, 0, usize::MAX, 0);
-    for y in 0..field.h {
-        for x in 0..field.w {
-            if field.grid[y * field.w + x] >= 0.0 {
-                x0 = x0.min(x);
-                x1 = x1.max(x);
-                y0 = y0.min(y);
-                y1 = y1.max(y);
-            }
-        }
-    }
-    (x0 != usize::MAX).then_some((x0, x1, y0, y1))
-}
-
-/// The mean row of the ink in columns `from..to`, in the word's frame.
-fn ink_height(field: &field_text::WordField, from: usize, to: usize) -> f64 {
-    let (mut sum, mut count) = (0.0, 0_usize);
-    for y in 0..field.h {
-        for x in from..to.min(field.w) {
-            if field.grid[y * field.w + x] >= 0.0 {
-                sum += y as f64;
-                count += 1;
-            }
-        }
-    }
-    field.y0 + if count > 0 { sum / count as f64 } else { 0.0 }
-}
-
-/// Lay the words out right to left on one baseline, as the web demo does. Coordinates are
-/// field pixels, y down, the pen starting at x = 0 and moving left.
-fn place_words(
-    font: &FieldFont,
-    text: &str,
-    offsets: &HashMap<usize, (f64, f64)>,
-) -> Vec<PlacedWord> {
-    let em = font.canvas.em_px;
-    let space = 0.12 * em;
-    let mut pen_right = 0.0;
-    let mut words = Vec::new();
-    let mut char_base = 0;
-    for word in text.split(' ') {
-        let n_chars = word.chars().count();
-        if word.is_empty() {
-            pen_right -= space;
-            char_base += 1;
-            continue;
-        }
-        let clusters = field_text::layout_word(font, word);
-        let mut pulls = vec![(0.0, 0.0); clusters.len()];
-        let mut pulled_x = 0.0;
-        let mut has_pull = false;
-        let mut ci = 0;
-        for (k, cluster) in clusters.iter().enumerate() {
-            ci += cluster.letters.chars().count();
-            // A pull at node i belongs to the cluster that ends at i.
-            if let Some(&pull) = offsets.get(&(char_base + ci)) {
-                pulls[k] = pull;
-                pulled_x += pull.0;
-                has_pull = true;
-            }
-        }
-        let base = field_text::compose_clusters(font, clusters.clone(), None);
-        let Some((bx0, bx1, _, _)) = (base.w > 0).then(|| ink_bounds(&base)).flatten() else {
-            char_base += n_chars + 1;
-            continue;
-        };
-        // Placement anchors on the ink before any pull, so a drag moves the letter instead of
-        // the pen cancelling it.
-        let ink_r = base.x0 + bx1 as f64 + 1.0;
-        let ink_l = base.x0 + bx0 as f64;
-        let exit_y = ink_height(&base, bx0, bx0 + 4);
-        let entry_y = ink_height(&base, bx1.saturating_sub(3), bx1 + 1);
-        let field = if has_pull {
-            field_text::compose_clusters_pulled(font, clusters, &pulls)
-        } else {
-            base
-        };
-        if field.w == 0 {
-            char_base += n_chars + 1;
-            continue;
-        }
-        let dx = pen_right - ink_r;
-        pen_right -= (ink_r - ink_l) + space - pulled_x.min(0.0);
-        words.push(PlacedWord {
-            field,
-            dx,
-            char_base,
-            n_chars,
-            ink_l,
-            ink_r,
-            exit_y,
-            entry_y,
-        });
-        char_base += n_chars + 1;
-    }
-    words
-}
-
-/// Where two clusters' ink meets: the deepest cell of their fields' overlap, or None when
-/// they do not touch.
-#[expect(
-    clippy::cast_possible_wrap,
-    clippy::cast_possible_truncation,
-    reason = "field cells are a few hundred wide, and the overlap stays inside both canvases"
-)]
-fn join_point(font: &FieldFont, a: &field_text::Cluster, b: &field_text::Cluster) -> Option<Point> {
-    let (cw, ch) = (font.canvas.w as i64, font.canvas.h as i64);
-    let (cox, coy) = (font.canvas.origin_x, font.canvas.origin_y);
-    let (ga, gb) = (font.glyph(a.feats), font.glyph(b.feats));
-    let (ax0, ay0) = ((a.ox - cox).round() as i64, (a.oy - coy).round() as i64);
-    let (bx0, by0) = ((b.ox - cox).round() as i64, (b.oy - coy).round() as i64);
-    let mut best = f32::MIN;
-    let mut at = None;
-    for y in ay0.max(by0)..(ay0 + ch).min(by0 + ch) {
-        for x in ax0.max(bx0)..(ax0 + cw).min(bx0 + cw) {
-            let va = ga.field[((y - ay0) * cw + (x - ax0)) as usize];
-            let vb = gb.field[((y - by0) * cw + (x - bx0)) as usize];
-            let depth = va.min(vb);
-            if depth > best {
-                best = depth;
-                at = Some(Point::new(x as f64 + 0.5, y as f64 + 0.5));
-            }
-        }
-    }
-    (best >= 0.0).then_some(at).flatten()
-}
-
-/// Draw one request: words traced and placed, nodes on the chain, all in font units, y up.
+/// Draw one request: the line laid out by the engine's shared layout (the same code the web
+/// demo runs), each word traced, all in font units, y up.
 fn draw(font: &FieldFont, request: ModelRequest) -> ModelRender {
     let offsets: HashMap<usize, (f64, f64)> = request.offsets.iter().copied().collect();
-    let words = place_words(font, &request.text, &offsets);
-    let em = font.canvas.em_px;
-    let space = 0.12 * em;
-    let n = request.text.chars().count();
-    let mut nodes: Vec<Option<Point>> = vec![None; n + 1];
+    let line = field_line::build_field_line(font, &request.text, &offsets);
+    // The chain's own frame: the first word's right edge at x = 0, the baseline at y = 0.
+    let marks = field_line::marks(font, &line, 0.0, 0.0);
     let mut paths = Vec::new();
-    for word in &words {
-        let field = &word.field;
+    for word in &line.words {
+        let field = &word.wf;
         let traced = field_text::trace_field_smooth(&field.grid, field.w, field.h);
         // The engine's kurbo is older than the editor's: cross through SVG.
         if let Ok(path) = BezPath::from_svg(&traced.to_svg()) {
             paths.push(Affine::translate((field.x0 + word.dx, field.y0)) * path);
         }
-        let clusters = &field.clusters;
-        let left_ink = word.ink_l + word.dx;
-        let mut ci = 0;
-        for (k, cluster) in clusters.iter().enumerate() {
-            let right = if k == 0 {
-                word.ink_r + word.dx
-            } else {
-                clusters[k - 1].ox + word.dx
-            };
-            let left = if k + 1 < clusters.len() {
-                clusters[k + 1].ox + word.dx
-            } else {
-                left_ink
-            };
-            let count = cluster.letters.chars().count();
-            let cell = (right - left).max(1.0) / count as f64;
-            for j in 0..count {
-                let i = word.char_base + ci + j;
-                if i > n {
-                    continue;
-                }
-                nodes[i] = Some(if k == 0 && j == 0 {
-                    // Before the word: on the first letter's entry stroke.
-                    Point::new(word.ink_r + word.dx + space * 0.25, word.entry_y)
-                } else if count == 1 {
-                    // Between letters: where their ink meets, else the chain origin.
-                    match join_point(font, &clusters[k - 1], cluster) {
-                        Some(join) => join + kurbo::Vec2::new(word.dx, 0.0),
-                        None => Point::new(cluster.ox + word.dx, cluster.oy),
-                    }
-                } else {
-                    // A ligature: one node per character, spread across it.
-                    Point::new(right - (j as f64 + 0.5) * cell, cluster.oy)
-                });
-            }
-            ci += count;
-        }
-        let end = word.char_base + word.n_chars;
-        if end <= n {
-            nodes[end] = Some(Point::new(left_ink - space * 0.5, word.exit_y));
-        }
-    }
-    // Gaps take the nearest known node, forward then backward.
-    let mut last = None;
-    for node in &mut nodes {
-        match node {
-            Some(point) => last = Some(*point),
-            None => *node = last,
-        }
-    }
-    let mut next = None;
-    for node in nodes.iter_mut().rev() {
-        match node {
-            Some(point) => next = Some(*point),
-            None => *node = next,
-        }
     }
     // Field pixels, y down, to font units, y up.
+    let em = font.canvas.em_px;
     let units_per_px = font.canvas.upm / em;
     let to_units = Affine::scale_non_uniform(units_per_px, -units_per_px);
     ModelRender {
         request,
         paths: paths.into_iter().map(|path| to_units * path).collect(),
-        nodes: nodes
+        nodes: marks
+            .nodes
             .into_iter()
-            .map(|node| to_units * node.unwrap_or(Point::ZERO))
+            .map(|(x, y)| to_units * Point::new(x, y))
             .collect(),
         px_per_unit: em / font.canvas.upm,
     }
