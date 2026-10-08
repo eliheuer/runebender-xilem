@@ -507,7 +507,7 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
                         use crate::application::pieces::PreviewView;
                         named_icon_button(
                             "Model",
-                            "preview",
+                            "exclude",
                             app.preview_view == PreviewView::Model,
                             pal.editor_control_ink(),
                             pal.editor_control_ink(),

@@ -4,13 +4,15 @@
 //! The proof strip's model view: a trained font's drawing of the text, with the strand and a
 //! node at every caret index, drawn and handled as `post-opentype/docs/VIEWER.md` says. A
 //! click moves the caret, a drag selects, and dragging any node pulls that letter and the
-//! rest of its word.
+//! rest of its word. Once clicked, the strip takes the keyboard: typing, Space, Backspace,
+//! Delete and the arrows edit its text; Escape gives the keyboard back to the editor.
 
 use masonry::accesskit::{Node, Role};
+use masonry::core::keyboard::{Key, KeyState, NamedKey};
 use masonry::core::{
     AccessCtx, ChildrenIds, EventCtx, LayoutCtx, MeasureCtx, PaintCtx, PointerButton,
-    PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, Update, UpdateCtx,
-    Widget,
+    PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update,
+    UpdateCtx, Widget,
 };
 use masonry::imaging::Painter;
 use masonry::kurbo::{
@@ -38,6 +40,23 @@ pub(crate) enum ModelStripEvent {
         delta: Vec2,
     },
     DragEnd,
+    /// Typed text replaces the selection, as in the web demo.
+    Insert(String),
+    /// Backspace (`forward` false) or Delete: the selection, else one letter.
+    Erase {
+        forward: bool,
+    },
+    /// Move the caret by `by` letters in reading order; `extend` selects.
+    Step {
+        by: isize,
+        extend: bool,
+    },
+    Home {
+        extend: bool,
+    },
+    End {
+        extend: bool,
+    },
 }
 
 /// The colors the strip is drawn with: the names of `docs/VIEWER.md` section 3.
@@ -279,6 +298,9 @@ impl Widget for ModelStripWidget {
                 state,
                 ..
             }) => {
+                // The strip takes the keyboard, as the web demo's canvas does: typing,
+                // Space and the arrows edit this text, not the editor.
+                ctx.request_focus();
                 let at = ctx.local_position(state.position);
                 let t = self.transform();
                 let Some(render) = self.render.clone() else {
@@ -355,6 +377,50 @@ impl Widget for ModelStripWidget {
                 ctx.request_render();
             }
             _ => {}
+        }
+    }
+
+    fn accepts_focus(&self) -> bool {
+        true
+    }
+
+    fn on_text_event(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        _props: &mut PropertiesMut<'_>,
+        event: &TextEvent,
+    ) {
+        let TextEvent::Keyboard(key) = event else {
+            return;
+        };
+        // Command and Control keys stay the editor's: save, undo, quit.
+        if key.modifiers.meta() || key.modifiers.ctrl() {
+            return;
+        }
+        let extend = key.modifiers.shift();
+        let event = match &key.key {
+            Key::Character(text) => Some(ModelStripEvent::Insert(text.to_string())),
+            Key::Named(NamedKey::Backspace) => Some(ModelStripEvent::Erase { forward: false }),
+            Key::Named(NamedKey::Delete) => Some(ModelStripEvent::Erase { forward: true }),
+            // Right-to-left text: Left goes on through the text, Right goes back.
+            Key::Named(NamedKey::ArrowLeft) => Some(ModelStripEvent::Step { by: 1, extend }),
+            Key::Named(NamedKey::ArrowRight) => Some(ModelStripEvent::Step { by: -1, extend }),
+            Key::Named(NamedKey::Home) => Some(ModelStripEvent::Home { extend }),
+            Key::Named(NamedKey::End) => Some(ModelStripEvent::End { extend }),
+            Key::Named(NamedKey::Escape) => {
+                if key.state == KeyState::Down {
+                    ctx.resign_focus();
+                }
+                None
+            }
+            _ => return,
+        };
+        // A key's release is ours too, so Space never reaches the editor's pan.
+        ctx.set_handled();
+        if key.state == KeyState::Down
+            && let Some(event) = event
+        {
+            ctx.submit_action::<ModelStripEvent>(event);
         }
     }
 
@@ -473,5 +539,55 @@ where
             }
             None => MessageResult::Stale,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use masonry::core::keyboard::Code;
+    use masonry::core::{KeyboardEvent, NewWidget};
+    use masonry_testing::TestHarness;
+
+    #[test]
+    fn a_clicked_strip_takes_space_as_typing() {
+        let widget = ModelStripWidget {
+            render: None,
+            inks: StripInks {
+                ground: Color::BLACK,
+                outline: Color::BLACK,
+                ink: Color::WHITE,
+                strand: Color::WHITE,
+                active: Color::WHITE,
+                ring: Color::WHITE,
+                cloud: Color::WHITE,
+            },
+            size: Size::ZERO,
+            gesture: None,
+            clock: 0.0,
+        };
+        let mut harness = TestHarness::create_with_size(
+            crate::application::view::default_property_set(),
+            NewWidget::new(widget),
+            (300, 100),
+        );
+        let id = harness.root_id();
+        harness.mouse_click_on(id, Some(PointerButton::Primary));
+        assert_eq!(harness.focused_widget_id(), Some(id));
+        let key = |state| {
+            TextEvent::Keyboard(KeyboardEvent {
+                state,
+                key: Key::Character(" ".into()),
+                code: Code::Space,
+                ..KeyboardEvent::default()
+            })
+        };
+        harness.process_text_event(key(KeyState::Down));
+        harness.process_text_event(key(KeyState::Up));
+        let mut typed = Vec::new();
+        while let Some((event, _)) = harness.pop_action::<ModelStripEvent>() {
+            typed.push(format!("{event:?}"));
+        }
+        assert_eq!(typed, vec![r#"Insert(" ")"#.to_string()]);
     }
 }

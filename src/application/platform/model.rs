@@ -27,6 +27,9 @@ pub(crate) struct ModelRequest {
     pub offsets: Vec<(usize, (f64, f64))>,
     /// The selected caret indices, `(anchor, caret)`; equal for a plain caret.
     pub selection: (usize, usize),
+    /// Trace with img2bez, as the web demo's finished outlines are; false while a node is
+    /// dragged, so the drag stays quick.
+    pub quality: bool,
 }
 
 /// The drawn text: paths and nodes in font units, y up, the first word's right edge at x = 0.
@@ -133,18 +136,52 @@ fn worker(
             return;
         }
     };
+    // img2bez outlines of words with no pulls, by word: tracing is slow, retyping is not
+    let mut traces: HashMap<String, BezPath> = HashMap::new();
     while let Ok(mut request) = receiver.recv() {
         while let Ok(newer) = receiver.try_recv() {
             request = newer;
         }
-        let render = draw(&font, request);
+        let render = draw(&font, request, &mut traces);
         *latest.lock().unwrap_or_else(|e| e.into_inner()) = Some(Ok(Arc::new(render)));
     }
 }
 
+/// A word's outline traced with img2bez's type-quality fitter, as the web demo traces its
+/// finished words: the field itself, sampled finely, fit tightly with smooth joins. In the
+/// word's field pixels, y down. None when the tracer fails; the caller draws the fast trace.
+fn trace_smooth(field: &field_text::WordField) -> Option<BezPath> {
+    if field.w == 0 || field.h == 0 {
+        return None;
+    }
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss,
+        reason = "a word's field is a few hundred pixels tall"
+    )]
+    let supersample = ((640.0 / field.h as f64).ceil() as usize).clamp(3, 8);
+    let mut opts = img2bez::TraceOptions::for_profile(img2bez::Profile::Clean);
+    opts.rtl_start = true;
+    opts.faithful = true;
+    opts.fit_accuracy = 0.8;
+    opts.smoothing = 1.5;
+    opts.mode = img2bez::TraceMode::SmoothG2;
+    let outline = img2bez::trace_sdf(field.w, field.h, &field.grid, supersample, &opts).ok()?;
+    let path = BezPath::from_svg(&outline.to_svg_path()).ok()?;
+    // y up and em_height units back to the field's pixels, y down
+    #[expect(clippy::cast_precision_loss, reason = "a word's field is small")]
+    let k = field.h as f64 / opts.em_height;
+    Some(Affine::new([k, 0.0, 0.0, -k, 0.0, field.h as f64]) * path)
+}
+
 /// Draw one request: the line laid out by the engine's shared layout (the same code the web
 /// demo runs), each word traced, all in font units, y up.
-fn draw(font: &FieldFont, request: ModelRequest) -> ModelRender {
+fn draw(
+    font: &FieldFont,
+    request: ModelRequest,
+    traces: &mut HashMap<String, BezPath>,
+) -> ModelRender {
     let offsets: HashMap<usize, (f64, f64)> = request.offsets.iter().copied().collect();
     let line = field_line::build_field_line(font, &request.text, &offsets);
     // The chain's own frame: the first word's right edge at x = 0, the baseline at y = 0.
@@ -175,9 +212,32 @@ fn draw(font: &FieldFont, request: ModelRequest) -> ModelRender {
     let mut paths = Vec::new();
     for word in &line.words {
         let field = &word.wf;
-        let traced = field_text::trace_field_smooth(&field.grid, field.w, field.h);
-        // The engine's kurbo is older than the editor's: cross through SVG.
-        if let Ok(path) = BezPath::from_svg(&traced.to_svg()) {
+        let text: String = chars
+            .iter()
+            .skip(word.char_base)
+            .take(word.n_chars)
+            .collect();
+        let pulled =
+            (word.char_base..=word.char_base + word.n_chars).any(|i| offsets.contains_key(&i));
+        let smooth = if !request.quality {
+            None
+        } else if pulled {
+            trace_smooth(field)
+        } else if let Some(path) = traces.get(&text) {
+            Some(path.clone())
+        } else {
+            let path = trace_smooth(field);
+            if let Some(path) = &path {
+                traces.insert(text, path.clone());
+            }
+            path
+        };
+        let path = smooth.or_else(|| {
+            let traced = field_text::trace_field_smooth(&field.grid, field.w, field.h);
+            // The engine's kurbo is older than the editor's: cross through SVG.
+            BezPath::from_svg(&traced.to_svg()).ok()
+        });
+        if let Some(path) = path {
             paths.push(Affine::translate((field.x0 + word.dx, field.y0)) * path);
         }
     }
@@ -255,6 +315,7 @@ impl crate::application::workspace::Workspace {
             text,
             offsets,
             selection,
+            quality: self.model.drag.is_none(),
         };
         if let Some(job) = self.model.job.as_mut() {
             job.request(request);
@@ -276,6 +337,21 @@ impl crate::application::workspace::Workspace {
                 self.model.job = None;
             }
         }
+    }
+
+    /// Edit the strip's text: `edit` changes the letters given the selection, smallest index
+    /// first, and returns where the caret goes. Pulls belong to one text, so they go.
+    fn edit_model_text(&mut self, edit: impl FnOnce(&mut Vec<char>, (usize, usize)) -> usize) {
+        let mut chars: Vec<char> = self.piece_preview_text().chars().collect();
+        let count = chars.len();
+        let (a, b) = self.model.selection;
+        let range = (a.min(b).min(count), a.max(b).min(count));
+        let caret = edit(&mut chars, range).min(chars.len());
+        let text: String = chars.into_iter().collect();
+        self.preview_text = text.clone();
+        self.model.text = text;
+        self.model.offsets.clear();
+        self.model.selection = (caret, caret);
     }
 
     /// A node in the strip was pressed, moved or released.
@@ -300,6 +376,51 @@ impl crate::application::workspace::Workspace {
                     .insert(node, (start.0 + delta.x * px, start.1 - delta.y * px));
             }
             ModelStripEvent::DragEnd => self.model.drag = None,
+            ModelStripEvent::Insert(typed) => self.edit_model_text(|chars, (a, b)| {
+                let typed: Vec<char> = typed.chars().collect();
+                let at = a + typed.len();
+                chars.splice(a..b, typed);
+                at
+            }),
+            ModelStripEvent::Erase { forward } => self.edit_model_text(|chars, (a, b)| {
+                if a != b {
+                    chars.drain(a..b);
+                    a
+                } else if forward {
+                    if a < chars.len() {
+                        chars.remove(a);
+                    }
+                    a
+                } else if a > 0 {
+                    chars.remove(a - 1);
+                    a - 1
+                } else {
+                    a
+                }
+            }),
+            ModelStripEvent::Step { by, extend } => {
+                let count = self.model.text.chars().count();
+                let caret = self.model.selection.1.saturating_add_signed(by).min(count);
+                let anchor = if extend {
+                    self.model.selection.0
+                } else {
+                    caret
+                };
+                self.model.selection = (anchor, caret);
+            }
+            ModelStripEvent::Home { extend } => {
+                let anchor = if extend { self.model.selection.0 } else { 0 };
+                self.model.selection = (anchor, 0);
+            }
+            ModelStripEvent::End { extend } => {
+                let count = self.model.text.chars().count();
+                let anchor = if extend {
+                    self.model.selection.0
+                } else {
+                    count
+                };
+                self.model.selection = (anchor, count);
+            }
             ModelStripEvent::Caret { index, extend } => {
                 let anchor = if extend {
                     self.model.selection.0
@@ -336,7 +457,9 @@ mod tests {
                 text: "با ب".into(),
                 offsets: Vec::new(),
                 selection: (2, 2),
+                quality: true,
             },
+            &mut HashMap::new(),
         );
         assert_eq!(render.paths.len(), 2);
         assert_eq!(render.nodes.len(), 5);
@@ -352,7 +475,9 @@ mod tests {
                 text: "با".into(),
                 offsets: vec![(1, (-30.0, 0.0))],
                 selection: (0, 0),
+                quality: false,
             },
+            &mut HashMap::new(),
         );
         assert_ne!(pulled.paths, render.paths);
         // The strand passes through every node; the gaps are the ends and the space's sides.
@@ -361,5 +486,36 @@ mod tests {
         // A plain caret has no cloud; every node has its place on the strand.
         assert!(render.outline.is_empty());
         assert!(render.node_t.windows(2).all(|t| t[1] >= t[0]));
+    }
+
+    #[test]
+    fn typing_in_the_strip_edits_its_text_like_the_web_demo() {
+        use crate::application::widgets::model_strip::ModelStripEvent as E;
+        let path = Path::new("assets/font-sources/neural-fonts/NastaliqDemo.nufo");
+        let mut app = crate::application::workspace::Workspace::open(path).unwrap();
+        app.preview_text = "بب".into();
+        app.model.text = "بب".into();
+        app.model.selection = (1, 1);
+        app.model.offsets.insert(1, (3.0, 0.0));
+        // Space between the two letters breaks the join, and the pulls go with the old text.
+        app.model_strip_event(E::Insert(" ".into()));
+        assert_eq!(app.preview_text, "ب ب");
+        assert_eq!(app.model.selection, (2, 2));
+        assert!(app.model.offsets.is_empty());
+        app.model_strip_event(E::Erase { forward: false });
+        assert_eq!(app.preview_text, "بب");
+        assert_eq!(app.model.selection, (1, 1));
+        // Left goes on through the text; Shift extends; typing replaces the selection.
+        app.model_strip_event(E::Step {
+            by: 1,
+            extend: false,
+        });
+        assert_eq!(app.model.selection, (2, 2));
+        app.model_strip_event(E::Home { extend: true });
+        assert_eq!(app.model.selection, (2, 0));
+        app.model_strip_event(E::Insert("ا".into()));
+        assert_eq!(app.preview_text, "ا");
+        app.model_strip_event(E::End { extend: false });
+        assert_eq!(app.model.selection, (1, 1));
     }
 }
