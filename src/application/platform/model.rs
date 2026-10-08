@@ -339,6 +339,17 @@ impl crate::application::workspace::Workspace {
         }
     }
 
+    /// Put the preview back as it starts: the open sample's own text, no pulls, the caret one
+    /// letter in. Nothing here was ever saved; the source file is untouched either way.
+    pub(crate) fn reset_model_preview(&mut self) {
+        self.preview_text.clear();
+        self.model.offsets.clear();
+        self.model.drag = None;
+        // An empty text differs from any text, so the next refresh starts the caret afresh.
+        self.model.text.clear();
+        self.model.selection = (0, 0);
+    }
+
     /// Edit the strip's text: `edit` changes the letters given the selection, smallest index
     /// first, and returns where the caret goes. Pulls belong to one text, so they go.
     fn edit_model_text(&mut self, edit: impl FnOnce(&mut Vec<char>, (usize, usize)) -> usize) {
@@ -517,5 +528,20 @@ mod tests {
         assert_eq!(app.preview_text, "ا");
         app.model_strip_event(E::End { extend: false });
         assert_eq!(app.model.selection, (1, 1));
+    }
+
+    #[test]
+    fn reset_puts_the_preview_back_to_the_open_sample() {
+        let path = Path::new("assets/font-sources/neural-fonts/NastaliqDemo.nufo");
+        let mut app = crate::application::workspace::Workspace::open(path).unwrap();
+        app.open_glyph(app.font.index_of("ba-basic").unwrap());
+        let start = app.piece_preview_text();
+        app.preview_text = "بببب".into();
+        app.model.offsets.insert(2, (5.0, 1.0));
+        app.model.selection = (3, 3);
+        app.reset_model_preview();
+        assert_eq!(app.piece_preview_text(), start);
+        assert!(app.model.offsets.is_empty());
+        assert!(!app.modified, "the preview never touches the source");
     }
 }

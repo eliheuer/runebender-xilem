@@ -92,9 +92,10 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 .text_size(TextSize::Body.px())
                 .color(pal.text_muted)
         });
-    let clear_pulls = (!app.model.offsets.is_empty()).then(|| {
-        recipes::action(pal, "Let go".into(), |app: &mut Workspace| {
-            app.model.offsets.clear();
+    // The preview is a scratch pad: one click puts it back as it starts.
+    let reset = (app.preview_view == crate::application::pieces::PreviewView::Model).then(|| {
+        recipes::action(pal, "Reset preview".into(), |app: &mut Workspace| {
+            app.reset_model_preview();
         })
     });
     xcolumn(
@@ -108,7 +109,7 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             ),
             versions,
             model_error,
-            clear_pulls,
+            reset,
             status,
             button,
             sample_button,
