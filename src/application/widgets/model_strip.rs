@@ -100,6 +100,8 @@ pub(crate) struct ModelStripWidget {
     gesture: Option<Gesture>,
     /// Seconds since the strip appeared, for the ring's turn.
     clock: f64,
+    /// Where the pointer is, in strip pixels: a dragged node is drawn here, under the hand.
+    pointer: Point,
 }
 
 impl ModelStripWidget {
@@ -177,6 +179,7 @@ fn strand(
     width: f64,
     color: Color,
     ground: Color,
+    held: Option<(f64, Point)>,
 ) {
     let (lo, hi) = (u0.min(u1), u0.max(u1));
     let mut path = BezPath::new();
@@ -184,10 +187,15 @@ fn strand(
         if *u < lo - 1e-9 || *u > hi + 1e-9 {
             continue;
         }
+        // The dragged node's point is where the hand is.
+        let at = match held {
+            Some((held_u, hand)) if (held_u - *u).abs() < 1e-9 => hand,
+            _ => t * *point,
+        };
         if path.elements().is_empty() {
-            path.move_to(t * *point);
+            path.move_to(at);
         } else {
-            path.line_to(t * *point);
+            path.line_to(at);
         }
     }
     let round = |w: f64| Stroke::new(w).with_caps(Cap::Round).with_join(Join::Round);
@@ -248,6 +256,19 @@ impl Widget for ModelStripWidget {
         let Some(caret) = self.caret() else {
             return;
         };
+        // A dragged node stays under the hand; the ink follows it as the model allows.
+        let held_node = match self.gesture {
+            Some(Gesture::Node(node, ..)) => Some(node),
+            _ => None,
+        };
+        let place = |index: usize| {
+            if held_node == Some(index) {
+                self.pointer
+            } else {
+                t * render.nodes[index]
+            }
+        };
+        let held = held_node.and_then(|node| Some((*render.node_t.get(node)?, self.pointer)));
         // The whole strand and every node.
         let end = render.strand.last().map_or(0.0, |(u, _)| *u);
         strand(
@@ -258,13 +279,14 @@ impl Widget for ModelStripWidget {
             2.0,
             inks.strand,
             inks.outline,
+            held,
         );
-        for (index, at) in render.nodes.iter().enumerate() {
+        for index in 0..render.nodes.len() {
             let hollow = render.gaps.get(index).copied().unwrap_or(false);
-            node(painter, t * *at, NODE_RADIUS, hollow, &inks);
+            node(painter, place(index), NODE_RADIUS, hollow, &inks);
         }
         // The active node, and its turning half-ring.
-        let at = t * render.nodes[caret];
+        let at = place(caret);
         painter
             .fill(Circle::new(at, ACTIVE_RADIUS + 1.0), inks.outline)
             .draw();
@@ -302,6 +324,7 @@ impl Widget for ModelStripWidget {
                 // Space and the arrows edit this text, not the editor.
                 ctx.request_focus();
                 let at = ctx.local_position(state.position);
+                self.pointer = at;
                 let t = self.transform();
                 let Some(render) = self.render.clone() else {
                     return;
@@ -347,6 +370,7 @@ impl Widget for ModelStripWidget {
             }
             PointerEvent::Move(update) => {
                 let at = ctx.local_position(update.current.position);
+                self.pointer = at;
                 match self.gesture {
                     Some(Gesture::Node(node, from, t)) => {
                         // Strip pixels back to font units: the transform's scale, with y up.
@@ -357,6 +381,8 @@ impl Widget for ModelStripWidget {
                             delta: Vec2::new(delta.x, -delta.y),
                         });
                         ctx.set_handled();
+                        // the node follows the hand now, before the new drawing arrives
+                        ctx.request_render();
                     }
                     Some(Gesture::Select) => {
                         if let Some(index) = self.index_at(at, self.transform()) {
@@ -496,6 +522,7 @@ where
             size: Size::ZERO,
             gesture: None,
             clock: 0.0,
+            pointer: Point::ZERO,
         };
         (ctx.with_action_widget(|ctx| ctx.create_pod(widget)), ())
     }
@@ -565,6 +592,7 @@ mod tests {
             size: Size::ZERO,
             gesture: None,
             clock: 0.0,
+            pointer: Point::ZERO,
         };
         let mut harness = TestHarness::create_with_size(
             crate::application::view::default_property_set(),
