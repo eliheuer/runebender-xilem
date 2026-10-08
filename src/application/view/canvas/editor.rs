@@ -3103,8 +3103,11 @@ impl Widget for EditorWidget {
                     Drag::LabelCorners { start } => {
                         use crate::application::editor::tools::label::LabelMoving;
                         let start = *start;
+                        // Whole grid steps, so the shape shows where it will land.
                         self.session.label.moving = Some(LabelMoving::Corners {
-                            by: glyph_design - start,
+                            by: crate::application::editor::tools::label::grid_step(
+                                glyph_design - start,
+                            ),
                         });
                         ctx.request_render();
                     }
@@ -3117,7 +3120,9 @@ impl Widget for EditorWidget {
                         let (region, start) = (*region, *start);
                         self.session.label.moving = Some(LabelMoving::Region {
                             region,
-                            by: glyph_design - start,
+                            by: crate::application::editor::tools::label::grid_step(
+                                glyph_design - start,
+                            ),
                         });
                         ctx.request_render();
                     }
@@ -3539,6 +3544,24 @@ impl Widget for EditorWidget {
                 }
                 Key::Named(NamedKey::Backspace | NamedKey::Delete) => {
                     edited = self.session.delete_label_selection();
+                    true
+                }
+                Key::Named(
+                    arrow @ (NamedKey::ArrowLeft
+                    | NamedKey::ArrowRight
+                    | NamedKey::ArrowUp
+                    | NamedKey::ArrowDown),
+                ) if self.session.label.selected.is_some() => {
+                    // One grid step, or eight with Shift.
+                    use crate::application::editor::tools::label::LABEL_GRID;
+                    let step = LABEL_GRID * if shift { 8.0 } else { 1.0 };
+                    let by = match arrow {
+                        NamedKey::ArrowLeft => kurbo::Vec2::new(-step, 0.0),
+                        NamedKey::ArrowRight => kurbo::Vec2::new(step, 0.0),
+                        NamedKey::ArrowUp => kurbo::Vec2::new(0.0, step),
+                        _ => kurbo::Vec2::new(0.0, -step),
+                    };
+                    edited = self.session.nudge_label_selection(by);
                     true
                 }
                 Key::Named(NamedKey::Escape) if self.session.label.selected.is_some() => {

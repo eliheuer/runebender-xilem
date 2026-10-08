@@ -102,6 +102,14 @@ pub(crate) struct LabelState {
 /// Corners and cut ends sit on this grid, in font units, so neighbors meet exactly.
 pub(crate) const LABEL_GRID: f64 = 8.0;
 
+/// A move rounded to whole grid steps.
+pub(crate) fn grid_step(by: kurbo::Vec2) -> kurbo::Vec2 {
+    kurbo::Vec2::new(
+        (by.x / LABEL_GRID).round() * LABEL_GRID,
+        (by.y / LABEL_GRID).round() * LABEL_GRID,
+    )
+}
+
 /// `p` on the label grid.
 pub(crate) fn on_grid(p: Point) -> Point {
     Point::new(
@@ -694,6 +702,19 @@ impl Session {
     }
 
     /// Store whatever was dragged where it was dropped.
+    /// Move the picked shape or the picked corners by `by`, as an arrow key does.
+    pub(crate) fn nudge_label_selection(&mut self, by: kurbo::Vec2) -> bool {
+        self.label.moving = match &self.label.selected {
+            Some(LabelSelection::Region(region)) => Some(LabelMoving::Region {
+                region: *region,
+                by,
+            }),
+            Some(LabelSelection::Corners(_)) => Some(LabelMoving::Corners { by }),
+            _ => return false,
+        };
+        self.finish_label_move(true)
+    }
+
     pub(crate) fn finish_label_move(&mut self, keep: bool) -> bool {
         let Some(moving) = self.label.moving.take() else {
             return false;
@@ -1077,6 +1098,26 @@ mod tests {
                 .all(|r| r.seed.is_none() && r.polygon.len() >= 3)
         );
         assert!(sample.cuts.is_empty());
+
+        // an arrow key moves the picked shape one grid step, and its corners stay on the grid
+        let before = app.session.neural_item().samples[0].regions[0]
+            .polygon
+            .clone();
+        Arc::make_mut(&mut app.session).label.selected = Some(LabelSelection::Region(0));
+        app.edit_label(|s| s.nudge_label_selection(kurbo::Vec2::new(LABEL_GRID, 0.0)));
+        let after = app.session.neural_item().samples[0].regions[0]
+            .polygon
+            .clone();
+        for (a, b) in before.iter().zip(&after) {
+            assert_eq!(b[0], a[0] + LABEL_GRID);
+            assert_eq!(b[1], a[1]);
+            assert_eq!(b[0] % LABEL_GRID, 0.0);
+        }
+        // a drag moves in whole grid steps
+        assert_eq!(
+            grid_step(kurbo::Vec2::new(13.0, -3.0)),
+            kurbo::Vec2::new(16.0, 0.0)
+        );
 
         // what is under the pointer: a polygon, or nothing
         assert!(matches!(
