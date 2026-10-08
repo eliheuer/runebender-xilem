@@ -79,8 +79,6 @@ pub(crate) enum LabelHit {
     Lasso {
         region: usize,
     },
-    /// A piece of ink, with its outline for the glow.
-    Piece(BezPath),
     Nothing,
 }
 
@@ -464,24 +462,10 @@ impl Session {
             .unwrap_or_default()
     }
 
-    /// The pieces of the layer's ink under the selected sample's cuts.
-    pub(crate) fn label_pieces(&self) -> Vec<BezPath> {
-        pieces(&self.label_paths(), &self.label_cuts())
-    }
-
-    /// The piece of ink under `at`, if any.
-    pub(crate) fn label_piece_at(&self, at: Point) -> Option<BezPath> {
-        let pieces = self.label_pieces();
-        piece_at(&pieces, at).map(|index| pieces[index].clone())
-    }
-
     /// What is under `at` within `reach` font units, in the order a press takes it.
     pub(crate) fn label_hit(&self, at: Point, reach: f64) -> LabelHit {
         let Some((_, sample)) = self.selected_sample() else {
-            return match self.label_piece_at(at) {
-                Some(piece) => LabelHit::Piece(piece),
-                None => LabelHit::Nothing,
-            };
+            return LabelHit::Nothing;
         };
         // Every lasso polygon can be edited; a press on it makes its letter active.
         let editable = |_position: usize, region: &NeuralRegion| region.seed.is_none();
@@ -577,87 +561,7 @@ impl Session {
         if let Some(region) = lasso {
             return LabelHit::Lasso { region };
         }
-        match self.label_piece_at(at) {
-            Some(piece) => LabelHit::Piece(piece),
-            None => LabelHit::Nothing,
-        }
-    }
-
-    /// Give the piece of ink under `at` to the active letter, or with `erase`, take it away.
-    ///
-    /// A piece another letter owns changes hands. A new seed is stored with its training
-    /// polygon.
-    pub(crate) fn paint_piece(&mut self, at: Point, erase: bool) -> bool {
-        let Some(position) = self.label.sample else {
-            self.label.error = Some("Draw a loop around some ink to make a sample first".into());
-            return false;
-        };
-        let Some((index, _)) = self.active_letter() else {
-            self.label.error = Some("Type the text of this sample first".into());
-            return false;
-        };
-        let pieces = self.label_pieces();
-        let Some(piece) = piece_at(&pieces, at) else {
-            self.label.error = Some("No ink there".into());
-            return false;
-        };
-        let mut item = self.neural_item();
-        let Some(sample) = item.samples.get_mut(position) else {
-            return false;
-        };
-        let same_piece: Vec<usize> = sample
-            .regions
-            .iter()
-            .enumerate()
-            .filter(|(_, region)| {
-                region.seed.is_some_and(|seed| {
-                    piece_at(&pieces, Point::new(seed[0], seed[1])) == Some(piece)
-                })
-            })
-            .map(|(position, _)| position)
-            .collect();
-        if erase {
-            let before = sample.regions.len();
-            let mut position = 0;
-            sample.regions.retain(|region| {
-                let keep = !(same_piece.contains(&position) && region.owners.contains(&index));
-                position += 1;
-                keep
-            });
-            if sample.regions.len() == before {
-                return false;
-            }
-        } else if same_piece
-            .iter()
-            .any(|p| sample.regions[*p].owners == vec![index])
-        {
-            return false;
-        } else if let Some(p) = same_piece.first().copied() {
-            sample.regions[p].owners = vec![index];
-        } else {
-            sample.regions.push(NeuralRegion {
-                owners: vec![index],
-                polygon: Vec::new(),
-                seed: Some([at.x.round(), at.y.round()]),
-            });
-        }
-        self.derive_and_store(item)
-    }
-
-    /// Cut the ink along the line from `a` to `b`.
-    pub(crate) fn add_cut(&mut self, a: Point, b: Point) -> bool {
-        let Some(position) = self.label.sample else {
-            self.label.error = Some("Draw a loop around some ink to make a sample first".into());
-            return false;
-        };
-        let mut item = self.neural_item();
-        let Some(sample) = item.samples.get_mut(position) else {
-            return false;
-        };
-        let (a, b) = (on_grid(a), on_grid(b));
-        sample.cuts.push([[a.x, a.y], [b.x, b.y]]);
-        self.label.selected = Some(LabelSelection::Cut(sample.cuts.len() - 1));
-        self.derive_and_store(item)
+        LabelHit::Nothing
     }
 
     /// Use a freehand loop as a lasso: a polygon with few corners for the active letter, or
@@ -1142,7 +1046,7 @@ mod tests {
     }
 
     #[test]
-    fn painting_cutting_and_erasing_label_the_ink() {
+    fn loops_label_the_ink_with_polygons() {
         let path = item_font("paint");
         let mut app = Workspace::open(&path).unwrap();
         app.open_glyph(app.font.index_of("item").unwrap());
@@ -1152,92 +1056,37 @@ mod tests {
         app.edit_label(|s| s.add_label_lasso(&loop_around(50.0, 650.0, -50.0, 300.0)));
         assert_eq!(app.session.neural_item().samples.len(), 1);
         assert_eq!(app.session.label.sample, Some(0));
-
-        // no text yet: nothing to paint with
-        app.edit_label(|s| s.paint_piece(Point::new(150.0, 50.0), false));
-        assert!(app.session.neural_item().samples[0].regions.is_empty());
-        assert!(app.session.label.error.is_some());
-
         app.edit_label(|s| s.set_sample_text("ب س".into()));
         assert_eq!(app.session.active_letter(), Some((0, 'ب')));
 
-        // one click: the whole bar is ب
-        app.edit_label(|s| s.paint_piece(Point::new(150.0, 50.0), false));
-        assert!(owns(&app, 0, (550.0, 50.0)));
-        assert_eq!(
-            app.session.label.active, 0,
-            "painting does not move on by itself"
-        );
-
-        // a cut across the bar, then the right side is س
-        app.edit_label(|s| s.add_cut(Point::new(350.0, -50.0), Point::new(350.0, 150.0)));
-        assert_eq!(app.session.label.selected, Some(LabelSelection::Cut(0)));
-        Arc::make_mut(&mut app.session).next_label_letter();
-        assert_eq!(
-            app.session.active_letter(),
-            Some((2, 'س')),
-            "the space is not a letter"
-        );
-        app.edit_label(|s| s.paint_piece(Point::new(500.0, 50.0), false));
-        app.edit_label(|s| s.paint_piece(Point::new(475.0, 225.0), false));
+        // a loop around the left of the bar is ب's polygon
+        app.edit_label(|s| s.add_label_lasso(&loop_around(60.0, 350.0, -40.0, 160.0)));
         assert!(owns(&app, 0, (200.0, 50.0)) && !owns(&app, 0, (500.0, 50.0)));
+
+        // the next letter skips the space; a loop around the right and its dot is س's
+        Arc::make_mut(&mut app.session).next_label_letter();
+        assert_eq!(app.session.active_letter(), Some((2, 'س')));
+        app.edit_label(|s| s.add_label_lasso(&loop_around(350.0, 640.0, -40.0, 300.0)));
         assert!(owns(&app, 1, (500.0, 50.0)) && owns(&app, 1, (475.0, 225.0)));
-        assert!(
-            owns(&app, 0, (360.0, 50.0)) && owns(&app, 1, (340.0, 50.0)),
-            "both letters own a band across the cut"
-        );
         let sample = app.session.neural_item().samples[0].clone();
-        assert_eq!(sample.regions.len(), 3);
+        assert_eq!(sample.regions.len(), 2);
         assert!(
             sample
                 .regions
                 .iter()
-                .all(|r| r.seed.is_some() && r.polygon.len() >= 3)
+                .all(|r| r.seed.is_none() && r.polygon.len() >= 3)
         );
+        assert!(sample.cuts.is_empty());
 
-        // painting a piece again with another letter changes hands; Option-click erases
-        Arc::make_mut(&mut app.session).label.active = 0;
-        app.edit_label(|s| s.paint_piece(Point::new(475.0, 225.0), false));
-        assert!(owns(&app, 0, (475.0, 225.0)) && !owns(&app, 1, (475.0, 225.0)));
-        app.edit_label(|s| s.paint_piece(Point::new(475.0, 225.0), true));
-        assert!(!owns(&app, 0, (475.0, 225.0)));
-        assert_eq!(app.session.neural_item().samples[0].regions.len(), 2);
-
-        // what is under the pointer
-        assert_eq!(
-            app.session.label_hit(Point::new(352.0, -48.0), 8.0),
-            LabelHit::CutEnd { cut: 0, end: 0 }
-        );
-        assert_eq!(
-            app.session.label_hit(Point::new(352.0, 50.0), 8.0),
-            LabelHit::Cut { cut: 0 }
-        );
+        // what is under the pointer: a polygon, or nothing
         assert!(matches!(
             app.session.label_hit(Point::new(200.0, 50.0), 8.0),
-            LabelHit::Piece(_)
+            LabelHit::Lasso { .. }
         ));
         assert_eq!(
-            app.session.label_hit(Point::new(200.0, 500.0), 8.0),
+            app.session.label_hit(Point::new(200.0, 900.0), 8.0),
             LabelHit::Nothing
         );
-
-        // deleting the cut merges the pieces: both seeds now share the bar
-        Arc::make_mut(&mut app.session).label.selected = Some(LabelSelection::Cut(0));
-        app.edit_label(|s| s.delete_label_selection());
-        assert!(app.session.neural_item().samples[0].cuts.is_empty());
-        assert!(owns(&app, 0, (500.0, 50.0)) && owns(&app, 1, (200.0, 50.0)));
-        app.undo_open_glyph(false);
-        assert_eq!(app.session.neural_item().samples[0].cuts.len(), 1);
-        assert!(!owns(&app, 0, (500.0, 50.0)));
-
-        // Escape leaves the sample; the next loop is a second sample
-        Arc::make_mut(&mut app.session).select_sample(None);
-        app.edit_label(|s| s.add_label_lasso(&loop_around(700.0, 900.0, 0.0, 100.0)));
-        assert_eq!(app.session.neural_item().samples.len(), 2);
-        assert_eq!(app.session.label.sample, Some(1));
-        app.edit_label(|s| s.delete_sample());
-        assert_eq!(app.session.neural_item().samples.len(), 1);
-        assert_eq!(app.session.label.sample, None);
         std::fs::remove_dir_all(&path).ok();
     }
 
@@ -1378,8 +1227,7 @@ mod tests {
         app.select_tool(Tool::Label);
         app.edit_label(|s| s.add_label_lasso(&loop_around(50.0, 650.0, -50.0, 300.0)));
         app.edit_label(|s| s.set_sample_text("بس".into()));
-        app.edit_label(|s| s.add_cut(Point::new(350.0, -50.0), Point::new(350.0, 150.0)));
-        app.edit_label(|s| s.paint_piece(Point::new(150.0, 50.0), false));
+        app.edit_label(|s| s.add_label_lasso(&loop_around(60.0, 350.0, -40.0, 160.0)));
         app.font.project.save().unwrap();
 
         // what a trainer reads: one letter still has no ink, and the error names it
@@ -1389,8 +1237,7 @@ mod tests {
         assert!(error.contains('س'), "{error}");
 
         Arc::make_mut(&mut app.session).next_label_letter();
-        app.edit_label(|s| s.paint_piece(Point::new(500.0, 50.0), false));
-        app.edit_label(|s| s.paint_piece(Point::new(475.0, 225.0), false));
+        app.edit_label(|s| s.add_label_lasso(&loop_around(350.0, 640.0, -40.0, 300.0)));
         app.font.project.save().unwrap();
 
         let mut reopened = Workspace::open(&path).unwrap();
@@ -1401,11 +1248,10 @@ mod tests {
         let prepared = nufo::training::prepare(&canvas.item.samples[0], &canvas.contours).unwrap();
         assert_eq!(prepared.text, "بس");
         assert_eq!(prepared.letters.len(), 2);
-        // the trainer gets polygons it can clip with, grown across the cut
+        // the trainer gets the polygon as drawn, on the grid
         let right = &prepared.letters[1].regions[0];
         let min_x = right.iter().map(|p| p.x).fold(f64::MAX, f64::min);
-        // the cut sits on the grid at 352
-        assert!((min_x - (352.0 - OVERLAP)).abs() < 1.5, "{min_x}");
+        assert!((min_x - 352.0).abs() < 1.5, "{min_x}");
         std::fs::remove_dir_all(&path).ok();
     }
 }

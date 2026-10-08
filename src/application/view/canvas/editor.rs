@@ -466,12 +466,10 @@ enum Drag {
         anchor: Option<Point>,
         corner: Point,
     },
-    /// Label tool: a press in screen space. It becomes a freehand region when it travels,
-    /// and a polygon corner when it does not.
+    /// Label tool: a press in screen space. A loop becomes a polygon; a click lets go of the
+    /// picked shape.
     Label {
         points: Vec<Point>,
-        /// Option was held at the press: a click unpaints instead of painting.
-        erase: bool,
     },
     /// A polygon corner of a label region follows the pointer; the session holds where.
     LabelCorner {
@@ -1077,12 +1075,6 @@ impl EditorWidget {
                 }
             });
         }
-        // The piece under the pointer glows.
-        if let Some(LabelHit::Piece(piece)) = &self.label_hover {
-            painter
-                .fill(&(affine * piece.clone()), pal.text.with_alpha(0.18))
-                .draw();
-        }
         // Cuts: thin lines; the selected or hovered one carries its end handles.
         let picked_cut = match (&self.session.label.selected, &self.label_hover) {
             (Some(LabelSelection::Cut(cut)), _) => Some(*cut),
@@ -1226,28 +1218,13 @@ impl EditorWidget {
             } else {
                 pal.tool_feedback()
             };
-            let design: Vec<Point> = points
-                .iter()
-                .map(|p| self.screen_to_glyph_design(*p))
-                .collect();
-            let is_cut = selected.is_some()
-                && crate::application::editor::tools::label::drag_is(
-                    &design,
-                    &self.session.label_contours(),
-                    12.0 / self.session.viewport.zoom,
-                ) == crate::application::editor::tools::label::DragKind::Cut;
             let mut path = kurbo::BezPath::new();
-            if is_cut {
-                path.move_to(points[0]);
-                path.line_to(points[points.len() - 1]);
-            } else {
-                path.move_to(points[0]);
-                for point in &points[1..] {
-                    path.line_to(*point);
-                }
-                path.close_path();
-                painter.fill(&path, color.with_alpha(0.12)).draw();
+            path.move_to(points[0]);
+            for point in &points[1..] {
+                path.line_to(*point);
             }
+            path.close_path();
+            painter.fill(&path, color.with_alpha(0.12)).draw();
             painter.stroke(&path, &Stroke::new(1.5), color).draw();
         }
         // What a click does, in the corner of the canvas.
@@ -1270,21 +1247,15 @@ impl EditorWidget {
             return Some(error.clone());
         }
         if self.session.label.sample.is_none() {
-            return Some(match self.label_hover {
-                Some(LabelHit::Piece(_)) => {
-                    "Click a sample to label it. Drag a loop around writing for a new one".into()
-                }
-                _ => "Drag a loop around writing to make a sample".into(),
-            });
+            return Some(
+                "Click a word to label it. Drag a loop around writing for a new one".into(),
+            );
         }
         let letter = self.session.active_letter().map(|(_, c)| c);
         let Some(letter) = letter else {
             return Some("Type the sample's text in the panel".into());
         };
         Some(match &self.label_hover {
-            Some(LabelHit::Piece(_)) => {
-                format!("Click: paint {letter}. Option-click: unpaint. Drag across: cut")
-            }
             Some(LabelHit::Corner { .. }) => {
                 "Drag: move the corner with any that meet it. Option-drag: only this one".into()
             }
@@ -1292,7 +1263,7 @@ impl EditorWidget {
             Some(LabelHit::CutEnd { .. }) => "Drag: move the end of the cut".into(),
             Some(LabelHit::Cut { .. }) => "Drag: move the cut. Delete: remove it".into(),
             Some(LabelHit::Lasso { .. }) => "Click: pick this shape. Drag: move it".into(),
-            _ => format!("Painting {letter}. Drag a loop: lasso. Enter: next letter"),
+            _ => format!("Drag a loop around the ink of {letter}. Enter: next letter"),
         })
     }
 
@@ -2601,6 +2572,8 @@ impl Widget for EditorWidget {
                         ctx.request_focus();
                         let design = self.screen_to_glyph_design(at);
                         let reach = HIT_RADIUS_PX / self.session.viewport.zoom;
+                        // A new press starts fresh: the last gesture's hint goes away.
+                        self.session.label.error = None;
                         match self.session.label_hit(design, reach) {
                             LabelHit::Corner { region, corner } => {
                                 self.session.activate_label_region(region);
@@ -2725,7 +2698,7 @@ impl Widget for EditorWidget {
                                 ctx.capture_pointer();
                                 self.emit(ctx, false);
                             }
-                            LabelHit::Piece(_) | LabelHit::Nothing
+                            LabelHit::Nothing
                                 if state.modifiers.shift()
                                     && self.session.label.sample.is_some() =>
                             {
@@ -2736,7 +2709,7 @@ impl Widget for EditorWidget {
                                 };
                                 ctx.capture_pointer();
                             }
-                            LabelHit::Piece(_) | LabelHit::Nothing => {
+                            LabelHit::Nothing => {
                                 // Words are not a mode: a press outside the open word
                                 // opens the word under it, or closes the open one.
                                 let open = self.session.label.sample;
@@ -2753,10 +2726,7 @@ impl Widget for EditorWidget {
                                     self.session.select_sample(Some(sample));
                                     self.emit(ctx, false);
                                 } else {
-                                    self.drag = Drag::Label {
-                                        points: vec![at],
-                                        erase: state.modifiers.alt(),
-                                    };
+                                    self.drag = Drag::Label { points: vec![at] };
                                 }
                             }
                         }
@@ -3285,8 +3255,7 @@ impl Widget for EditorWidget {
                         self.drag = Drag::None;
                         self.emit(ctx, changed);
                     }
-                    Drag::Label { points, erase } => {
-                        let erase = *erase;
+                    Drag::Label { points } => {
                         let mut changed = false;
                         if !cancelled {
                             let design: Vec<Point> = points
@@ -3302,32 +3271,17 @@ impl Widget for EditorWidget {
                             let contours = self.session.label_contours();
                             let near = 12.0 / self.session.viewport.zoom;
                             if !moved {
-                                // A click: paint the piece, or with Option, unpaint it.
-                                if self.session.label.sample.is_some() {
-                                    self.session.label.selected = None;
-                                    changed = self.session.paint_piece(design[0], erase);
-                                }
+                                // A click on nothing lets go of the picked shape.
+                                self.session.label.selected = None;
                             } else {
+                                // Labels are polygons: a loop makes one, any other drag
+                                // does nothing.
                                 use crate::application::editor::tools::label::{DragKind, drag_is};
-                                let kind = drag_is(&design, &contours, near);
-                                let sample = self.session.label.sample.is_some();
-                                match kind {
-                                    DragKind::Cut if sample => {
-                                        changed = self
-                                            .session
-                                            .add_cut(design[0], design[design.len() - 1]);
-                                    }
-                                    DragKind::Lasso => {
-                                        changed = self.session.add_label_lasso(&design);
-                                    }
-                                    _ => {
-                                        self.session.label.error = Some(if sample {
-                                            "Drag across a stroke to cut it, or a loop to lasso"
-                                                .into()
-                                        } else {
-                                            "Drag a loop around writing to make a sample".into()
-                                        });
-                                    }
+                                if drag_is(&design, &contours, near) == DragKind::Lasso {
+                                    changed = self.session.add_label_lasso(&design);
+                                } else {
+                                    self.session.label.error =
+                                        Some("Drag a loop: close it near where it began".into());
                                 }
                             }
                         }
@@ -5601,9 +5555,9 @@ mod tests {
     }
 
     #[test]
-    fn a_label_loop_makes_a_sample_and_hovered_ink_glows() {
+    fn a_label_loop_makes_a_sample() {
         // The harness holds no document, so each edit stages from the same base; the
-        // painting and cutting gestures are covered by the session's own tests.
+        // polygon gestures are covered by the session's own tests.
         let mut editor = widget();
         editor.tool = Tool::Label;
         let original = projected_glyph(&editor.session);
@@ -5612,18 +5566,15 @@ mod tests {
         let affine = harness.edit_root_widget(|root| root.widget.glyph_affine());
         let screen = |x: f64, y: f64| affine * Point::new(x, y);
 
-        // hovering the square's ink glows and the caption says what a click does
+        // with no word open, the caption says what to do
         harness.mouse_move(screen(200.0, 350.0));
         harness.edit_root_widget(|root| {
-            assert!(matches!(
-                root.widget.label_hover,
-                Some(crate::application::editor::tools::label::LabelHit::Piece(_))
-            ));
+            assert!(root.widget.label_hover.is_none());
             assert!(
                 root.widget
                     .label_caption()
                     .unwrap()
-                    .starts_with("Click a sample")
+                    .starts_with("Click a word")
             );
         });
 
@@ -5703,7 +5654,7 @@ mod tests {
     }
 
     #[test]
-    fn label_clicks_through_the_workspace_paint_cut_and_keep_the_sample() {
+    fn label_clicks_through_the_workspace_keep_the_sample_and_make_only_polygons() {
         use crate::application::editor::tools::label::LabelSelection;
         let path = std::path::Path::new("assets/font-sources/neural-fonts/NastaliqDemo.nufo");
         let mut workspace = Workspace::open(path).expect("the demo source opens");
@@ -5735,7 +5686,7 @@ mod tests {
         let affine = harness.edit_root_widget(|root| root.widget.glyph_affine());
         let screen = |x: f64, y: f64| affine * Point::new(x, y);
 
-        // a click on the ب tooth paints it with the active letter
+        // a click on the ب tooth keeps the word open and changes nothing
         harness.mouse_move(screen(1100.0, 450.0));
         harness.mouse_button_press(Some(PointerButton::Primary));
         harness.mouse_button_release(Some(PointerButton::Primary));
@@ -5748,7 +5699,8 @@ mod tests {
         );
         assert!(workspace.session.active_letter().is_some());
 
-        // a drag across the long stroke is a cut
+        // a drag across the long stroke is not a loop: a hint, and no cut
+        let before = workspace.session.neural_item();
         harness.mouse_move(screen(300.0, 900.0));
         harness.mouse_button_press(Some(PointerButton::Primary));
         for y in [700.0, 500.0, 300.0, 100.0, -100.0, -300.0] {
@@ -5756,12 +5708,8 @@ mod tests {
         }
         harness.mouse_button_release(Some(PointerButton::Primary));
         dispatch(&mut harness, &mut workspace);
-        assert_eq!(workspace.session.label.error, None);
-        assert_eq!(workspace.session.neural_item().samples[0].cuts.len(), 1);
-        assert_eq!(
-            workspace.session.label.selected,
-            Some(LabelSelection::Cut(0))
-        );
+        assert!(workspace.session.label.error.is_some());
+        assert_eq!(workspace.session.neural_item(), before);
         assert!(workspace.session.selected_sample().is_some());
 
         // a click inside one of the file's lasso polygons picks it up
@@ -5775,7 +5723,7 @@ mod tests {
         ));
         assert_eq!(workspace.session.label.error, None);
 
-        // a short drag that stays on the ink is neither a cut nor a lasso: a hint, no change
+        // a short drag that stays on the ink is not a loop: no change
         harness.mouse_move(screen(-1480.0, 400.0));
         harness.mouse_button_press(Some(PointerButton::Primary));
         for x in [-1460.0, -1440.0, -1420.0] {
@@ -5783,7 +5731,7 @@ mod tests {
         }
         harness.mouse_button_release(Some(PointerButton::Primary));
         dispatch(&mut harness, &mut workspace);
-        assert_eq!(workspace.session.neural_item().samples[0].cuts.len(), 1);
+        assert!(workspace.session.neural_item().samples[0].cuts.is_empty());
     }
 
     #[test]
