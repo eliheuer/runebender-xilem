@@ -3348,7 +3348,7 @@ dependencies = [
 [[package]]
 name = "neuraltype-core"
 version = "0.1.0"
-source = "git+https://github.com/eliheuer/post-opentype?rev=e50df26ee5962c3453058e1018379c3e57d26c72#e50df26ee5962c3453058e1018379c3e57d26c72"
+source = "git+https://github.com/eliheuer/post-opentype?rev=572c905cde57fa65a3e0d5754f6c62699109029c#572c905cde57fa65a3e0d5754f6c62699109029c"
 dependencies = [
  "kurbo 0.11.3",
  "serde",
