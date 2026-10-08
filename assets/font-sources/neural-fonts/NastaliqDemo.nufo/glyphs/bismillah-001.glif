@@ -703,12 +703,8 @@
 										<real>-504</real>
 									</array>
 									<array>
-										<real>664</real>
-										<real>-568</real>
-									</array>
-									<array>
-										<real>768</real>
-										<real>-240</real>
+										<real>560</real>
+										<real>-576</real>
 									</array>
 									<array>
 										<real>872</real>
@@ -719,12 +715,8 @@
 										<real>488</real>
 									</array>
 									<array>
-										<real>400</real>
-										<real>368</real>
-									</array>
-									<array>
-										<real>-232</real>
-										<real>328</real>
+										<real>-304</real>
+										<real>336</real>
 									</array>
 								</array>
 							</dict>
@@ -736,32 +728,36 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-808</real>
-										<real>-432</real>
+										<real>-888</real>
+										<real>-160</real>
 									</array>
 									<array>
-										<real>-680</real>
-										<real>-440</real>
+										<real>-808</real>
+										<real>-448</real>
+									</array>
+									<array>
+										<real>-672</real>
+										<real>-472</real>
 									</array>
 									<array>
 										<real>-256</real>
 										<real>-120</real>
 									</array>
 									<array>
-										<real>-232</real>
-										<real>328</real>
+										<real>-304</real>
+										<real>336</real>
 									</array>
 									<array>
-										<real>-560</real>
-										<real>248</real>
+										<real>-536</real>
+										<real>272</real>
 									</array>
 									<array>
-										<real>-696</real>
-										<real>152</real>
+										<real>-712</real>
+										<real>168</real>
 									</array>
 									<array>
-										<real>-784</real>
-										<real>-0</real>
+										<real>-816</real>
+										<real>8</real>
 									</array>
 								</array>
 							</dict>
@@ -773,12 +769,12 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-728</real>
-										<real>192</real>
+										<real>-712</real>
+										<real>168</real>
 									</array>
 									<array>
-										<real>-576</real>
-										<real>288</real>
+										<real>-536</real>
+										<real>272</real>
 									</array>
 									<array>
 										<real>-536</real>
@@ -802,12 +798,12 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-840</real>
-										<real>-0</real>
+										<real>-816</real>
+										<real>8</real>
 									</array>
 									<array>
-										<real>-728</real>
-										<real>192</real>
+										<real>-712</real>
+										<real>168</real>
 									</array>
 									<array>
 										<real>-768</real>
@@ -819,7 +815,7 @@
 									</array>
 									<array>
 										<real>-888</real>
-										<real>-88</real>
+										<real>-160</real>
 									</array>
 								</array>
 							</dict>
@@ -831,28 +827,28 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-1064</real>
-										<real>-88</real>
+										<real>-1168</real>
+										<real>-144</real>
 									</array>
 									<array>
 										<real>-888</real>
-										<real>-88</real>
+										<real>-160</real>
 									</array>
 									<array>
 										<real>-944</real>
 										<real>736</real>
 									</array>
 									<array>
-										<real>-1064</real>
-										<real>704</real>
+										<real>-1152</real>
+										<real>720</real>
 									</array>
 									<array>
 										<real>-1296</real>
 										<real>544</real>
 									</array>
 									<array>
-										<real>-1088</real>
-										<real>384</real>
+										<real>-1176</real>
+										<real>352</real>
 									</array>
 								</array>
 							</dict>
@@ -864,16 +860,16 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-1512</real>
-										<real>-88</real>
+										<real>-1544</real>
+										<real>-152</real>
 									</array>
 									<array>
-										<real>-1064</real>
-										<real>-88</real>
+										<real>-1168</real>
+										<real>-144</real>
 									</array>
 									<array>
-										<real>-1088</real>
-										<real>384</real>
+										<real>-1176</real>
+										<real>352</real>
 									</array>
 									<array>
 										<real>-1296</real>
@@ -882,6 +878,10 @@
 									<array>
 										<real>-1384</real>
 										<real>168</real>
+									</array>
+									<array>
+										<real>-1592</real>
+										<real>72</real>
 									</array>
 								</array>
 							</dict>
@@ -893,16 +893,16 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-1552</real>
-										<real>144</real>
+										<real>-1592</real>
+										<real>72</real>
 									</array>
 									<array>
-										<real>-1424</real>
-										<real>176</real>
+										<real>-1384</real>
+										<real>168</real>
 									</array>
 									<array>
-										<real>-1336</real>
-										<real>552</real>
+										<real>-1296</real>
+										<real>544</real>
 									</array>
 									<array>
 										<real>-1384</real>
@@ -922,28 +922,32 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-1832</real>
-										<real>-256</real>
-									</array>
-									<array>
-										<real>-1608</real>
+										<real>-1816</real>
 										<real>-264</real>
 									</array>
 									<array>
-										<real>-1608</real>
-										<real>736</real>
+										<real>-1544</real>
+										<real>-152</real>
 									</array>
 									<array>
-										<real>-1776</real>
-										<real>728</real>
+										<real>-1592</real>
+										<real>72</real>
 									</array>
 									<array>
-										<real>-1776</real>
-										<real>552</real>
+										<real>-1520</real>
+										<real>832</real>
+									</array>
+									<array>
+										<real>-1712</real>
+										<real>776</real>
+									</array>
+									<array>
+										<real>-1784</real>
+										<real>496</real>
 									</array>
 									<array>
 										<real>-1824</real>
-										<real>312</real>
+										<real>272</real>
 									</array>
 								</array>
 							</dict>
@@ -955,8 +959,8 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-2208</real>
-										<real>-256</real>
+										<real>-2296</real>
+										<real>-288</real>
 									</array>
 									<array>
 										<real>-1816</real>
@@ -967,12 +971,8 @@
 										<real>272</real>
 									</array>
 									<array>
-										<real>-1920</real>
-										<real>208</real>
-									</array>
-									<array>
-										<real>-2040</real>
-										<real>56</real>
+										<real>-2024</real>
+										<real>136</real>
 									</array>
 								</array>
 							</dict>
@@ -984,20 +984,20 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-2008</real>
+										<real>-2152</real>
 										<real>552</real>
 									</array>
 									<array>
-										<real>-1776</real>
-										<real>552</real>
+										<real>-1784</real>
+										<real>496</real>
 									</array>
 									<array>
-										<real>-1776</real>
-										<real>728</real>
+										<real>-1712</real>
+										<real>776</real>
 									</array>
 									<array>
-										<real>-2008</real>
-										<real>728</real>
+										<real>-2040</real>
+										<real>744</real>
 									</array>
 								</array>
 							</dict>
@@ -1009,32 +1009,24 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-2072</real>
-										<real>144</real>
-									</array>
-									<array>
-										<real>-2008</real>
-										<real>192</real>
+										<real>-2024</real>
+										<real>136</real>
 									</array>
 									<array>
 										<real>-1824</real>
-										<real>312</real>
+										<real>272</real>
 									</array>
 									<array>
-										<real>-1776</real>
+										<real>-1784</real>
+										<real>496</real>
+									</array>
+									<array>
+										<real>-2152</real>
 										<real>552</real>
 									</array>
 									<array>
-										<real>-2008</real>
-										<real>552</real>
-									</array>
-									<array>
-										<real>-2272</real>
-										<real>512</real>
-									</array>
-									<array>
-										<real>-2288</real>
-										<real>288</real>
+										<real>-2376</real>
+										<real>408</real>
 									</array>
 								</array>
 							</dict>
@@ -1046,20 +1038,20 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-2384</real>
-										<real>-56</real>
+										<real>-2296</real>
+										<real>-288</real>
 									</array>
 									<array>
-										<real>-2072</real>
-										<real>144</real>
-									</array>
-									<array>
-										<real>-2288</real>
-										<real>288</real>
+										<real>-2024</real>
+										<real>136</real>
 									</array>
 									<array>
 										<real>-2376</real>
-										<real>216</real>
+										<real>408</real>
+									</array>
+									<array>
+										<real>-2384</real>
+										<real>280</real>
 									</array>
 								</array>
 							</dict>
@@ -1071,36 +1063,36 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-2528</real>
-										<real>-616</real>
+										<real>-2296</real>
+										<real>-288</real>
 									</array>
 									<array>
 										<real>-2384</real>
-										<real>-56</real>
+										<real>280</real>
 									</array>
 									<array>
-										<real>-2376</real>
-										<real>216</real>
+										<real>-2768</real>
+										<real>168</real>
 									</array>
 									<array>
-										<real>-2576</real>
+										<real>-2960</real>
 										<real>152</real>
 									</array>
 									<array>
-										<real>-2648</real>
-										<real>104</real>
+										<real>-3104</real>
+										<real>80</real>
 									</array>
 									<array>
-										<real>-3184</real>
-										<real>40</real>
-									</array>
-									<array>
-										<real>-3224</real>
+										<real>-3288</real>
 										<real>-256</real>
 									</array>
 									<array>
 										<real>-3208</real>
 										<real>-520</real>
+									</array>
+									<array>
+										<real>-2776</real>
+										<real>-632</real>
 									</array>
 								</array>
 							</dict>
@@ -1112,15 +1104,15 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-2912</real>
-										<real>168</real>
+										<real>-2960</real>
+										<real>152</real>
 									</array>
 									<array>
 										<real>-2768</real>
 										<real>168</real>
 									</array>
 									<array>
-										<real>-2768</real>
+										<real>-2736</real>
 										<real>848</real>
 									</array>
 									<array>
@@ -1137,45 +1129,24 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-3096</real>
-										<real>88</real>
+										<real>-3104</real>
+										<real>80</real>
 									</array>
 									<array>
-										<real>-2992</real>
-										<real>160</real>
+										<real>-2960</real>
+										<real>152</real>
 									</array>
 									<array>
-										<real>-2976</real>
-										<real>784</real>
+										<real>-2912</real>
+										<real>848</real>
 									</array>
 									<array>
 										<real>-3168</real>
 										<real>784</real>
 									</array>
-								</array>
-							</dict>
-							<dict>
-								<key>owners</key>
-								<array>
-									<integer>18</integer>
-								</array>
-								<key>polygon</key>
-								<array>
 									<array>
-										<real>-3616</real>
-										<real>-240</real>
-									</array>
-									<array>
-										<real>-3312</real>
-										<real>-224</real>
-									</array>
-									<array>
-										<real>-3144</real>
-										<real>784</real>
-									</array>
-									<array>
-										<real>-3616</real>
-										<real>784</real>
+										<real>-3152</real>
+										<real>384</real>
 									</array>
 								</array>
 							</dict>
@@ -1187,20 +1158,32 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-3648</real>
-										<real>-16</real>
+										<real>-3288</real>
+										<real>-256</real>
 									</array>
 									<array>
-										<real>-3424</real>
-										<real>-24</real>
+										<real>-3104</real>
+										<real>80</real>
 									</array>
 									<array>
-										<real>-3424</real>
+										<real>-3152</real>
+										<real>384</real>
+									</array>
+									<array>
+										<real>-3408</real>
+										<real>200</real>
+									</array>
+									<array>
+										<real>-3616</real>
 										<real>152</real>
 									</array>
 									<array>
-										<real>-3648</real>
-										<real>152</real>
+										<real>-3680</real>
+										<real>104</real>
+									</array>
+									<array>
+										<real>-3656</real>
+										<real>-288</real>
 									</array>
 								</array>
 							</dict>
@@ -1212,20 +1195,20 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-3456</real>
-										<real>-528</real>
-									</array>
-									<array>
-										<real>-3296</real>
-										<real>-544</real>
+										<real>-3408</real>
+										<real>200</real>
 									</array>
 									<array>
 										<real>-3152</real>
-										<real>584</real>
+										<real>384</real>
 									</array>
 									<array>
-										<real>-3456</real>
-										<real>584</real>
+										<real>-3168</real>
+										<real>784</real>
+									</array>
+									<array>
+										<real>-3720</real>
+										<real>560</real>
 									</array>
 								</array>
 							</dict>
@@ -1241,16 +1224,48 @@
 										<real>-528</real>
 									</array>
 									<array>
-										<real>-3432</real>
-										<real>-528</real>
+										<real>-3792</real>
+										<real>-432</real>
 									</array>
 									<array>
-										<real>-3432</real>
-										<real>584</real>
+										<real>-3656</real>
+										<real>-288</real>
 									</array>
 									<array>
-										<real>-4136</real>
-										<real>584</real>
+										<real>-3680</real>
+										<real>104</real>
+									</array>
+									<array>
+										<real>-3616</real>
+										<real>152</real>
+									</array>
+									<array>
+										<real>-3408</real>
+										<real>200</real>
+									</array>
+									<array>
+										<real>-3720</real>
+										<real>560</real>
+									</array>
+									<array>
+										<real>-3976</real>
+										<real>384</real>
+									</array>
+									<array>
+										<real>-3720</real>
+										<real>176</real>
+									</array>
+									<array>
+										<real>-3720</real>
+										<real>-48</real>
+									</array>
+									<array>
+										<real>-4000</real>
+										<real>-104</real>
+									</array>
+									<array>
+										<real>-4160</real>
+										<real>-232</real>
 									</array>
 								</array>
 							</dict>
@@ -1262,20 +1277,36 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-4320</real>
+										<real>-4360</real>
 										<real>-96</real>
 									</array>
 									<array>
-										<real>-4128</real>
+										<real>-4368</real>
+										<real>-560</real>
+									</array>
+									<array>
+										<real>-4136</real>
+										<real>-528</real>
+									</array>
+									<array>
+										<real>-4160</real>
+										<real>-232</real>
+									</array>
+									<array>
+										<real>-4000</real>
 										<real>-104</real>
 									</array>
 									<array>
-										<real>-4128</real>
-										<real>584</real>
+										<real>-3720</real>
+										<real>-48</real>
 									</array>
 									<array>
-										<real>-4320</real>
-										<real>584</real>
+										<real>-3720</real>
+										<real>176</real>
+									</array>
+									<array>
+										<real>-3976</real>
+										<real>384</real>
 									</array>
 								</array>
 							</dict>

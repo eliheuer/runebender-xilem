@@ -24,13 +24,13 @@
 			<point x="-624" y="480"/>
 			<point x="-632" y="496"/>
 			<point x="-656" y="496" type="curve" smooth="yes"/>
-			<point x="-676" y="496"/>
-			<point x="-694" y="472"/>
-			<point x="-708" y="438" type="curve" smooth="yes"/>
-			<point x="-726" y="390"/>
+			<point x="-680" y="496"/>
+			<point x="-696" y="472"/>
+			<point x="-712" y="440" type="curve" smooth="yes"/>
+			<point x="-728" y="392"/>
 			<point x="-736" y="320"/>
 			<point x="-736" y="256" type="curve" smooth="yes"/>
-			<point x="-736" y="58"/>
+			<point x="-736" y="56"/>
 			<point x="-520" y="-16"/>
 		</contour>
 		<contour>
@@ -41,7 +41,7 @@
 			<point x="88" y="-232"/>
 			<point x="56" y="-208"/>
 			<point x="0" y="-168" type="curve" smooth="yes"/>
-			<point x="-18" y="-154"/>
+			<point x="-16" y="-152"/>
 			<point x="-40" y="-120"/>
 			<point x="-80" y="-120" type="curve" smooth="yes"/>
 			<point x="-112" y="-120"/>
@@ -51,128 +51,283 @@
 			<point x="-96" y="-392"/>
 		</contour>
 		<contour>
-			<point x="-1328" y="-16" type="curve" smooth="yes"/>
-			<point x="-1144" y="-16"/>
-			<point x="-1008" y="168"/>
-			<point x="-1008" y="428" type="curve" smooth="yes"/>
-			<point x="-1008" y="452"/>
-			<point x="-1024" y="468"/>
-			<point x="-1040" y="468" type="curve" smooth="yes"/>
-			<point x="-1064" y="468"/>
-			<point x="-1082" y="444"/>
-			<point x="-1088" y="412" type="curve" smooth="yes"/>
-			<point x="-1112" y="288"/>
-			<point x="-1208" y="248"/>
-			<point x="-1280" y="248" type="curve" smooth="yes"/>
-			<point x="-1464" y="248"/>
-			<point x="-1496" y="376"/>
-			<point x="-1496" y="564" type="curve" smooth="yes"/>
-			<point x="-1496" y="1000"/>
-			<point x="-1440" y="1112"/>
-			<point x="-1440" y="1248" type="curve" smooth="yes"/>
-			<point x="-1440" y="1288"/>
-			<point x="-1456" y="1320"/>
-			<point x="-1480" y="1320" type="curve" smooth="yes"/>
-			<point x="-1506" y="1320"/>
-			<point x="-1544" y="1234"/>
-			<point x="-1570" y="1160" type="curve" smooth="yes"/>
-			<point x="-1600" y="1074"/>
-			<point x="-1632" y="848"/>
-			<point x="-1632" y="392" type="curve" smooth="yes"/>
-			<point x="-1632" y="62"/>
-			<point x="-1488" y="-16"/>
+			<point x="-4592" y="-16" type="curve" smooth="yes"/>
+			<point x="-4408" y="-16"/>
+			<point x="-4272" y="168"/>
+			<point x="-4272" y="432" type="curve" smooth="yes"/>
+			<point x="-4272" y="456"/>
+			<point x="-4288" y="472"/>
+			<point x="-4304" y="472" type="curve" smooth="yes"/>
+			<point x="-4328" y="472"/>
+			<point x="-4344" y="448"/>
+			<point x="-4352" y="416" type="curve" smooth="yes"/>
+			<point x="-4376" y="288"/>
+			<point x="-4472" y="248"/>
+			<point x="-4544" y="248" type="curve" smooth="yes"/>
+			<point x="-4728" y="248"/>
+			<point x="-4760" y="376"/>
+			<point x="-4760" y="568" type="curve" smooth="yes"/>
+			<point x="-4760" y="1000"/>
+			<point x="-4704" y="1112"/>
+			<point x="-4704" y="1248" type="curve" smooth="yes"/>
+			<point x="-4704" y="1288"/>
+			<point x="-4720" y="1320"/>
+			<point x="-4744" y="1320" type="curve" smooth="yes"/>
+			<point x="-4768" y="1320"/>
+			<point x="-4808" y="1232"/>
+			<point x="-4832" y="1160" type="curve" smooth="yes"/>
+			<point x="-4864" y="1072"/>
+			<point x="-4896" y="848"/>
+			<point x="-4896" y="392" type="curve" smooth="yes"/>
+			<point x="-4896" y="64"/>
+			<point x="-4752" y="-16"/>
 		</contour>
 		<contour>
-			<point x="-1320" y="-392" type="curve" smooth="yes"/>
-			<point x="-1272" y="-392"/>
-			<point x="-1176" y="-312"/>
-			<point x="-1176" y="-256" type="curve" smooth="yes"/>
-			<point x="-1176" y="-232"/>
-			<point x="-1208" y="-208"/>
-			<point x="-1264" y="-168" type="curve" smooth="yes"/>
-			<point x="-1282" y="-154"/>
-			<point x="-1304" y="-120"/>
-			<point x="-1344" y="-120" type="curve" smooth="yes"/>
-			<point x="-1376" y="-120"/>
-			<point x="-1456" y="-232"/>
-			<point x="-1456" y="-280" type="curve" smooth="yes"/>
-			<point x="-1456" y="-328"/>
-			<point x="-1360" y="-392"/>
+			<point x="-4584" y="-392" type="curve" smooth="yes"/>
+			<point x="-4536" y="-392"/>
+			<point x="-4440" y="-312"/>
+			<point x="-4440" y="-256" type="curve" smooth="yes"/>
+			<point x="-4440" y="-232"/>
+			<point x="-4472" y="-208"/>
+			<point x="-4528" y="-168" type="curve" smooth="yes"/>
+			<point x="-4544" y="-152"/>
+			<point x="-4568" y="-120"/>
+			<point x="-4608" y="-120" type="curve" smooth="yes"/>
+			<point x="-4640" y="-120"/>
+			<point x="-4720" y="-232"/>
+			<point x="-4720" y="-280" type="curve" smooth="yes"/>
+			<point x="-4720" y="-328"/>
+			<point x="-4624" y="-392"/>
 		</contour>
 		<contour>
-			<point x="-3112" y="-16" type="curve" smooth="yes"/>
-			<point x="-2472" y="-16"/>
-			<point x="-2264" y="320"/>
-			<point x="-2192" y="320" type="curve" smooth="yes"/>
-			<point x="-2168" y="320"/>
-			<point x="-2160" y="312"/>
-			<point x="-2136" y="312" type="curve" smooth="yes"/>
-			<point x="-2048" y="312"/>
-			<point x="-1920" y="424"/>
-			<point x="-1920" y="544" type="curve" smooth="yes"/>
-			<point x="-1920" y="576"/>
-			<point x="-1928" y="584"/>
-			<point x="-1944" y="584" type="curve" smooth="yes"/>
-			<point x="-1976" y="584"/>
-			<point x="-1992" y="472"/>
-			<point x="-2088" y="472" type="curve" smooth="yes"/>
-			<point x="-2136" y="472"/>
-			<point x="-2144" y="504"/>
-			<point x="-2168" y="504" type="curve" smooth="yes"/>
-			<point x="-2232" y="504"/>
-			<point x="-2312" y="248"/>
-			<point x="-2944" y="248" type="curve" smooth="yes"/>
-			<point x="-3312" y="248"/>
-			<point x="-3472" y="280"/>
-			<point x="-3472" y="384" type="curve" smooth="yes"/>
-			<point x="-3472" y="416"/>
-			<point x="-3464" y="448"/>
-			<point x="-3464" y="464" type="curve" smooth="yes"/>
-			<point x="-3464" y="480"/>
-			<point x="-3472" y="496"/>
-			<point x="-3496" y="496" type="curve" smooth="yes"/>
-			<point x="-3516" y="496"/>
-			<point x="-3534" y="472"/>
-			<point x="-3548" y="438" type="curve" smooth="yes"/>
-			<point x="-3566" y="390"/>
-			<point x="-3576" y="320"/>
-			<point x="-3576" y="256" type="curve" smooth="yes"/>
-			<point x="-3576" y="58"/>
-			<point x="-3360" y="-16"/>
+			<point x="-7912" y="-16" type="curve" smooth="yes"/>
+			<point x="-7272" y="-16"/>
+			<point x="-7064" y="320"/>
+			<point x="-6992" y="320" type="curve" smooth="yes"/>
+			<point x="-6968" y="320"/>
+			<point x="-6960" y="312"/>
+			<point x="-6936" y="312" type="curve" smooth="yes"/>
+			<point x="-6848" y="312"/>
+			<point x="-6720" y="424"/>
+			<point x="-6720" y="544" type="curve" smooth="yes"/>
+			<point x="-6720" y="576"/>
+			<point x="-6728" y="584"/>
+			<point x="-6744" y="584" type="curve" smooth="yes"/>
+			<point x="-6776" y="584"/>
+			<point x="-6792" y="472"/>
+			<point x="-6888" y="472" type="curve" smooth="yes"/>
+			<point x="-6936" y="472"/>
+			<point x="-6944" y="504"/>
+			<point x="-6968" y="504" type="curve" smooth="yes"/>
+			<point x="-7032" y="504"/>
+			<point x="-7112" y="248"/>
+			<point x="-7744" y="248" type="curve" smooth="yes"/>
+			<point x="-8112" y="248"/>
+			<point x="-8272" y="280"/>
+			<point x="-8272" y="384" type="curve" smooth="yes"/>
+			<point x="-8272" y="416"/>
+			<point x="-8264" y="448"/>
+			<point x="-8264" y="464" type="curve" smooth="yes"/>
+			<point x="-8264" y="480"/>
+			<point x="-8272" y="496"/>
+			<point x="-8296" y="496" type="curve" smooth="yes"/>
+			<point x="-8320" y="496"/>
+			<point x="-8336" y="472"/>
+			<point x="-8352" y="440" type="curve" smooth="yes"/>
+			<point x="-8368" y="392"/>
+			<point x="-8376" y="320"/>
+			<point x="-8376" y="256" type="curve" smooth="yes"/>
+			<point x="-8376" y="56"/>
+			<point x="-8160" y="-16"/>
 		</contour>
 		<contour>
-			<point x="-2896" y="-392" type="curve" smooth="yes"/>
-			<point x="-2848" y="-392"/>
-			<point x="-2752" y="-312"/>
-			<point x="-2752" y="-256" type="curve" smooth="yes"/>
-			<point x="-2752" y="-232"/>
-			<point x="-2784" y="-208"/>
-			<point x="-2840" y="-168" type="curve" smooth="yes"/>
-			<point x="-2858" y="-154"/>
-			<point x="-2880" y="-120"/>
-			<point x="-2920" y="-120" type="curve" smooth="yes"/>
-			<point x="-2952" y="-120"/>
-			<point x="-3032" y="-232"/>
-			<point x="-3032" y="-280" type="curve" smooth="yes"/>
-			<point x="-3032" y="-328"/>
-			<point x="-2936" y="-392"/>
+			<point x="-7696" y="-392" type="curve" smooth="yes"/>
+			<point x="-7648" y="-392"/>
+			<point x="-7552" y="-312"/>
+			<point x="-7552" y="-256" type="curve" smooth="yes"/>
+			<point x="-7552" y="-232"/>
+			<point x="-7584" y="-208"/>
+			<point x="-7640" y="-168" type="curve" smooth="yes"/>
+			<point x="-7656" y="-152"/>
+			<point x="-7680" y="-120"/>
+			<point x="-7720" y="-120" type="curve" smooth="yes"/>
+			<point x="-7752" y="-120"/>
+			<point x="-7832" y="-232"/>
+			<point x="-7832" y="-280" type="curve" smooth="yes"/>
+			<point x="-7832" y="-328"/>
+			<point x="-7736" y="-392"/>
 		</contour>
 		<contour>
-			<point x="-2024" y="-144" type="curve" smooth="yes"/>
-			<point x="-1976" y="-144"/>
-			<point x="-1896" y="-16"/>
-			<point x="-1896" y="24" type="curve" smooth="yes"/>
-			<point x="-1896" y="48"/>
-			<point x="-1942" y="52"/>
-			<point x="-2000" y="88" type="curve" smooth="yes"/>
-			<point x="-2050" y="118"/>
-			<point x="-2048" y="152"/>
-			<point x="-2080" y="152" type="curve" smooth="yes"/>
-			<point x="-2112" y="152"/>
-			<point x="-2192" y="24"/>
-			<point x="-2192" y="-24" type="curve" smooth="yes"/>
-			<point x="-2192" y="-72"/>
-			<point x="-2096" y="-144"/>
+			<point x="-6824" y="-144" type="curve" smooth="yes"/>
+			<point x="-6776" y="-144"/>
+			<point x="-6696" y="-16"/>
+			<point x="-6696" y="24" type="curve" smooth="yes"/>
+			<point x="-6696" y="48"/>
+			<point x="-6744" y="56"/>
+			<point x="-6800" y="88" type="curve" smooth="yes"/>
+			<point x="-6848" y="120"/>
+			<point x="-6848" y="152"/>
+			<point x="-6880" y="152" type="curve" smooth="yes"/>
+			<point x="-6912" y="152"/>
+			<point x="-6992" y="24"/>
+			<point x="-6992" y="-24" type="curve" smooth="yes"/>
+			<point x="-6992" y="-72"/>
+			<point x="-6896" y="-144"/>
+		</contour>
+		<contour>
+			<point x="-3160" y="-64" type="curve" smooth="yes"/>
+			<point x="-1464" y="-64"/>
+			<point x="-936" y="168"/>
+			<point x="-936" y="536" type="curve" smooth="yes"/>
+			<point x="-936" y="560"/>
+			<point x="-952" y="576"/>
+			<point x="-968" y="576" type="curve" smooth="yes"/>
+			<point x="-992" y="576"/>
+			<point x="-1008" y="552"/>
+			<point x="-1016" y="520" type="curve" smooth="yes"/>
+			<point x="-1080" y="272"/>
+			<point x="-2216" y="200"/>
+			<point x="-2656" y="200" type="curve" smooth="yes"/>
+			<point x="-3872" y="200"/>
+			<point x="-3904" y="320"/>
+			<point x="-3992" y="320" type="curve" smooth="yes"/>
+			<point x="-4064" y="320"/>
+			<point x="-4072" y="248"/>
+			<point x="-4072" y="208" type="curve" smooth="yes"/>
+			<point x="-4072" y="8"/>
+			<point x="-3792" y="-64"/>
+		</contour>
+		<contour>
+			<point x="-2488" y="-456" type="curve" smooth="yes"/>
+			<point x="-2440" y="-456"/>
+			<point x="-2344" y="-376"/>
+			<point x="-2344" y="-320" type="curve" smooth="yes"/>
+			<point x="-2344" y="-296"/>
+			<point x="-2376" y="-272"/>
+			<point x="-2432" y="-232" type="curve" smooth="yes"/>
+			<point x="-2448" y="-216"/>
+			<point x="-2472" y="-184"/>
+			<point x="-2512" y="-184" type="curve" smooth="yes"/>
+			<point x="-2544" y="-184"/>
+			<point x="-2624" y="-296"/>
+			<point x="-2624" y="-344" type="curve" smooth="yes"/>
+			<point x="-2624" y="-392"/>
+			<point x="-2528" y="-456"/>
+		</contour>
+		<contour>
+			<point x="-10920" y="-128" type="curve" smooth="yes"/>
+			<point x="-9512" y="-128"/>
+			<point x="-8920" y="320"/>
+			<point x="-8848" y="320" type="curve" smooth="yes"/>
+			<point x="-8824" y="320"/>
+			<point x="-8816" y="312"/>
+			<point x="-8792" y="312" type="curve" smooth="yes"/>
+			<point x="-8704" y="312"/>
+			<point x="-8576" y="424"/>
+			<point x="-8576" y="544" type="curve" smooth="yes"/>
+			<point x="-8576" y="576"/>
+			<point x="-8584" y="584"/>
+			<point x="-8600" y="584" type="curve" smooth="yes"/>
+			<point x="-8632" y="584"/>
+			<point x="-8648" y="472"/>
+			<point x="-8744" y="472" type="curve" smooth="yes"/>
+			<point x="-8792" y="472"/>
+			<point x="-8800" y="504"/>
+			<point x="-8824" y="504" type="curve" smooth="yes"/>
+			<point x="-8888" y="504"/>
+			<point x="-9288" y="136"/>
+			<point x="-10624" y="136" type="curve" smooth="yes"/>
+			<point x="-11704" y="136"/>
+			<point x="-11744" y="272"/>
+			<point x="-11832" y="272" type="curve" smooth="yes"/>
+			<point x="-11896" y="272"/>
+			<point x="-11896" y="208"/>
+			<point x="-11896" y="160" type="curve" smooth="yes"/>
+			<point x="-11896" y="8"/>
+			<point x="-11800" y="-128"/>
+		</contour>
+		<contour>
+			<point x="-10576" y="-504" type="curve" smooth="yes"/>
+			<point x="-10528" y="-504"/>
+			<point x="-10432" y="-424"/>
+			<point x="-10432" y="-368" type="curve" smooth="yes"/>
+			<point x="-10432" y="-344"/>
+			<point x="-10464" y="-320"/>
+			<point x="-10520" y="-280" type="curve" smooth="yes"/>
+			<point x="-10536" y="-264"/>
+			<point x="-10560" y="-232"/>
+			<point x="-10600" y="-232" type="curve" smooth="yes"/>
+			<point x="-10632" y="-232"/>
+			<point x="-10712" y="-344"/>
+			<point x="-10712" y="-392" type="curve" smooth="yes"/>
+			<point x="-10712" y="-440"/>
+			<point x="-10616" y="-504"/>
+		</contour>
+		<contour>
+			<point x="-8680" y="-144" type="curve" smooth="yes"/>
+			<point x="-8632" y="-144"/>
+			<point x="-8552" y="-16"/>
+			<point x="-8552" y="24" type="curve" smooth="yes"/>
+			<point x="-8552" y="48"/>
+			<point x="-8600" y="56"/>
+			<point x="-8656" y="88" type="curve" smooth="yes"/>
+			<point x="-8704" y="120"/>
+			<point x="-8704" y="152"/>
+			<point x="-8736" y="152" type="curve" smooth="yes"/>
+			<point x="-8768" y="152"/>
+			<point x="-8848" y="24"/>
+			<point x="-8848" y="-24" type="curve" smooth="yes"/>
+			<point x="-8848" y="-72"/>
+			<point x="-8752" y="-144"/>
+		</contour>
+		<contour>
+			<point x="-5744" y="-80" type="curve" smooth="yes"/>
+			<point x="-5368" y="-80"/>
+			<point x="-5104" y="168"/>
+			<point x="-5104" y="432" type="curve" smooth="yes"/>
+			<point x="-5104" y="456"/>
+			<point x="-5120" y="472"/>
+			<point x="-5136" y="472" type="curve" smooth="yes"/>
+			<point x="-5160" y="472"/>
+			<point x="-5176" y="448"/>
+			<point x="-5184" y="416" type="curve" smooth="yes"/>
+			<point x="-5208" y="288"/>
+			<point x="-5432" y="184"/>
+			<point x="-5696" y="184" type="curve" smooth="yes"/>
+			<point x="-6392" y="184"/>
+			<point x="-6360" y="376"/>
+			<point x="-6360" y="568" type="curve" smooth="yes"/>
+			<point x="-6360" y="1000"/>
+			<point x="-6304" y="1112"/>
+			<point x="-6304" y="1248" type="curve" smooth="yes"/>
+			<point x="-6304" y="1288"/>
+			<point x="-6320" y="1320"/>
+			<point x="-6344" y="1320" type="curve" smooth="yes"/>
+			<point x="-6368" y="1320"/>
+			<point x="-6408" y="1232"/>
+			<point x="-6432" y="1160" type="curve" smooth="yes"/>
+			<point x="-6464" y="1072"/>
+			<point x="-6496" y="848"/>
+			<point x="-6496" y="392" type="curve" smooth="yes"/>
+			<point x="-6496" y="64"/>
+			<point x="-6416" y="-80"/>
+		</contour>
+		<contour>
+			<point x="-5416" y="-392" type="curve" smooth="yes"/>
+			<point x="-5368" y="-392"/>
+			<point x="-5272" y="-312"/>
+			<point x="-5272" y="-256" type="curve" smooth="yes"/>
+			<point x="-5272" y="-232"/>
+			<point x="-5304" y="-208"/>
+			<point x="-5360" y="-168" type="curve" smooth="yes"/>
+			<point x="-5376" y="-152"/>
+			<point x="-5400" y="-120"/>
+			<point x="-5440" y="-120" type="curve" smooth="yes"/>
+			<point x="-5472" y="-120"/>
+			<point x="-5552" y="-232"/>
+			<point x="-5552" y="-280" type="curve" smooth="yes"/>
+			<point x="-5552" y="-328"/>
+			<point x="-5456" y="-392"/>
 		</contour>
 	</outline>
 	<lib>
@@ -185,20 +340,20 @@
 						<key>boundary</key>
 						<array>
 							<array>
-								<real>-800</real>
-								<real>-450</real>
+								<real>-976</real>
+								<real>-720</real>
 							</array>
 							<array>
-								<real>800</real>
-								<real>-450</real>
+								<real>968</real>
+								<real>-720</real>
 							</array>
 							<array>
-								<real>800</real>
-								<real>650</real>
+								<real>968</real>
+								<real>1560</real>
 							</array>
 							<array>
-								<real>-800</real>
-								<real>650</real>
+								<real>-976</real>
+								<real>1560</real>
 							</array>
 						</array>
 						<key>text</key>
@@ -213,20 +368,20 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-784</real>
-										<real>-432</real>
+										<real>-816</real>
+										<real>-560</real>
 									</array>
 									<array>
-										<real>780</real>
-										<real>-430</real>
+										<real>808</real>
+										<real>-560</real>
 									</array>
 									<array>
-										<real>780</real>
-										<real>620</real>
+										<real>808</real>
+										<real>1400</real>
 									</array>
 									<array>
-										<real>-780</real>
-										<real>620</real>
+										<real>-816</real>
+										<real>1400</real>
 									</array>
 								</array>
 							</dict>
@@ -236,20 +391,193 @@
 						<key>boundary</key>
 						<array>
 							<array>
-								<real>-1700</real>
-								<real>-450</real>
+								<real>-4312</real>
+								<real>-720</real>
 							</array>
 							<array>
-								<real>-950</real>
-								<real>-450</real>
+								<real>-696</real>
+								<real>-720</real>
 							</array>
 							<array>
-								<real>-950</real>
-								<real>1400</real>
+								<real>-696</real>
+								<real>1560</real>
 							</array>
 							<array>
-								<real>-1700</real>
-								<real>1400</real>
+								<real>-4312</real>
+								<real>1560</real>
+							</array>
+						</array>
+						<key>text</key>
+						<string>ب</string>
+						<key>regions</key>
+						<array>
+							<dict>
+								<key>owners</key>
+								<array>
+									<integer>0</integer>
+								</array>
+								<key>polygon</key>
+								<array>
+									<array>
+										<real>-4152</real>
+										<real>-560</real>
+									</array>
+									<array>
+										<real>-856</real>
+										<real>-560</real>
+									</array>
+									<array>
+										<real>-856</real>
+										<real>1400</real>
+									</array>
+									<array>
+										<real>-4152</real>
+										<real>1400</real>
+									</array>
+								</array>
+							</dict>
+							<dict>
+								<key>owners</key>
+								<array>
+									<integer>0</integer>
+								</array>
+								<key>polygon</key>
+								<array>
+									<array>
+										<real>-4592</real>
+										<real>-64</real>
+									</array>
+									<array>
+										<real>-4312</real>
+										<real>104</real>
+									</array>
+									<array>
+										<real>-4224</real>
+										<real>432</real>
+									</array>
+									<array>
+										<real>-4304</real>
+										<real>520</real>
+									</array>
+									<array>
+										<real>-4480</real>
+										<real>312</real>
+									</array>
+									<array>
+										<real>-4680</real>
+										<real>360</real>
+									</array>
+									<array>
+										<real>-4656</real>
+										<real>1248</real>
+									</array>
+									<array>
+										<real>-4744</real>
+										<real>1368</real>
+									</array>
+									<array>
+										<real>-4896</real>
+										<real>1088</real>
+									</array>
+									<array>
+										<real>-4944</real>
+										<real>392</real>
+									</array>
+									<array>
+										<real>-4888</real>
+										<real>112</real>
+									</array>
+									<array>
+										<real>-4672</real>
+										<real>-56</real>
+									</array>
+								</array>
+							</dict>
+							<dict>
+								<key>owners</key>
+								<array>
+									<integer>0</integer>
+								</array>
+								<key>polygon</key>
+								<array>
+									<array>
+										<real>-272</real>
+										<real>-64</real>
+									</array>
+									<array>
+										<real>200</real>
+										<real>-16</real>
+									</array>
+									<array>
+										<real>528</real>
+										<real>120</real>
+									</array>
+									<array>
+										<real>712</real>
+										<real>304</real>
+									</array>
+									<array>
+										<real>768</real>
+										<real>576</real>
+									</array>
+									<array>
+										<real>648</real>
+										<real>608</real>
+									</array>
+									<array>
+										<real>384</real>
+										<real>376</real>
+									</array>
+									<array>
+										<real>-224</real>
+										<real>296</real>
+									</array>
+									<array>
+										<real>-560</real>
+										<real>344</real>
+									</array>
+									<array>
+										<real>-584</real>
+										<real>504</real>
+									</array>
+									<array>
+										<real>-696</real>
+										<real>536</real>
+									</array>
+									<array>
+										<real>-784</real>
+										<real>336</real>
+									</array>
+									<array>
+										<real>-752</real>
+										<real>128</real>
+									</array>
+									<array>
+										<real>-392</real>
+										<real>-56</real>
+									</array>
+								</array>
+							</dict>
+						</array>
+					</dict>
+					<dict>
+						<key>boundary</key>
+						<array>
+							<array>
+								<real>-5136</real>
+								<real>-720</real>
+							</array>
+							<array>
+								<real>-4032</real>
+								<real>-720</real>
+							</array>
+							<array>
+								<real>-4032</real>
+								<real>1560</real>
+							</array>
+							<array>
+								<real>-5136</real>
+								<real>1560</real>
 							</array>
 						</array>
 						<key>text</key>
@@ -264,45 +592,20 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-1440</real>
-										<real>-96</real>
+										<real>-4704</real>
+										<real>-560</real>
 									</array>
 									<array>
-										<real>-960</real>
-										<real>-100</real>
+										<real>-4192</real>
+										<real>-560</real>
 									</array>
 									<array>
-										<real>-960</real>
-										<real>700</real>
+										<real>-4192</real>
+										<real>1400</real>
 									</array>
 									<array>
-										<real>-1440</real>
-										<real>700</real>
-									</array>
-								</array>
-							</dict>
-							<dict>
-								<key>owners</key>
-								<array>
-									<integer>0</integer>
-								</array>
-								<key>polygon</key>
-								<array>
-									<array>
-										<real>-1504</real>
-										<real>-416</real>
-									</array>
-									<array>
-										<real>-1150</real>
-										<real>-420</real>
-									</array>
-									<array>
-										<real>-1150</real>
-										<real>-110</real>
-									</array>
-									<array>
-										<real>-1500</real>
-										<real>-110</real>
+										<real>-4704</real>
+										<real>1400</real>
 									</array>
 								</array>
 							</dict>
@@ -314,20 +617,20 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-1688</real>
-										<real>-96</real>
+										<real>-4976</real>
+										<real>-560</real>
 									</array>
 									<array>
-										<real>-1380</real>
-										<real>-100</real>
+										<real>-4704</real>
+										<real>-560</real>
 									</array>
 									<array>
-										<real>-1380</real>
-										<real>1380</real>
+										<real>-4704</real>
+										<real>1400</real>
 									</array>
 									<array>
-										<real>-1690</real>
-										<real>1380</real>
+										<real>-4976</real>
+										<real>1400</real>
 									</array>
 								</array>
 							</dict>
@@ -337,20 +640,96 @@
 						<key>boundary</key>
 						<array>
 							<array>
-								<real>-3650</real>
-								<real>-450</real>
+								<real>-6736</real>
+								<real>-720</real>
 							</array>
 							<array>
-								<real>-1850</real>
-								<real>-450</real>
+								<real>-4864</real>
+								<real>-720</real>
 							</array>
 							<array>
-								<real>-1850</real>
-								<real>700</real>
+								<real>-4864</real>
+								<real>1560</real>
 							</array>
 							<array>
-								<real>-3650</real>
-								<real>700</real>
+								<real>-6736</real>
+								<real>1560</real>
+							</array>
+						</array>
+						<key>text</key>
+						<string>با</string>
+						<key>regions</key>
+						<array>
+							<dict>
+								<key>owners</key>
+								<array>
+									<integer>0</integer>
+								</array>
+								<key>polygon</key>
+								<array>
+									<array>
+										<real>-6304</real>
+										<real>-560</real>
+									</array>
+									<array>
+										<real>-5024</real>
+										<real>-560</real>
+									</array>
+									<array>
+										<real>-5024</real>
+										<real>1400</real>
+									</array>
+									<array>
+										<real>-6304</real>
+										<real>1400</real>
+									</array>
+								</array>
+							</dict>
+							<dict>
+								<key>owners</key>
+								<array>
+									<integer>1</integer>
+								</array>
+								<key>polygon</key>
+								<array>
+									<array>
+										<real>-6576</real>
+										<real>-560</real>
+									</array>
+									<array>
+										<real>-6304</real>
+										<real>-560</real>
+									</array>
+									<array>
+										<real>-6304</real>
+										<real>1400</real>
+									</array>
+									<array>
+										<real>-6576</real>
+										<real>1400</real>
+									</array>
+								</array>
+							</dict>
+						</array>
+					</dict>
+					<dict>
+						<key>boundary</key>
+						<array>
+							<array>
+								<real>-8616</real>
+								<real>-720</real>
+							</array>
+							<array>
+								<real>-6480</real>
+								<real>-720</real>
+							</array>
+							<array>
+								<real>-6480</real>
+								<real>1560</real>
+							</array>
+							<array>
+								<real>-8616</real>
+								<real>1560</real>
 							</array>
 						</array>
 						<key>text</key>
@@ -365,45 +744,20 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-2448</real>
-										<real>-200</real>
+										<real>-7024</real>
+										<real>-560</real>
 									</array>
 									<array>
-										<real>-1860</real>
-										<real>-200</real>
+										<real>-6640</real>
+										<real>-560</real>
 									</array>
 									<array>
-										<real>-1860</real>
-										<real>680</real>
+										<real>-6640</real>
+										<real>1400</real>
 									</array>
 									<array>
-										<real>-2450</real>
-										<real>680</real>
-									</array>
-								</array>
-							</dict>
-							<dict>
-								<key>owners</key>
-								<array>
-									<integer>1</integer>
-								</array>
-								<key>polygon</key>
-								<array>
-									<array>
-										<real>-3640</real>
-										<real>-64</real>
-									</array>
-									<array>
-										<real>-2390</real>
-										<real>-60</real>
-									</array>
-									<array>
-										<real>-2390</real>
-										<real>680</real>
-									</array>
-									<array>
-										<real>-3640</real>
-										<real>680</real>
+										<real>-7024</real>
+										<real>1400</real>
 									</array>
 								</array>
 							</dict>
@@ -415,20 +769,96 @@
 								<key>polygon</key>
 								<array>
 									<array>
-										<real>-3104</real>
-										<real>-416</real>
+										<real>-8456</real>
+										<real>-560</real>
 									</array>
 									<array>
-										<real>-2700</real>
-										<real>-420</real>
+										<real>-7024</real>
+										<real>-560</real>
 									</array>
 									<array>
-										<real>-2700</real>
-										<real>-100</real>
+										<real>-7024</real>
+										<real>1400</real>
 									</array>
 									<array>
-										<real>-3100</real>
-										<real>-100</real>
+										<real>-8456</real>
+										<real>1400</real>
+									</array>
+								</array>
+							</dict>
+						</array>
+					</dict>
+					<dict>
+						<key>boundary</key>
+						<array>
+							<array>
+								<real>-12136</real>
+								<real>-720</real>
+							</array>
+							<array>
+								<real>-8336</real>
+								<real>-720</real>
+							</array>
+							<array>
+								<real>-8336</real>
+								<real>1560</real>
+							</array>
+							<array>
+								<real>-12136</real>
+								<real>1560</real>
+							</array>
+						</array>
+						<key>text</key>
+						<string>بب</string>
+						<key>regions</key>
+						<array>
+							<dict>
+								<key>owners</key>
+								<array>
+									<integer>0</integer>
+								</array>
+								<key>polygon</key>
+								<array>
+									<array>
+										<real>-8880</real>
+										<real>-560</real>
+									</array>
+									<array>
+										<real>-8496</real>
+										<real>-560</real>
+									</array>
+									<array>
+										<real>-8496</real>
+										<real>1400</real>
+									</array>
+									<array>
+										<real>-8880</real>
+										<real>1400</real>
+									</array>
+								</array>
+							</dict>
+							<dict>
+								<key>owners</key>
+								<array>
+									<integer>1</integer>
+								</array>
+								<key>polygon</key>
+								<array>
+									<array>
+										<real>-11976</real>
+										<real>-560</real>
+									</array>
+									<array>
+										<real>-8880</real>
+										<real>-560</real>
+									</array>
+									<array>
+										<real>-8880</real>
+										<real>1400</real>
+									</array>
+									<array>
+										<real>-11976</real>
+										<real>1400</real>
 									</array>
 								</array>
 							</dict>
@@ -436,7 +866,7 @@
 					</dict>
 				</array>
 				<key>version</key>
-				<integer>2</integer>
+				<integer>3</integer>
 			</dict>
 		</dict>
 	</lib>
