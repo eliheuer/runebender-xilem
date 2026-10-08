@@ -58,7 +58,7 @@ kurbo = "0.13"
 linesweeper = "0.4"
 # The NeuralType engine, to draw a trained font in the proof strip. Pinned to a commit of
 # post-opentype; bump it when the font format or the layout changes.
-neuraltype-core = { git = "https://github.com/eliheuer/post-opentype", rev = "bc18c4ecfda6f7ddbe2339586dc00e1af48b38c8", optional = true }
+neuraltype-core = { git = "https://github.com/eliheuer/post-opentype", rev = "e50df26ee5962c3453058e1018379c3e57d26c72", optional = true }
 skrifa = "0.46.2"
 glyphslib = "0.2.7"
 img2bez = { git = "https://github.com/eliheuer/img2bez", rev = "80bdb2e6d0226449a5e9bf05a49b3339276020c8", default-features = false }

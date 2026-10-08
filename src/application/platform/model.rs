@@ -42,10 +42,8 @@ pub(crate) struct ModelRender {
     pub strand: Vec<(f64, Point)>,
     /// Each node's parameter on the strand.
     pub node_t: Vec<f64>,
-    /// The selection cloud, or with a plain caret the hint around the letter before it.
+    /// The selection cloud; empty with a plain caret.
     pub outline: Vec<BezPath>,
-    /// `outline` is the hint, not a selection.
-    pub outline_is_hint: bool,
     /// Field pixels per font unit, to turn a dragged distance into a pull.
     pub px_per_unit: f64,
 }
@@ -155,29 +153,21 @@ fn draw(font: &FieldFont, request: ModelRequest) -> ModelRender {
     let gaps = (0..marks.nodes.len())
         .map(|i| field_line::is_gap(&chars, i))
         .collect();
-    let strand = field_line::Strand::new(&marks.nodes);
-    let node_t: Vec<f64> = (0..marks.nodes.len()).map(|i| strand.t_of(i)).collect();
-    let mut samples = Vec::new();
-    let end = strand.t_end();
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "a strand is a few thousand field pixels long at most"
-    )]
-    let steps = (end / 3.0).ceil().max(2.0) as usize;
-    for k in 0..=steps {
-        let u = end * k as f64 / steps as f64;
-        samples.push((u, strand.sample(u)));
+    // The strand as the pen moved, along the ink; each point keeps its distance along it.
+    let (points, at_node) = field_line::strand(&line, &marks.nodes, 0.0, 0.0);
+    let mut along = 0.0;
+    let mut samples = Vec::with_capacity(points.len());
+    for (k, point) in points.iter().enumerate() {
+        if k > 0 {
+            let prev = points[k - 1];
+            along += (point.0 - prev.0).hypot(point.1 - prev.1);
+        }
+        samples.push((along, *point));
     }
-    // With a plain caret after a letter, the hint outlines that letter; else the selection.
+    let node_t: Vec<f64> = at_node.iter().map(|&k| samples[k].0).collect();
+    // The selection cloud, when letters are selected.
     let (anchor, caret) = request.selection;
-    let (start, stop) = (anchor.min(caret), anchor.max(caret));
-    let hint = start == stop && caret > 0 && caret <= chars.len() && chars[caret - 1] != ' ';
-    let (from, to) = if hint {
-        (caret - 1, caret)
-    } else {
-        (start, stop)
-    };
+    let (from, to) = (anchor.min(caret), anchor.max(caret));
     let outline: Vec<BezPath> = field_line::selection_paths(font, &line, from, to, 0.0, 0.0)
         .iter()
         .filter_map(|path| BezPath::from_svg(&path.to_svg()).ok())
@@ -210,7 +200,6 @@ fn draw(font: &FieldFont, request: ModelRequest) -> ModelRender {
             .collect(),
         node_t,
         outline: outline.into_iter().map(|path| to_units * path).collect(),
-        outline_is_hint: hint,
         px_per_unit: em / font.canvas.upm,
     }
 }
@@ -369,7 +358,8 @@ mod tests {
         // The strand passes through every node; the gaps are the ends and the space's sides.
         assert_eq!(render.gaps, vec![true, false, true, true, true]);
         assert_eq!(render.node_t.len(), render.nodes.len());
-        // A plain caret after a letter outlines that letter.
-        assert!(render.outline_is_hint && !render.outline.is_empty());
+        // A plain caret has no cloud; every node has its place on the strand.
+        assert!(render.outline.is_empty());
+        assert!(render.node_t.windows(2).all(|t| t[1] >= t[0]));
     }
 }

@@ -3,8 +3,8 @@
 
 //! The proof strip's model view: a trained font's drawing of the text, with the strand and a
 //! node at every caret index, drawn and handled as `post-opentype/docs/VIEWER.md` says. A
-//! click moves the caret, a drag selects, and dragging the active node pulls that letter and
-//! the rest of its word.
+//! click moves the caret, a drag selects, and dragging any node pulls that letter and the
+//! rest of its word.
 
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
@@ -57,6 +57,8 @@ const ACTIVE_RADIUS: f64 = 10.0;
 const RING_RADIUS: f64 = 15.0;
 /// The active node and its ring are one target, with a little slack.
 const ACTIVE_HIT: f64 = 24.0;
+/// Any other node is a target the size of its dot, with a little slack.
+const NODE_HIT: f64 = 12.0;
 /// One turn of the ring.
 const RING_PERIOD: f64 = 1.6;
 
@@ -210,13 +212,11 @@ impl Widget for ModelStripWidget {
             _ => self.transform(),
         };
         // The selection cloud sits behind the ink.
-        if !render.outline_is_hint {
-            for path in &render.outline {
-                let path = t * path.clone();
-                painter.fill(&path, inks.cloud).draw();
-                painter.stroke(&path, &Stroke::new(3.0), inks.ground).draw();
-                painter.stroke(&path, &Stroke::new(1.5), inks.active).draw();
-            }
+        for path in &render.outline {
+            let path = t * path.clone();
+            painter.fill(&path, inks.cloud).draw();
+            painter.stroke(&path, &Stroke::new(3.0), inks.ground).draw();
+            painter.stroke(&path, &Stroke::new(1.5), inks.active).draw();
         }
         for path in &render.paths {
             painter.fill(&(t * path.clone()), inks.ink).draw();
@@ -224,13 +224,6 @@ impl Widget for ModelStripWidget {
         let Some(caret) = self.caret() else {
             return;
         };
-        if render.outline_is_hint {
-            for path in &render.outline {
-                let path = t * path.clone();
-                painter.stroke(&path, &Stroke::new(4.5), inks.ground).draw();
-                painter.stroke(&path, &Stroke::new(2.5), inks.active).draw();
-            }
-        }
         // The whole strand and every node.
         let end = render.strand.last().map_or(0.0, |(u, _)| *u);
         strand(
@@ -245,37 +238,6 @@ impl Widget for ModelStripWidget {
         for (index, at) in render.nodes.iter().enumerate() {
             let hollow = render.gaps.get(index).copied().unwrap_or(false);
             node(painter, t * *at, NODE_RADIUS, hollow, &inks);
-        }
-        // Three neighbors each way, larger nearer the caret; the segment flowing into the
-        // caret from the hinted letter is the ring's color.
-        let plain = render.request.selection.0 == render.request.selection.1;
-        let count = render.nodes.len();
-        for back in [true, false] {
-            for step in 1..=3_usize {
-                let at = |n: usize| {
-                    if back {
-                        caret.checked_sub(n)
-                    } else {
-                        Some(caret + n).filter(|i| *i < count)
-                    }
-                };
-                let (Some(i0), Some(i1)) = (at(step - 1), at(step)) else {
-                    break;
-                };
-                let incoming = back && step == 1 && plain;
-                strand(
-                    painter,
-                    &render,
-                    t,
-                    (render.node_t[i0], render.node_t[i1]),
-                    2.5,
-                    if incoming { inks.ring } else { inks.strand },
-                    inks.ground,
-                );
-                let hollow = render.gaps.get(i1).copied().unwrap_or(false);
-                let radius = 9.5 - 1.5 * f64::from(u8::try_from(step).unwrap_or(3));
-                node(painter, t * render.nodes[i1], radius, hollow, &inks);
-            }
         }
         // The active node, and its turning half-ring.
         let at = t * render.nodes[caret];
@@ -315,12 +277,34 @@ impl Widget for ModelStripWidget {
                 let Some(render) = self.render.clone() else {
                     return;
                 };
-                // Grabbing the active node pulls it; anywhere else moves the caret.
-                if let Some(caret) = self.caret()
-                    && (t * render.nodes[caret]).distance(at) < ACTIVE_HIT
-                {
-                    self.gesture = Some(Gesture::Node(caret, at, t));
-                    ctx.submit_action::<ModelStripEvent>(ModelStripEvent::DragStart(caret));
+                // A press on any node makes it the caret and pulls it in one motion: the
+                // active node by its node and ring, the others by their own dot. Anywhere
+                // else moves the caret.
+                let caret = self.caret();
+                let node = render
+                    .nodes
+                    .iter()
+                    .enumerate()
+                    .map(|(index, node)| (index, (t * *node).distance(at)))
+                    .filter(|(index, distance)| {
+                        *distance
+                            < if Some(*index) == caret {
+                                ACTIVE_HIT
+                            } else {
+                                NODE_HIT
+                            }
+                    })
+                    .min_by(|a, b| a.1.total_cmp(&b.1))
+                    .map(|(index, _)| index);
+                if let Some(node) = node {
+                    if Some(node) != caret {
+                        ctx.submit_action::<ModelStripEvent>(ModelStripEvent::Caret {
+                            index: node,
+                            extend: false,
+                        });
+                    }
+                    self.gesture = Some(Gesture::Node(node, at, t));
+                    ctx.submit_action::<ModelStripEvent>(ModelStripEvent::DragStart(node));
                 } else if let Some(index) = self.index_at(at, t) {
                     self.gesture = Some(Gesture::Select);
                     ctx.submit_action::<ModelStripEvent>(ModelStripEvent::Caret {
