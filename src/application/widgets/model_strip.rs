@@ -44,6 +44,8 @@ pub(crate) enum ModelStripEvent {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct StripInks {
     pub ground: Color,
+    /// The thin dark edge around every mark, as around the glyph grid's swatches.
+    pub outline: Color,
     pub ink: Color,
     pub strand: Color,
     pub active: Color,
@@ -131,22 +133,23 @@ impl ModelStripWidget {
 /// A disc with a 1 px ground rim, filled or, for a gap, hollow.
 fn node(painter: &mut Painter<'_>, at: Point, radius: f64, hollow: bool, inks: &StripInks) {
     painter
-        .fill(Circle::new(at, radius + 1.0), inks.ground)
+        .fill(Circle::new(at, radius + 1.0), inks.outline)
         .draw();
     if hollow {
+        // A ring: the strand's color with the ground inside, edged in and out.
+        painter.fill(Circle::new(at, radius), inks.strand).draw();
         painter
-            .stroke(
-                Circle::new(at, radius - 1.1),
-                &Stroke::new(2.2),
-                inks.strand,
-            )
+            .fill(Circle::new(at, radius - 2.2), inks.outline)
+            .draw();
+        painter
+            .fill(Circle::new(at, radius - 3.2), inks.ground)
             .draw();
     } else {
         painter.fill(Circle::new(at, radius), inks.strand).draw();
     }
 }
 
-/// The strand between parameters `u0` and `u1`, with a ground rim.
+/// The strand between parameters `u0` and `u1`, with a dark edge.
 fn strand(
     painter: &mut Painter<'_>,
     render: &ModelRender,
@@ -215,7 +218,9 @@ impl Widget for ModelStripWidget {
         for path in &render.outline {
             let path = t * path.clone();
             painter.fill(&path, inks.cloud).draw();
-            painter.stroke(&path, &Stroke::new(3.0), inks.ground).draw();
+            painter
+                .stroke(&path, &Stroke::new(3.0), inks.outline)
+                .draw();
             painter.stroke(&path, &Stroke::new(1.5), inks.active).draw();
         }
         for path in &render.paths {
@@ -233,7 +238,7 @@ impl Widget for ModelStripWidget {
             (0.0, end),
             2.0,
             inks.strand,
-            inks.ground,
+            inks.outline,
         );
         for (index, at) in render.nodes.iter().enumerate() {
             let hollow = render.gaps.get(index).copied().unwrap_or(false);
@@ -242,7 +247,7 @@ impl Widget for ModelStripWidget {
         // The active node, and its turning half-ring.
         let at = t * render.nodes[caret];
         painter
-            .fill(Circle::new(at, ACTIVE_RADIUS + 1.0), inks.ground)
+            .fill(Circle::new(at, ACTIVE_RADIUS + 1.0), inks.outline)
             .draw();
         painter
             .fill(Circle::new(at, ACTIVE_RADIUS), inks.active)
@@ -256,7 +261,9 @@ impl Widget for ModelStripWidget {
             0.0,
         );
         let ring: BezPath = ring.path_elements(0.1).collect();
-        painter.stroke(&ring, &Stroke::new(5.5), inks.ground).draw();
+        painter
+            .stroke(&ring, &Stroke::new(5.5), inks.outline)
+            .draw();
         painter.stroke(&ring, &Stroke::new(3.5), inks.ring).draw();
     }
 

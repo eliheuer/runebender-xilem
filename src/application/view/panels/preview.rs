@@ -36,15 +36,23 @@ fn model_strip_view(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     } else {
         (pal.proof_ink(), pal.proof_strip)
     };
-    // The names and roles of docs/VIEWER.md section 3.
+    // The names of docs/VIEWER.md section 3, in the theme's own rainbow: the glyph grid's
+    // mark swatches, edged like them in the darkest base color.
+    let mark = |name: &str, fallback| {
+        pal.mark_list()
+            .into_iter()
+            .find(|(mark, _)| mark == name)
+            .map_or(fallback, |(_, color)| color)
+    };
     model_strip(
         app.model.render.clone(),
         StripInks {
             ground: background,
+            outline: pal.mark_outline.unwrap_or(pal.text),
             ink,
-            strand: pal.role("danger"),
-            active: pal.role("selection"),
-            ring: pal.role("pointSelected"),
+            strand: mark("red", pal.role("danger")),
+            active: mark("orange", pal.role("selection")),
+            ring: mark("yellow", pal.role("pointSelected")),
             cloud: pal.role("previewFill").with_alpha(0.22),
         },
         |app: &mut Workspace, event| app.model_strip_event(event),
