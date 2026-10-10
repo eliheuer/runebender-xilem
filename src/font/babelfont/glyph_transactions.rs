@@ -6,7 +6,7 @@
 use babelfont::{Layer, LayerType, Shape};
 
 use super::{
-    LayerEditDraft, LayerPreservation, LayerView, ObjectMetadata, PreservedAnchor,
+    LayerEditDraft, LayerPreservation, LayerView, ObjectMetadata, PointId, PreservedAnchor,
     PreservedComponent, PreservedContour, layer_key, write_id,
 };
 use crate::font::model::glyph_metadata::parse_metrics_key;
@@ -201,6 +201,60 @@ pub(in crate::font) fn composition_proposal_layer(
         draft
             .add_anchor(name.clone(), kurbo::Point::new(*x, *y))
             .map_err(|error| error.to_string())?;
+    }
+    set_proposal_base(&mut draft, revision, reason);
+    Ok(draft)
+}
+
+/// A proposal layer that keeps the foreground's structure and moves its points.
+///
+/// `positions` holds one point per foreground point, in contour order; a count that disagrees
+/// with the foreground is refused. `width` replaces the advance when given.
+pub(in crate::font) fn point_move_proposal_layer(
+    foreground: LayerView<'_>,
+    id: &LayerId,
+    positions: &[kurbo::Point],
+    width: Option<f64>,
+    revision: &str,
+    reason: &str,
+) -> Result<LayerEditDraft, String> {
+    if positions
+        .iter()
+        .any(|p| !p.x.is_finite() || !p.y.is_finite())
+        || width.is_some_and(|w| !w.is_finite())
+    {
+        return Err("proposal geometry must be finite".into());
+    }
+    let (layer, preserved) = clone_layer(
+        foreground.layer,
+        foreground.preserved,
+        id,
+        foreground.glyph_name(),
+        LayerCloneOptions {
+            default: false,
+            clear_codepoints: false,
+        },
+    );
+    let mut draft = LayerEditDraft::new(layer, preserved);
+    let ids: Vec<PointId> = draft
+        .view()
+        .contours()
+        .flat_map(|contour| contour.points().map(|point| point.id()).collect::<Vec<_>>())
+        .collect();
+    if ids.len() != positions.len() {
+        return Err(format!(
+            "proposal moves {} points but the glyph has {}",
+            positions.len(),
+            ids.len()
+        ));
+    }
+    for (id, position) in ids.into_iter().zip(positions) {
+        draft
+            .set_point_position(id, *position)
+            .map_err(|error| error.to_string())?;
+    }
+    if let Some(width) = width {
+        draft.set_width(width).map_err(|error| error.to_string())?;
     }
     set_proposal_base(&mut draft, revision, reason);
     Ok(draft)

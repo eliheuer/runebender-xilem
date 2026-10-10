@@ -221,6 +221,7 @@ pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + us
             muted("Tasks".into()),
             xcolumn(Region::List, tasks),
             no_tool,
+            super::weight_debt::block(app),
             busy,
             xcolumn(Region::List, proposals),
             undo,

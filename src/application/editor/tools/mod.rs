@@ -17,3 +17,4 @@ pub(crate) mod scripts;
 pub(crate) mod sketch;
 pub(crate) mod text;
 pub(crate) mod trace;
+pub(crate) mod weight_debt;

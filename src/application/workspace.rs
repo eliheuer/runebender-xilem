@@ -331,6 +331,8 @@ pub(crate) struct Workspace {
     pub(crate) train: crate::application::platform::train::TrainState,
     /// The Local AI panel: models, tasks, a run, proposals.
     pub(crate) ai: local_ai::LocalAiState,
+    /// The Weight debt block: what the active master owes, and its measurements.
+    pub(crate) debt: crate::application::editor::tools::weight_debt::WeightDebtState,
     /// Local chat transcript, model choice, and current process.
     pub(crate) chat: chat::ChatState,
     /// The non-executing script draft opened explicitly from Chat or the library.

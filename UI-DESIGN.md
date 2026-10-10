@@ -198,6 +198,7 @@ These variables control what the frame shows:
 | `RUNEBENDER_RAIL=<ai\|chat\|scripts\|shapes>` | Open this tool pane. |
 | `RUNEBENDER_VIEW=<option,...>` | Turn on canvas view options: `comb`, `continuity`, `colorize`, `handles`, `segments`, `bearings`, `popcount`. |
 | `RUNEBENDER_AXIS=wght=500,wdth=80` | Set the design-space location. |
+| `RUNEBENDER_MASTER=<name>` | Make this master active, by its style name. |
 
 The code in `src/application/launch.rs` and `src/application/platform/host.rs` reads these variables.
 Search for `RUNEBENDER_` in `src` to find more specialized ones.

@@ -114,6 +114,8 @@ pub(crate) struct AiJob {
     /// The in-memory document session that launched the task.
     pub(crate) document_id: u64,
     pub(crate) glyph: Option<String>,
+    /// Every glyph the run names; empty means every drawn glyph.
+    pub(crate) glyphs: Vec<String>,
     /// The editor glyph and foreground revisions present at launch.
     pub(crate) active_glyph: String,
     pub(crate) foreground_revisions: BTreeMap<String, String>,
@@ -286,7 +288,7 @@ fn run_font_ml(
     task: &str,
     model: &Path,
     source: &Path,
-    glyph: Option<&str>,
+    glyphs: &[String],
     strength: f64,
     reference: Option<&Path>,
     device: &str,
@@ -297,7 +299,7 @@ fn run_font_ml(
         task,
         model,
         source,
-        glyph,
+        glyphs,
         strength,
         reference,
         device,
@@ -312,7 +314,7 @@ fn run_font_ml_with_limits(
     task: &str,
     model: &Path,
     source: &Path,
-    glyph: Option<&str>,
+    glyphs: &[String],
     strength: f64,
     reference: Option<&Path>,
     device: &str,
@@ -332,12 +334,11 @@ fn run_font_ml_with_limits(
         .arg(device)
         .arg("--write")
         .arg("--json");
-    match glyph {
-        Some(name) => {
+    if glyphs.is_empty() {
+        cmd.arg("--all");
+    } else {
+        for name in glyphs {
             cmd.arg("--glyph").arg(name);
-        }
-        None => {
-            cmd.arg("--all");
         }
     }
     if let Some(reference) = reference {
@@ -555,6 +556,12 @@ impl Workspace {
                 ..
             }) => {
                 let address = change.affected_layers()[0].clone();
+                let installed: Vec<String> = change
+                    .affected_layers()
+                    .iter()
+                    .map(|layer| layer.glyph.clone())
+                    .collect();
+                self.remember_debt_install(task, &installed);
                 self.record_agent_group(history_group, &change);
                 self.ai.installed_order.push(InstalledProposalEdit {
                     layer_history_depth: 0,
@@ -642,6 +649,7 @@ impl Workspace {
         match result {
             Ok(result) => {
                 let done = result.installed;
+                self.remember_debt_install(task, &done.installed);
                 self.ai
                     .installed_order
                     .extend(result.affected.into_iter().map(|address| {
@@ -792,6 +800,21 @@ impl Workspace {
     /// one glyph; `None` runs every drawn glyph. Every result remains a
     /// proposal until the user explicitly installs or discards it.
     pub(crate) fn run_task(&mut self, task: &str, glyph: Option<usize>) {
+        let names: Vec<String> = match glyph {
+            Some(index) => match self.font.glyphs.get(index) {
+                Some(entry) => vec![entry.name.clone()],
+                None => return,
+            },
+            None => Vec::new(),
+        };
+        self.run_task_on(task, names);
+    }
+
+    /// Run the task with font-ml over named glyphs of the open master; an
+    /// empty list runs every drawn glyph. The Weight debt section sends a
+    /// batch this way. Every result remains a proposal until the user
+    /// explicitly installs or discards it.
+    pub(crate) fn run_task_on(&mut self, task: &str, names: Vec<String>) {
         if cfg!(target_arch = "wasm32") {
             self.note = "Local AI and workflow execution are available in the desktop app.".into();
             return;
@@ -815,16 +838,13 @@ impl Workspace {
             self.note = "A model is already running".into();
             return;
         }
-        let glyph_name = glyph.and_then(|i| self.font.glyphs.get(i).map(|g| g.name.clone()));
-        if glyph.is_some() && glyph_name.is_none() {
-            return;
-        }
+        let glyph_name = (names.len() == 1).then(|| names[0].clone());
         // Reference fitting remains an explicit Nodes input. The
         // direct rail uses the visible strength control, which is the
         // dependable bounded workflow for a draft model.
         let strength = self.ai.strength;
         let device = self.nodes.device.clone();
-        let target_names: Vec<_> = glyph_name.iter().cloned().collect();
+        let target_names = names;
         let foreground_revisions = match foreground_revisions(&self.font, &target_names) {
             Ok(revisions) => revisions,
             Err(error) => {
@@ -875,9 +895,10 @@ impl Workspace {
                 return;
             }
         };
-        self.ai.busy = Some(match &glyph_name {
-            Some(name) => format!("Running {task} on {name}…"),
-            None => format!("Running {task} on every glyph…"),
+        self.ai.busy = Some(match (&glyph_name, target_names.len()) {
+            (Some(name), _) => format!("Running {task} on {name}…"),
+            (None, 0) => format!("Running {task} on every glyph…"),
+            (None, count) => format!("Running {task} on {count} glyphs…"),
         });
         let job = AiJob {
             task: task.to_string(),
@@ -885,9 +906,10 @@ impl Workspace {
             master_path: self.font.source().to_path_buf(),
             document_id: self.document_id,
             glyph: glyph_name.clone(),
+            glyphs: target_names.clone(),
             active_glyph: self.session.glyph_name.clone(),
             foreground_revisions,
-            all_glyphs: glyph_name.is_none(),
+            all_glyphs: target_names.is_empty(),
             capture: Some(capture),
             _temporary: Some(temporary),
             ..AiJob::default()
@@ -900,7 +922,7 @@ impl Workspace {
                 &task,
                 &model,
                 &source,
-                glyph_name.as_deref(),
+                &target_names,
                 strength,
                 None,
                 &device,
@@ -1029,8 +1051,13 @@ impl Workspace {
             }
             None => {
                 self.note = format!(
-                    "{} glyphs proposed ({} keep structure). Install or discard in the panel.",
+                    "{} of {} glyphs proposed ({} keep structure). Install or discard in the panel.",
                     summary.glyphs.len(),
+                    if job.glyphs.is_empty() {
+                        job.foreground_revisions.len()
+                    } else {
+                        job.glyphs.len()
+                    },
                     summary.compatible.len()
                 );
                 self.refresh_proposals();
@@ -1828,7 +1855,7 @@ print(json.dumps({'ok': True, 'input_width': width, 'capture_source': str(source
             "bolden",
             &root,
             &root,
-            Some("A"),
+            &["A".to_owned()],
             1.0,
             None,
             "cpu",
@@ -1869,7 +1896,7 @@ print(json.dumps({'ok': True, 'input_width': width, 'capture_source': str(source
             "bolden",
             &root,
             &root,
-            Some("A"),
+            &["A".to_owned()],
             1.0,
             None,
             "cpu",
@@ -1915,7 +1942,7 @@ print(json.dumps({'ok': True, 'input_width': width, 'capture_source': str(source
             "bolden",
             &root,
             &root,
-            Some("A"),
+            &["A".to_owned()],
             1.0,
             None,
             "cpu",
@@ -1936,7 +1963,7 @@ print(json.dumps({'ok': True, 'input_width': width, 'capture_source': str(source
             "bolden",
             &root,
             &root,
-            Some("A"),
+            &["A".to_owned()],
             1.0,
             None,
             "cpu",

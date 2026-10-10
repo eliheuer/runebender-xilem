@@ -14,6 +14,7 @@ pub(crate) mod scripts;
 pub(crate) mod sections;
 pub(crate) mod sketch;
 pub(crate) mod tabs;
+pub(crate) mod weight_debt;
 
 pub(crate) mod image;
 pub(crate) mod label;

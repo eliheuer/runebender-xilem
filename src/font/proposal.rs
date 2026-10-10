@@ -396,6 +396,78 @@ pub fn write_composition_project(
     Ok(plan.report)
 }
 
+/// One glyph's proposed point positions, in contour order, and its advance.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PointMoves {
+    /// The glyph.
+    pub glyph: String,
+    /// Where every foreground point lands, one per point in contour order.
+    pub positions: Vec<kurbo::Point>,
+    /// The new advance, or `None` to keep the foreground's.
+    pub width: Option<f64>,
+}
+
+/// Atomically write structure-keeping point moves as a guarded proposal layer.
+///
+/// Every glyph must exist in the source's foreground with exactly as many points as moves.
+/// The complete layer commits in one document revision and replaces any earlier proposal for
+/// `task`; the foreground and its histories remain unchanged until [`install_project`].
+pub fn write_point_moves_project(
+    project: &mut Project,
+    source: SourceId,
+    task: &str,
+    moves: &[PointMoves],
+    reason: &str,
+) -> Result<ProposalSummary, ProposalError> {
+    validate_task(task)?;
+    if moves.is_empty() {
+        return Err(project_error("no point moves to propose"));
+    }
+    let foreground = project
+        .document_source(source)
+        .ok_or_else(|| project_error("unknown source"))?
+        .default_layer();
+    let target = proposal_layer(source, task);
+    let mut seen = HashSet::new();
+    let mut staged = Vec::with_capacity(moves.len());
+    for item in moves {
+        let name = item.glyph.as_str();
+        if !seen.insert(name) {
+            return Err(project_error(format!("{name}: proposed twice")));
+        }
+        let current = project.document_layer(name, &foreground).ok_or_else(|| {
+            ProposalError::NoSuchGlyph {
+                task: task.into(),
+                glyph: name.into(),
+            }
+        })?;
+        let revision =
+            crate::font::edit_batch::canonical_glyph_revision(current).map_err(project_error)?;
+        let draft = super::babelfont::glyph_transactions::point_move_proposal_layer(
+            current,
+            &target,
+            &item.positions,
+            item.width,
+            &revision,
+            reason,
+        )
+        .map_err(|error| project_error(format!("{name}: {error}")))?;
+        staged.push((name.to_owned(), draft));
+    }
+    // Every draft is staged before the earlier proposal goes, so a
+    // refused batch leaves it in place.
+    if find_project(project, source, task).is_ok() {
+        discard_project(project, source, task)?;
+    }
+    let transaction = project
+        .begin_proposal_transaction(source, &foreground, &target, staged)
+        .map_err(project_error)?;
+    project
+        .commit_proposal_transaction(transaction)
+        .map_err(project_error)?;
+    find_project(project, source, task)
+}
+
 pub(super) fn install_replacement(
     address: &GlyphLayerAddress,
     proposed: LayerView<'_>,
@@ -878,6 +950,59 @@ mod tests {
             PathBuf::from("CompositionProposal.ufo"),
         ));
         (project, SourceId(0))
+    }
+
+    #[test]
+    fn point_moves_become_a_guarded_proposal_that_installs() {
+        let project = Project::from_source(SourceInput::from_font(
+            font(),
+            PathBuf::from("PointMoves.ufo"),
+        ));
+        let mut project = project;
+        let source = SourceId(0);
+        let moves = [PointMoves {
+            glyph: "a".into(),
+            positions: vec![
+                kurbo::Point::new(-8.0, -8.0),
+                kurbo::Point::new(18.0, -8.0),
+                kurbo::Point::new(18.0, 18.0),
+            ],
+            width: Some(120.0),
+        }];
+        let summary = write_point_moves_project(&mut project, source, "embolden", &moves, "test")
+            .expect("the moves are staged");
+        assert_eq!(summary.glyphs, ["a"]);
+        assert_eq!(summary.compatible, ["a"]);
+        assert!(summary.incompatible.is_empty());
+
+        // A wrong point count is refused before anything is written.
+        let wrong = [PointMoves {
+            glyph: "b".into(),
+            positions: vec![kurbo::Point::ZERO],
+            width: None,
+        }];
+        let error = write_point_moves_project(&mut project, source, "embolden", &wrong, "test")
+            .expect_err("two points cannot take one move");
+        assert!(error.to_string().contains("1 points"), "{error}");
+        // The earlier proposal survives a refused rewrite.
+        assert_eq!(
+            find_project(&project, source, "embolden").unwrap().glyphs,
+            ["a"]
+        );
+
+        let installed = install_project(&mut project, source, "embolden", None, true)
+            .expect("the proposal installs");
+        assert_eq!(installed.installed.installed, ["a"]);
+        let foreground = project.document_source(source).unwrap().default_layer();
+        let a = project.document_layer("a", &foreground).unwrap();
+        assert_eq!(a.width(), 120.0);
+        let points: Vec<_> = a
+            .contours()
+            .flat_map(|c| c.points().map(|p| p.position()).collect::<Vec<_>>())
+            .collect();
+        assert_eq!(points[0], kurbo::Point::new(-8.0, -8.0));
+        assert_eq!(points[2], kurbo::Point::new(18.0, 18.0));
+        assert!(find_project(&project, source, "embolden").is_err());
     }
 
     #[test]

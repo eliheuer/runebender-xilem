@@ -4,7 +4,7 @@
 //! The render tree: how the workspace's state becomes a frame.
 
 use crate::application::actions;
-use crate::application::editor::tools::{chat, local_ai, nodes, scripts};
+use crate::application::editor::tools::{chat, local_ai, nodes, scripts, weight_debt};
 use crate::application::platform::export;
 #[cfg(unix)]
 use crate::application::platform::live;
@@ -425,34 +425,72 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     return content;
     #[cfg(not(target_arch = "wasm32"))]
     watch::with_watch(
-        ai_pump(
-            script_pump(
-                chat_pump(
-                    model_pump(
-                        train_pump(
-                            export_pump(
-                                nodes_pump(
-                                    preview_pump(content, app.font.project.preview_pending())
-                                        .boxed(),
-                                    app.nodes.job.clone(),
-                                ),
-                                app.export_job.clone(),
+        debt_eval_pump(
+            ai_pump(
+                script_pump(
+                    chat_pump(
+                        model_pump(
+                            train_pump(
+                                export_pump(
+                                    nodes_pump(
+                                        preview_pump(content, app.font.project.preview_pending())
+                                            .boxed(),
+                                        app.nodes.job.clone(),
+                                    ),
+                                    app.export_job.clone(),
+                                )
+                                // Boxed: another nested pump makes a symbol name the linker refuses.
+                                .boxed(),
+                                app.train.job.clone(),
                             )
-                            // Boxed: another nested pump makes a symbol name the linker refuses.
                             .boxed(),
-                            app.train.job.clone(),
-                        )
-                        .boxed(),
-                        app.model.job.is_some()
-                            && app.preview_view == crate::application::pieces::PreviewView::Model,
+                            app.model.job.is_some()
+                                && app.preview_view
+                                    == crate::application::pieces::PreviewView::Model,
+                        ),
+                        app.chat.job.clone(),
                     ),
-                    app.chat.job.clone(),
+                    app.scripts.running.is_some(),
                 ),
-                app.scripts.running.is_some(),
-            ),
-            app.ai.job.clone(),
+                app.ai.job.clone(),
+            )
+            .boxed(),
+            app.debt.eval_job.clone(),
         ),
         app.font.master_paths().clone(),
+    )
+}
+
+/// Poll a `font-ml eval` measurement from the Weight debt block until it ends.
+fn debt_eval_pump<V: WidgetView<Workspace>>(
+    view: V,
+    job: Option<weight_debt::DebtEvalJob>,
+) -> impl WidgetView<Workspace> + use<V> {
+    use xilem::core::{MessageProxy, fork};
+    use xilem::view::task_raw;
+    fork(
+        view,
+        job.map(|job| {
+            task_raw(
+                move |proxy: MessageProxy<weight_debt::DebtEvalProgress>, _: &mut Workspace| {
+                    let job = job.clone();
+                    async move {
+                        loop {
+                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                            let done = job
+                                .finished
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .is_some();
+                            if proxy.message(weight_debt::DebtEvalProgress).is_err() || done {
+                                return;
+                            }
+                        }
+                    }
+                },
+                |app: &mut Workspace, _: weight_debt::DebtEvalProgress| app.debt_eval_pump(),
+            )
+        }),
     )
 }
 

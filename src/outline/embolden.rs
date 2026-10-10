@@ -186,6 +186,59 @@ pub fn embolden(glyph: &Glyph, offset: Offset) -> Glyph {
     out
 }
 
+/// How much the advance grows from the lighter to the heavier master,
+/// as the mean over pairs whose structures match.
+///
+/// `None` when no pair is compatible.
+pub fn learn_layer_advance_delta(pairs: &[(LayerView<'_>, LayerView<'_>)]) -> Option<f64> {
+    let deltas: Vec<f64> = pairs
+        .iter()
+        .filter(|(light, heavy)| light.contours().count() == heavy.contours().count())
+        .map(|(light, heavy)| heavy.width() - light.width())
+        .collect();
+    if deltas.is_empty() {
+        return None;
+    }
+    Some(deltas.iter().sum::<f64>() / deltas.len() as f64)
+}
+
+/// Snap a value to the nearest multiple of `grid`; a grid of zero or
+/// less leaves it alone.
+pub fn snap_to_grid(value: f64, grid: f64) -> f64 {
+    if grid > 0.0 {
+        (value / grid).round() * grid
+    } else {
+        value
+    }
+}
+
+/// Where every point of a layer lands after pushing it outward, in
+/// contour order, one entry per point.
+///
+/// Each point's move, not its position, is snapped to `grid`, so a
+/// draft stays on the machine's lattice while an optical correction
+/// already in the lighter master survives in the heavier one. A grid
+/// of zero or less does not snap.
+pub fn layer_point_moves(layer: LayerView<'_>, offset: Offset, grid: f64) -> Vec<kurbo::Point> {
+    layer
+        .contours()
+        .flat_map(|contour| {
+            let points: Vec<_> = contour.points().map(|point| point.position()).collect();
+            let normals = outward_normals_for_points(&points);
+            points
+                .into_iter()
+                .zip(normals)
+                .map(move |(point, (nx, ny))| {
+                    kurbo::Point::new(
+                        point.x + snap_to_grid(nx * offset.x, grid),
+                        point.y + snap_to_grid(ny * offset.y, grid),
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

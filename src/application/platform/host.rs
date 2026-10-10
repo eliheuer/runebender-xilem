@@ -4,7 +4,7 @@
 //! Files: opening a project, reloading it when the sources change, saving, and a new font.
 
 use crate::application::editor::session::Session;
-use crate::application::editor::tools::{chat, local_ai, nodes, scripts, sketch};
+use crate::application::editor::tools::{chat, local_ai, nodes, scripts, sketch, weight_debt};
 use crate::application::font_model::FontModel;
 use crate::application::view::canvas::grid::cells_of;
 use crate::application::view::panels::sections::metric_bufs;
@@ -371,6 +371,7 @@ impl Workspace {
             pieces: crate::application::pieces::PieceCache::default(),
             model: crate::application::platform::model::ModelState::default(),
             ai: local_ai::LocalAiState::default(),
+            debt: weight_debt::WeightDebtState::default(),
             chat: chat::ChatState::default(),
             scripts: scripts::ScriptsState::default(),
             script_jobs: None,
@@ -408,6 +409,16 @@ impl Workspace {
             if let Ok(parameters) = std::env::var("RUNEBENDER_SCRIPT_PARAMETERS") {
                 app.script_parameters_changed(parameters);
             }
+        }
+        // Headless: RUNEBENDER_MASTER=<style name> makes that master active.
+        if let Ok(name) = std::env::var("RUNEBENDER_MASTER")
+            && let Some(index) = app
+                .font
+                .master_names()
+                .iter()
+                .position(|master| *master == name)
+        {
+            app.set_master(index);
         }
         // Headless: RUNEBENDER_RAIL=ai, chat or scripts starts the corresponding
         // local-model panel, RUNEBENDER_MODEL=<dir> chooses an outline model, and
