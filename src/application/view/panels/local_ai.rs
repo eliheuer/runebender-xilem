@@ -71,12 +71,42 @@ pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + us
         )
     });
 
-    // One row per task font-ml says it runs.
+    // The Shapes box: a sentence in, a drawing in the open glyph out.
+    // Shown when the installed font-ml has the `draw` task.
+    let has_draw = app
+        .ai
+        .tasks
+        .iter()
+        .any(|t| t.implemented && t.name == "draw");
+    let shapes = has_draw.then(|| {
+        xcolumn(
+            Region::List,
+            (
+                muted("Shapes".into()),
+                recipes::field(
+                    pal,
+                    "Draw",
+                    app.ai.prompt.clone(),
+                    |app: &mut Workspace, value| app.ai.prompt = value,
+                ),
+                recipes::toggle(
+                    pal,
+                    "Draw: this glyph".into(),
+                    in_editor,
+                    |app: &mut Workspace| app.run_draw(),
+                ),
+                muted("Example: a circle 64 units wide in the lower left".into()),
+            ),
+        )
+    });
+
+    // One row per task font-ml says it runs. A task that takes a
+    // sentence has its own box above and no plain row.
     let tasks: Vec<_> = app
         .ai
         .tasks
         .iter()
-        .filter(|t| t.implemented)
+        .filter(|t| t.implemented && !t.takes_text())
         .map(|task| {
             let one = task.takes_glyph();
             let all = task.takes_glyphs();
@@ -218,6 +248,7 @@ pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + us
             no_models,
             summary,
             strength_row,
+            shapes,
             muted("Tasks".into()),
             xcolumn(Region::List, tasks),
             no_tool,

@@ -10,6 +10,7 @@ use kurbo::Point;
 use super::{ProposalSummary, layer_name, validate_task};
 use crate::font::babelfont::glyph_transactions::proposal_base;
 use crate::font::edit_batch::canonical_glyph_revision;
+use crate::font::generated::{GeneratedContour, GeneratedPoint};
 use crate::font::project::{
     CanonicalDocumentEditTransaction, DocumentEditOperation, DocumentLayerEdit, Project,
 };
@@ -246,41 +247,63 @@ fn supported_operations(
     }
     let root_contours = root.contours().collect::<Vec<_>>();
     let proposed_contours = proposed.contours().collect::<Vec<_>>();
-    if root_contours.len() != proposed_contours.len() {
-        return Err(format!("{name}: proposal changes contour count"));
-    }
-    for (before, after) in root_contours.iter().zip(&proposed_contours) {
-        if before.is_hyper() || after.is_hyper() {
+    for contour in root_contours.iter().chain(&proposed_contours) {
+        if contour.is_hyper() {
             return Err(format!(
                 "{name}: hyper contours are not supported in detached proposals"
             ));
         }
-        if before.is_closed() != after.is_closed() {
-            return Err(format!("{name}: proposal changes contour structure"));
-        }
-        let before_points = before.points().collect::<Vec<_>>();
-        let after_points = after.points().collect::<Vec<_>>();
-        if before_points.len() != after_points.len() {
-            return Err(format!("{name}: proposal changes point count"));
-        }
-        for (before, after) in before_points.iter().zip(&after_points) {
-            if before.point_type() != after.point_type()
-                || before.is_smooth() != after.is_smooth()
-                || before.name() != after.name()
-            {
-                return Err(format!("{name}: proposal changes point type or metadata"));
+    }
+    // A proposal that keeps the point structure moves points, which is
+    // what a bolden model does. One that does not, such as a drawing
+    // from text into an empty or different glyph, replaces the contours
+    // whole. Either way the result is one undoable edit.
+    let same_structure = root_contours.len() == proposed_contours.len()
+        && root_contours
+            .iter()
+            .zip(&proposed_contours)
+            .all(|(before, after)| {
+                before.is_closed() == after.is_closed()
+                    && before.points().count() == after.points().count()
+                    && before.points().zip(after.points()).all(|(b, a)| {
+                        b.point_type() == a.point_type()
+                            && b.is_smooth() == a.is_smooth()
+                            && b.name() == a.name()
+                    })
+            });
+    if same_structure {
+        for (before, after) in root_contours.iter().zip(&proposed_contours) {
+            for (before, after) in before.points().zip(after.points()) {
+                let position = after.position();
+                if !finite(position) {
+                    return Err(format!("{name}: proposed point position is not finite"));
+                }
+                if before.position() != position {
+                    operations.push(DocumentEditOperation::SetPoint {
+                        point: before.id(),
+                        position,
+                    });
+                }
             }
-            let position = after.position();
-            if !finite(position) {
-                return Err(format!("{name}: proposed point position is not finite"));
-            }
-            if before.position() != position {
-                operations.push(DocumentEditOperation::SetPoint {
-                    point: before.id(),
+        }
+    } else {
+        let mut contours = Vec::with_capacity(proposed_contours.len());
+        for contour in &proposed_contours {
+            let mut points = Vec::new();
+            for point in contour.points() {
+                let position = point.position();
+                if !finite(position) {
+                    return Err(format!("{name}: proposed point position is not finite"));
+                }
+                points.push(GeneratedPoint {
                     position,
+                    point_type: point.point_type(),
+                    smooth: point.is_smooth(),
                 });
             }
+            contours.push(GeneratedContour { points });
         }
+        operations.push(DocumentEditOperation::ReplaceContours(contours));
     }
     let before_anchors = root.anchors().collect::<Vec<_>>();
     let after_anchors = proposed.anchors().collect::<Vec<_>>();
@@ -308,11 +331,15 @@ fn supported_operations(
     let external_glyph = glyph_from_layer(external_before);
     let mut normalized = glyph_from_layer(proposed);
     normalized.width = external_glyph.width;
-    for (contour, before) in normalized.contours.iter_mut().zip(&external_glyph.contours) {
-        for (point, original) in contour.points.iter_mut().zip(&before.points) {
-            point.x = original.x;
-            point.y = original.y;
+    if same_structure {
+        for (contour, before) in normalized.contours.iter_mut().zip(&external_glyph.contours) {
+            for (point, original) in contour.points.iter_mut().zip(&before.points) {
+                point.x = original.x;
+                point.y = original.y;
+            }
         }
+    } else {
+        normalized.contours = external_glyph.contours.clone();
     }
     for (anchor, before) in normalized.anchors.iter_mut().zip(&external_glyph.anchors) {
         anchor.x = before.x;
@@ -504,7 +531,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_missing_proposal_wrong_base_and_unsupported_structure_or_metadata() {
+    fn rejects_missing_proposal_wrong_base_and_metadata_and_replaces_structure() {
         let source = font();
         let root = project(source.clone());
         let capture =
@@ -544,14 +571,15 @@ mod tests {
                 .contains("base revision")
         );
 
+        // A changed point structure is a whole-contour replacement, one
+        // edit, rather than a rejection: a drawing from text lands in
+        // a glyph that had other contours or none.
         a.lib.remove(PROPOSAL_BASE_KEY);
         a.contours[0].points.pop();
-        assert!(
-            capture
-                .stage(&root, &with_proposal(source.clone(), vec![a]), SourceId(0))
-                .unwrap_err()
-                .contains("point count")
-        );
+        let replaced = capture
+            .stage(&root, &with_proposal(source.clone(), vec![a]), SourceId(0))
+            .expect("a structure change stages as a contour replacement");
+        assert_eq!(replaced.summary().glyphs, vec!["A".to_owned()]);
         let mut metadata = source.get_glyph("A").unwrap().clone();
         metadata.width = 560.0;
         metadata.note = Some("unsupported".into());

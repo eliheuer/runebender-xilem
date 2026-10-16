@@ -90,6 +90,14 @@ impl TaskRow {
         self.inputs.iter().any(|i| i.kind == "glyphs")
     }
 
+    /// Whether the task needs a sentence, so it gets a text box
+    /// rather than a plain button.
+    pub(crate) fn takes_text(&self) -> bool {
+        self.inputs
+            .iter()
+            .any(|i| i.name == "prompt" && i.kind == "text")
+    }
+
     /// Whether the task takes one glyph, so "this glyph" is a call.
     pub(crate) fn takes_glyph(&self) -> bool {
         self.inputs
@@ -114,6 +122,8 @@ pub(crate) struct AiJob {
     /// The in-memory document session that launched the task.
     pub(crate) document_id: u64,
     pub(crate) glyph: Option<String>,
+    /// The sentence a `draw` run was given.
+    pub(crate) prompt: Option<String>,
     /// Every glyph the run names; empty means every drawn glyph.
     pub(crate) glyphs: Vec<String>,
     /// The editor glyph and foreground revisions present at launch.
@@ -135,6 +145,8 @@ pub(crate) struct LocalAiState {
     pub(crate) summary: Option<String>,
     /// Scales what a model predicts.
     pub(crate) strength: f64,
+    /// What the Shapes box says: the sentence the `draw` task gets.
+    pub(crate) prompt: String,
     /// The model directories found on disk, scanned when asked.
     pub(crate) installed: Vec<(String, PathBuf)>,
     /// What font-ml says it can do, from the answer `init_nodes` kept.
@@ -291,6 +303,7 @@ fn run_font_ml(
     glyphs: &[String],
     strength: f64,
     reference: Option<&Path>,
+    prompt: Option<&str>,
     device: &str,
     job: &AiJob,
 ) -> Result<serde_json::Value, String> {
@@ -302,6 +315,7 @@ fn run_font_ml(
         glyphs,
         strength,
         reference,
+        prompt,
         device,
         job,
         ProcessLimits::default(),
@@ -317,6 +331,7 @@ fn run_font_ml_with_limits(
     glyphs: &[String],
     strength: f64,
     reference: Option<&Path>,
+    prompt: Option<&str>,
     device: &str,
     job: &AiJob,
     limits: ProcessLimits,
@@ -343,6 +358,9 @@ fn run_font_ml_with_limits(
     }
     if let Some(reference) = reference {
         cmd.arg("--reference").arg(reference);
+    }
+    if let Some(prompt) = prompt {
+        cmd.arg("--prompt").arg(prompt);
     }
     let output = runebender::workflows::process::run(
         &mut cmd,
@@ -815,6 +833,31 @@ impl Workspace {
     /// batch this way. Every result remains a proposal until the user
     /// explicitly installs or discards it.
     pub(crate) fn run_task_on(&mut self, task: &str, names: Vec<String>) {
+        self.run_task_with(task, names, None);
+    }
+
+    /// The Shapes box: run `draw` on the open glyph with the sentence
+    /// typed in the panel.
+    pub(crate) fn run_draw(&mut self) {
+        let prompt = self.ai.prompt.trim().to_string();
+        if prompt.is_empty() {
+            self.note = "Type what to draw first, such as: a circle 64 units wide".into();
+            return;
+        }
+        let Mode::Editor(index) = self.mode else {
+            self.note = "Open a glyph to draw into".into();
+            return;
+        };
+        let Some(entry) = self.font.glyphs.get(index) else {
+            return;
+        };
+        let names = vec![entry.name.clone()];
+        self.run_task_with("draw", names, Some(prompt));
+    }
+
+    /// Runs a task over named glyphs; `prompt` is the sentence a text
+    /// task such as `draw` takes.
+    fn run_task_with(&mut self, task: &str, names: Vec<String>, prompt: Option<String>) {
         if cfg!(target_arch = "wasm32") {
             self.note = "Local AI and workflow execution are available in the desktop app.".into();
             return;
@@ -906,6 +949,7 @@ impl Workspace {
             master_path: self.font.source().to_path_buf(),
             document_id: self.document_id,
             glyph: glyph_name.clone(),
+            prompt: prompt.clone(),
             glyphs: target_names.clone(),
             active_glyph: self.session.glyph_name.clone(),
             foreground_revisions,
@@ -925,6 +969,7 @@ impl Workspace {
                 &target_names,
                 strength,
                 None,
+                prompt.as_deref(),
                 &device,
                 &job,
             );
@@ -1034,6 +1079,32 @@ impl Workspace {
             },
         );
         match &job.glyph {
+            Some(name) if job.task == "draw" => {
+                let contours = report.get("contours").and_then(|v| v.as_u64()).unwrap_or(0);
+                let points = report.get("points").and_then(|v| v.as_u64()).unwrap_or(0);
+                let unknown: Vec<String> = report
+                    .get("unknown_words")
+                    .and_then(|v| v.as_array())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|w| w.as_str().map(str::to_owned))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                self.note = format!(
+                    "draw \"{}\" on {name}: {contours} contour{}, {points} points{}. \
+                     Review the proposal, then Install or Discard.",
+                    job.prompt.as_deref().unwrap_or_default(),
+                    if contours == 1 { "" } else { "s" },
+                    if unknown.is_empty() {
+                        String::new()
+                    } else {
+                        format!("; words the model does not know: {}", unknown.join(" "))
+                    }
+                );
+                self.refresh_proposals();
+                self.ai.preview_task = Some(job.task.clone());
+            }
             Some(name) => {
                 let moved = report.get("moved").and_then(|v| v.as_u64()).unwrap_or(0);
                 let points = report.get("points").and_then(|v| v.as_u64()).unwrap_or(0);
@@ -1858,6 +1929,7 @@ print(json.dumps({'ok': True, 'input_width': width, 'capture_source': str(source
             &["A".to_owned()],
             1.0,
             None,
+            None,
             "cpu",
             &job,
         )
@@ -1898,6 +1970,7 @@ print(json.dumps({'ok': True, 'input_width': width, 'capture_source': str(source
             &root,
             &["A".to_owned()],
             1.0,
+            None,
             None,
             "cpu",
             &job,
@@ -1945,6 +2018,7 @@ print(json.dumps({'ok': True, 'input_width': width, 'capture_source': str(source
             &["A".to_owned()],
             1.0,
             None,
+            None,
             "cpu",
             &job,
             limits,
@@ -1965,6 +2039,7 @@ print(json.dumps({'ok': True, 'input_width': width, 'capture_source': str(source
             &root,
             &["A".to_owned()],
             1.0,
+            None,
             None,
             "cpu",
             &job,
