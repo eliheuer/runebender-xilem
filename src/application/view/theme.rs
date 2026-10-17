@@ -613,6 +613,10 @@ mod tests {
             );
         }
         let mut palette = Palette::load("gray");
+        // A loaded theme fills the saved inks from its marks, so both
+        // have to go for the fallback branch to be reached.
+        palette.roles.remove("savedInk");
+        palette.roles.remove("unsavedInk");
         palette.marks.remove("green");
         palette.marks.remove("red");
         assert_eq!(palette.save_status_ink(false), palette.text_muted);
