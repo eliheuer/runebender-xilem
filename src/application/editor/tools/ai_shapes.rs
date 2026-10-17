@@ -344,20 +344,14 @@ impl Workspace {
         }
     }
 
-    /// Draw the picked shape in `rect` with the detail typed under the
-    /// box, such as "pointing left", as extra words in the prompt.
-    pub(crate) fn shapes_draw_detail(&mut self, rect: Rect, detail: &str, seed: u64) {
+    /// Draw the picked shape in `rect` again, with another seed.
+    pub(crate) fn shapes_redraw(&mut self, rect: Rect, seed: u64) {
         let shape = self.shapes.pick.0.clone();
         if shape.is_empty() {
             self.shapes.note = "Pick a shape in the panel".into();
             return;
         }
-        let prompt = if detail.trim().is_empty() {
-            shape
-        } else {
-            format!("{shape} {}", detail.trim())
-        };
-        self.shapes_draw(rect, &prompt, seed);
+        self.shapes_draw(rect, &shape, seed);
     }
 
     pub(crate) fn shapes_kept(&mut self, word: &str) {

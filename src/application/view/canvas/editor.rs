@@ -387,11 +387,7 @@ pub(crate) enum EditorEvent {
     AiShapeBox { rect: Rect },
     /// The local AI shapes tool: draw `word` into `rect`; `seed` 0 is
     /// the most likely drawing, another seed another option.
-    AiShapeDraw {
-        rect: Rect,
-        detail: String,
-        seed: u64,
-    },
+    AiShapeDraw { rect: Rect, seed: u64 },
     /// The local AI shapes tool: the box was dismissed.
     AiShapeDrop,
     /// The local AI shapes tool: the ghost was added to the glyph.
@@ -584,15 +580,7 @@ pub(crate) struct EditorWidget {
     /// The local AI shapes tool: the box dragged, the word typed into
     /// the field painted under it, and what the model drew.
     ai_box: Option<Rect>,
-    /// Detail typed under the box, added to the picked shape's prompt.
-    ai_word: String,
-    /// The shape picked in the panel, shown before the detail.
-    ai_shape: String,
-    /// The detail the ghost was drawn for, so Enter knows whether to
-    /// keep it or draw again.
-    ai_drawn: Option<String>,
     ai_ghost: Option<Arc<ShapeGhost>>,
-    ai_note: String,
     /// Text caret blink phase; reset whenever the person moves or edits it.
     cursor_blink_elapsed_ns: u64,
     cursor_visible: bool,
@@ -664,71 +652,41 @@ impl EditorWidget {
         );
         self.ai_box = Some(rect);
         self.ai_ghost = None;
-        self.ai_word.clear();
-        self.ai_drawn = Some(String::new());
-        self.ai_note.clear();
         ctx.submit_action::<EditorEvent>(EditorEvent::AiShapeBox { rect });
         ctx.request_focus();
     }
 
-    /// Keys while the shapes tool has a box: the word field under it is
-    /// painted, so its typing lives here, as the metric boxes do.
+    /// Keys while the shapes tool has a box: Enter keeps the ghost, Tab
+    /// asks for another, Esc drops the box.
     fn ai_key(&mut self, ctx: &mut EventCtx<'_>, key: &masonry::core::KeyboardEvent) -> bool {
         let Some(rect) = self.ai_box else {
             return false;
         };
         match &key.key {
-            Key::Character(typed) => {
-                for ch in typed.chars() {
-                    if ch.is_alphanumeric() || ch == ' ' || ch == '-' {
-                        self.ai_word.push(ch.to_ascii_lowercase());
-                    }
-                }
-                true
-            }
-            Key::Named(NamedKey::Backspace) => {
-                self.ai_word.pop();
-                true
-            }
             Key::Named(NamedKey::Escape) => {
                 self.ai_box = None;
                 self.ai_ghost = None;
-                self.ai_word.clear();
-                self.ai_drawn = None;
                 ctx.submit_action::<EditorEvent>(EditorEvent::AiShapeDrop);
                 true
             }
             Key::Named(NamedKey::Enter) => {
-                let detail = self.ai_word.trim().to_lowercase();
-                let current = self.ai_drawn.as_deref() == Some(detail.as_str());
-                if let Some(ghost) = self.ai_ghost.clone()
-                    && current
-                {
+                if let Some(ghost) = self.ai_ghost.clone() {
                     if self.session.add_generated_contours(&ghost.contours) {
                         self.ai_box = None;
                         self.ai_ghost = None;
-                        self.ai_word.clear();
-                        self.ai_drawn = None;
                         ctx.submit_action::<EditorEvent>(EditorEvent::AiShapeKept {
                             word: ghost.word.clone(),
                         });
                         self.emit(ctx, true);
                     }
                 } else {
-                    self.ai_drawn = Some(detail.clone());
-                    ctx.submit_action::<EditorEvent>(EditorEvent::AiShapeDraw {
-                        rect,
-                        detail,
-                        seed: 0,
-                    });
+                    ctx.submit_action::<EditorEvent>(EditorEvent::AiShapeDraw { rect, seed: 0 });
                 }
                 true
             }
             Key::Named(NamedKey::Tab) => {
-                let detail = self.ai_word.trim().to_lowercase();
                 let seed = self.ai_ghost.as_ref().map_or(1, |g| g.seed + 1);
-                self.ai_drawn = Some(detail.clone());
-                ctx.submit_action::<EditorEvent>(EditorEvent::AiShapeDraw { rect, detail, seed });
+                ctx.submit_action::<EditorEvent>(EditorEvent::AiShapeDraw { rect, seed });
                 true
             }
             _ => false,
@@ -768,80 +726,6 @@ impl EditorWidget {
             painter,
             Point::new(screen.x0, screen.y0 - 6.0),
             &format!("{} × {}", rect.width().round(), rect.height().round()),
-            TextSize::Caption.px(),
-            pal.text_muted,
-            Anchor::Start,
-        );
-        // The word field, painted like the metric boxes.
-        let height = crate::application::view::design::ControlSize::Control.px();
-        let width = 240.0_f64.min(self.size.width - 16.0).max(120.0);
-        let x0 = screen
-            .x0
-            .clamp(8.0, (self.size.width - width - 8.0).max(8.0));
-        let mut y0 = screen.y1 + 8.0;
-        if y0 + height + 24.0 > self.size.height {
-            y0 = (screen.y0 - height - 8.0).max(8.0);
-        }
-        let field = Rect::new(x0, y0, x0 + width, y0 + height);
-        painter
-            .fill(
-                crate::application::view::design::rounded_rect_path(field, pal.control_radius),
-                pal.field(),
-            )
-            .draw();
-        let line = DesignStroke::Hairline.px();
-        let half = line / 2.0;
-        painter
-            .stroke(
-                crate::application::view::design::rounded_rect_path(
-                    Rect::new(
-                        field.x0 + half,
-                        field.y0 + half,
-                        field.x1 - half,
-                        field.y1 - half,
-                    ),
-                    (pal.control_radius - half).max(0.0),
-                ),
-                &Stroke::new(line),
-                pal.text,
-            )
-            .draw();
-        // The shape from the panel, then the typed detail with a caret.
-        let shape = if self.ai_shape.is_empty() {
-            "pick a shape".to_string()
-        } else {
-            self.ai_shape.clone()
-        };
-        let (shown, color) = if self.ai_word.is_empty() {
-            (
-                format!("{shape}: add detail, such as pointing left"),
-                pal.text_muted,
-            )
-        } else {
-            (format!("{shape}: {}|", self.ai_word), pal.text)
-        };
-        text_label::draw(
-            painter,
-            Point::new(
-                field.x0 + crate::application::view::design::INPUT_HORIZONTAL_INSET,
-                field.center().y,
-            ),
-            &shown,
-            TextSize::Body.px(),
-            color,
-            Anchor::Start,
-        );
-        let hint = if !self.ai_note.is_empty() {
-            self.ai_note.clone()
-        } else if self.ai_ghost.is_some() {
-            "Enter keeps · Tab another · Esc drops".to_string()
-        } else {
-            "Drawing · Esc cancels".to_string()
-        };
-        text_label::draw(
-            painter,
-            Point::new(field.x0, field.y1 + 14.0),
-            &hint,
             TextSize::Caption.px(),
             pal.text_muted,
             Anchor::Start,
@@ -4130,8 +4014,6 @@ pub(crate) struct EditorView<F> {
     underlay: Underlay,
     text: Option<crate::application::editor::tools::text::TextInputs>,
     ai_ghost: Option<Arc<ShapeGhost>>,
-    ai_note: String,
-    ai_pick: (String, u64),
     focus_target: Arc<Mutex<Option<WidgetId>>>,
     on_event: F,
 }
@@ -4157,8 +4039,6 @@ pub(crate) fn editor<F: Fn(&mut Workspace, EditorEvent) + 'static>(
     underlay: Underlay,
     text: Option<crate::application::editor::tools::text::TextInputs>,
     ai_ghost: Option<Arc<ShapeGhost>>,
-    ai_note: String,
-    ai_pick: (String, u64),
     focus_target: Arc<Mutex<Option<WidgetId>>>,
     on_event: F,
 ) -> EditorView<F> {
@@ -4182,8 +4062,6 @@ pub(crate) fn editor<F: Fn(&mut Workspace, EditorEvent) + 'static>(
         underlay,
         text,
         ai_ghost,
-        ai_note,
-        ai_pick,
         focus_target,
         on_event,
     }
@@ -4315,11 +4193,7 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
             field: None,
             field_buf: String::new(),
             ai_box: None,
-            ai_word: String::new(),
-            ai_shape: self.ai_pick.0.clone(),
-            ai_drawn: None,
             ai_ghost: None,
-            ai_note: String::new(),
             cursor_blink_elapsed_ns: 0,
             cursor_visible: true,
         };
@@ -4359,8 +4233,6 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
             if self.tool != Tool::AiShape {
                 element.widget.ai_box = None;
                 element.widget.ai_ghost = None;
-                element.widget.ai_word.clear();
-                element.widget.ai_drawn = None;
             }
             if self.tool == Tool::Text {
                 element.ctx.request_anim_frame();
@@ -4381,15 +4253,6 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
         };
         if !ghost_same {
             element.widget.ai_ghost = self.ai_ghost.clone();
-            dirty = true;
-        }
-        if self.ai_note != prev.ai_note {
-            element.widget.ai_note = self.ai_note.clone();
-            dirty = true;
-        }
-        if self.ai_pick != prev.ai_pick {
-            // The panel's picked shape, shown before the typed detail.
-            element.widget.ai_shape = self.ai_pick.0.clone();
             dirty = true;
         }
         if self.sketch_revision != prev.sketch_revision {
@@ -4577,11 +4440,7 @@ mod tests {
             field: None,
             field_buf: String::new(),
             ai_box: None,
-            ai_word: String::new(),
-            ai_shape: String::new(),
-            ai_drawn: None,
             ai_ghost: None,
-            ai_note: String::new(),
             cursor_blink_elapsed_ns: 0,
             cursor_visible: true,
         }

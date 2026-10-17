@@ -82,8 +82,6 @@ pub(crate) fn editor_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<>
                 )
         }),
         app.shapes.ghost.clone(),
-        app.shapes.note.clone(),
-        app.shapes.pick.clone(),
         app.editor_focus.clone(),
         |app: &mut Workspace, ev| match ev {
             canvas::editor::EditorEvent::Selection(n) => {
@@ -95,8 +93,8 @@ pub(crate) fn editor_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<>
                 app.command_toggle_component_alignment();
             }
             canvas::editor::EditorEvent::AiShapeBox { rect } => app.shapes_box_set(rect),
-            canvas::editor::EditorEvent::AiShapeDraw { rect, detail, seed } => {
-                app.shapes_draw_detail(rect, &detail, seed);
+            canvas::editor::EditorEvent::AiShapeDraw { rect, seed } => {
+                app.shapes_redraw(rect, seed);
             }
             canvas::editor::EditorEvent::AiShapeDrop => app.shapes_drop(),
             canvas::editor::EditorEvent::AiShapeKept { word } => app.shapes_kept(&word),

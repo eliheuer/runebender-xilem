@@ -28,7 +28,7 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         .as_ref()
         .and_then(|p| st.installed.iter().position(|m| &m.path == p));
     let paths: Vec<_> = st.installed.iter().map(|m| m.path.clone()).collect();
-    let mut model_rows = vec![Row::Picker {
+    let model_rows = vec![Row::Picker {
         choices: names,
         chosen,
         on_pick: Arc::new(move |app: &mut Workspace, i| {
@@ -37,9 +37,6 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             }
         }),
     }];
-    if !st.note.is_empty() {
-        model_rows.push(Row::Prose(st.note.clone()));
-    }
     groups.push(Group::new("Model", model_rows));
 
     // The shapes the model draws. The picked pill is what a box gets.
@@ -50,18 +47,23 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             .map_or(st.pick.0.as_str(), |g| g.word.as_str());
         let chosen = st.words.iter().position(|w| w == picked);
         let words = st.words.clone();
-        groups.push(Group::new(
-            "Shapes",
-            vec![Row::Chips {
-                items: st.words.clone(),
-                chosen,
-                on_pick: Arc::new(move |app: &mut Workspace, i| {
-                    if let Some(word) = words.get(i) {
-                        app.shapes_pick_word(word);
-                    }
-                }),
-            }],
-        ));
+        let mut rows = vec![Row::Chips {
+            items: st.words.clone(),
+            chosen,
+            on_pick: Arc::new(move |app: &mut Workspace, i| {
+                if let Some(word) = words.get(i) {
+                    app.shapes_pick_word(word);
+                }
+            }),
+        }];
+        // One line of state under the pills: what the tool is doing,
+        // or how the keys answer the ghost.
+        rows.push(Row::Meta(if st.note.is_empty() {
+            "Drag a box on the glyph. Enter keeps, Tab another, Esc drops.".into()
+        } else {
+            st.note.clone()
+        }));
+        groups.push(Group::new("Shapes", rows));
     }
 
     // Training: what runs now, or how to start one.
