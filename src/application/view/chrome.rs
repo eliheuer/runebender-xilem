@@ -5,32 +5,26 @@
 
 use crate::application::editor::tools::graph;
 use crate::application::view::design::{
-    ButtonShape, ControlSize, Region, Space, Stroke, TextSize, row as xrow,
+    ControlKind, ControlSize, ControlStyle, Ground, Region, Space, Stroke, TextSize, row as xrow,
 };
-use crate::application::view::design::{
-    MARK_SELECTED_RING_INSET, MARK_SWATCH_GAP, STATUS_ICON_SIZE, TITLEBAR_HEIGHT,
-};
+use crate::application::view::design::{MARK_SWATCH_GAP, STATUS_ICON_SIZE, TITLEBAR_HEIGHT};
 use crate::application::view::panels::tabs::{tab_chip, tab_strip};
 use crate::application::view::recipes::button;
 use crate::application::view::theme::Palette;
 use crate::application::view::{label, recipes};
 use crate::application::widgets::drag_region::drag_region;
 use crate::application::widgets::icon_button::icon_button;
-use crate::application::widgets::icon_button::named_icon_button;
-use crate::application::widgets::icon_paint;
-use crate::application::widgets::text_button::text_button;
 use crate::application::widgets::tool_group::{ToolGroup, tool_group};
 use crate::application::workspace::{Mode, Tool, Workspace};
 use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
 use masonry::properties::Padding;
 use masonry::properties::types::CrossAxisAlignment;
-use xilem::Color;
 use xilem::WidgetView;
 use xilem::style::Style;
 use xilem::view::FlexExt as _;
 use xilem::view::flex_row;
-use xilem::view::{canvas, flex_col, sized_box};
+use xilem::view::{flex_col, sized_box};
 
 /// The title bar for document identity, editor tools, and tabs.
 ///
@@ -138,24 +132,14 @@ pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<
     // Tool state is carried by icon contrast, not an inverted tile. This keeps
     // the header as quiet as the adjacent outlined tabs while making the
     // selected tool the brightest mark on the bar.
-    let fg = pal.tool_inactive_ink();
-    let fg_active = pal.tool_active_ink();
-    let active_bg = Color::TRANSPARENT;
-    let hover_bg = pal.header_ink.with_alpha(0.1);
     let editor_focus = app.editor_focus.clone();
     let tile = move |icon: &'static str, tool: Tool| {
-        let button = icon_button(
-            icon,
-            app.tool == tool,
-            fg,
-            fg_active,
-            active_bg,
-            hover_bg,
-            move |app: &mut Workspace| {
-                app.select_tool(tool);
-            },
-        )
-        .corner_radius(pal.control_radius)
+        let style = ControlStyle::new(pal, ControlKind::Tool)
+            .on(pal, Ground::Header)
+            .selected(pal, app.tool == tool);
+        let button = icon_button(style, icon, icon, move |app: &mut Workspace| {
+            app.select_tool(tool);
+        })
         .tile_size(ControlSize::Icon.px());
         if tool == Tool::Text {
             button.focus_target(editor_focus.clone())
@@ -198,61 +182,15 @@ pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace, Widget: S
         .collect::<Vec<_>>();
     marks.push((None, pal.panel));
     let outline = pal.mark_outline.unwrap_or(pal.outline);
-    let selected_ring = pal.outline;
-    let clear_ink = pal.editor_control_ink();
     let count = marks.len();
     let swatches = marks
         .into_iter()
         .map(|(mark, color)| {
             let selected = mark == current;
             let clear = mark.is_none();
-            let face = sized_box(canvas(move |_: &mut Workspace, _, scene, size| {
-                use masonry::imaging::Painter;
-                use masonry::kurbo::{Circle, Rect, Stroke as Pen};
-                let mut painter = Painter::new(scene);
-                let half = size.width.min(size.height) / 2.0;
-                let center = (half, half);
-                painter.fill(Circle::new(center, half), color).draw();
-                painter
-                    .stroke(
-                        Circle::new(center, half - Stroke::Hairline.px() / 2.0),
-                        &Pen::new(Stroke::Hairline.px()),
-                        outline,
-                    )
-                    .draw();
-                if selected {
-                    painter
-                        .stroke(
-                            Circle::new(
-                                center,
-                                half - MARK_SELECTED_RING_INSET - Stroke::Hairline.px() / 2.0,
-                            ),
-                            &Pen::new(Stroke::Hairline.px()),
-                            selected_ring,
-                        )
-                        .draw();
-                }
-                if clear {
-                    icon_paint::paint(
-                        &mut painter.as_dyn(),
-                        "close",
-                        Rect::new(half - 5.0, half - 5.0, half + 5.0, half + 5.0),
-                        clear_ink,
-                    );
-                }
-            }))
-            .dims(Dimensions::new(Dim::Stretch, Dim::Stretch));
-            button(
-                pal,
-                crate::application::widgets::swatch_strip::swatch_face(face),
-                move |app: &mut Workspace| {
-                    app.set_mark(mark.clone());
-                },
-            )
-            .padding(Space::None)
-            .border_width(Space::None.length())
-            .corner_radius(ButtonShape::Circular.radius())
-            .background_color(Color::TRANSPARENT)
+            recipes::mark_swatch(pal, color, selected, clear, move |app: &mut Workspace| {
+                app.set_mark(mark.clone());
+            })
             .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
             .flex(1.0)
         })
@@ -340,16 +278,14 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                             pal,
                             "Add glyph",
                             "plus",
-                            false,
-                            pal.editor_control_ink(),
+                            None,
                             |app: &mut Workspace| app.new_glyph(),
                         ),
                         overview_status_button(
                             pal,
                             "Remove glyph",
                             "minus",
-                            false,
-                            pal.editor_control_ink(),
+                            None,
                             |app: &mut Workspace| {
                                 app.note = "Remove glyph: not built in this shell yet".into();
                             },
@@ -370,7 +306,7 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 xrow(
                     Region::Inline,
                     (
-                        text_button(pal, "Center Graph", |app: &mut Workspace| {
+                        footer_button(pal, "Center Graph", |app: &mut Workspace| {
                             app.graph.fit_request = app.graph.fit_request.wrapping_add(1);
                         }),
                         // Zoom moves in equal steps per doubling, as the scroll wheel does.
@@ -395,16 +331,14 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                             pal,
                             "Grid view",
                             "grid",
-                            !app.list,
-                            pal.text_subdued,
+                            Some(!app.list),
                             |app: &mut Workspace| app.list = false,
                         ),
                         overview_status_button(
                             pal,
                             "List view",
                             "list",
-                            app.list,
-                            pal.text_subdued,
+                            Some(app.list),
                             |app: &mut Workspace| app.list = true,
                         ),
                         recipes::neutral_slider(
@@ -426,31 +360,25 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     ))
 }
 
-/// One compact footer control, with selection expressed through its ink.
+/// One compact footer icon: an action when `on` is `None`, otherwise a
+/// switch that is on or off.
 fn overview_status_button<F>(
     pal: &Palette,
     label: &'static str,
     icon: &'static str,
-    active: bool,
-    inactive_ink: Color,
+    on: Option<bool>,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F>
 where
     F: Fn(&mut Workspace) + Send + Sync + 'static,
 {
-    named_icon_button(
-        label,
-        icon,
-        active,
-        inactive_ink,
-        pal.editor_control_ink(),
-        Color::TRANSPARENT,
-        Color::TRANSPARENT,
-        on_click,
-    )
-    .corner_radius(pal.control_radius)
-    .icon_size(STATUS_ICON_SIZE)
-    .tile_size(STATUS_ICON_SIZE)
+    let style = match on {
+        None => ControlStyle::new(pal, ControlKind::Bare),
+        Some(on) => ControlStyle::new(pal, ControlKind::Tool).selected(pal, on),
+    };
+    icon_button(style, icon, label, on_click)
+        .icon_size(STATUS_ICON_SIZE)
+        .tile_size(STATUS_ICON_SIZE)
 }
 
 /// Compact editor footer: proof appearance controls surround the live status.
@@ -464,47 +392,35 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
                 Region::Inline,
                 (
                     sidebar_toggle(app),
-                    named_icon_button(
-                        "Show proof",
+                    icon_button(
+                        ControlStyle::new(pal, ControlKind::Tool)
+                            .selected(pal, app.preview_visible),
                         if app.preview_visible {
                             "eye-open"
                         } else {
                             "eye-closed"
                         },
-                        app.preview_visible,
-                        pal.editor_control_ink(),
-                        pal.editor_control_ink(),
-                        Color::TRANSPARENT,
-                        Color::TRANSPARENT,
+                        "Show proof",
                         |app: &mut Workspace| app.preview_visible = !app.preview_visible,
                     )
-                    .corner_radius(pal.control_radius)
                     .icon_size(STATUS_ICON_SIZE)
                     .tile_size(STATUS_ICON_SIZE),
-                    named_icon_button(
-                        "Invert proof",
+                    icon_button(
+                        ControlStyle::new(pal, ControlKind::Tool).selected(pal, app.preview_invert),
                         "invert",
-                        app.preview_invert,
-                        pal.editor_control_ink(),
-                        pal.editor_control_ink(),
-                        Color::TRANSPARENT,
-                        Color::TRANSPARENT,
+                        "Invert proof",
                         |app: &mut Workspace| app.preview_invert = !app.preview_invert,
                     )
-                    .corner_radius(pal.control_radius)
                     .icon_size(STATUS_ICON_SIZE)
                     .tile_size(STATUS_ICON_SIZE),
                     // A neural source can show its text set from the labeled pieces.
                     app.font.project.is_neural().then(|| {
                         use crate::application::pieces::PreviewView;
-                        named_icon_button(
-                            "Pieces",
+                        icon_button(
+                            ControlStyle::new(pal, ControlKind::Tool)
+                                .selected(pal, app.preview_view == PreviewView::Pieces),
                             "shapes",
-                            app.preview_view == PreviewView::Pieces,
-                            pal.editor_control_ink(),
-                            pal.editor_control_ink(),
-                            Color::TRANSPARENT,
-                            Color::TRANSPARENT,
+                            "Pieces",
                             |app: &mut Workspace| {
                                 app.preview_view = match app.preview_view {
                                     PreviewView::Pieces => PreviewView::Outline,
@@ -512,21 +428,17 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
                                 };
                             },
                         )
-                        .corner_radius(pal.control_radius)
                         .icon_size(STATUS_ICON_SIZE)
                         .tile_size(STATUS_ICON_SIZE)
                     }),
                     // Or drawn by the latest trained font.
                     app.font.project.is_neural().then(|| {
                         use crate::application::pieces::PreviewView;
-                        named_icon_button(
-                            "Model",
+                        icon_button(
+                            ControlStyle::new(pal, ControlKind::Tool)
+                                .selected(pal, app.preview_view == PreviewView::Model),
                             "exclude",
-                            app.preview_view == PreviewView::Model,
-                            pal.editor_control_ink(),
-                            pal.editor_control_ink(),
-                            Color::TRANSPARENT,
-                            Color::TRANSPARENT,
+                            "Model",
                             |app: &mut Workspace| {
                                 app.preview_view = match app.preview_view {
                                     PreviewView::Model => PreviewView::Outline,
@@ -534,7 +446,6 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
                                 };
                             },
                         )
-                        .corner_radius(pal.control_radius)
                         .icon_size(STATUS_ICON_SIZE)
                         .tile_size(STATUS_ICON_SIZE)
                     }),
@@ -562,24 +473,46 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
     )
 }
 
+/// A footer action named in words: a Secondary control at the footer's height.
+fn footer_button<F>(
+    pal: &Palette,
+    text: &'static str,
+    on_click: F,
+) -> impl WidgetView<Workspace> + use<F>
+where
+    F: Fn(&mut Workspace) + Send + Sync + 'static,
+{
+    use crate::application::view::design::areas::footer;
+    let style = ControlStyle::new(pal, ControlKind::Secondary);
+    sized_box(
+        button(
+            style,
+            label(text)
+                .text_size(TextSize::Body.px())
+                .color(style.ink()),
+            on_click,
+        )
+        .padding(Padding::horizontal(Length::px(footer::CONTROL_INSET))),
+    )
+    .dims(Dimensions::new(
+        Dim::Auto,
+        Dim::Fixed(Length::px(footer::CONTROL_HEIGHT)),
+    ))
+}
+
 /// One stable footer control for hiding and restoring the left dock in every mode.
 fn sidebar_toggle(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
-    named_icon_button(
-        "Toggle sidebar",
+    icon_button(
+        ControlStyle::new(pal, ControlKind::Bare),
         if app.left_collapsed {
             "sidebar-closed"
         } else {
             "sidebar-open"
         },
-        false,
-        pal.editor_control_ink(),
-        pal.editor_control_ink(),
-        Color::TRANSPARENT,
-        pal.control,
+        "Toggle sidebar",
         |app: &mut Workspace| app.left_collapsed = !app.left_collapsed,
     )
-    .corner_radius(pal.control_radius)
     .icon_size(STATUS_ICON_SIZE)
     .tile_size(STATUS_ICON_SIZE)
 }

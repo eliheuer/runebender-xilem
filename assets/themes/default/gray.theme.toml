@@ -88,8 +88,10 @@ titlebar = "baseUi.02"
 control = "baseUi.06"
 # Default button face.
 button = "baseUi.07"
-# Button face when hovered in controls that use a hover fill.
+# Button face under the pointer.
 buttonHover = "baseUi.08"
+# Button face while pressed: one step darker than button, so it reads as pushed in.
+buttonPressed = "baseUi.06"
 # Editable text field background.
 field = "baseUi.08"
 # Structural outlines: floating panels, glyph tiles, and selected sidebar rows.
@@ -170,6 +172,8 @@ cellSelectedInk = "baseUi.07"
 controlSelected = "baseUi.03"
 # Contrasting ink for other selected controls.
 controlSelectedInk = "baseUi.09"
+# Keyboard focus ring: a one-pixel ring inside the focused control.
+focusRing = "baseUi.00"
 # Fine design-space grid lines.
 designGridFine = "baseUi.02"
 # Coarse design-space grid lines.

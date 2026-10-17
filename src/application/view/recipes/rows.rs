@@ -44,7 +44,8 @@ use xilem::{AnyWidgetView, WidgetView};
 
 use super::{Marker, button, kv, marker, prose, prose_muted};
 use crate::application::view::design::{
-    ControlSize, DOCK_WIDTH, Region, Space, Stroke, TextSize, column, row,
+    ControlKind, ControlSize, ControlStyle, DOCK_WIDTH, Region, Space, Stroke, TextSize, column,
+    row,
 };
 use crate::application::view::label;
 use crate::application::view::theme::Palette;
@@ -305,21 +306,14 @@ fn row_view(app: &Workspace, row: Row) -> Box<AnyWidgetView<Workspace>> {
 
 /// The ink and face of a button by its weight in the section.
 fn primary(pal: &Palette, text: String, on_click: Click) -> impl WidgetView<Workspace> + use<> {
-    let (fg, bg, border) = (
-        pal.selected_ink(),
-        pal.selected_bg(),
-        pal.selected_outline(pal.outline),
-    );
-    sized_box(
-        button(
-            pal,
-            label(text).text_size(TextSize::Body.px()).color(fg),
-            move |app: &mut Workspace| on_click(app),
-        )
-        .background_color(bg)
-        .border_color(border)
-        .border_width(Stroke::Hairline.length()),
-    )
+    let style = ControlStyle::new(pal, ControlKind::Primary);
+    sized_box(button(
+        style,
+        label(text)
+            .text_size(TextSize::Body.px())
+            .color(style.ink()),
+        move |app: &mut Workspace| on_click(app),
+    ))
     .dims(Dimensions::new(
         Dim::Stretch,
         Dim::from(ControlSize::Control),
@@ -327,16 +321,14 @@ fn primary(pal: &Palette, text: String, on_click: Click) -> impl WidgetView<Work
 }
 
 fn secondary(pal: &Palette, text: String, on_click: Click) -> impl WidgetView<Workspace> + use<> {
-    sized_box(
-        button(
-            pal,
-            label(text).text_size(TextSize::Body.px()).color(pal.text),
-            move |app: &mut Workspace| on_click(app),
-        )
-        .background_color(pal.button)
-        .border_color(pal.outline)
-        .border_width(Stroke::Hairline.length()),
-    )
+    let style = ControlStyle::new(pal, ControlKind::Secondary);
+    sized_box(button(
+        style,
+        label(text)
+            .text_size(TextSize::Body.px())
+            .color(style.ink()),
+        move |app: &mut Workspace| on_click(app),
+    ))
     .dims(Dimensions::new(
         Dim::Stretch,
         Dim::from(ControlSize::Control),
@@ -344,17 +336,16 @@ fn secondary(pal: &Palette, text: String, on_click: Click) -> impl WidgetView<Wo
 }
 
 fn quiet(pal: &Palette, text: String, on_click: Click) -> impl WidgetView<Workspace> + use<> {
+    let style = ControlStyle::new(pal, ControlKind::Quiet);
     sized_box(
         button(
-            pal,
+            style,
             label(text)
                 .text_size(TextSize::Body.px())
-                .color(pal.text_muted),
+                .color(style.ink()),
             move |app: &mut Workspace| on_click(app),
         )
-        .background_color(Palette::FLAT)
-        .border_width(Stroke::None.length())
-        .padding(Space::None),
+        .padding(masonry::properties::Padding::horizontal(Space::Sm.length())),
     )
     .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Row)))
 }
@@ -376,26 +367,15 @@ fn picker(
         .enumerate()
         .map(|(i, text)| {
             let on_pick = on_pick.clone();
-            let active = chosen == Some(i);
-            let (fg, border, bg) = if active {
-                (
-                    pal.selected_ink(),
-                    pal.selected_outline(pal.outline),
-                    pal.selected_bg(),
-                )
-            } else {
-                (pal.text, pal.outline, Palette::FLAT)
-            };
-            sized_box(
-                button(
-                    pal,
-                    label(text).text_size(TextSize::Body.px()).color(fg),
-                    move |app: &mut Workspace| on_pick(app, i),
-                )
-                .background_color(bg)
-                .border_color(border)
-                .border_width(Stroke::Hairline.length()),
-            )
+            let style =
+                ControlStyle::new(pal, ControlKind::Toggle).selected(pal, chosen == Some(i));
+            sized_box(button(
+                style,
+                label(text)
+                    .text_size(TextSize::Body.px())
+                    .color(style.ink()),
+                move |app: &mut Workspace| on_pick(app, i),
+            ))
             .dims(Dimensions::new(
                 Dim::Stretch,
                 Dim::from(ControlSize::Control),
@@ -455,26 +435,16 @@ fn chip<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     active: bool,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
-    let (fg, border, bg) = if active {
-        (
-            pal.selected_ink(),
-            pal.selected_outline(pal.outline),
-            pal.selected_bg(),
-        )
-    } else {
-        (pal.text, pal.outline, Palette::FLAT)
-    };
+    let style = ControlStyle::new(pal, ControlKind::Chip).selected(pal, active);
     sized_box(
         button(
-            pal,
-            label(text).text_size(TextSize::Body.px()).color(fg),
+            style,
+            label(text)
+                .text_size(TextSize::Body.px())
+                .color(style.ink()),
             on_click,
         )
-        .padding(masonry::properties::Padding::horizontal(Space::Md.length()))
-        .background_color(bg)
-        .border_color(border)
-        .border_width(Stroke::Hairline.length())
-        .corner_radius(Length::px(ControlSize::Swatch.px() / 2.0)),
+        .padding(masonry::properties::Padding::horizontal(Space::Md.length())),
     )
     .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Swatch)))
 }
@@ -583,6 +553,7 @@ fn details_view(
     // per distinct section key, a fixed set.
     let key: &'static str = Box::leak(format!("{key} details").into_boxed_str());
     let open = app.collapsed.contains(key);
+    let disclosure = ControlStyle::new(pal, ControlKind::Disclosure);
     let inner: Vec<Box<AnyWidgetView<Workspace>>> = if open {
         rows.into_iter().map(|r| row_view(app, r)).collect()
     } else {
@@ -593,17 +564,17 @@ fn details_view(
         (
             sized_box(
                 button(
-                    pal,
+                    disclosure,
                     row(
                         Region::Inline,
                         (
                             marker(
                                 if open { Marker::Open } else { Marker::Closed },
-                                pal.text_muted,
+                                disclosure.ink(),
                             ),
                             label("Details")
                                 .text_size(TextSize::Caption.px())
-                                .color(pal.text_muted),
+                                .color(disclosure.ink()),
                             FlexSpacer::Flex(1.0),
                         ),
                     ),
@@ -613,8 +584,6 @@ fn details_view(
                         }
                     },
                 )
-                .background_color(Palette::FLAT)
-                .border_width(Stroke::None.length())
                 .padding(Space::None),
             )
             .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row))),

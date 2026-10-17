@@ -6,7 +6,7 @@
 //! LSB, RSB, the two kerning groups, and the category.
 
 use crate::application::view::design::{
-    Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
+    ControlKind, ControlStyle, Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
 };
 use crate::application::view::label;
 use crate::application::view::recipes::button;
@@ -65,12 +65,9 @@ pub(crate) fn glyph_list(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             let index = cell.index;
             let entry = &app.font.glyphs[index];
             let selected = app.selected == Some(index) || app.multi_selected.contains(&index);
-            let (fg, bg) = if selected {
-                (pal.selected_content_ink(), pal.selected_bg())
-            } else {
-                (pal.text, pal.panel)
-            };
-            let muted = if selected { fg } else { pal.text_muted };
+            let style = ControlStyle::new(pal, ControlKind::Row).selected(pal, selected);
+            let fg = style.ink();
+            let muted = style.secondary_ink(pal);
             let (lsb, rsb) = if entry.ink.is_zero_area() {
                 (String::new(), String::new())
             } else {
@@ -102,7 +99,7 @@ pub(crate) fn glyph_list(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                 .corner_radius(Length::px(pal.corner_radius));
             sized_box(
                 button(
-                    pal,
+                    style,
                     xrow(
                         Region::Inline,
                         (
@@ -131,8 +128,6 @@ pub(crate) fn glyph_list(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                         app.grid_select(index, false, false);
                     },
                 )
-                .background_color(bg)
-                .border_width(Stroke::None.length())
                 .padding(Space::None),
             )
             .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(24.0))))

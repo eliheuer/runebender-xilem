@@ -9,7 +9,8 @@
 //! a text area.
 
 use crate::application::view::design::{
-    ControlSize, Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
+    ControlKind, ControlSize, ControlStyle, Region, Space, Stroke, TextSize, column as xcolumn,
+    row as xrow,
 };
 use crate::application::view::recipes::button;
 use crate::application::view::theme::Palette;
@@ -100,22 +101,19 @@ fn styled_chip<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     style: ChipStyle,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
+    let control = ControlStyle::new(pal, ControlKind::Secondary);
     let (height, ink) = match style {
-        ChipStyle::Compact => (ControlSize::Row.px(), pal.text),
-        ChipStyle::GroupMember => (design::GROUP_CHIP_HEIGHT, pal.text),
-        ChipStyle::GroupAdd => (design::GROUP_CHIP_HEIGHT, pal.text_muted),
+        ChipStyle::Compact => (ControlSize::Row.px(), control.ink()),
+        ChipStyle::GroupMember => (design::GROUP_CHIP_HEIGHT, control.ink()),
+        ChipStyle::GroupAdd => (design::GROUP_CHIP_HEIGHT, control.secondary_ink(pal)),
     };
     sized_box(
         button(
-            pal,
+            control,
             label(text).text_size(TextSize::Body.px()).color(ink),
             move |app: &mut Workspace| on_click(app),
         )
-        .padding(Space::Sm)
-        .background_color(Palette::FLAT)
-        .border_color(pal.outline)
-        .border_width(Stroke::Hairline.length())
-        .corner_radius(Length::px(pal.control_radius)),
+        .padding(Space::Sm),
     )
     .dims(Dimensions::new(Dim::Auto, Dim::Fixed(Length::px(height))))
 }
@@ -204,6 +202,8 @@ pub(crate) fn kerning_section(app: &Workspace) -> impl WidgetView<Workspace> + u
             .map(|g| format!("@{g}"))
             .unwrap_or_else(|| name.to_string())
     };
+    let pair_row = ControlStyle::new(pal, ControlKind::Row);
+    let delete = ControlStyle::new(pal, ControlKind::Quiet);
     let rows: Vec<_> = pairs
         .iter()
         .map(|(first, second, value)| {
@@ -213,19 +213,19 @@ pub(crate) fn kerning_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                 Region::Inline,
                 (
                     button(
-                        pal,
+                        pair_row,
                         xrow(
                             Region::Inline,
                             (
                                 label(format!("{} \u{00b7} {}", short(first), short(second)))
                                     .text_size(TextSize::Body.px())
-                                    .color(pal.text)
+                                    .color(pair_row.ink())
                                     .prop(masonry::properties::LineBreaking::Clip)
                                     .dims(Dimensions::new(Dim::Fixed(Length::ZERO), Dim::Auto))
                                     .flex(1.0),
                                 label(format!("{value:.0}"))
                                     .text_size(TextSize::Body.px())
-                                    .color(pal.text_muted),
+                                    .color(pair_row.secondary_ink(pal)),
                             ),
                         ),
                         // The name and value both load the pair into the editor.
@@ -235,17 +235,18 @@ pub(crate) fn kerning_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                             app.kern_value_buf = format!("{v3}");
                         },
                     )
-                    .background_color(Palette::FLAT)
-                    .border_width(Stroke::None.length())
                     .padding(Space::None)
                     .flex(1.0),
                     button(
-                        pal,
-                        icon_paint::view("close", "Delete kerning pair", pal.text_muted, 12.0),
+                        delete,
+                        icon_paint::view(
+                            "close",
+                            "Delete kerning pair",
+                            delete.ink(),
+                            design::SMALL_ICON_SIZE,
+                        ),
                         move |app: &mut Workspace| app.delete_kern_pair(&f2, &s2),
                     )
-                    .background_color(Palette::FLAT)
-                    .border_width(Stroke::None.length())
                     .padding(masonry::properties::Padding::from_vh(
                         Space::None.length(),
                         Space::Sm.length(),

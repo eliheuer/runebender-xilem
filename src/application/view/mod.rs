@@ -4,8 +4,7 @@
 //! What the window shows: the canvases, the panels, the chrome, the
 //! render tree, the design system, the recipes, and the theme.
 
-use self::design::{INPUT_BASELINE_OFFSET, INPUT_HORIZONTAL_INSET, INPUT_INSET, TextSize};
-use masonry::layout::Length;
+use self::design::TextSize;
 
 pub(crate) mod canvas;
 pub(crate) mod chrome;
@@ -20,16 +19,11 @@ pub(crate) const UI_FONT: &[u8] = include_bytes!("../../../assets/fonts/VirtuaGr
 /// The interface font's family name.
 pub(crate) const UI_FONT_FAMILY: &str = "Virtua Grotesk";
 
-/// Property defaults shared by every application host.
+/// Stock widget properties in the initial theme, for hosts and tests
+/// that start before a window can follow the active theme.
 pub(crate) fn default_property_set() -> masonry::core::DefaultProperties {
-    let mut properties = masonry::theme::default_property_set();
-    properties.insert::<masonry::widgets::TextInput, _>(masonry::properties::Padding {
-        left: Length::px(INPUT_HORIZONTAL_INSET),
-        right: Length::px(INPUT_HORIZONTAL_INSET),
-        top: Length::px(INPUT_INSET + INPUT_BASELINE_OFFSET),
-        bottom: Length::px(INPUT_INSET - INPUT_BASELINE_OFFSET),
-    });
-    properties
+    let theme_id = crate::application::platform::themes::catalog().initial_id();
+    design::stock::widget_properties(&theme::Palette::load(theme_id))
 }
 
 /// A label in the interface font.

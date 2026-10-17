@@ -2,22 +2,28 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! An icon tile that paints a glyph from the bundled icon UFO and reports clicks.
+//!
+//! Its look comes from a [`ControlStyle`], like every other pressable
+//! control: the face and ink for rest, hover, pressed, and selected, and a
+//! keyboard focus ring. A click lands on release inside the tile.
 
 use std::sync::{Arc, Mutex};
 
-use masonry::accesskit::{Node, Role};
+use masonry::accesskit::{Action, Node, Role, Toggled};
+use masonry::core::keyboard::{Key, NamedKey};
 use masonry::core::{
-    AccessCtx, ChildrenIds, EventCtx, LayoutCtx, MeasureCtx, PaintCtx, PointerButton,
-    PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, Widget, WidgetId,
+    AccessCtx, AccessEvent, ChildrenIds, EventCtx, LayoutCtx, MeasureCtx, PaintCtx, PointerButton,
+    PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update,
+    UpdateCtx, Widget, WidgetId,
 };
 use masonry::imaging::Painter;
 use masonry::kurbo::{Axis, BezPath, Insets, Rect, Size, Stroke};
 use masonry::layout::{LenReq, Length};
 use runebender::ui::icons::icons;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
-use xilem::{Color, Pod, ViewCtx};
+use xilem::{Pod, ViewCtx};
 
-use crate::application::view::design::{self, RAIL_TAB_ICON};
+use crate::application::view::design::{self, ControlStyle, RAIL_TAB_ICON};
 use crate::application::widgets::icon_paint;
 
 const TILE: f64 = 24.0;
@@ -28,18 +34,15 @@ pub(crate) struct IconClicked;
 pub(crate) struct IconWidget {
     icon: &'static str,
     label: &'static str,
-    active: bool,
-    fg: Color,
-    fg_active: Color,
-    active_bg: Color,
-    hover_bg: Color,
-    rail: Option<(Color, Color, f64, f64)>,
+    style: ControlStyle,
+    /// The rail tab's icon rise and corner radius, when this is a rail tab.
+    rail: Option<(f64, f64)>,
     icon_size: Option<f64>,
     tile_size: f64,
-    corner_radius: f64,
     focus_target: Option<Arc<Mutex<Option<WidgetId>>>>,
     size: Size,
     hovered: bool,
+    pressed: bool,
 }
 
 impl Widget for IconWidget {
@@ -62,8 +65,8 @@ impl Widget for IconWidget {
         self.size = size;
         let flare = self
             .rail
-            .filter(|_| self.active)
-            .map_or(0.0, |(_, _, _, radius)| {
+            .filter(|_| self.style.is_selected())
+            .map_or(0.0, |(_, radius)| {
                 design::rail_tab_flare(radius.max(0.5).min(size.width.min(size.height) / 2.0))
             });
         ctx.set_paint_insets(Insets::new(
@@ -84,49 +87,51 @@ impl Widget for IconWidget {
         // tabs keep whole-pixel edges and equal gaps.
         let rect = ctx.border_box();
         let size = rect.size();
-        if let Some((background, border, _, radius)) = self.rail {
+        let face = self.style.face(self.hovered, self.pressed);
+        let line = self.style.stroke();
+        if let Some((_, radius)) = self.rail {
             // Open at the bottom, with outward curves joining the panel below.
             let r = radius.max(0.5).min(size.width.min(size.height) / 2.0);
-            if self.active {
+            if self.style.is_selected() {
                 // The rail leaves this shape open, so the panel's face shows through it;
-                // a background is painted only when the caller asks for one.
+                // a fill is painted only when the face has one.
                 let (outline, fill) = rail_tab_face(rect, radius);
-                if background != Color::TRANSPARENT {
-                    painter.fill(&fill, background).draw();
+                if face.fill.components[3] > 0.0 {
+                    painter.fill(&fill, face.fill).draw();
                 }
-                painter.stroke(&outline, &Stroke::new(1.0), border).draw();
-            } else if radius > 0.0 {
-                // Kurbo insets grow a rectangle for positive values. Move the stroke
-                // inward so inactive tops align with the active tab's top edge.
-                let face = rect.inset(-0.5).to_rounded_rect(r);
-                painter.fill(face, background).draw();
-                painter.stroke(face, &Stroke::new(1.0), border).draw();
-            } else {
-                let face = rect.inset(-0.5);
-                painter.fill(face, background).draw();
-                painter.stroke(face, &Stroke::new(1.0), border).draw();
-            }
-        }
-
-        if self.rail.is_none() && (self.active || self.hovered) {
-            let fill = if self.active {
-                self.active_bg
-            } else {
-                self.hover_bg
-            };
-            if self.corner_radius > 0.0 {
                 painter
-                    .fill(rect.to_rounded_rect(self.corner_radius), fill)
+                    .stroke(&outline, &Stroke::new(line), face.outline)
                     .draw();
             } else {
-                painter.fill(rect, fill).draw();
+                // Kurbo insets grow a rectangle for positive values. Move the stroke
+                // inward so inactive tops align with the active tab's top edge.
+                let shape = rect.inset(-line / 2.0).to_rounded_rect(r);
+                painter.fill(shape, face.fill).draw();
+                painter
+                    .stroke(shape, &Stroke::new(line), face.outline)
+                    .draw();
+            }
+        } else {
+            let shape = rect.to_rounded_rect(self.style.radius());
+            painter.fill(shape, face.fill).draw();
+            if face.outline.components[3] > 0.0 {
+                painter
+                    .stroke(
+                        rect.inset(-line / 2.0).to_rounded_rect(self.style.radius()),
+                        &Stroke::new(line),
+                        face.outline,
+                    )
+                    .draw();
             }
         }
-        let color = if self.active || (self.rail.is_some() && self.hovered) {
-            self.fg_active
-        } else {
-            self.fg
-        };
+        if ctx.is_focus_target() {
+            let ring = rect
+                .inset(-line * 1.5)
+                .to_rounded_rect((self.style.radius() - line).max(0.0));
+            painter
+                .stroke(ring, &Stroke::new(line.max(1.0)), self.style.focus_ring())
+                .draw();
+        }
         let Some(icon) = icons().get(self.icon) else {
             return;
         };
@@ -141,16 +146,15 @@ impl Widget for IconWidget {
         };
         let dx = rect.x0 + (size.width - vb.width() * scale) / 2.0;
         let dy = rect.y0 + (size.height - vb.height() * scale) / 2.0
-            - if self.rail.is_some() && self.active {
-                self.rail.map(|(_, _, rise, _)| rise).unwrap_or_default()
-            } else {
-                0.0
+            - match self.rail {
+                Some((rise, _)) if self.style.is_selected() => rise,
+                _ => 0.0,
             };
         icon_paint::paint(
             painter,
             self.icon,
             Rect::new(dx, dy, dx + vb.width() * scale, dy + vb.height() * scale),
-            color,
+            face.ink,
         );
     }
 
@@ -161,34 +165,80 @@ impl Widget for IconWidget {
         event: &PointerEvent,
     ) {
         match event {
-            PointerEvent::Enter(_) => {
-                self.hovered = true;
-                ctx.request_render();
-            }
-            PointerEvent::Leave(_) => {
-                self.hovered = false;
-                ctx.request_render();
-            }
             PointerEvent::Down(PointerButtonEvent {
                 button: Some(PointerButton::Primary),
                 ..
             }) => {
-                if let Some(target) = self
-                    .focus_target
-                    .as_ref()
-                    .and_then(|target| *target.lock().unwrap_or_else(|error| error.into_inner()))
-                {
-                    ctx.set_focus(target);
+                ctx.capture_pointer();
+                ctx.set_handled();
+            }
+            PointerEvent::Up(PointerButtonEvent {
+                button: Some(PointerButton::Primary),
+                ..
+            }) => {
+                if ctx.is_active() && ctx.is_hovered() {
+                    if let Some(target) = self.focus_target.as_ref().and_then(|target| {
+                        *target.lock().unwrap_or_else(|error| error.into_inner())
+                    }) {
+                        ctx.set_focus(target);
+                    }
+                    ctx.submit_action::<IconClicked>(IconClicked);
                 }
-                ctx.submit_action::<IconClicked>(IconClicked);
                 ctx.set_handled();
             }
             _ => {}
         }
     }
 
+    fn on_text_event(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        _props: &mut PropertiesMut<'_>,
+        event: &TextEvent,
+    ) {
+        if let TextEvent::Keyboard(event) = event
+            && event.state.is_up()
+            && (matches!(&event.key, Key::Character(c) if c == " ")
+                || event.key == Key::Named(NamedKey::Enter))
+        {
+            ctx.submit_action::<IconClicked>(IconClicked);
+            ctx.set_handled();
+        }
+    }
+
+    fn on_access_event(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        _props: &mut PropertiesMut<'_>,
+        event: &AccessEvent,
+    ) {
+        if event.action == Action::Click {
+            ctx.submit_action::<IconClicked>(IconClicked);
+        }
+    }
+
+    fn update(&mut self, ctx: &mut UpdateCtx<'_>, _props: &mut PropertiesMut<'_>, event: &Update) {
+        match event {
+            Update::HoveredChanged(_) | Update::ActiveChanged(_) => {
+                self.hovered = ctx.is_hovered();
+                self.pressed = ctx.is_active();
+                ctx.request_render();
+            }
+            Update::FocusChanged(_) => ctx.request_render(),
+            _ => {}
+        }
+    }
+
+    fn accepts_focus(&self) -> bool {
+        true
+    }
+
     fn accessibility_role(&self) -> Role {
-        Role::Button
+        if self.rail.is_some() {
+            Role::Tab
+        } else {
+            Role::Button
+        }
     }
 
     fn accessibility(
@@ -198,6 +248,16 @@ impl Widget for IconWidget {
         node: &mut Node,
     ) {
         node.set_label(self.label);
+        node.add_action(Action::Click);
+        if self.rail.is_some() {
+            node.set_selected(self.style.is_selected());
+        } else if self.style.is_selectable() {
+            node.set_toggled(if self.style.is_selected() {
+                Toggled::True
+            } else {
+                Toggled::False
+            });
+        }
     }
 
     fn children_ids(&self) -> ChildrenIds {
@@ -247,80 +307,34 @@ pub(crate) fn rail_tab_face(rect: Rect, radius: f64) -> (BezPath, BezPath) {
 pub(crate) struct IconView<F> {
     icon: &'static str,
     label: &'static str,
-    active: bool,
-    fg: Color,
-    fg_active: Color,
-    active_bg: Color,
-    hover_bg: Color,
-    rail: Option<(Color, Color, f64, f64)>,
+    style: ControlStyle,
+    rail: Option<(f64, f64)>,
     icon_size: Option<f64>,
     tile_size: f64,
-    corner_radius: f64,
     focus_target: Option<Arc<Mutex<Option<WidgetId>>>>,
     on_click: F,
 }
 
+/// An icon control drawn in `style`, announced to assistive technology as `label`.
 pub(crate) fn icon_button<State: 'static, F: Fn(&mut State) + 'static>(
+    style: ControlStyle,
     icon: &'static str,
-    active: bool,
-    fg: Color,
-    fg_active: Color,
-    active_bg: Color,
-    hover_bg: Color,
-    on_click: F,
-) -> IconView<F> {
-    IconView {
-        icon,
-        label: icon,
-        active,
-        fg,
-        fg_active,
-        active_bg,
-        hover_bg,
-        rail: None,
-        icon_size: None,
-        tile_size: TILE,
-        corner_radius: 0.0,
-        focus_target: None,
-        on_click,
-    }
-}
-
-/// An icon button with a descriptive accessibility label.
-pub(crate) fn named_icon_button<State: 'static, F: Fn(&mut State) + 'static>(
     label: &'static str,
-    icon: &'static str,
-    active: bool,
-    fg: Color,
-    fg_active: Color,
-    active_bg: Color,
-    hover_bg: Color,
     on_click: F,
 ) -> IconView<F> {
     IconView {
         icon,
         label,
-        active,
-        fg,
-        fg_active,
-        active_bg,
-        hover_bg,
+        style,
         rail: None,
         icon_size: None,
         tile_size: TILE,
-        corner_radius: 0.0,
         focus_target: None,
         on_click,
     }
 }
 
 impl<F> IconView<F> {
-    /// Apply the active theme to the control background.
-    pub(crate) fn corner_radius(mut self, radius: f64) -> Self {
-        self.corner_radius = radius;
-        self
-    }
-
     /// Set the icon's maximum ink extent in logical pixels, clamped to its tile.
     /// Rail tabs default to the rail's own icon-size token.
     pub(crate) fn icon_size(mut self, size: f64) -> Self {
@@ -340,15 +354,10 @@ impl<F> IconView<F> {
         self
     }
 
-    /// Paint a GPUI-style rail tab around the icon.
-    pub(crate) fn rail_tab(
-        mut self,
-        background: Color,
-        border: Color,
-        icon_rise: f64,
-        radius: f64,
-    ) -> Self {
-        self.rail = Some((background, border, icon_rise, radius));
+    /// Draw the control as a rail tab: the open tab rises by `icon_rise`
+    /// and flares into the panel below at `radius`.
+    pub(crate) fn rail_tab(mut self, icon_rise: f64, radius: f64) -> Self {
+        self.rail = Some((icon_rise, radius));
         self
     }
 }
@@ -362,18 +371,14 @@ impl<State: 'static, F: Fn(&mut State) + 'static> View<State, (), ViewCtx> for I
         let w = IconWidget {
             icon: self.icon,
             label: self.label,
-            active: self.active,
-            fg: self.fg,
-            fg_active: self.fg_active,
-            active_bg: self.active_bg,
-            hover_bg: self.hover_bg,
+            style: self.style,
             rail: self.rail,
             icon_size: self.icon_size,
             tile_size: self.tile_size,
-            corner_radius: self.corner_radius,
             focus_target: self.focus_target.clone(),
             size: Size::ZERO,
             hovered: false,
+            pressed: false,
         };
         (ctx.with_action_widget(|ctx| ctx.create_pod(w)), ())
     }
@@ -387,26 +392,17 @@ impl<State: 'static, F: Fn(&mut State) + 'static> View<State, (), ViewCtx> for I
         _: &mut State,
     ) {
         if self.icon != prev.icon
-            || self.active != prev.active
+            || self.style != prev.style
             || self.rail != prev.rail
-            || self.fg != prev.fg
-            || self.fg_active != prev.fg_active
-            || self.active_bg != prev.active_bg
-            || self.hover_bg != prev.hover_bg
             || self.icon_size != prev.icon_size
-            || self.corner_radius != prev.corner_radius
             || self.tile_size != prev.tile_size
         {
             el.widget.icon = self.icon;
-            el.widget.active = self.active;
+            el.widget.style = self.style;
             el.widget.rail = self.rail;
             el.widget.icon_size = self.icon_size;
             el.widget.tile_size = self.tile_size;
-            el.widget.corner_radius = self.corner_radius;
-            el.widget.fg = self.fg;
-            el.widget.fg_active = self.fg_active;
-            el.widget.active_bg = self.active_bg;
-            el.widget.hover_bg = self.hover_bg;
+            el.ctx.request_layout();
             el.ctx.request_render();
         }
         el.widget.label = self.label;
@@ -435,32 +431,34 @@ impl<State: 'static, F: Fn(&mut State) + 'static> View<State, (), ViewCtx> for I
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::application::view::default_property_set;
+    use crate::application::view::design::ControlKind;
+    use crate::application::view::theme::Palette;
     use masonry::core::NewWidget;
-    use masonry::theme::default_property_set;
     use masonry::widgets::{Button, Flex, Label};
     use masonry_testing::TestHarness;
+
+    fn tool(focus_target: Option<Arc<Mutex<Option<WidgetId>>>>) -> IconWidget {
+        IconWidget {
+            icon: "text",
+            label: "Text tool",
+            style: ControlStyle::new(&Palette::load("gray"), ControlKind::Tool),
+            rail: None,
+            icon_size: None,
+            tile_size: TILE,
+            focus_target,
+            size: Size::ZERO,
+            hovered: false,
+            pressed: false,
+        }
+    }
 
     #[test]
     fn a_tool_control_can_focus_the_editor_on_click() {
         let editor = NewWidget::new(Button::new(Label::new("editor").prepare()));
         let editor_id = editor.id();
         let target = Arc::new(Mutex::new(Some(editor_id)));
-        let tool = NewWidget::new(IconWidget {
-            icon: "text",
-            label: "Text tool",
-            active: false,
-            fg: Color::BLACK,
-            fg_active: Color::BLACK,
-            active_bg: Color::TRANSPARENT,
-            hover_bg: Color::TRANSPARENT,
-            rail: None,
-            icon_size: None,
-            tile_size: TILE,
-            corner_radius: 0.0,
-            focus_target: Some(target),
-            size: Size::ZERO,
-            hovered: false,
-        });
+        let tool = NewWidget::new(tool(Some(target)));
         let tool_id = tool.id();
         let row = Flex::row().with_fixed(tool).with_fixed(editor).prepare();
         let mut harness = TestHarness::create_with_size(default_property_set(), row, (160, 40));
@@ -468,5 +466,25 @@ mod tests {
         harness.mouse_click_on(tool_id, Some(PointerButton::Primary));
 
         assert_eq!(harness.focused_widget_id(), Some(editor_id));
+    }
+
+    #[test]
+    fn an_icon_control_shows_hover_and_press() {
+        let widget = NewWidget::new(tool(None));
+        let id = widget.id();
+        let mut harness = TestHarness::create_with_size(default_property_set(), widget, (24, 24));
+        let rest = harness.render();
+        harness.mouse_move_to(id);
+        let hover = harness.render();
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        let pressed = harness.render();
+        assert!(
+            harness.pop_action::<IconClicked>().is_none(),
+            "fires on release"
+        );
+        assert_ne!(rest, hover);
+        assert_ne!(hover, pressed);
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        assert!(harness.pop_action::<IconClicked>().is_some());
     }
 }

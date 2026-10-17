@@ -10,11 +10,12 @@
 //! Body layouts use `Region::Form`, `Region::Inline`, or `Region::List` without
 //! adding another outer inset. See `docs/UI-DESIGN.md` for a complete contributor example.
 
+use crate::application::widgets::control::{ControlWidget, control};
 use crate::application::widgets::icon_paint;
 use crate::application::widgets::input_typography;
 
 use crate::application::view::design::{
-    ControlSize, ROW_MARKER_SIZE, Region, Space, Stroke, TextSize,
+    ControlKind, ControlSize, ControlStyle, ROW_MARKER_SIZE, Region, Space, Stroke, TextSize,
 };
 use crate::application::view::design::{column, row};
 use crate::application::view::{label, text_input};
@@ -23,25 +24,25 @@ use masonry::properties::Dimensions;
 use xilem::WidgetView;
 use xilem::style::Style;
 use xilem::view::FlexExt as _;
-use xilem::view::{FlexSpacer, button as xilem_button, canvas, sized_box};
+use xilem::view::{FlexSpacer, canvas, sized_box};
 
 use crate::application::view::theme::Palette;
 use crate::application::workspace::Workspace;
 
-/// The application's base button.
+/// The application's base button: a [`control`] in the given style.
 ///
-/// Panel controls use the active theme's control radius.
-/// Deliberately circular controls override it at their use site.
+/// Pick the look with a [`ControlKind`] through [`ControlStyle`]; set only
+/// size and padding at the call site. The style owns every state.
 pub(crate) fn button<V, F>(
-    pal: &Palette,
+    style: ControlStyle,
     child: V,
     on_click: F,
-) -> impl WidgetView<Workspace, Widget = masonry::widgets::Button> + use<V, F>
+) -> impl WidgetView<Workspace, Widget = ControlWidget> + use<V, F>
 where
     V: WidgetView<Workspace>,
     F: Fn(&mut Workspace) + Send + Sync + 'static,
 {
-    xilem_button(child, on_click).corner_radius(Length::px(pal.control_radius))
+    control(style, child, on_click)
 }
 
 /// A section header with an explicit tokenized content height.
@@ -55,13 +56,14 @@ pub(crate) fn section_toggle_height<F>(
 where
     F: Fn(&mut Workspace) + Send + Sync + 'static,
 {
-    let muted = pal.text_muted;
-    // A stretched row inside the button, because the stock button
-    // centres its child and a section header has to sit at the left edge
-    // with the rows it heads.
+    let style = ControlStyle::new(pal, ControlKind::Disclosure);
+    let muted = style.ink();
+    // A stretched row inside the button, because the control centres its
+    // child and a section header has to sit at the left edge with the rows
+    // it heads.
     sized_box(
         button(
-            pal,
+            style,
             row(
                 Region::Inline,
                 (
@@ -72,8 +74,6 @@ where
             ),
             move |app: &mut Workspace| on_click(app),
         )
-        .background_color(Palette::FLAT)
-        .border_width(Stroke::None.length())
         .padding(Space::None),
     )
     .dims(Dimensions::new(
@@ -237,11 +237,7 @@ where
             .on_enter(move |app: &mut Workspace, v| on_enter(app, v))
             .placeholder(placeholder)
             .text_color(pal.text)
-            .placeholder_color(pal.text_muted)
-            .background_color(pal.field())
-            .border_color(pal.field_outline)
-            .border_width(Stroke::Hairline.length())
-            .corner_radius(Length::px(pal.control_radius)),
+            .placeholder_color(pal.text_muted),
         pal.text,
     ))
     .dims(Dimensions::new(
@@ -289,11 +285,7 @@ where
         sized_box(input_typography::input_typography(
             text_input(value, move |app: &mut Workspace, v| on_change(app, v))
                 .text_color(pal.text)
-                .placeholder_color(pal.text_muted)
-                .background_color(pal.field())
-                .border_color(pal.field_outline)
-                .border_width(Stroke::Hairline.length())
-                .corner_radius(Length::px(pal.control_radius)),
+                .placeholder_color(pal.text_muted),
             pal.text,
         ))
         .dims(Dimensions::new(
@@ -391,19 +383,12 @@ pub(crate) fn list_row_marked<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     active: bool,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
-    let (fg, border, bg) = if active {
-        (pal.selected_content_ink(), pal.outline, pal.selected_bg())
-    } else {
-        (pal.text, xilem::Color::TRANSPARENT, Palette::FLAT)
-    };
-    let trailing_color = if active {
-        pal.selected_content_ink()
-    } else {
-        pal.text_muted
-    };
+    let style = ControlStyle::new(pal, ControlKind::Row).selected(pal, active);
+    let fg = style.ink();
+    let trailing_color = style.secondary_ink(pal);
     sized_box(
         button(
-            pal,
+            style,
             row(
                 Region::Inline,
                 (
@@ -421,18 +406,7 @@ pub(crate) fn list_row_marked<F: Fn(&mut Workspace) + Send + Sync + 'static>(
         )
         .padding(masonry::properties::Padding::horizontal(Length::px(
             crate::application::view::design::SIDEBAR_ROW_INSET,
-        )))
-        .background_color(bg)
-        .border_color(border)
-        .border_width(
-            if active {
-                Stroke::Hairline
-            } else {
-                Stroke::None
-            }
-            .length(),
-        )
-        .corner_radius(Length::px(pal.control_radius * 0.5)),
+        ))),
     )
     .dims(Dimensions::new(
         Dim::Stretch,
@@ -448,26 +422,16 @@ pub(crate) fn toggle<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     active: bool,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
-    let (fg, border, bg) = if active {
-        (
-            pal.selected_ink(),
-            pal.selected_outline(pal.outline),
-            pal.selected_bg(),
-        )
-    } else {
-        (pal.text, pal.outline, Palette::FLAT)
-    };
+    let style = ControlStyle::new(pal, ControlKind::Toggle).selected(pal, active);
     sized_box(
         button(
-            pal,
-            label(text).text_size(TextSize::Body.px()).color(fg),
+            style,
+            label(text)
+                .text_size(TextSize::Body.px())
+                .color(style.ink()),
             move |app: &mut Workspace| on_click(app),
         )
-        .padding(Space::Md)
-        .background_color(bg)
-        .border_color(border)
-        .border_width(Stroke::Hairline.length())
-        .corner_radius(Length::px(pal.control_radius)),
+        .padding(Space::Md),
     )
     .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Control)))
 }
@@ -498,10 +462,13 @@ pub(crate) fn action<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
     let action_name = text.clone();
+    let style = ControlStyle::new(pal, ControlKind::Secondary);
     sized_box(
         button(
-            pal,
-            label(text).text_size(TextSize::Body.px()).color(pal.text),
+            style,
+            label(text)
+                .text_size(TextSize::Body.px())
+                .color(style.ink()),
             move |app: &mut Workspace| {
                 let previous_message = app.note.clone();
                 let revision = app.font.project.document_revision();
@@ -514,12 +481,69 @@ pub(crate) fn action<F: Fn(&mut Workspace) + Send + Sync + 'static>(
                 );
             },
         )
-        .background_color(pal.button)
-        .border_color(pal.outline)
-        .border_width(Stroke::Hairline.length())
-        .corner_radius(Length::px(pal.control_radius)),
+        .padding(Space::Md),
     )
     .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Control)))
+}
+
+/// A glyph mark color as a round swatch: the color in its keyline, a
+/// ring inside when it is the selected glyph's mark, and a cross on the
+/// swatch that clears the mark. Hover and press show on its edge.
+pub(crate) fn mark_swatch<F>(
+    pal: &Palette,
+    color: xilem::Color,
+    selected: bool,
+    clear: bool,
+    on_click: F,
+) -> impl WidgetView<Workspace, Widget = ControlWidget> + use<F>
+where
+    F: Fn(&mut Workspace) + Send + Sync + 'static,
+{
+    use crate::application::view::design::MARK_SELECTED_RING_INSET;
+    let outline = pal.mark_outline.unwrap_or(pal.outline);
+    let selected_ring = pal.outline;
+    let clear_ink = pal.editor_control_ink();
+    let line = pal.stroke;
+    let face = sized_box(canvas(move |_: &mut Workspace, _, scene, size| {
+        use masonry::imaging::Painter;
+        use masonry::kurbo::{Circle, Rect, Stroke as Pen};
+        let mut painter = Painter::new(scene);
+        let half = size.width.min(size.height) / 2.0;
+        let center = (half, half);
+        painter.fill(Circle::new(center, half), color).draw();
+        painter
+            .stroke(
+                Circle::new(center, half - line / 2.0),
+                &Pen::new(line),
+                outline,
+            )
+            .draw();
+        if selected {
+            painter
+                .stroke(
+                    Circle::new(center, half - MARK_SELECTED_RING_INSET - line / 2.0),
+                    &Pen::new(line),
+                    selected_ring,
+                )
+                .draw();
+        }
+        if clear {
+            let r = ControlSize::Dot.px() / 2.0;
+            icon_paint::paint(
+                &mut painter.as_dyn(),
+                "close",
+                Rect::new(half - r, half - r, half + r, half + r),
+                clear_ink,
+            );
+        }
+    }))
+    .dims(Dimensions::new(Dim::Stretch, Dim::Stretch));
+    button(
+        ControlStyle::new(pal, ControlKind::Swatch),
+        crate::application::widgets::swatch_strip::swatch_face(face),
+        on_click,
+    )
+    .padding(Space::None)
 }
 
 /// The editor's neutral slider, retaining Masonry keyboard and pointer behavior.

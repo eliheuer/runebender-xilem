@@ -6,7 +6,8 @@
 use crate::application::editor::session::Session;
 use crate::application::view::chrome::direction_chips;
 use crate::application::view::design::{
-    ButtonShape, ControlSize, Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
+    ControlKind, ControlSize, ControlStyle, Region, Space, Stroke, TextSize, column as xcolumn,
+    row as xrow,
 };
 use crate::application::view::panels::tabs::tab_chip;
 use crate::application::view::recipes::button;
@@ -40,19 +41,23 @@ pub(crate) fn layers_section(app: &Workspace) -> Option<impl WidgetView<Workspac
         .filter(|(i, _)| *i != active)
         .map(|(i, name)| {
             let shown = app.reference_layers.contains(&i);
-            let (bg, fg) = if shown {
-                (pal.role("reference").with_alpha(0.28), pal.text)
+            let style = ControlStyle::new(pal, ControlKind::Row).selected(pal, shown);
+            // The bullet keeps the reference color, so the row says how the layer draws.
+            let bullet = if shown {
+                pal.role("reference")
             } else {
-                (Palette::FLAT, pal.text_muted)
+                style.secondary_ink(pal)
             };
             sized_box(
                 button(
-                    pal,
+                    style,
                     xrow(
                         Region::Inline,
                         (
-                            recipes::marker(recipes::Marker::Bullet, fg),
-                            label(name).text_size(TextSize::Body.px()).color(fg),
+                            recipes::marker(recipes::Marker::Bullet, bullet),
+                            label(name)
+                                .text_size(TextSize::Body.px())
+                                .color(style.ink()),
                         ),
                     ),
                     move |app: &mut Workspace| {
@@ -61,7 +66,9 @@ pub(crate) fn layers_section(app: &Workspace) -> Option<impl WidgetView<Workspac
                         }
                     },
                 )
-                .background_color(bg),
+                .padding(masonry::properties::Padding::horizontal(Length::px(
+                    design::SIDEBAR_ROW_INSET,
+                ))),
             )
             .dims(Dimensions::new(
                 Dim::Stretch,
@@ -136,26 +143,16 @@ pub(crate) fn masters_section(app: &Workspace) -> Option<impl WidgetView<Workspa
         .enumerate()
         .map(|(i, name)| {
             let active = i == app.font.active();
-            let (bg, fg, border) = if active {
-                (pal.selected_bg(), pal.selected_content_ink(), pal.outline)
-            } else {
-                (Palette::FLAT, pal.text, xilem::Color::TRANSPARENT)
-            };
+            let style = ControlStyle::new(pal, ControlKind::Row).selected(pal, active);
             sized_box(
                 button(
-                    pal,
-                    label(name).text_size(TextSize::Body.px()).color(fg),
+                    style,
+                    label(name)
+                        .text_size(TextSize::Body.px())
+                        .color(style.ink()),
                     move |app: &mut Workspace| app.set_master(i),
                 )
-                .padding(Space::Sm)
-                .background_color(bg)
-                .border_color(border)
-                .border_width(if active {
-                    Stroke::Hairline.length()
-                } else {
-                    Stroke::None.length()
-                })
-                .corner_radius(Length::px(pal.control_radius)),
+                .padding(Space::Sm),
             )
             .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Icon)))
         })
@@ -367,21 +364,11 @@ pub(crate) fn transformations_section(app: &Workspace) -> impl WidgetView<Worksp
     use crate::application::editor::session::BoolOp;
     use icon_button::icon_button;
     let pal = &app.palette;
-    let fg = pal.editor_control_ink();
-    let fga = pal.selected_ink();
-    let abg = pal.selected_bg();
-    let hbg = pal.control;
+    let style = ControlStyle::new(pal, ControlKind::Bare);
     let op = move |icon: &'static str, f: fn(&mut Session) -> bool| {
-        icon_button(
-            icon,
-            false,
-            fg,
-            fga,
-            abg,
-            hbg,
-            move |app: &mut Workspace| app.apply_op(f),
-        )
-        .corner_radius(pal.control_radius)
+        icon_button(style, icon, icon, move |app: &mut Workspace| {
+            app.apply_op(f);
+        })
         .icon_size(design::TRANSFORM_ICON_SIZE)
         .tile_size(design::TRANSFORM_TILE_SIZE)
     };
@@ -613,19 +600,16 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
             Quadrant::BottomRight => "Bottom right reference",
         };
         sized_box(
+            // A swatch's opaque face hides the grid lines that run through each ring.
             button(
-                pal,
+                ControlStyle::new(pal, ControlKind::Swatch),
                 icon_paint::view(icon, label, color, ControlSize::Dot.px()),
                 move |app: &mut Workspace| {
                     app.coord_quadrant = q;
                     app.refresh_coord_bufs();
                 },
             )
-            .padding(Space::None)
-            // A solid face hides the grid lines that run through each ring.
-            .background_color(pal.panel)
-            .border_width(Stroke::None.length())
-            .corner_radius(ButtonShape::Circular.radius()),
+            .padding(Space::None),
         )
         .dims(Dimensions::fixed(
             ControlSize::Dot.length(),
@@ -915,14 +899,22 @@ pub(crate) fn background_section(app: &Workspace) -> impl WidgetView<Workspace> 
 
 pub(crate) fn mark_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
+    let current = app
+        .selected
+        .and_then(|i| app.font.glyphs.get(i))
+        .and_then(|g| g.mark.clone());
     let swatch = |mark_label: Option<String>, color: xilem::Color| {
-        sized_box(
-            button(pal, label(""), move |app: &mut Workspace| {
+        let selected = mark_label == current;
+        let clear = mark_label.is_none();
+        sized_box(recipes::mark_swatch(
+            pal,
+            color,
+            selected,
+            clear,
+            move |app: &mut Workspace| {
                 app.set_mark(mark_label.clone());
-            })
-            .background_color(color)
-            .corner_radius(ButtonShape::Circular.radius()),
-        )
+            },
+        ))
         .dims(Dimensions::fixed(
             ControlSize::Row.length(),
             ControlSize::Row.length(),
@@ -941,7 +933,7 @@ pub(crate) fn mark_section(app: &Workspace) -> impl WidgetView<Workspace> + use<
         xcolumn(
             Region::Form,
             (
-                xrow(Region::Inline, (swatch(None, pal.control),)),
+                xrow(Region::Inline, (swatch(None, pal.panel),)),
                 xrow(Region::List, marks),
             ),
         ),

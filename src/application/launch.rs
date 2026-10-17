@@ -188,6 +188,8 @@ pub(crate) fn run(
             crate::application::view::render::workspace_min_width(workspace.left_collapsed)
         });
         let view = xilem::window(window_id, "Runebender", content)
+            // Stock widgets follow the active theme; the window swaps them on a theme change.
+            .with_default_properties(app.palette.widget_properties())
             .with_options(|options| {
                 let options = options
                     .with_initial_inner_size(LogicalSize::new(

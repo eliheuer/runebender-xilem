@@ -1317,7 +1317,8 @@ mod panel_resize_tests {
                     "width {width}: {rect:?}, expected {diameter}"
                 );
                 assert!((rect.height() - diameter).abs() <= 1.0);
-                let origin = button.ctx().window_transform() * Point::ORIGIN;
+                // Measure the border box: a swatch's state ring is its border.
+                let origin = button.ctx().window_transform() * rect.origin();
                 assert!((origin.x - (gap + i as f64 * (diameter + gap))).abs() <= 1.0);
                 assert!((origin.y - (1.0 + gap)).abs() <= 1.0);
             }

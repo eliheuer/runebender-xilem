@@ -5,6 +5,7 @@
 //! menu, and the shortcut host.
 
 pub(crate) mod context_menu;
+pub(crate) mod control;
 pub(crate) mod drag_region;
 pub(crate) mod even_row;
 pub(crate) mod frame_stats;
@@ -20,7 +21,6 @@ pub(crate) mod quadrant_picker;
 pub(crate) mod rounded_clip;
 pub(crate) mod shortcuts;
 pub(crate) mod source_text_area;
-pub(crate) mod text_button;
 pub(crate) mod text_label;
 pub(crate) mod tool_group;
 

@@ -12,6 +12,12 @@
 //! These application-owned tokens keep the editor consistent while it
 //! builds against upstream Xilem without a private framework fork.
 
+pub(crate) mod areas;
+pub(crate) mod states;
+pub(crate) mod stock;
+
+pub(crate) use states::{ControlKind, ControlStyle, Ground};
+
 use masonry::layout::{Dim, Length};
 use masonry::properties::types::CrossAxisAlignment;
 use masonry::properties::{Gap, Padding};
@@ -180,6 +186,8 @@ pub(crate) const HEADER_TAB_HEIGHT: f64 = 19.0;
 pub(crate) const HEADER_TAB_TEXT_INSET: f64 = 6.0;
 /// Icon tabs share a short rectangular silhouette with the text tabs.
 pub(crate) const HEADER_TAB_ICON_WIDTH: f64 = 24.0;
+/// A small inline symbol inside a control: close, add, delete.
+pub(crate) const SMALL_ICON_SIZE: f64 = 12.0;
 
 /// Transformation icon extent inside its control-size tile; the row's outer tiles
 /// meet the section's content edges.
@@ -316,6 +324,34 @@ impl ControlSize {
         match Length::try_px(self.px()) {
             Some(length) => length,
             None => Length::ZERO,
+        }
+    }
+}
+
+/// The opacity scale: how far a color is faded for a purpose.
+///
+/// Fading is a meaning, not a number picked per view. Add a step here,
+/// once, with its reason, rather than calling `with_alpha` on a literal.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Alpha {
+    /// A control that cannot be used now: its ink and outline.
+    Disabled,
+    /// Selected text behind its glyphs, light enough to keep them legible.
+    TextSelection,
+    /// Inactive header text and icons, in themes without `headerMutedInk`.
+    HeaderInk,
+    /// Inactive header keylines, in themes without `headerMutedInk`.
+    HeaderKeyline,
+}
+
+impl Alpha {
+    /// The opacity, 0 to 1.
+    pub(crate) const fn value(self) -> f32 {
+        match self {
+            Self::Disabled => 0.4,
+            Self::TextSelection => 0.35,
+            Self::HeaderInk => 0.7,
+            Self::HeaderKeyline => 0.5,
         }
     }
 }

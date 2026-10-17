@@ -110,7 +110,18 @@ pub(crate) struct Palette {
     /// Corner radius for pressable controls and fields.
     pub control_radius: f64,
     pub control: Color,
+    /// Button face at rest.
     pub button: Color,
+    /// Button face under the pointer.
+    pub button_hover: Color,
+    /// Button face while the pointer holds it down.
+    pub button_pressed: Color,
+    /// The one-pixel ring inside the control that has keyboard focus.
+    pub focus_ring: Color,
+    /// The theme's normal line width, in logical pixels.
+    pub stroke: f64,
+    /// The theme's emphasized line width, in logical pixels.
+    pub stroke_emphasis: f64,
     /// Normal slider knob fill.
     pub slider_thumb: Color,
     /// Slider knob fill while focused or dragged.
@@ -153,6 +164,8 @@ pub(crate) struct Palette {
     pub point_outline: Option<Color>,
     /// Points and anchors get a halo of the ground under them.
     pub point_halo: bool,
+    /// Masonry's stock widgets in this theme, built once on first use.
+    widget_properties: std::sync::OnceLock<std::sync::Arc<masonry::core::DefaultProperties>>,
 }
 
 impl Palette {
@@ -208,6 +221,11 @@ impl Palette {
             control_radius: f64::from(t.geometry.radius_control),
             control: color(t.surface("control")),
             button: color(t.surface("button")),
+            button_hover: color(t.surface("buttonHover")),
+            button_pressed: color(t.surface("buttonPressed")),
+            focus_ring: color(t.role("focusRing")),
+            stroke: f64::from(t.geometry.stroke),
+            stroke_emphasis: f64::from(t.geometry.stroke_emphasis),
             slider_thumb: color(t.surface("sliderThumb")),
             slider_thumb_active: color(t.surface("sliderThumbActive")),
             canvas: color(t.surface("canvas")),
@@ -243,7 +261,20 @@ impl Palette {
             points_filled: t.point_style == runebender::ui::theme::PointStyle::Fill,
             point_outline: t.point_outline.map(color),
             point_halo: t.point_halo,
+            widget_properties: std::sync::OnceLock::new(),
         }
+    }
+
+    /// Masonry's stock widgets dressed in this theme. The window swaps
+    /// these in when the theme changes; the `Arc` stays the same for one palette.
+    pub(crate) fn widget_properties(&self) -> std::sync::Arc<masonry::core::DefaultProperties> {
+        self.widget_properties
+            .get_or_init(|| {
+                std::sync::Arc::new(crate::application::view::design::stock::widget_properties(
+                    self,
+                ))
+            })
+            .clone()
     }
 
     pub(crate) fn field(&self) -> Color {

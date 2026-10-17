@@ -23,7 +23,9 @@ use masonry::core::{
     WidgetId, WidgetPod,
 };
 use masonry::imaging::Painter;
-use masonry::kurbo::{Axis, BezPath, Line, Point, Rect, Shape as _, Size, Stroke, Vec2};
+use masonry::kurbo::{
+    Axis, BezPath, Line, Point, Rect, RoundedRect, RoundedRectRadii, Shape as _, Size, Stroke, Vec2,
+};
 use masonry::layout::{LenReq, Length};
 use masonry::peniko::{Blob, ImageAlphaType, ImageData, ImageFormat};
 use masonry::properties::ContentColor;
@@ -37,6 +39,7 @@ use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewId, ViewMarker, View
 use xilem::{Pod, ViewCtx};
 
 use crate::application::editor::tools::graph::RowState;
+use crate::application::view::design::areas;
 use crate::application::view::theme::Palette;
 use crate::application::widgets::context_menu::{ContextMenu, MenuAction, MenuRow, MenuTarget};
 use crate::application::widgets::icon_paint;
@@ -99,9 +102,17 @@ enum Drag {
     Idle,
 }
 
-/// A rectangle as a path, so the affine applies to it.
-fn rect_path(r: Rect) -> BezPath {
-    r.to_path(0.1)
+/// A rectangle with rounded corners as a path, so the affine applies to it.
+fn rounded_path(r: Rect, radius: f64) -> BezPath {
+    r.to_rounded_rect(radius.min(r.width() / 2.0).min(r.height() / 2.0))
+        .to_path(0.1)
+}
+
+/// A node's header band: rounded at the top to follow the node, square
+/// where it meets the body.
+fn header_path(r: Rect, radius: f64) -> BezPath {
+    let radius = radius.min(r.width() / 2.0).min(r.height());
+    RoundedRect::from_rect(r, RoundedRectRadii::new(radius, radius, 0.0, 0.0)).to_path(0.1)
 }
 
 /// The widget.
@@ -119,6 +130,8 @@ pub(crate) struct GraphWidget {
     fitted: bool,
     size: Size,
     selected: Option<u32>,
+    /// What the pointer is over while nothing is being dragged.
+    hover: Hit,
     drag: Option<Drag>,
     /// The right-click menu's layer, while it is up.
     menu: Option<WidgetId>,
@@ -361,6 +374,15 @@ fn editor_node_from_path(path: &[ViewId]) -> Option<u32> {
 }
 
 impl GraphWidget {
+    /// Whether the pointer rests on this port.
+    fn hovers_port(&self, node: u32, name: &str, is_input: bool) -> bool {
+        match &self.hover {
+            Hit::Input(id, port, _) => is_input && *id == node && port == name,
+            Hit::Output(id, port, _) => !is_input && *id == node && port == name,
+            Hit::Node(_) | Hit::Empty => false,
+        }
+    }
+
     /// A choice from the right-click menu: a node of that type lands
     /// where the menu was opened, snapped to the grid.
     pub(crate) fn apply_menu_choice(
@@ -537,14 +559,16 @@ impl Widget for GraphWidget {
                     &(tf * rings),
                     // Mixed most of the way into the ground so the grid stays
                     // behind.
-                    mix(pal.canvas, pal.outline, 0.4),
+                    mix(pal.canvas, pal.outline, areas::graph::GRID_DOT_MIX),
                 )
                 .draw();
         }
 
         // Wires: a keyline one stroke wider on each side, then the
         // colour of what they carry.
-        let wire_w = (1.5 * zoom).max(1.0);
+        let wire_w = areas::graph::wire_width(&pal, zoom);
+        let line = pal.stroke;
+        let radius = areas::graph::node_radius(&pal);
         let keyline = pal.text_muted;
         let pending_kind = match &self.drag {
             Some(Drag::Wire { kind, .. }) => Some(*kind),
@@ -553,39 +577,56 @@ impl Widget for GraphWidget {
         let draw_wire = |painter: &mut Painter<'_>, a: Point, b: Point, ink: Color| {
             let path = tf * nl::wire_path(a, b);
             painter
-                .stroke(&path, &Stroke::new(wire_w + 2.0), keyline)
+                .stroke(&path, &Stroke::new(wire_w + 2.0 * line), keyline)
                 .draw();
             painter.stroke(&path, &Stroke::new(wire_w), ink).draw();
         };
 
-        let text_px = crate::application::view::render::px32((13.0 * zoom).clamp(6.0, 40.0));
+        let text_px = areas::graph::text_px(zoom);
+        let hovered_node = match &self.hover {
+            Hit::Node(id) | Hit::Input(id, ..) | Hit::Output(id, ..) => Some(*id),
+            Hit::Empty => None,
+        };
         for nb in &self.boxes {
             let selected = self.selected == Some(nb.id);
+            let hovered = hovered_node == Some(nb.id);
             let mark = nb.mark().and_then(|m| pal.mark(m));
-            let outline = if selected { pal.outline } else { keyline };
+            // The keyline strengthens under the pointer, and thickens when selected.
+            let outline = if selected || hovered {
+                pal.outline
+            } else {
+                keyline
+            };
+            let outline_w = if selected { pal.stroke_emphasis } else { line };
             // Body, header band in the mark colour (inverted when
             // selected), the rule between them, the keyline.
-            let offset = if selected { 5.0 } else { 4.0 } / zoom.max(0.01);
+            let offset = areas::graph::shadow_offset(selected) / zoom.max(0.01);
             let shadow = nb.rect + Vec2::new(-offset, offset);
             painter
-                .fill(&(tf * rect_path(shadow)), pal.cell_shadow())
+                .fill(&(tf * rounded_path(shadow, radius)), pal.cell_shadow())
                 .draw();
-            painter.fill(&(tf * rect_path(nb.rect)), pal.field).draw();
+            painter
+                .fill(&(tf * rounded_path(nb.rect, radius)), pal.field)
+                .draw();
             let header_bg = if selected {
                 pal.selected_bg()
             } else {
                 mark.unwrap_or(pal.panel)
             };
             painter
-                .fill(&(tf * rect_path(nb.header())), header_bg)
+                .fill(&(tf * header_path(nb.header(), radius)), header_bg)
                 .draw();
             let rule = Line::new(
                 tf * Point::new(nb.rect.x0, nb.header().y1),
                 tf * Point::new(nb.rect.x1, nb.header().y1),
             );
-            painter.stroke(rule, &Stroke::new(1.0), outline).draw();
+            painter.stroke(rule, &Stroke::new(line), outline).draw();
             painter
-                .stroke(&(tf * rect_path(nb.rect)), &Stroke::new(1.0), outline)
+                .stroke(
+                    &(tf * rounded_path(nb.rect, radius)),
+                    &Stroke::new(outline_w),
+                    outline,
+                )
                 .draw();
             // Title left, the run mark right.
             let title_ink = if selected {
@@ -654,14 +695,7 @@ impl Widget for GraphWidget {
             // A result line under the box, when the node has one.
             if let Some(RowState::Done(_, Some(note))) = self.rows.get(&nb.id) {
                 let at = tf * Point::new(nb.rect.x0, nb.rect.y1 + nl::PAD);
-                text_label::draw(
-                    painter,
-                    at,
-                    note,
-                    text_px * 0.9,
-                    pal.text_muted,
-                    Anchor::Start,
-                );
+                text_label::draw(painter, at, note, text_px, pal.text_muted, Anchor::Start);
             }
             if let Some(content) = &nb.content {
                 let (state, identity) = match content {
@@ -697,9 +731,9 @@ impl Widget for GraphWidget {
                     painter,
                     at,
                     &status,
-                    text_px * 0.8,
+                    text_px,
                     if matches!(state, nl::ContentState::Error(_)) {
-                        pal.role("error")
+                        pal.role("danger")
                     } else {
                         pal.text_muted
                     },
@@ -753,7 +787,8 @@ impl Widget for GraphWidget {
                 let (takes, fades) = match pending_kind {
                     Some(k) if is_input => (port.kind == k, port.kind != k),
                     Some(_) => (false, true),
-                    None => (false, false),
+                    // The port under the pointer shows the ring a wire would land on.
+                    None => (self.hovers_port(nb.id, &port.name, is_input), false),
                 };
                 let ink = if fades { pal.text_muted } else { pal.text };
                 let dot = tf * nl::circle(port.at, nl::PORT_R);
@@ -763,10 +798,10 @@ impl Widget for GraphWidget {
                     pal.field
                 };
                 painter.fill(&dot, fill).draw();
-                painter.stroke(&dot, &Stroke::new(1.0), ink).draw();
+                painter.stroke(&dot, &Stroke::new(line), ink).draw();
                 if takes {
                     let ring = tf * nl::circle(port.at, nl::PORT_R * 2.0);
-                    painter.stroke(&ring, &Stroke::new(1.0), pal.text).draw();
+                    painter.stroke(&ring, &Stroke::new(line), pal.text).draw();
                 }
             }
         }
@@ -947,7 +982,19 @@ impl Widget for GraphWidget {
                         ctx.request_render();
                     }
                     Some(Drag::Idle) => {}
-                    None => {}
+                    None => {
+                        let hover = nl::hit(&self.boxes, at);
+                        if hover != self.hover {
+                            self.hover = hover;
+                            ctx.request_render();
+                        }
+                    }
+                }
+            }
+            PointerEvent::Leave(_) => {
+                if self.hover != Hit::Empty {
+                    self.hover = Hit::Empty;
+                    ctx.request_render();
                 }
             }
             PointerEvent::Up(PointerButtonEvent { state, .. }) => {
@@ -1148,6 +1195,7 @@ impl<F: Fn(&mut Workspace, GraphEvent) + 'static> View<Workspace, (), ViewCtx> f
             fitted: false,
             size: Size::ZERO,
             selected: self.selected,
+            hover: Hit::Empty,
             drag: None,
             menu: None,
             code_font_size: 0.0,
@@ -1393,6 +1441,7 @@ mod tests {
             fitted: false,
             size: Size::ZERO,
             selected: None,
+            hover: Hit::Empty,
             drag: None,
             menu: None,
             code_font_size: 0.0,

@@ -6,7 +6,8 @@
 
 use crate::application::view::canvas::grid::{GridEvent, grid};
 use crate::application::view::design::{
-    ControlSize, Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
+    ControlKind, ControlSize, ControlStyle, Ground, Region, Space, Stroke, TextSize,
+    column as xcolumn, row as xrow,
 };
 use crate::application::view::design::{
     RAIL_TAB_ACTIVE_HEIGHT, RAIL_TAB_HEIGHT, RAIL_TAB_INACTIVE_HEIGHT,
@@ -30,7 +31,6 @@ use masonry::properties::Dimensions;
 use masonry::properties::types::CrossAxisAlignment;
 use runebender::GlyphCategory;
 use std::sync::Arc;
-use xilem::Color;
 use xilem::WidgetView;
 use xilem::style::Style;
 use xilem::view::FlexExt as _;
@@ -55,21 +55,16 @@ fn glyph_search(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     // Search row: the field, then compact scope and case toggles.
     let toggle = |text: String, active: bool, f: fn(&mut Workspace)| {
+        let style = ControlStyle::new(pal, ControlKind::Toggle).selected(pal, active);
         sized_box(
             button(
-                pal,
-                label(text).text_size(TextSize::Body.px()).color(if active {
-                    pal.selected_ink()
-                } else {
-                    pal.text_muted
-                }),
+                style,
+                label(text)
+                    .text_size(TextSize::Body.px())
+                    .color(style.ink()),
                 move |app: &mut Workspace| f(app),
             )
-            .padding(Space::None)
-            .background_color(if active { pal.selected_bg() } else { pal.panel })
-            .border_color(pal.outline)
-            .border_width(Stroke::Hairline.length())
-            .corner_radius(Length::px(pal.control_radius)),
+            .padding(Space::None),
         )
         .dims(Dimensions::fixed(
             Length::px(design::SEARCH_TOGGLE_WIDTH),
@@ -79,8 +74,6 @@ fn glyph_search(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     xrow(
         Region::Inline,
         (
-            // The search is a primary navigation control, so its keyline
-            // matches the adjacent scope buttons and rail tabs.
             input_typography::input_typography(
                 text_input(app.filter.clone(), |app: &mut Workspace, v| {
                     app.filter = v;
@@ -89,10 +82,6 @@ fn glyph_search(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 .placeholder("Search glyphs")
                 .text_color(pal.text)
                 .placeholder_color(pal.text_muted)
-                .background_color(pal.field())
-                .border_color(pal.outline)
-                .border_width(Stroke::Hairline.length())
-                .corner_radius(Length::px(pal.control_radius))
                 .dims(Dimensions::new(
                     Dim::Stretch,
                     Dim::from(ControlSize::Control),
@@ -184,10 +173,6 @@ fn shapes_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         .placeholder("Base glyph")
                         .text_color(pal.text)
                         .placeholder_color(pal.text_muted)
-                        .background_color(pal.field())
-                        .border_color(pal.field_outline)
-                        .border_width(Stroke::Hairline.length())
-                        .corner_radius(Length::px(pal.control_radius))
                         .dims(Dimensions::new(
                             Dim::Stretch,
                             Dim::from(ControlSize::Control),
@@ -260,26 +245,13 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
         let active = is_active(which);
         sized_box(
             icon_button(
+                ControlStyle::new(pal, ControlKind::Tab).selected(pal, active),
                 icon,
-                active,
-                pal.inactive_tab_ink,
-                pal.active_tab_ink,
-                Color::TRANSPARENT,
-                Color::TRANSPARENT,
+                icon,
                 move |app: &mut Workspace| app.rail = which,
             )
             .icon_size(size)
-            .rail_tab(
-                // The active tab is the panel face showing through the rail's opening.
-                if active {
-                    Palette::FLAT
-                } else {
-                    pal.inactive_tab
-                },
-                pal.outline,
-                design::RAIL_TAB_ICON_RISE,
-                radius,
-            ),
+            .rail_tab(design::RAIL_TAB_ICON_RISE, radius),
         )
         .dims(Dimensions::new(
             Dim::Stretch,
@@ -485,16 +457,7 @@ pub(crate) fn tab_chip<F>(
 where
     F: Fn(&mut Workspace) + Send + Sync + 'static,
 {
-    // Themes can emphasize the active tab with an accent keyline and ink.
-    let (fg, border, bg) = if active {
-        (
-            pal.selected_ink(),
-            pal.selected_outline(pal.selected_bg()),
-            pal.selected_bg(),
-        )
-    } else {
-        (pal.text_muted, pal.outline, pal.panel)
-    };
+    let style = ControlStyle::new(pal, ControlKind::Toggle).selected(pal, active);
     let width = if fixed_width {
         Dim::from(ControlSize::Row)
     } else {
@@ -502,16 +465,12 @@ where
     };
     sized_box(
         button(
-            pal,
-            label(text).text_size(TextSize::Body.px()).color(fg),
+            style,
+            label(text)
+                .text_size(TextSize::Body.px())
+                .color(style.ink()),
             move |app: &mut Workspace| on_click(app),
         )
-        .background_color(bg)
-        .border_color(border)
-        .border_width(Stroke::Hairline.length())
-        .corner_radius(Length::px(pal.control_radius))
-        // The stock button's padding is sized for a form button, not
-        // for a chip in a title bar. GPUI writes `px_2`.
         .padding(Space::Md),
     )
     .dims(Dimensions::new(width, Dim::from(ControlSize::Row)))
@@ -527,21 +486,17 @@ fn header_tab_chip<F>(
 where
     F: Fn(&mut Workspace) + Send + Sync + 'static,
 {
-    let (fg, border) = if active {
-        (pal.header_active_ink(), pal.header_active_ink())
-    } else {
-        (pal.header_inactive_ink(0.7), pal.header_inactive_ink(0.5))
-    };
+    let style = ControlStyle::new(pal, ControlKind::Toggle)
+        .on(pal, Ground::Header)
+        .selected(pal, active);
     sized_box(
         button(
-            pal,
-            label(text).text_size(TextSize::Body.px()).color(fg),
+            style,
+            label(text)
+                .text_size(TextSize::Body.px())
+                .color(style.ink()),
             move |app: &mut Workspace| on_click(app),
         )
-        .background_color(pal.header_background())
-        .border_color(border)
-        .border_width(Stroke::Hairline.length())
-        .corner_radius(Length::px(pal.control_radius))
         .padding(masonry::properties::Padding::horizontal(Length::px(
             design::HEADER_TAB_TEXT_INSET,
         ))),
@@ -562,16 +517,13 @@ fn header_icon_chip<F>(
 where
     F: Fn(&mut Workspace) + Send + Sync + 'static,
 {
+    let style = ControlStyle::new(pal, ControlKind::Secondary).on(pal, Ground::Header);
     sized_box(
         button(
-            pal,
-            icon_paint::view(icon, label, pal.header_inactive_ink(0.7), 12.0),
+            style,
+            icon_paint::view(icon, label, style.ink(), design::SMALL_ICON_SIZE),
             on_click,
         )
-        .background_color(pal.header_background())
-        .border_color(pal.header_inactive_ink(0.5))
-        .border_width(Stroke::Hairline.length())
-        .corner_radius(Length::px(pal.control_radius))
         .padding(Space::None),
     )
     .dims(Dimensions::new(
