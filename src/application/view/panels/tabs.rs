@@ -411,6 +411,42 @@ fn editor_glyph_rail(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     .gap(Space::None)
 }
 
+/// What a rail panel is called, written under its tab so the icon is
+/// not the only clue, and so the panels have names to talk about.
+pub(crate) fn rail_name(rail: Rail, editing: bool) -> &'static str {
+    match rail {
+        Rail::Glyphs if editing => "Glyph grid",
+        Rail::Glyphs => "Glyphs",
+        Rail::Shapes => "Shapes",
+        Rail::Axes => "Axes",
+        Rail::LocalAi => "Local AI",
+        Rail::Chat => "Chat",
+        Rail::Scripts => "Scripts",
+    }
+}
+
+/// The one rail frame both workspaces use: the tabs, the panel's name,
+/// and the panel. Anything that belongs to every rail panel goes here
+/// and nowhere else.
+fn rail_frame<V>(app: &Workspace, editing: bool, content: V) -> impl WidgetView<Workspace> + use<V>
+where
+    V: WidgetView<Workspace> + 'static,
+{
+    let pal = &app.palette;
+    let title = sized_box(
+        label(rail_name(app.rail, editing))
+            .text_size(TextSize::Caption.px())
+            .color(pal.text_muted),
+    )
+    .padding(masonry::properties::Padding::from_vh(
+        Space::Sm.length(),
+        Space::Md.length(),
+    ));
+    flex_col((rail_tabs(app, editing), title, content.flex(1.0)))
+        .cross_axis_alignment(CrossAxisAlignment::Stretch)
+        .gap(Space::None)
+}
+
 pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     // Each pane owns its inset: the grid fills the rail, Axes uses the section
     // recipe, and standalone tool panes retain their own Region::Panel inset.
@@ -425,9 +461,7 @@ pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         Rail::Chat => chat_panel(app).boxed(),
         Rail::Scripts => scripts_panel(app).boxed(),
     };
-    flex_col((rail_tabs(app, true), content.flex(1.0)))
-        .cross_axis_alignment(CrossAxisAlignment::Stretch)
-        .gap(Space::None)
+    rail_frame(app, true, content)
 }
 
 /// Curves: the two analyses that are about shape quality rather than
@@ -638,9 +672,7 @@ pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         Rail::Scripts => scripts_panel(app).boxed(),
         _ => category_sidebar(app).boxed(),
     };
-    flex_col((rail_tabs(app, false), content.flex(1.0)))
-        .cross_axis_alignment(CrossAxisAlignment::Stretch)
-        .gap(Space::None)
+    rail_frame(app, false, content)
 }
 
 fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {

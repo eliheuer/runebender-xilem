@@ -83,11 +83,17 @@ pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + us
             Region::List,
             (
                 muted("Shapes".into()),
-                recipes::field(
+                // The example sits in the box as its placeholder, so the
+                // rail stays its width; Enter draws, as the button does.
+                recipes::field_bare(
                     pal,
-                    "Draw",
+                    "a circle 64 wide in the center",
                     app.ai.prompt.clone(),
                     |app: &mut Workspace, value| app.ai.prompt = value,
+                    |app: &mut Workspace, value| {
+                        app.ai.prompt = value;
+                        app.run_draw();
+                    },
                 ),
                 recipes::toggle(
                     pal,
@@ -95,7 +101,6 @@ pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + us
                     in_editor,
                     |app: &mut Workspace| app.run_draw(),
                 ),
-                muted("Example: a circle 64 units wide in the lower left".into()),
             ),
         )
     });
