@@ -8,8 +8,8 @@
 //! gains appears here with no change to this file.
 
 use crate::application::editor::tools::nodes::file_label;
-use crate::application::view::design::{Region, TextSize, column as xcolumn, row as xrow};
-use crate::application::view::{label, recipes};
+use crate::application::view::design::{Region, column as xcolumn, row as xrow};
+use crate::application::view::recipes;
 use crate::application::workspace::{Mode, Workspace};
 use masonry::layout::Length;
 use xilem::WidgetView;
@@ -19,12 +19,8 @@ use xilem::view::FlexSpacer;
 pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     let in_editor = matches!(app.mode, Mode::Editor(_));
-    let muted = |text: String| {
-        label(text)
-            .text_size(TextSize::Body.px())
-            .color(pal.text_muted)
-    };
-    let plain = |text: String| label(text).text_size(TextSize::Body.px()).color(pal.text);
+    let muted = |text: String| recipes::prose_muted(pal, text);
+    let plain = |text: String| recipes::prose(pal, text);
 
     // Which model, from the installed list.
     let chosen = app.ai.dir.clone();

@@ -472,6 +472,25 @@ pub(crate) fn toggle<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Control)))
 }
 
+/// A sentence in a panel: body text that wraps at the panel's width.
+/// Every multi-word line of prose in a rail or inspector goes through
+/// this, never through a bare `label`, which does not wrap and spills
+/// past the panel edge.
+pub(crate) fn prose(pal: &Palette, text: String) -> impl WidgetView<Workspace> + use<> {
+    label(text)
+        .text_size(TextSize::Body.px())
+        .color(pal.text)
+        .line_break_mode(masonry::properties::LineBreaking::WordWrap)
+}
+
+/// [`prose`] in the muted colour, for notes and hints.
+pub(crate) fn prose_muted(pal: &Palette, text: String) -> impl WidgetView<Workspace> + use<> {
+    label(text)
+        .text_size(TextSize::Body.px())
+        .color(pal.text_muted)
+        .line_break_mode(masonry::properties::LineBreaking::WordWrap)
+}
+
 /// A labeled push button at control height.
 pub(crate) fn action<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     pal: &Palette,

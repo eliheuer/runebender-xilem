@@ -2268,6 +2268,11 @@ impl Workspace {
         if tool == Tool::Text {
             self.begin_text_session();
         }
+        // The shapes tool shows its models the moment it is picked,
+        // not after the first box.
+        if tool == Tool::AiShape {
+            self.shapes_rescan();
+        }
     }
 
     /// Temporarily use the Hand tool while Space is held.

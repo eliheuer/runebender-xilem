@@ -5,8 +5,8 @@
 //! the tool is active: the model, the words it knows, and training.
 
 use crate::application::editor::tools::ai_shapes::{TrainSource, fit_path, sample_shapes_ufo};
-use crate::application::view::design::{Region, TextSize, column as xcolumn, row as xrow};
-use crate::application::view::{label, recipes};
+use crate::application::view::design::{Region, column as xcolumn, row as xrow};
+use crate::application::view::recipes;
 use crate::application::workspace::Workspace;
 use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
@@ -18,12 +18,9 @@ const SAMPLE_PX: f64 = 56.0;
 
 pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
-    let muted = |text: String| {
-        label(text)
-            .text_size(TextSize::Body.px())
-            .color(pal.text_muted)
-    };
-    let plain = |text: String| label(text).text_size(TextSize::Body.px()).color(pal.text);
+    // Every sentence wraps at the panel width; nothing here is a bare label.
+    let muted = |text: String| recipes::prose_muted(pal, text);
+    let plain = |text: String| recipes::prose(pal, text);
     let st = &app.shapes;
 
     // The models the tool can draw with, the font's own first.
