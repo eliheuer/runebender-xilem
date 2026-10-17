@@ -8,6 +8,7 @@
 //! [`metaballs`] handles the editor interaction while
 //! `runebender::outline::metaballs` owns the shape operation.
 
+pub(crate) mod ai_shapes;
 pub(crate) mod chat;
 pub(crate) mod label;
 pub(crate) mod local_ai;

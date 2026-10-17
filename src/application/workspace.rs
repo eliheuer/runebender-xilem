@@ -67,6 +67,9 @@ pub(crate) enum Tool {
     /// Type glyphs into a line and edit them in context: the web
     /// editor's text tool, on Runebender's text engine.
     Text,
+    /// The local AI shapes tool: drag a box, type a word, a model
+    /// trained on your own drawings fills the box.
+    AiShape,
 }
 
 /// The font-engine history entries which make up one overview action. Glyph names
@@ -331,6 +334,8 @@ pub(crate) struct Workspace {
     pub(crate) train: crate::application::platform::train::TrainState,
     /// The Local AI panel: models, tasks, a run, proposals.
     pub(crate) ai: local_ai::LocalAiState,
+    /// The local AI shapes tool: its models, the box in hand, and training.
+    pub(crate) shapes: crate::application::editor::tools::ai_shapes::AiShapesState,
     /// The Weight debt block: what the active master owes, and its measurements.
     pub(crate) debt: crate::application::editor::tools::weight_debt::WeightDebtState,
     /// Local chat transcript, model choice, and current process.

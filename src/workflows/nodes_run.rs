@@ -559,13 +559,137 @@ fn resolve_model(name: &str, models_dir: Option<&Path>) -> PathBuf {
 }
 
 /// The models directory: `$RUNEBENDER_MODELS`, else
-/// `~/.runebender/models`.
+/// `~/Runebender/models`. A visible folder, after `ComfyUI`, that a
+/// person can open in Finder and drop a model into. Under it, models
+/// sit by kind: `shapes/`, `bolden/`, `chat/`. Not under Documents,
+/// which a cloud backup would sync.
 pub fn default_models_dir() -> Option<PathBuf> {
     if let Some(dir) = std::env::var_os("RUNEBENDER_MODELS").filter(|d| !d.is_empty()) {
         return Some(PathBuf::from(dir));
     }
     let home = std::env::var_os("HOME")?;
-    Some(PathBuf::from(home).join(".runebender").join("models"))
+    Some(PathBuf::from(home).join("Runebender").join("models"))
+}
+
+/// Where models lived before 0.1: `~/.runebender/models`. Still read,
+/// never written to.
+pub fn legacy_models_dir() -> Option<PathBuf> {
+    let home = std::env::var_os("HOME")?;
+    let dir = PathBuf::from(home).join(".runebender").join("models");
+    dir.is_dir().then_some(dir)
+}
+
+/// The folder a kind of model is written to: `<models>/<kind>`.
+pub fn models_dir_for(kind: &str) -> Option<PathBuf> {
+    default_models_dir().map(|d| d.join(kind))
+}
+
+/// A `draw` model the shapes tool can use, and the words it knows.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShapesModel {
+    /// The directory's name, which is the model's.
+    pub name: String,
+    /// The directory.
+    pub path: PathBuf,
+    /// The words it draws, from its manifest.
+    pub words: Vec<String>,
+    /// Spare word slots left for words learned later.
+    pub spare: usize,
+}
+
+/// Reads one directory as a shapes model, if that is what it holds: a
+/// `config.json` with the draw task in the box format, and a
+/// `manifest.json` naming its words.
+pub fn shapes_model_at(path: &Path) -> Option<ShapesModel> {
+    let config: Value =
+        serde_json::from_str(&std::fs::read_to_string(path.join("config.json")).ok()?).ok()?;
+    if config.get("task").and_then(|v| v.as_str()) != Some("draw")
+        || config.get("format").and_then(|v| v.as_str()) != Some("box")
+    {
+        return None;
+    }
+    if !path.join("weights.safetensors").is_file() {
+        return None;
+    }
+    let manifest: Value =
+        serde_json::from_str(&std::fs::read_to_string(path.join("manifest.json")).ok()?).ok()?;
+    let words = manifest
+        .get("words")
+        .and_then(|w| w.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|w| w.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+    let spare = manifest
+        .get("spare")
+        .and_then(|v| v.as_u64())
+        .and_then(|v| usize::try_from(v).ok())
+        .unwrap_or(0);
+    let name = path.file_name()?.to_str()?.to_string();
+    Some(ShapesModel {
+        name,
+        path: path.to_path_buf(),
+        words,
+        spare,
+    })
+}
+
+/// The words a UFO would teach a shapes model: one per glyph name,
+/// before any `.suffix`, hyphens as spaces, in name order.
+pub fn shape_words_in(ufo: &Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(ufo.join("glyphs")) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = entries
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_str()?.strip_suffix(".glif")?.to_string();
+            let base = name
+                .split('.')
+                .next()
+                .unwrap_or(&name)
+                .replace(['-', '_'], " ");
+            (!base.is_empty()).then_some(base)
+        })
+        .collect();
+    names.sort();
+    names.dedup();
+    names
+}
+
+/// Every shapes model: those beside the font first (`<Font>.models/shapes/*`),
+/// then the ones under the roots, one or two levels deep.
+pub fn installed_shapes(first: Option<&Path>, beside: Option<&Path>) -> Vec<ShapesModel> {
+    let mut found: Vec<ShapesModel> = Vec::new();
+    let mut push = |m: ShapesModel| {
+        if !found.iter().any(|f| f.path == m.path) {
+            found.push(m);
+        }
+    };
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Some(b) = beside {
+        dirs.push(b.join("shapes"));
+        dirs.push(b.to_path_buf());
+    }
+    for root in model_roots(first) {
+        dirs.push(root.join("shapes"));
+        dirs.push(root);
+    }
+    for dir in dirs {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        let mut paths: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
+        paths.sort();
+        for path in paths {
+            if let Some(m) = shapes_model_at(&path) {
+                push(m);
+            }
+        }
+    }
+    found
 }
 
 /// Every directory models and adapters are looked for in: `first`
@@ -577,6 +701,9 @@ pub fn default_models_dir() -> Option<PathBuf> {
 pub fn model_roots(first: Option<&Path>) -> Vec<PathBuf> {
     let mut roots: Vec<PathBuf> = Vec::new();
     if let Some(dir) = first.map(Path::to_path_buf).or_else(default_models_dir) {
+        roots.push(dir);
+    }
+    if let Some(dir) = legacy_models_dir() {
         roots.push(dir);
     }
     let home = std::env::var_os("HOME").map(PathBuf::from);
@@ -653,11 +780,26 @@ pub fn installed(first: Option<&Path>, adapters: bool) -> Vec<(String, PathBuf)>
         let Ok(entries) = std::fs::read_dir(&root) else {
             continue;
         };
+        // A model sits directly under a root, or under a kind folder
+        // such as `shapes/` or `bolden/`: one level deeper.
+        let mut candidates: Vec<PathBuf> = Vec::new();
         for entry in entries.flatten() {
             let path = entry.path();
-            if !path.join(marker).is_file() {
-                continue;
+            if path.join(marker).is_file() {
+                candidates.push(path);
+            } else if path.is_dir()
+                && let Ok(inner) = std::fs::read_dir(&path)
+            {
+                candidates.extend(
+                    inner
+                        .flatten()
+                        .map(|e| e.path())
+                        .filter(|p| p.join(marker).is_file()),
+                );
             }
+        }
+        candidates.sort();
+        for path in candidates {
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
                 continue;
             };

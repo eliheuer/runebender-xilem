@@ -1582,6 +1582,19 @@ impl Session {
         });
     }
 
+    /// Add contours a model drew, as one undoable edit.
+    pub(crate) fn add_generated_contours(
+        &mut self,
+        contours: &[runebender::font::generated::GeneratedContour],
+    ) -> bool {
+        if contours.is_empty() {
+            return false;
+        }
+        self.stage_canonical_edit("local AI shape", |draft| {
+            draft.append_generated_contours(contours).map(|_| true)
+        })
+    }
+
     /// Add a closed ellipse contour (four cubic segments).
     pub(crate) fn add_ellipse(&mut self, x0: f64, y0: f64, x1: f64, y1: f64) {
         let (cx, cy) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);

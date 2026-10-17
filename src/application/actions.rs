@@ -824,6 +824,12 @@ pub(crate) const ACTIONS: &[Entry] = &[
     },
     Entry {
         menu: "",
+        title: "Local AI Shape",
+        accelerator: None,
+        action: AppAction::Tool(Tool::AiShape),
+    },
+    Entry {
+        menu: "",
         title: "Knife",
         accelerator: Some("E"),
         action: AppAction::Tool(Tool::Knife),

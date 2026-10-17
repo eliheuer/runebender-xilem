@@ -25,6 +25,7 @@ use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
 use crate::application::editor::session::{Session, SessionSyncOutcome};
+use crate::application::editor::tools::ai_shapes::ShapeGhost;
 use crate::application::editor::tools::label::LABEL_GRID;
 use crate::application::editor::tools::sketch::SketchLayer;
 use crate::application::view::theme::Palette;
@@ -382,6 +383,15 @@ pub(crate) enum EditorEvent {
     TextProofSelection(Result<runebender::text::buffer::TextProofSelection, String>),
     /// Session-only brush ink changed; the canonical glyph did not.
     SketchChanged,
+    /// The local AI shapes tool: a box was dragged; the old ghost is stale.
+    AiShapeBox,
+    /// The local AI shapes tool: draw `word` into `rect`; `seed` 0 is
+    /// the most likely drawing, another seed another option.
+    AiShapeDraw { rect: Rect, word: String, seed: u64 },
+    /// The local AI shapes tool: the box was dismissed.
+    AiShapeDrop,
+    /// The local AI shapes tool: the ghost was added to the glyph.
+    AiShapeKept { word: String },
     /// Cmd+Z: the app undoes on the master's pile.
     Undo,
     /// Cmd+Shift+Z or Cmd+Y.
@@ -567,6 +577,12 @@ pub(crate) struct EditorWidget {
     /// Three numbers over the drawing therefore cost an editing mode.
     field: Option<MetricField>,
     field_buf: String,
+    /// The local AI shapes tool: the box dragged, the word typed into
+    /// the field painted under it, and what the model drew.
+    ai_box: Option<Rect>,
+    ai_word: String,
+    ai_ghost: Option<Arc<ShapeGhost>>,
+    ai_note: String,
     /// Text caret blink phase; reset whenever the person moves or edits it.
     cursor_blink_elapsed_ns: u64,
     cursor_visible: bool,
@@ -623,6 +639,195 @@ impl EditorWidget {
 
     /// Type a key into the focused metric box. Returns whether the glyph
     /// changed, and whether the key was ours.
+    /// The local AI shapes tool: a box was dragged. Keep it, open the
+    /// word field under it, and tell the app the old ghost is stale.
+    fn begin_ai_box(&mut self, ctx: &mut EventCtx<'_>, s0: Point, c0: Point) {
+        let rect = Rect::from_points(s0, c0);
+        if rect.width() < 8.0 || rect.height() < 8.0 {
+            return;
+        }
+        let rect = Rect::new(
+            rect.x0.round(),
+            rect.y0.round(),
+            rect.x1.round(),
+            rect.y1.round(),
+        );
+        self.ai_box = Some(rect);
+        self.ai_ghost = None;
+        self.ai_word.clear();
+        self.ai_note.clear();
+        ctx.submit_action::<EditorEvent>(EditorEvent::AiShapeBox);
+        ctx.request_focus();
+    }
+
+    /// Keys while the shapes tool has a box: the word field under it is
+    /// painted, so its typing lives here, as the metric boxes do.
+    fn ai_key(&mut self, ctx: &mut EventCtx<'_>, key: &masonry::core::KeyboardEvent) -> bool {
+        let Some(rect) = self.ai_box else {
+            return false;
+        };
+        match &key.key {
+            Key::Character(typed) => {
+                for ch in typed.chars() {
+                    if ch.is_alphanumeric() || ch == ' ' || ch == '-' {
+                        self.ai_word.push(ch.to_ascii_lowercase());
+                    }
+                }
+                true
+            }
+            Key::Named(NamedKey::Backspace) => {
+                self.ai_word.pop();
+                true
+            }
+            Key::Named(NamedKey::Escape) => {
+                self.ai_box = None;
+                self.ai_ghost = None;
+                self.ai_word.clear();
+                ctx.submit_action::<EditorEvent>(EditorEvent::AiShapeDrop);
+                true
+            }
+            Key::Named(NamedKey::Enter) => {
+                let word = self.ai_word.trim().to_lowercase();
+                if let Some(ghost) = self.ai_ghost.clone()
+                    && ghost.word == word
+                {
+                    if self.session.add_generated_contours(&ghost.contours) {
+                        self.ai_box = None;
+                        self.ai_ghost = None;
+                        self.ai_word.clear();
+                        ctx.submit_action::<EditorEvent>(EditorEvent::AiShapeKept {
+                            word: ghost.word.clone(),
+                        });
+                        self.emit(ctx, true);
+                    }
+                } else if !word.is_empty() {
+                    ctx.submit_action::<EditorEvent>(EditorEvent::AiShapeDraw {
+                        rect,
+                        word,
+                        seed: 0,
+                    });
+                }
+                true
+            }
+            Key::Named(NamedKey::Tab) => {
+                let word = self.ai_word.trim().to_lowercase();
+                if !word.is_empty() {
+                    let seed = match &self.ai_ghost {
+                        Some(g) if g.word == word => g.seed + 1,
+                        _ => 1,
+                    };
+                    ctx.submit_action::<EditorEvent>(EditorEvent::AiShapeDraw { rect, word, seed });
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// The shapes tool over the drawing: the box, the ghost the model
+    /// drew, the word field under the box, and one line of status.
+    fn paint_ai_shape(&self, painter: &mut Painter<'_>, affine: Affine, pal: &Palette) {
+        if self.tool != Tool::AiShape || self.preview_mode {
+            return;
+        }
+        let Some(rect) = self.ai_box else {
+            return;
+        };
+        let accent = pal.tool_feedback();
+        let screen = affine.transform_rect_bbox(rect);
+        painter
+            .stroke(
+                screen,
+                &Stroke::new(1.0).with_dashes(0.0, [6.0, 4.0]),
+                accent,
+            )
+            .draw();
+        if let Some(ghost) = &self.ai_ghost {
+            painter
+                .fill(&ghost.path, accent.with_alpha(0.35))
+                .transform(affine)
+                .draw();
+            painter
+                .stroke(&ghost.path, &Stroke::new(1.5), accent)
+                .transform(affine)
+                .draw();
+        }
+        // The size, so the box reads in font units while it is dragged.
+        text_label::draw(
+            painter,
+            Point::new(screen.x0, screen.y0 - 6.0),
+            &format!("{} × {}", rect.width().round(), rect.height().round()),
+            TextSize::Caption.px(),
+            pal.text_muted,
+            Anchor::Start,
+        );
+        // The word field, painted like the metric boxes.
+        let height = crate::application::view::design::ControlSize::Control.px();
+        let width = 240.0_f64.min(self.size.width - 16.0).max(120.0);
+        let x0 = screen
+            .x0
+            .clamp(8.0, (self.size.width - width - 8.0).max(8.0));
+        let mut y0 = screen.y1 + 8.0;
+        if y0 + height + 24.0 > self.size.height {
+            y0 = (screen.y0 - height - 8.0).max(8.0);
+        }
+        let field = Rect::new(x0, y0, x0 + width, y0 + height);
+        painter
+            .fill(
+                crate::application::view::design::rounded_rect_path(field, pal.control_radius),
+                pal.field(),
+            )
+            .draw();
+        let line = DesignStroke::Hairline.px();
+        let half = line / 2.0;
+        painter
+            .stroke(
+                crate::application::view::design::rounded_rect_path(
+                    Rect::new(
+                        field.x0 + half,
+                        field.y0 + half,
+                        field.x1 - half,
+                        field.y1 - half,
+                    ),
+                    (pal.control_radius - half).max(0.0),
+                ),
+                &Stroke::new(line),
+                pal.text,
+            )
+            .draw();
+        let (shown, color) = if self.ai_word.is_empty() {
+            ("what shape?".to_string(), pal.text_muted)
+        } else {
+            (format!("{}|", self.ai_word), pal.text)
+        };
+        text_label::draw(
+            painter,
+            Point::new(
+                field.x0 + crate::application::view::design::INPUT_HORIZONTAL_INSET,
+                field.center().y,
+            ),
+            &shown,
+            TextSize::Body.px(),
+            color,
+            Anchor::Start,
+        );
+        let hint = if !self.ai_note.is_empty() {
+            self.ai_note.clone()
+        } else if self.ai_ghost.is_some() {
+            "Enter keeps · Tab another · Esc drops".to_string()
+        } else {
+            "Type a word, then Enter · Esc cancels".to_string()
+        };
+        text_label::draw(
+            painter,
+            Point::new(field.x0, field.y1 + 14.0),
+            &hint,
+            TextSize::Caption.px(),
+            pal.text_muted,
+            Anchor::Start,
+        );
+    }
+
     fn metric_key(&mut self, key: &masonry::core::KeyboardEvent) -> (bool, bool) {
         let Some(field) = self.field else {
             return (false, false);
@@ -2336,6 +2541,7 @@ impl Widget for EditorWidget {
                 }
             }
         }
+        self.paint_ai_shape(painter, affine, &pal);
 
         if self.tool == Tool::Sketch {
             let sketch = self
@@ -2767,7 +2973,10 @@ impl Widget for EditorWidget {
                         return;
                     }
                     Some(PointerButton::Primary)
-                        if matches!(self.tool, Tool::Rect | Tool::Ellipse | Tool::Knife) =>
+                        if matches!(
+                            self.tool,
+                            Tool::Rect | Tool::Ellipse | Tool::Knife | Tool::AiShape
+                        ) =>
                     {
                         ctx.request_focus();
                         ctx.capture_pointer();
@@ -3365,6 +3574,12 @@ impl Widget for EditorWidget {
                                 Tool::Knife => {
                                     self.session.knife_cut(s0, c0);
                                 }
+                                Tool::AiShape => {
+                                    self.begin_ai_box(ctx, s0, c0);
+                                    self.drag = Drag::None;
+                                    ctx.request_render();
+                                    return;
+                                }
                                 _ => {}
                             }
                         }
@@ -3446,6 +3661,15 @@ impl Widget for EditorWidget {
             return;
         };
         if key.state != KeyState::Down {
+            return;
+        }
+        if self.tool == Tool::AiShape
+            && self.ai_box.is_some()
+            && !(key.modifiers.meta() || key.modifiers.ctrl())
+            && self.ai_key(ctx, key)
+        {
+            ctx.request_render();
+            ctx.set_handled();
             return;
         }
         // Read-only instance: don't handle edit keys, but let Escape bubble to
@@ -3885,6 +4109,8 @@ pub(crate) struct EditorView<F> {
     interp: Option<Arc<kurbo::BezPath>>,
     underlay: Underlay,
     text: Option<crate::application::editor::tools::text::TextInputs>,
+    ai_ghost: Option<Arc<ShapeGhost>>,
+    ai_note: String,
     focus_target: Arc<Mutex<Option<WidgetId>>>,
     on_event: F,
 }
@@ -3909,6 +4135,8 @@ pub(crate) fn editor<F: Fn(&mut Workspace, EditorEvent) + 'static>(
     interp: Option<Arc<kurbo::BezPath>>,
     underlay: Underlay,
     text: Option<crate::application::editor::tools::text::TextInputs>,
+    ai_ghost: Option<Arc<ShapeGhost>>,
+    ai_note: String,
     focus_target: Arc<Mutex<Option<WidgetId>>>,
     on_event: F,
 ) -> EditorView<F> {
@@ -3931,6 +4159,8 @@ pub(crate) fn editor<F: Fn(&mut Workspace, EditorEvent) + 'static>(
         interp,
         underlay,
         text,
+        ai_ghost,
+        ai_note,
         focus_target,
         on_event,
     }
@@ -4061,6 +4291,10 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
             view: self.view,
             field: None,
             field_buf: String::new(),
+            ai_box: None,
+            ai_word: String::new(),
+            ai_ghost: None,
+            ai_note: String::new(),
             cursor_blink_elapsed_ns: 0,
             cursor_visible: true,
         };
@@ -4097,6 +4331,11 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
             element.widget.tool = self.tool;
             element.widget.cursor_blink_elapsed_ns = 0;
             element.widget.cursor_visible = true;
+            if self.tool != Tool::AiShape {
+                element.widget.ai_box = None;
+                element.widget.ai_ghost = None;
+                element.widget.ai_word.clear();
+            }
             if self.tool == Tool::Text {
                 element.ctx.request_anim_frame();
             }
@@ -4107,6 +4346,19 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
         }
         if self.sketch_source != prev.sketch_source {
             element.widget.sketch_source = self.sketch_source;
+            dirty = true;
+        }
+        let ghost_same = match (&self.ai_ghost, &prev.ai_ghost) {
+            (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+            (None, None) => true,
+            _ => false,
+        };
+        if !ghost_same {
+            element.widget.ai_ghost = self.ai_ghost.clone();
+            dirty = true;
+        }
+        if self.ai_note != prev.ai_note {
+            element.widget.ai_note = self.ai_note.clone();
             dirty = true;
         }
         if self.sketch_revision != prev.sketch_revision {
@@ -4293,6 +4545,10 @@ mod tests {
             view: ViewOptions::default(),
             field: None,
             field_buf: String::new(),
+            ai_box: None,
+            ai_word: String::new(),
+            ai_ghost: None,
+            ai_note: String::new(),
             cursor_blink_elapsed_ns: 0,
             cursor_visible: true,
         }

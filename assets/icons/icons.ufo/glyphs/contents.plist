@@ -80,6 +80,8 @@
 	<string>select-all-layers.glif</string>
 	<key>select-menu</key>
 	<string>select-menu.glif</string>
+	<key>shape-ai</key>
+	<string>shape-ai.glif</string>
 	<key>shape-ellipse</key>
 	<string>shape-ellipse.glif</string>
 	<key>shape-metaball</key>

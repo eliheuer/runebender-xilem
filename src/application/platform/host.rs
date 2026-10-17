@@ -371,6 +371,7 @@ impl Workspace {
             pieces: crate::application::pieces::PieceCache::default(),
             model: crate::application::platform::model::ModelState::default(),
             ai: local_ai::LocalAiState::default(),
+            shapes: crate::application::editor::tools::ai_shapes::AiShapesState::default(),
             debt: weight_debt::WeightDebtState::default(),
             chat: chat::ChatState::default(),
             scripts: scripts::ScriptsState::default(),

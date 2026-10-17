@@ -433,8 +433,11 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
                             train_pump(
                                 export_pump(
                                     nodes_pump(
-                                        preview_pump(content, app.font.project.preview_pending())
-                                            .boxed(),
+                                        preview_pump(
+                                            shapes_pump(content, app.shapes.pump.clone()).boxed(),
+                                            app.font.project.preview_pending(),
+                                        )
+                                        .boxed(),
                                         app.nodes.job.clone(),
                                     ),
                                     app.export_job.clone(),
@@ -517,6 +520,39 @@ fn model_pump<V: WidgetView<Workspace>>(view: V, on: bool) -> impl WidgetView<Wo
 }
 
 /// Poll a training run: its streamed lines reach the Neural section, and its exit ends the run.
+/// Runs `view`, and while the shapes tool has a worker going (a
+/// drawing or a training run), a task that polls it. The token is
+/// cleared by the pump when nothing is left to poll.
+fn shapes_pump<V: WidgetView<Workspace>>(
+    view: V,
+    token: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+) -> impl WidgetView<Workspace> + use<V> {
+    use crate::application::editor::tools::ai_shapes::ShapesProgress;
+    use xilem::core::{MessageProxy, fork};
+    use xilem::view::task_raw;
+    fork(
+        view,
+        token.map(|token| {
+            task_raw(
+                move |proxy: MessageProxy<ShapesProgress>, _: &mut Workspace| {
+                    let token = token.clone();
+                    async move {
+                        loop {
+                            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                            if !token.load(std::sync::atomic::Ordering::Relaxed)
+                                || proxy.message(ShapesProgress).is_err()
+                            {
+                                return;
+                            }
+                        }
+                    }
+                },
+                |app: &mut Workspace, _: ShapesProgress| app.shapes_pump(),
+            )
+        }),
+    )
+}
+
 fn train_pump<V: WidgetView<Workspace>>(
     view: V,
     job: Option<train::TrainJob>,

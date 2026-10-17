@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>arrow</key>
+	<string>arrow.glif</string>
+	<key>bar</key>
+	<string>bar.glif</string>
+	<key>chevron</key>
+	<string>chevron.glif</string>
+	<key>circle</key>
+	<string>circle.glif</string>
+	<key>cross</key>
+	<string>cross.glif</string>
+	<key>dash</key>
+	<string>dash.glif</string>
+	<key>diamond</key>
+	<string>diamond.glif</string>
+	<key>frame</key>
+	<string>frame.glif</string>
+	<key>hexagon</key>
+	<string>hexagon.glif</string>
+	<key>octagon</key>
+	<string>octagon.glif</string>
+	<key>pentagon</key>
+	<string>pentagon.glif</string>
+	<key>plus</key>
+	<string>plus.glif</string>
+	<key>ring</key>
+	<string>ring.glif</string>
+	<key>square</key>
+	<string>square.glif</string>
+	<key>star</key>
+	<string>star.glif</string>
+	<key>triangle</key>
+	<string>triangle.glif</string>
+</dict>
+</plist>
