@@ -81,6 +81,8 @@ pub(crate) struct NodeJob {
 pub(crate) struct GraphState {
     /// Revision of the explicit fit-to-view request.
     pub(crate) fit_request: u64,
+    /// The canvas zoom: reported by the canvas, set by the footer slider.
+    pub(crate) zoom: f64,
     /// The open file.
     pub(crate) open: Option<OpenGraph>,
     /// The `.graph.json` files found beside the font.

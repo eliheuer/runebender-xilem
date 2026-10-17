@@ -44,6 +44,11 @@ use crate::application::widgets::source_text_area::SourceTextArea;
 use crate::application::widgets::text_label::{self, Anchor};
 use crate::application::workspace::Workspace;
 
+/// The smallest zoom the canvas allows: a large graph fits at this scale.
+pub(crate) const ZOOM_MIN: f64 = 0.1;
+/// The largest zoom the canvas allows.
+pub(crate) const ZOOM_MAX: f64 = 4.0;
+
 /// What the canvas tells the app.
 #[derive(Debug, Clone)]
 pub(crate) enum GraphEvent {
@@ -60,6 +65,8 @@ pub(crate) enum GraphEvent {
     Resize { node: u32, size: [f32; 2] },
     /// Something to say in the bar.
     Note(String),
+    /// The zoom changed, from a scroll or a fit, so the footer slider follows.
+    Zoom(f64),
 }
 
 /// What a drag on the canvas is doing.
@@ -461,7 +468,7 @@ impl Widget for GraphWidget {
             if let Some(bounds) = bounds {
                 let zoom = ((size.width - FIT_MARGIN * 2.0).max(1.0) / bounds.width().max(1.0))
                     .min((size.height - FIT_MARGIN * 2.0).max(1.0) / bounds.height().max(1.0))
-                    .clamp(0.05, 1.0);
+                    .clamp(ZOOM_MIN, 1.0);
                 self.viewport.zoom = zoom;
                 self.viewport.offset = Vec2::new(
                     size.width / 2.0 - bounds.center().x * zoom,
@@ -472,6 +479,7 @@ impl Widget for GraphWidget {
                 self.viewport.offset = Vec2::new(FIT_MARGIN, FIT_MARGIN);
             }
             self.fitted = true;
+            ctx.submit_action::<GraphEvent>(GraphEvent::Zoom(self.viewport.zoom));
         }
         let zoom = crate::application::view::render::px32(self.viewport.zoom);
         let code_font_size =
@@ -990,7 +998,8 @@ impl Widget for GraphWidget {
                     _ => 0.0,
                 };
                 let factor = (dy * 0.0015).exp();
-                self.viewport.zoom_about(at, factor, 0.25, 4.0);
+                self.viewport.zoom_about(at, factor, ZOOM_MIN, ZOOM_MAX);
+                ctx.submit_action::<GraphEvent>(GraphEvent::Zoom(self.viewport.zoom));
                 ctx.request_layout();
                 ctx.request_render();
                 ctx.set_handled();
@@ -1078,6 +1087,7 @@ fn input_port_label(port: &nl::PortBox) -> String {
 /// the app remembers.
 pub(crate) struct GraphView<F> {
     fit_request: u64,
+    zoom: f64,
     graph: Arc<NodeGraph>,
     registry: Arc<Registry>,
     palette: Arc<Palette>,
@@ -1095,10 +1105,12 @@ pub(crate) fn graph_canvas<F: Fn(&mut Workspace, GraphEvent) + 'static>(
     content: Arc<NodeContentMap>,
     selected: Option<u32>,
     fit_request: u64,
+    zoom: f64,
     on_event: F,
 ) -> GraphView<F> {
     GraphView {
         fit_request,
+        zoom,
         graph,
         registry,
         palette,
@@ -1155,6 +1167,16 @@ impl<F: Fn(&mut Workspace, GraphEvent) + 'static> View<Workspace, (), ViewCtx> f
         let mut dirty = false;
         if self.fit_request != prev.fit_request {
             element.widget.fitted = false;
+            element.ctx.request_layout();
+            dirty = true;
+        } else if self.zoom != prev.zoom && self.zoom != element.widget.viewport.zoom {
+            // The footer slider zooms about the middle of the canvas.
+            let widget = &mut *element.widget;
+            let middle = Point::new(widget.size.width / 2.0, widget.size.height / 2.0);
+            let factor = self.zoom / widget.viewport.zoom;
+            widget
+                .viewport
+                .zoom_about(middle, factor, ZOOM_MIN, ZOOM_MAX);
             element.ctx.request_layout();
             dirty = true;
         }
@@ -1399,6 +1421,11 @@ mod tests {
         );
         let rendered = harness.render();
         assert!(rendered.iter().any(|byte| *byte != 0));
+        // The first layout fits the graph and reports the zoom for the footer slider.
+        assert!(matches!(
+            harness.pop_action::<GraphEvent>(),
+            Some((GraphEvent::Zoom(zoom), _)) if (ZOOM_MIN..=1.0).contains(&zoom)
+        ));
 
         harness.mouse_click_on(editor_id, Some(PointerButton::Primary));
         assert!(matches!(
@@ -1425,6 +1452,10 @@ mod tests {
             NewWidget::new(widget),
             (1100, 720),
         );
+        assert!(matches!(
+            harness.pop_action::<GraphEvent>(),
+            Some((GraphEvent::Zoom(_), _))
+        ));
         let (&second_node, &second_editor) = editor_ids.iter().next_back().unwrap();
         let (&first_node, &first_editor) = editor_ids.iter().next().unwrap();
         assert_ne!(first_node, second_node);

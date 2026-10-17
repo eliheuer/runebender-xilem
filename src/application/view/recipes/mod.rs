@@ -522,39 +522,6 @@ pub(crate) fn action<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Control)))
 }
 
-/// A labeled push button at a chosen compact height.
-pub(crate) fn action_sized<F: Fn(&mut Workspace) + Send + Sync + 'static>(
-    pal: &Palette,
-    text: String,
-    size: ControlSize,
-    on_click: F,
-) -> impl WidgetView<Workspace> + use<F> {
-    let action_name = text.clone();
-    sized_box(
-        button(
-            pal,
-            label(text).text_size(TextSize::Body.px()).color(pal.text),
-            move |app: &mut Workspace| {
-                let previous_message = app.note.clone();
-                let revision = app.font.project.document_revision();
-                on_click(app);
-                app.record_ui_action(
-                    "panel_button",
-                    action_name.clone(),
-                    &previous_message,
-                    revision,
-                );
-            },
-        )
-        .padding(Space::Sm)
-        .background_color(pal.button)
-        .border_color(pal.outline)
-        .border_width(Stroke::Hairline.length())
-        .corner_radius(Length::px(pal.control_radius)),
-    )
-    .dims(Dimensions::new(Dim::Auto, Dim::from(size)))
-}
-
 /// The editor's neutral slider, retaining Masonry keyboard and pointer behavior.
 pub(crate) fn neutral_slider<F>(
     pal: &Palette,

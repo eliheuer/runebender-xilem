@@ -363,14 +363,27 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 .prop(masonry::properties::LineBreaking::Clip)
                 .dims(Dimensions::new(Dim::Fixed(Length::ZERO), Dim::Auto))
                 .flex(1.0),
+            // The slider sits where the overview's cell-size slider does.
             matches!(app.mode, Mode::Graph).then(|| {
-                recipes::action_sized(
-                    pal,
-                    "Fit graph".into(),
-                    ControlSize::Icon,
-                    |app: &mut Workspace| {
-                        app.graph.fit_request = app.graph.fit_request.wrapping_add(1);
-                    },
+                use crate::application::view::canvas::graph::{ZOOM_MAX, ZOOM_MIN};
+                xrow(
+                    Region::Inline,
+                    (
+                        status_text_button(pal, "Center Graph", |app: &mut Workspace| {
+                            app.graph.fit_request = app.graph.fit_request.wrapping_add(1);
+                        }),
+                        // Zoom moves in equal steps per doubling, as the scroll wheel does.
+                        recipes::neutral_slider(
+                            pal,
+                            ZOOM_MIN.log2(),
+                            ZOOM_MAX.log2(),
+                            app.graph.zoom.clamp(ZOOM_MIN, ZOOM_MAX).log2(),
+                            |app: &mut Workspace, v| app.graph.zoom = v.exp2(),
+                        )
+                        .width(Length::px(
+                            crate::application::view::design::STATUS_SLIDER_WIDTH,
+                        )),
+                    ),
                 )
             }),
             matches!(app.mode, Mode::Overview).then(|| {
@@ -546,6 +559,27 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
             .width(Length::px(STATUS_SLIDER_WIDTH)),
         ),
     )
+}
+
+/// A footer action named in words, drawn bare like the footer's icons.
+fn status_text_button<F>(
+    pal: &Palette,
+    text: &'static str,
+    on_click: F,
+) -> impl WidgetView<Workspace> + use<F>
+where
+    F: Fn(&mut Workspace) + Send + Sync + 'static,
+{
+    button(
+        pal,
+        label(text)
+            .text_size(TextSize::Body.px())
+            .color(pal.editor_control_ink()),
+        on_click,
+    )
+    .padding(Length::ZERO)
+    .background_color(Color::TRANSPARENT)
+    .border_width(Length::ZERO)
 }
 
 /// One stable footer control for hiding and restoring the left dock in every mode.
