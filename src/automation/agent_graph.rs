@@ -1,7 +1,7 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Strict transport requests and discovery schemas for the native live Nodes graph.
+//! Strict transport requests and discovery schemas for the native live graph.
 //!
 //! These requests select one application-owned graph session.
 //! They never accept client-authored font, script, parameter or proof hashes.
@@ -18,7 +18,7 @@ use super::glyph_grading::GradingReferenceRequest;
 use crate::font::project::Project;
 use crate::font::variable::SourceId;
 use crate::formats::image_trace::TraceCalibration;
-use crate::workflows::nodes_session::{
+use crate::workflows::graph_session::{
     GraphCancelRequest, GraphGuard, GraphIdentity, GraphMutationRequest, GraphRunHandle,
     GraphSemanticGuard,
 };
@@ -29,7 +29,7 @@ pub mod results;
 /// Bootstrap discovery for the current document's graph session.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct NodesDiscoverRequest {
+pub struct GraphDiscoverRequest {
     /// Exact native endpoint lifetime returned by the application.
     pub expected_document_epoch: String,
 }
@@ -37,7 +37,7 @@ pub struct NodesDiscoverRequest {
 /// Read one exact canonical graph snapshot.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct NodesSnapshotRequest {
+pub struct GraphSnapshotRequest {
     /// Exact native endpoint lifetime returned by the application.
     pub expected_document_epoch: String,
     /// Exact graph and document lifetime returned by discovery.
@@ -47,7 +47,7 @@ pub struct NodesSnapshotRequest {
 /// Apply one receipt-backed graph mutation through the canonical session.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct NodesMutateRequest {
+pub struct GraphMutateRequest {
     /// Exact native endpoint lifetime returned by the application.
     pub expected_document_epoch: String,
     /// Existing guarded graph request nested without changing its typed contract.
@@ -57,10 +57,10 @@ pub struct NodesMutateRequest {
 /// Place one calibrated trace or explicitly selected local sketch draft in a candidate node.
 ///
 /// Submission leaves the graph and font unchanged. Guarded publication changes graph intent only.
-/// Nodes Run, proof inspection and Apply retain their existing separate guards and receipts.
+/// Graph Run, proof inspection and Apply retain their existing separate guards and receipts.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct NodesTraceRequest {
+pub struct GraphTraceRequest {
     /// Exact native endpoint lifetime.
     pub expected_document_epoch: String,
     /// Exact graph revision displayed before the candidate was requested.
@@ -86,13 +86,13 @@ pub struct NodesTraceRequest {
     pub invert: bool,
     /// Explicit local model backend; absence preserves deterministic calibrated tracing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub local_sketch: Option<NodesLocalSketchSettings>,
+    pub local_sketch: Option<GraphLocalSketchSettings>,
 }
 
 /// Bounded sampling and measured ink placement for the host-configured local sketch model.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct NodesLocalSketchSettings {
+pub struct GraphLocalSketchSettings {
     /// Installed model package ID; absent uses the configured default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
@@ -117,7 +117,7 @@ pub struct NodesLocalSketchSettings {
 /// Address one retained asynchronous calibrated trace without resubmitting image bytes.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct NodesTraceHandleRequest {
+pub struct GraphTraceHandleRequest {
     /// Exact native endpoint lifetime.
     pub expected_document_epoch: String,
     /// Graph lifetime that accepted the trace.
@@ -129,7 +129,7 @@ pub struct NodesTraceHandleRequest {
 /// Start one native comparison or explicitly versioned DAG from host-derived captures.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct NodesRunRequest {
+pub struct GraphRunRequest {
     /// Execution contract: omitted or 1 keeps the legacy comparison; 2 enables bounded DAGs.
     #[serde(
         default = "legacy_execution_version",
@@ -153,19 +153,19 @@ pub struct NodesRunRequest {
 /// Inspect one retained graph run.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct NodesStatusRequest {
+pub struct GraphStatusRequest {
     /// Exact native endpoint lifetime returned by the application.
     pub expected_document_epoch: String,
     /// Exact graph and document lifetime that issued the handle.
     pub identity: GraphIdentity,
-    /// Session-local run handle returned by `nodes_run`.
+    /// Session-local run handle returned by `graph_run`.
     pub handle: GraphRunHandle,
 }
 
 /// Cancel one selected retained graph run with an idempotent receipt.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct NodesCancelRequest {
+pub struct GraphCancelToolRequest {
     /// Exact native endpoint lifetime returned by the application.
     pub expected_document_epoch: String,
     /// Existing exact cancellation request nested without changing its typed contract.
@@ -175,7 +175,7 @@ pub struct NodesCancelRequest {
 /// Release one terminal graph run and its heavy artifacts.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct NodesReleaseRequest {
+pub struct GraphReleaseRequest {
     /// Exact native endpoint lifetime returned by the application.
     pub expected_document_epoch: String,
     /// Exact graph and document lifetime that issued the handle.
@@ -187,7 +187,7 @@ pub struct NodesReleaseRequest {
 /// Build one separate receipt-backed font Apply from a retained completed result.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct NodesApplyRequest {
+pub struct GraphApplyRequest {
     /// Explicit transform result; omission is accepted only when the eligible result is unique.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub node: Option<u32>,
@@ -205,10 +205,10 @@ pub struct NodesApplyRequest {
     pub authorization: String,
 }
 
-/// Comparison proof branch returned by `nodes_image`.
+/// Comparison proof branch returned by `graph_image`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum NodesImageBranch {
+pub enum GraphImageBranch {
     /// Proof of the unchanged captured family.
     Original,
     /// Proof of the staged derived family.
@@ -218,7 +218,7 @@ pub enum NodesImageBranch {
 /// Read one exact retained comparison image without rerendering.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct NodesImageRequest {
+pub struct GraphImageRequest {
     /// Exact native endpoint lifetime returned by the application.
     pub expected_document_epoch: String,
     /// Exact graph and document lifetime that issued the handle.
@@ -227,7 +227,7 @@ pub struct NodesImageRequest {
     pub handle: GraphRunHandle,
     /// Legacy comparison alias, accepted only when it resolves to exactly one proof.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub branch: Option<NodesImageBranch>,
+    pub branch: Option<GraphImageBranch>,
     /// Explicit proof node, mutually exclusive with the legacy branch selector.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub node: Option<u32>,
@@ -286,7 +286,7 @@ fn validate_handle(handle: GraphRunHandle) -> Result<(), String> {
     Ok(())
 }
 
-impl NodesDiscoverRequest {
+impl GraphDiscoverRequest {
     /// Validate transport bounds before application discovery.
     pub fn validate(&self) -> Result<(), String> {
         validate_text(
@@ -297,14 +297,14 @@ impl NodesDiscoverRequest {
     }
 }
 
-impl NodesSnapshotRequest {
+impl GraphSnapshotRequest {
     /// Validate endpoint and graph-lifetime agreement.
     pub fn validate(&self) -> Result<(), String> {
         validate_epoch(&self.expected_document_epoch, &self.identity)
     }
 }
 
-impl NodesMutateRequest {
+impl GraphMutateRequest {
     /// Validate endpoint, graph identity and actor retry bounds.
     pub fn validate(&self) -> Result<(), String> {
         validate_epoch(&self.expected_document_epoch, &self.request.guard.identity)?;
@@ -312,7 +312,7 @@ impl NodesMutateRequest {
     }
 }
 
-impl NodesTraceRequest {
+impl GraphTraceRequest {
     /// Validate transport bounds before decoding or tracing the image.
     pub fn validate(&self) -> Result<(), String> {
         validate_epoch(&self.expected_document_epoch, &self.guard.identity)?;
@@ -352,7 +352,7 @@ impl NodesTraceRequest {
     }
 }
 
-impl NodesTraceHandleRequest {
+impl GraphTraceHandleRequest {
     /// Validate handle and document lifetime before reading retained trace state.
     pub fn validate(&self) -> Result<(), String> {
         validate_epoch(&self.expected_document_epoch, &self.identity)?;
@@ -363,7 +363,7 @@ impl NodesTraceHandleRequest {
     }
 }
 
-impl NodesRunRequest {
+impl GraphRunRequest {
     /// Validate endpoint, semantic guard, actor retry identity and explicit glyph scope.
     ///
     /// The application additionally verifies `source` against the current Project while deriving
@@ -405,7 +405,7 @@ impl NodesRunRequest {
     }
 }
 
-impl NodesStatusRequest {
+impl GraphStatusRequest {
     /// Validate endpoint and graph-lifetime agreement.
     pub fn validate(&self) -> Result<(), String> {
         validate_epoch(&self.expected_document_epoch, &self.identity)?;
@@ -413,7 +413,7 @@ impl NodesStatusRequest {
     }
 }
 
-impl NodesCancelRequest {
+impl GraphCancelToolRequest {
     /// Validate endpoint, graph identity and cancellation retry bounds.
     pub fn validate(&self) -> Result<(), String> {
         validate_epoch(&self.expected_document_epoch, &self.request.identity)?;
@@ -422,7 +422,7 @@ impl NodesCancelRequest {
     }
 }
 
-impl NodesReleaseRequest {
+impl GraphReleaseRequest {
     /// Validate endpoint and graph-lifetime agreement.
     pub fn validate(&self) -> Result<(), String> {
         validate_epoch(&self.expected_document_epoch, &self.identity)?;
@@ -430,20 +430,20 @@ impl NodesReleaseRequest {
     }
 }
 
-impl NodesApplyRequest {
+impl GraphApplyRequest {
     /// Validate endpoint, graph identity, edit retry bounds and explicit authorization marker.
     pub fn validate(&self) -> Result<(), String> {
         validate_epoch(&self.expected_document_epoch, &self.identity)?;
         validate_handle(self.handle)?;
         validate_actor_key(&self.actor, &self.operation_key)?;
         if self.authorization != "user-approved" {
-            return Err("nodes_apply requires user-approved authorization".into());
+            return Err("graph_apply requires user-approved authorization".into());
         }
         Ok(())
     }
 }
 
-impl NodesImageRequest {
+impl GraphImageRequest {
     /// Validate endpoint, graph lifetime and one unambiguous proof selector.
     pub fn validate(&self) -> Result<(), String> {
         validate_epoch(&self.expected_document_epoch, &self.identity)?;
@@ -511,8 +511,8 @@ fn object(properties: Value, required: &[&str]) -> Value {
 }
 
 fn mutation_schema() -> Value {
-    let mut schema = serde_json::to_value(schemars::schema_for!(NodesMutateRequest))
-        .expect("typed Nodes mutation schema serializes");
+    let mut schema = serde_json::to_value(schemars::schema_for!(GraphMutateRequest))
+        .expect("typed Graph mutation schema serializes");
     schema["additionalProperties"] = json!(false);
     schema["properties"]["expected_document_epoch"] = string(256);
     if schema["$defs"].get("GraphMutationRequest").is_some() {
@@ -529,8 +529,8 @@ fn mutation_schema() -> Value {
 }
 
 fn cancel_schema() -> Value {
-    let mut schema = serde_json::to_value(schemars::schema_for!(NodesCancelRequest))
-        .expect("typed Nodes cancellation schema serializes");
+    let mut schema = serde_json::to_value(schemars::schema_for!(GraphCancelToolRequest))
+        .expect("typed Graph cancellation schema serializes");
     schema["additionalProperties"] = json!(false);
     schema["properties"]["expected_document_epoch"] = string(256);
     if schema["$defs"].get("GraphCancelRequest").is_some() {
@@ -546,7 +546,7 @@ fn cancel_schema() -> Value {
     schema
 }
 
-/// Native live Nodes tools in stable inventory order.
+/// Native live Graph tools in stable inventory order.
 pub fn tools() -> Vec<Tool> {
     let epoch = string(256);
     let actor = string(128);
@@ -575,7 +575,7 @@ pub fn tools() -> Vec<Tool> {
     image_parameters["oneOf"] = json!([{"required":["branch"],"not":{"required":["node"]}}, {"required":["node"],"not":{"required":["branch"]}}]);
     vec![
         Tool {
-            name: "nodes_discover".into(),
+            name: "graph_discover".into(),
             description: "Discover the current native graph identity, actual node registry, request schemas and hard limits. This is the bootstrap call after connecting to an exact document_epoch; it does not edit or run the graph.".into(),
             parameters: object(
                 json!({"expected_document_epoch":epoch.clone()}),
@@ -583,7 +583,7 @@ pub fn tools() -> Vec<Tool> {
             ),
         },
         Tool {
-            name: "nodes_snapshot".into(),
+            name: "graph_snapshot".into(),
             description: "Read the one canonical editable live graph, full and semantic revisions, validation diagnostics and graph-only Undo state. Does not execute it.".into(),
             parameters: session(
                 json!({}),
@@ -591,12 +591,12 @@ pub fn tools() -> Vec<Tool> {
             ),
         },
         Tool {
-            name: "nodes_mutate".into(),
+            name: "graph_mutate".into(),
             description: "Apply one atomic revision-guarded graph mutation with an actor operation-key receipt. Exact retries replay; stale revisions and changed payloads reject. Editing never runs the graph.".into(),
             parameters: mutation_schema(),
         },
         Tool {
-            name: "nodes_trace".into(),
+            name: "graph_trace".into(),
             description: "Submit a bounded calibrated trace, or explicitly select the host-configured local_sketch model. Both share one worker and retained receipt; submission changes neither font nor graph. Completion installs a guarded recipe in the selected live.python node for manual Run, proof review and Apply. Local model scores are not design approval.".into(),
             parameters: object(
                 json!({
@@ -638,23 +638,23 @@ pub fn tools() -> Vec<Tool> {
             ),
         },
         Tool {
-            name: "nodes_trace_status".into(),
+            name: "graph_trace_status".into(),
             description: "Inspect a retained calibrated trace or local sketch draft. A completed worker result publishes its guarded graph recipe exactly once; cancelled and stale results never publish. This never changes the font.".into(),
             parameters: session(json!({"handle":handle.clone()}), &["expected_document_epoch","identity","handle"]),
         },
         Tool {
-            name: "nodes_trace_cancel".into(),
+            name: "graph_trace_cancel".into(),
             description: "Cancel one queued or running candidate. Local sketch cancellation stops its supervised direct child; any noninterruptible descendant can outlive it. The global slot stays occupied until the worker settles.".into(),
             parameters: session(json!({"handle":handle.clone()}), &["expected_document_epoch","identity","handle"]),
         },
         Tool {
-            name: "nodes_trace_release".into(),
+            name: "graph_trace_release".into(),
             description: "Release one terminal candidate receipt so this session can submit another image. Running or queued jobs must settle first.".into(),
             parameters: session(json!({"handle":handle.clone()}), &["expected_document_epoch","identity","handle"]),
         },
         Tool {
-            name: "nodes_run".into(),
-            description: "Run native nodes for one explicit source and 1 to 64 glyphs. Omitted execution_version or 1 keeps the four-node comparison; version 2 enables bounded chained and branching Python transforms with independent proofs and partial failures. The host captures current font, code, parameters and proof identities; callers never supply hashes. Poll nodes_status.".into(),
+            name: "graph_run".into(),
+            description: "Run native nodes for one explicit source and 1 to 64 glyphs. Omitted execution_version or 1 keeps the four-node comparison; version 2 enables bounded chained and branching Python transforms with independent proofs and partial failures. The host captures current font, code, parameters and proof identities; callers never supply hashes. Poll graph_status.".into(),
             parameters: object(
                 json!({
                     "expected_document_epoch":epoch.clone(),
@@ -676,7 +676,7 @@ pub fn tools() -> Vec<Tool> {
             ),
         },
         Tool {
-            name: "nodes_status".into(),
+            name: "graph_status".into(),
             description: "Inspect one retained native graph run and its current, stale, failed, cancelled or completed node outputs. Does not consume the result or include PNG bytes.".into(),
             parameters: session(
                 json!({"handle":handle.clone()}),
@@ -684,12 +684,12 @@ pub fn tools() -> Vec<Tool> {
             ),
         },
         Tool {
-            name: "nodes_cancel".into(),
+            name: "graph_cancel".into(),
             description: "Cancel one selected graph run with its own actor operation-key receipt. It never cancels another graph, script or proof job.".into(),
             parameters: cancel_schema(),
         },
         Tool {
-            name: "nodes_release".into(),
+            name: "graph_release".into(),
             description: "Release one terminal graph run and its retained script/proof artifacts. Queued or running work rejects; the durable run receipt remains a tombstone.".into(),
             parameters: session(
                 json!({"handle":handle.clone()}),
@@ -697,7 +697,7 @@ pub fn tools() -> Vec<Tool> {
             ),
         },
         Tool {
-            name: "nodes_apply".into(),
+            name: "graph_apply".into(),
             description: "Apply one successfully proofed transform from a terminal run through the common receipt-backed font edit path. Select its node explicitly when more than one result is eligible; successful branches of partially failed runs remain available. Supply a new edit operation_key and user-approved only within the user's granted authorization. No arbitrary result body is accepted.".into(),
             parameters: session(
                 json!({
@@ -718,7 +718,7 @@ pub fn tools() -> Vec<Tool> {
             ),
         },
         Tool {
-            name: "nodes_image".into(),
+            name: "graph_image".into(),
             description: "Return an exact already-rendered context or selected-target detail PNG by proof node. Legacy original/changed aliases require a unique matching proof. Successful proofs in partially failed runs remain available. The generic MCP response carries image/png separately from metadata; this never rerenders.".into(),
             parameters: image_parameters,
         },
@@ -743,7 +743,7 @@ mod tests {
                 .all(|tool| tool.parameters["additionalProperties"] == false)
         );
 
-        let run = tools.iter().find(|tool| tool.name == "nodes_run").unwrap();
+        let run = tools.iter().find(|tool| tool.name == "graph_run").unwrap();
         assert_eq!(run.parameters["properties"]["glyphs"]["maxItems"], 64);
         let encoded = run.parameters.to_string();
         assert!(!encoded.contains("capture_sha256"));
@@ -753,7 +753,7 @@ mod tests {
 
         let mutate = tools
             .iter()
-            .find(|tool| tool.name == "nodes_mutate")
+            .find(|tool| tool.name == "graph_mutate")
             .unwrap();
         assert!(mutate.parameters["properties"].get("request").is_some());
         assert!(mutate.parameters["properties"].get("actor").is_none());
@@ -774,7 +774,7 @@ mod tests {
             "glyphs":["A"],
             "capture_sha256":"1".repeat(64)
         });
-        assert!(serde_json::from_value::<NodesRunRequest>(run).is_err());
+        assert!(serde_json::from_value::<GraphRunRequest>(run).is_err());
 
         let apply = json!({
             "expected_document_epoch":"document",
@@ -785,7 +785,7 @@ mod tests {
             "authorization":"user-approved",
             "result":{"edits":[]}
         });
-        assert!(serde_json::from_value::<NodesApplyRequest>(apply).is_err());
+        assert!(serde_json::from_value::<GraphApplyRequest>(apply).is_err());
     }
 
     #[test]
@@ -800,7 +800,7 @@ mod tests {
             "calibration":{"font_units_per_pixel":2.0,"pixel_baseline_y":400.0,
                 "font_x_at_left":-112.0,"font_baseline_y":0.0}
         });
-        let legacy: NodesTraceRequest = serde_json::from_value(request.clone()).unwrap();
+        let legacy: GraphTraceRequest = serde_json::from_value(request.clone()).unwrap();
         assert!(legacy.local_sketch.is_none());
         request["invert"] = json!(false);
         assert_eq!(serde_json::to_value(&legacy).unwrap(), request);
@@ -808,18 +808,18 @@ mod tests {
             "ink_box_px":[16,16,460,400],"codepoint":1603,
             "candidates":1,"temperature":0.0,"seed":7,"timeout_seconds":120
         });
-        let selected: NodesTraceRequest = serde_json::from_value(request.clone()).unwrap();
+        let selected: GraphTraceRequest = serde_json::from_value(request.clone()).unwrap();
         assert!(selected.validate().is_ok());
         assert_eq!(selected.local_sketch.as_ref().unwrap().identity, None);
         assert_eq!(serde_json::to_value(&selected).unwrap(), request);
         request["local_sketch"]["identity"] = json!(1.5);
-        let selected: NodesTraceRequest = serde_json::from_value(request.clone()).unwrap();
+        let selected: GraphTraceRequest = serde_json::from_value(request.clone()).unwrap();
         assert!(selected.validate().is_ok());
         assert_eq!(selected.local_sketch.as_ref().unwrap().identity, Some(1.5));
         let mut invalid = request.clone();
         invalid["invert"] = json!(true);
         assert!(
-            serde_json::from_value::<NodesTraceRequest>(invalid)
+            serde_json::from_value::<GraphTraceRequest>(invalid)
                 .unwrap()
                 .validate()
                 .is_err()
@@ -827,7 +827,7 @@ mod tests {
         let mut invalid = request.clone();
         invalid["local_sketch"]["timeout_seconds"] = json!(121);
         assert!(
-            serde_json::from_value::<NodesTraceRequest>(invalid)
+            serde_json::from_value::<GraphTraceRequest>(invalid)
                 .unwrap()
                 .validate()
                 .is_err()
@@ -836,12 +836,12 @@ mod tests {
             let mut invalid = request.clone();
             invalid["local_sketch"]["identity"] = identity;
             assert!(
-                serde_json::from_value::<NodesTraceRequest>(invalid)
+                serde_json::from_value::<GraphTraceRequest>(invalid)
                     .map_or(true, |request| request.validate().is_err())
             );
         }
         request["local_sketch"]["temperature"] = json!("unbounded");
-        assert!(serde_json::from_value::<NodesTraceRequest>(request).is_err());
+        assert!(serde_json::from_value::<GraphTraceRequest>(request).is_err());
     }
 
     #[test]
@@ -851,7 +851,7 @@ mod tests {
             "guard":{"identity":{"session_id":"graph","document_epoch":"document"},"semantic_revision":0,"semantic_hash":"0".repeat(64)},
             "actor":"agent","operation_key":"run","source":0,"glyphs":["A"]
         });
-        let mut run: NodesRunRequest = serde_json::from_value(legacy.clone()).unwrap();
+        let mut run: GraphRunRequest = serde_json::from_value(legacy.clone()).unwrap();
         assert_eq!(run.execution_version, 1);
         assert_eq!(serde_json::to_value(&run).unwrap(), legacy);
         run.execution_version = 2;
@@ -861,7 +861,7 @@ mod tests {
         assert!(run.validate().is_err());
 
         let legacy_image = json!({"expected_document_epoch":"document","identity":{"session_id":"graph","document_epoch":"document"},"handle":1,"branch":"changed"});
-        let mut image: NodesImageRequest = serde_json::from_value(legacy_image.clone()).unwrap();
+        let mut image: GraphImageRequest = serde_json::from_value(legacy_image.clone()).unwrap();
         assert!(image.validate().is_ok());
         assert_eq!(serde_json::to_value(&image).unwrap(), legacy_image);
         image.view = crate::font::compiler::proof::ProofView::Detail;
@@ -877,7 +877,7 @@ mod tests {
 
     #[test]
     fn validators_bind_epoch_and_bound_explicit_scope() {
-        let request: NodesRunRequest = serde_json::from_value(json!({
+        let request: GraphRunRequest = serde_json::from_value(json!({
             "expected_document_epoch":"document",
             "guard":{
                 "identity":{"session_id":"graph","document_epoch":"document"},

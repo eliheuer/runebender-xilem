@@ -452,7 +452,7 @@ mod tests {
     fn invalid_and_unsupported_calls_fail_before_any_dispatch() {
         for reply in [
             call_reply("proposal_install", json!({"task":"chat"})),
-            call_reply("nodes_run", json!({"file":"x.nodes.json"})),
+            call_reply("graph_run", json!({"file":"x.graph.json"})),
             call_reply("read_glyph", json!({"glyph":4})),
             json!({"choices":[{"message":{"role":"user","content":"wrong role"},
                 "finish_reason":"stop"}]}),

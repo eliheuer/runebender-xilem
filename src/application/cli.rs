@@ -13,8 +13,8 @@ use std::path::{Path, PathBuf};
 
 mod agent_commands;
 mod font_commands;
+mod graph_commands;
 mod mcp;
-mod nodes_commands;
 mod theme;
 
 use agent_commands::agent_call;
@@ -22,8 +22,8 @@ use font_commands::{
     bolden, collapse_metaballs, compose_cmd, features_cmd, info, proof, proposal_discard,
     proposal_install, proposal_list, propose,
 };
+use graph_commands::{graph_check, graph_run, graph_types};
 use mcp::mcp_serve;
-use nodes_commands::{nodes_check, nodes_run, nodes_types};
 use theme::theme_command;
 
 use clap::{Parser, Subcommand};
@@ -33,8 +33,8 @@ use runebender::font::project::Project;
 use runebender::font::proposal;
 use runebender::font::variable::{GlyphLayerAddress, LayerId};
 use runebender::outline::embolden;
-use runebender::workflows::nodes;
-use runebender::workflows::nodes_run;
+use runebender::workflows::graph;
+use runebender::workflows::graph_run;
 use serde_json::json;
 
 /// Exit codes, matching font-ml so a caller can branch on them.
@@ -193,11 +193,11 @@ enum Command {
         #[arg(long)]
         write: bool,
     },
-    /// Nodes: a workflow of tools as boxes and wires, in a
-    /// `<name>.nodes.json` file.
-    Nodes {
+    /// Graph: a workflow of tools as boxes and wires, in a
+    /// `<name>.graph.json` file.
+    Graph {
         #[command(subcommand)]
-        action: NodesAction,
+        action: GraphAction,
     },
     /// Run a font-ml task over the UFO. font-ml is its own program; it
     /// writes what it proposes into the UFO as a proposal layer, and
@@ -322,10 +322,10 @@ enum AgentAction {
 }
 
 #[derive(Subcommand)]
-enum NodesAction {
+enum GraphAction {
     /// Read a file and report every problem. Exit 0 when it would run.
     Check {
-        /// The `.nodes.json` file.
+        /// The `.graph.json` file.
         file: PathBuf,
         /// The font-ml binary, for the tasks it declares. Defaults to
         /// `$RUNEBENDER_FONT_ML`, then `font-ml` on PATH.
@@ -342,7 +342,7 @@ enum NodesAction {
     /// has not changed since the last run. Progress on stderr, one
     /// JSON report on stdout with --json.
     Run {
-        /// The `.nodes.json` file.
+        /// The `.graph.json` file.
         file: PathBuf,
         /// The designspace or UFO the Font node stands for.
         #[arg(long)]
@@ -638,10 +638,10 @@ pub(crate) fn run() -> Startup {
             write,
         } => compose_cmd(source, glyphs.as_deref(), *write, json),
         Command::Features { source, write } => features_cmd(source, *write, json),
-        Command::Nodes { action } => match action {
-            NodesAction::Check { file, tool } => nodes_check(file, tool.as_deref(), json),
-            NodesAction::Types { tool } => nodes_types(tool.as_deref(), json),
-            NodesAction::Run {
+        Command::Graph { action } => match action {
+            GraphAction::Check { file, tool } => graph_check(file, tool.as_deref(), json),
+            GraphAction::Types { tool } => graph_types(tool.as_deref(), json),
+            GraphAction::Run {
                 file,
                 font,
                 master,
@@ -651,7 +651,7 @@ pub(crate) fn run() -> Startup {
                 force,
                 no_cache,
                 proposal_only,
-            } => nodes_run(
+            } => graph_run(
                 file,
                 font,
                 master.as_deref(),
@@ -663,10 +663,10 @@ pub(crate) fn run() -> Startup {
                 *proposal_only,
                 json,
             ),
-            NodesAction::Schema => {
+            GraphAction::Schema => {
                 // One line, like every other JSON this prints, so a
                 // caller reads the last line and has it all.
-                println!("{}", nodes::NodeGraph::schema());
+                println!("{}", graph::NodeGraph::schema());
                 exit::OK
             }
         },

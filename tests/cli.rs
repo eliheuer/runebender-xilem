@@ -264,8 +264,8 @@ fn propose_runs_the_tool_and_reports_what_it_left() {
 /// The demo workflow: font and model into bolden, then compare and
 /// install. Written here rather than read from runebender-demo, so
 /// the test needs nothing beside this checkout.
-fn demo_nodes(dir: &Path) -> PathBuf {
-    let file = dir.join("bolden.nodes.json");
+fn demo_graph(dir: &Path) -> PathBuf {
+    let file = dir.join("bolden.graph.json");
     std::fs::write(
         &file,
         r#"{
@@ -315,12 +315,12 @@ exit 4
 }
 
 #[test]
-fn nodes_check_accepts_the_demo_with_the_tool_present() {
+fn graph_check_accepts_the_demo_with_the_tool_present() {
     let (dir, _ufo) = scratch_ufo();
-    let file = demo_nodes(dir.path());
+    let file = demo_graph(dir.path());
     let tool = stand_in_font_ml(dir.path());
     let (code, out) = run(&[
-        "nodes",
+        "graph",
         "check",
         file.to_str().expect("utf8"),
         "--tool",
@@ -341,9 +341,9 @@ fn nodes_check_accepts_the_demo_with_the_tool_present() {
 }
 
 #[test]
-fn nodes_check_names_a_missing_tool_and_a_bad_link() {
+fn graph_check_names_a_missing_tool_and_a_bad_link() {
     let (dir, _ufo) = scratch_ufo();
-    let file = demo_nodes(dir.path());
+    let file = demo_graph(dir.path());
     let mut text = std::fs::read_to_string(&file).expect("read");
     text = text.replace(
         r#"[1, "glyphs", 3, "glyphs"]"#,
@@ -352,7 +352,7 @@ fn nodes_check_names_a_missing_tool_and_a_bad_link() {
     std::fs::write(&file, text).expect("write");
     // A tool path that does not exist: font-ml.bolden is then unknown.
     let (code, out) = run(&[
-        "nodes",
+        "graph",
         "check",
         file.to_str().expect("utf8"),
         "--tool",
@@ -366,11 +366,11 @@ fn nodes_check_names_a_missing_tool_and_a_bad_link() {
 }
 
 #[test]
-fn nodes_schema_and_types_print() {
-    let (code, out) = run(&["nodes", "schema"]);
+fn graph_schema_and_types_print() {
+    let (code, out) = run(&["graph", "schema"]);
     assert_eq!(code, 0);
     assert!(out["properties"]["links"].is_object());
-    let (code, out) = run(&["nodes", "types", "--tool", "/nowhere/font-ml"]);
+    let (code, out) = run(&["graph", "types", "--tool", "/nowhere/font-ml"]);
     assert_eq!(code, 0);
     let names: Vec<&str> = out["types"]
         .as_array()
@@ -383,9 +383,9 @@ fn nodes_schema_and_types_print() {
 }
 
 #[test]
-fn nodes_run_runs_core_nodes_and_skips_them_the_second_time() {
+fn graph_run_runs_core_nodes_and_skips_them_the_second_time() {
     let (dir, ufo) = scratch_ufo();
-    let file = dir.path().join("proof.nodes.json");
+    let file = dir.path().join("proof.graph.json");
     let svg = dir.path().join("sheet.svg");
     std::fs::write(
         &file,
@@ -404,7 +404,7 @@ fn nodes_run_runs_core_nodes_and_skips_them_the_second_time() {
     )
     .expect("write");
     let args = [
-        "nodes",
+        "graph",
         "run",
         file.to_str().expect("utf8"),
         "--font",
@@ -420,7 +420,7 @@ fn nodes_run_runs_core_nodes_and_skips_them_the_second_time() {
     let nodes = out["nodes"].as_array().expect("nodes");
     assert_eq!(nodes.len(), 3);
     assert!(nodes.iter().all(|n| n["status"] == "ran"), "{out}");
-    let typed: runebender::automation::agent_nodes::results::DiskNodesRunResult =
+    let typed: runebender::automation::agent_graph::results::DiskGraphRunResult =
         serde_json::from_value(out.clone()).unwrap();
     assert_eq!(typed.file, file);
     assert_eq!(typed.font, ufo);
@@ -434,16 +434,16 @@ fn nodes_run_runs_core_nodes_and_skips_them_the_second_time() {
 
     // Nothing changed: the proof is skipped. The cache sits beside
     // the file.
-    assert!(dir.path().join(".proof.nodes.json.cache").is_file());
+    assert!(dir.path().join(".proof.graph.json.cache").is_file());
     let (code, out) = run(&args);
     assert_eq!(code, 0, "{out}");
     let nodes = out["nodes"].as_array().expect("nodes");
     let proof = nodes.iter().find(|n| n["id"] == 2).expect("proof node");
     assert_eq!(proof["status"], "skipped", "{out}");
 
-    let agent_run = call_agent(&ufo, "nodes_run", serde_json::json!({"file":file}));
+    let agent_run = call_agent(&ufo, "graph_run", serde_json::json!({"file":file}));
     assert_eq!(agent_run["ok"], true, "{agent_run}");
-    let agent_run: runebender::automation::agent_nodes::results::DiskNodesRunResult =
+    let agent_run: runebender::automation::agent_graph::results::DiskGraphRunResult =
         serde_json::from_value(agent_run["result"].clone()).unwrap();
     assert_eq!(agent_run.file, file);
     assert_eq!(agent_run.font, ufo);
@@ -508,11 +508,11 @@ fn nodes_run_runs_core_nodes_and_skips_them_the_second_time() {
 
 #[cfg(unix)]
 #[test]
-fn nodes_run_invalidates_cache_when_worker_is_replaced_at_the_same_path() {
+fn graph_run_invalidates_cache_when_worker_is_replaced_at_the_same_path() {
     use std::os::unix::fs::PermissionsExt as _;
 
     let (dir, ufo) = scratch_ufo();
-    let graph = dir.path().join("worker.nodes.json");
+    let graph = dir.path().join("worker.graph.json");
     let worker = dir.path().join("font-ml");
     std::fs::write(
         &graph,
@@ -535,7 +535,7 @@ fn nodes_run_invalidates_cache_when_worker_is_replaced_at_the_same_path() {
         std::fs::set_permissions(&worker, std::fs::Permissions::from_mode(0o700)).unwrap();
     };
     let args = [
-        "nodes",
+        "graph",
         "run",
         graph.to_str().unwrap(),
         "--font",
@@ -557,7 +557,7 @@ fn nodes_run_invalidates_cache_when_worker_is_replaced_at_the_same_path() {
 
 #[cfg(unix)]
 #[test]
-fn nodes_rows_cross_real_worker_arguments_without_loss_and_obey_cache_policy() {
+fn graph_rows_cross_real_worker_arguments_without_loss_and_obey_cache_policy() {
     use serde_json::json;
     use std::os::unix::fs::PermissionsExt as _;
 
@@ -565,7 +565,7 @@ fn nodes_rows_cross_real_worker_arguments_without_loss_and_obey_cache_policy() {
     let worker = dir.path().join("font-ml");
     let manifest = dir.path().join("tasks.json");
     let calls = dir.path().join("calls.txt");
-    let graph_path = dir.path().join("rows.nodes.json");
+    let graph_path = dir.path().join("rows.graph.json");
     std::fs::write(&worker, r#"#!/usr/bin/env python3
 import json, pathlib, sys
 root = pathlib.Path(__file__).parent
@@ -600,7 +600,7 @@ else:
     ],"links":[[1,"rows",2,"first_rows"],[3,"rows",2,"second_rows"]]});
     std::fs::write(&graph_path, serde_json::to_vec(&graph).unwrap()).unwrap();
     let args = [
-        "nodes",
+        "graph",
         "run",
         graph_path.to_str().unwrap(),
         "--font",
@@ -608,7 +608,7 @@ else:
         "--tool",
         worker.to_str().unwrap(),
     ];
-    let (code, types) = run(&["nodes", "types", "--tool", worker.to_str().unwrap()]);
+    let (code, types) = run(&["graph", "types", "--tool", worker.to_str().unwrap()]);
     assert_eq!(code, 0, "{types}");
     let consumer = types["types"]
         .as_array()
@@ -851,7 +851,7 @@ fn mcp_protocol_versions_keep_disk_results_in_step_with_the_cli() {
             } else if let Some(schema) = descriptor.get("outputSchema") {
                 assert_eq!(schema["type"], "object");
                 assert!(
-                    schema[if descriptor["name"] == "nodes_run" {
+                    schema[if descriptor["name"] == "graph_run" {
                         "anyOf"
                     } else {
                         "oneOf"
@@ -1128,8 +1128,8 @@ fn exact_edits_round_trip_without_rewriting_foreground() {
 #[test]
 fn agent_rejects_foreground_workflows_and_malformed_scope() {
     let (dir, ufo) = scratch_ufo();
-    let file = demo_nodes(dir.path());
-    let result = call_agent(&ufo, "nodes_run", serde_json::json!({"file": file}));
+    let file = demo_graph(dir.path());
+    let result = call_agent(&ufo, "graph_run", serde_json::json!({"file": file}));
     assert_eq!(result["ok"], false, "{result}");
     assert!(
         result["result"]["error"]

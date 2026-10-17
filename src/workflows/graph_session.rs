@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use super::nodes::{Link, Node, NodeGraph, NodeType, Problem, Registry};
+use super::graph::{Link, Node, NodeGraph, NodeType, Problem, Registry};
 
 /// Schema version for the live graph session API.
 pub const GRAPH_SESSION_SCHEMA_VERSION: u32 = 1;
@@ -1157,7 +1157,7 @@ impl GraphSession {
                 .node(node)
                 .and_then(|proof| proof.values.get("recipe"))
                 .cloned()
-                .unwrap_or_else(super::nodes_live::default_proof_recipe);
+                .unwrap_or_else(super::graph_live::default_proof_recipe);
             if !recipe.is_object() {
                 return Err(GraphSessionError::new(
                     GraphSessionErrorCode::CaptureMismatch,
@@ -2197,7 +2197,7 @@ fn validate_capture(
             .node(proof.node)
             .and_then(|node| node.values.get("recipe"))
             .cloned()
-            .unwrap_or_else(super::nodes_live::default_proof_recipe);
+            .unwrap_or_else(super::graph_live::default_proof_recipe);
         if !recipe.is_object() || digest_json(&recipe)? != proof.recipe_sha256 {
             return Err(GraphSessionError::new(
                 GraphSessionErrorCode::CaptureMismatch,
@@ -2549,13 +2549,13 @@ fn inspection(handle: GraphRunHandle, record: &GraphRunRecord) -> GraphRunInspec
 
 #[cfg(test)]
 mod tests {
-    use super::super::nodes_live;
+    use super::super::graph_live;
     use super::*;
     use crate::font::variable;
     use serde_json::json;
 
     fn new_session() -> GraphSession {
-        let mut graph = nodes_live::comparison_starter(variable::SourceId(3));
+        let mut graph = graph_live::comparison_starter(variable::SourceId(3));
         graph
             .node_mut(3)
             .unwrap()
@@ -2749,7 +2749,7 @@ mod tests {
 
     #[test]
     fn invalid_types_links_and_cycles_have_structured_addresses() {
-        let mut graph = nodes_live::comparison_starter(variable::SourceId(0));
+        let mut graph = graph_live::comparison_starter(variable::SourceId(0));
         graph.node_mut(3).unwrap().type_name = "missing.type".into();
         graph
             .links

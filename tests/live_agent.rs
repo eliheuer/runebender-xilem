@@ -154,15 +154,15 @@ fn cli_and_mcp_share_one_unsaved_authorized_document() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|tool| tool["name"] == "nodes_run")
-        .expect("live Nodes runner is advertised");
+        .find(|tool| tool["name"] == "graph_run")
+        .expect("live Graph runner is advertised");
     let properties = &node_run["inputSchema"]["properties"];
     assert!(properties.get("expected_document_epoch").is_some());
     assert!(properties.get("guard").is_some());
     assert!(properties.get("glyphs").is_some());
     assert!(
         properties.get("file").is_none(),
-        "live Nodes must not expose the disk runner"
+        "live Graph must not expose the disk runner"
     );
     let result: Value =
         serde_json::from_str(replies[2]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();

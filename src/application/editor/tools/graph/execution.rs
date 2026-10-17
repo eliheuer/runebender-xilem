@@ -18,7 +18,7 @@ use runebender::automation::agent_session::{AgentOperationRejection, AgentPayloa
 use runebender::automation::script_recipe::{self, ScriptRecipeInput, ScriptRecipeResult};
 use runebender::font::compiler::proof::{CompileProofInput, CompiledProofRecipe};
 use runebender::font::project::{CanonicalDocumentEditTransaction, Project};
-use runebender::workflows::nodes_session::{
+use runebender::workflows::graph_session::{
     GraphCancelOutcome, GraphCancelRequest, GraphCancelResponse, GraphDocumentState,
     GraphFontCapture, GraphNodeOutput, GraphNodeOutputValue, GraphProofScope,
     GraphReceiptDisposition, GraphRunCompletion, GraphRunError, GraphRunHandle, GraphRunIdentity,
@@ -689,7 +689,7 @@ impl LiveGraphExecution {
             operation_key: operation_key.into(),
             authorization: authorization.into(),
             source: identity.capture.font.source,
-            history_name: "Apply Nodes Python result".into(),
+            history_name: "Apply Graph Python result".into(),
             reads: result.reads.clone(),
             edits: result.edits.clone(),
         };
@@ -1062,7 +1062,7 @@ fn stage_result(
         operation_key: format!("{}-{node}", record.operation_key),
         authorization: "preview-only".into(),
         source: record.work.identity.capture.font.source,
-        history_name: "Apply Nodes Python result".into(),
+        history_name: "Apply Graph Python result".into(),
         reads: result.reads.clone(),
         edits: result.edits.clone(),
     };
@@ -1345,7 +1345,7 @@ fn validate_submit_capture(
 }
 
 fn record_parameters(
-    graph: &runebender::workflows::nodes::NodeGraph,
+    graph: &runebender::workflows::graph::NodeGraph,
     node: u32,
 ) -> Result<BTreeMap<String, Value>, LiveGraphExecutionError> {
     let parameters = graph
@@ -1363,14 +1363,14 @@ fn record_parameters(
 }
 
 fn proof_recipe(
-    graph: &runebender::workflows::nodes::NodeGraph,
+    graph: &runebender::workflows::graph::NodeGraph,
     node: u32,
 ) -> Result<CompiledProofRecipe, String> {
     let value = graph
         .node(node)
         .and_then(|node| node.values.get("recipe"))
         .cloned()
-        .unwrap_or_else(runebender::workflows::nodes_live::default_proof_recipe);
+        .unwrap_or_else(runebender::workflows::graph_live::default_proof_recipe);
     let recipe: CompiledProofRecipe =
         serde_json::from_value(value).map_err(|error| error.to_string())?;
     recipe.validate()?;
@@ -1417,7 +1417,7 @@ fn err(code: LiveGraphExecutionErrorCode, message: impl Into<String>) -> LiveGra
     LiveGraphExecutionError::new(code, message)
 }
 fn graph_error(
-    error: runebender::workflows::nodes_session::GraphSessionError,
+    error: runebender::workflows::graph_session::GraphSessionError,
 ) -> LiveGraphExecutionError {
     err(LiveGraphExecutionErrorCode::Graph, error.to_string())
 }
@@ -1474,9 +1474,9 @@ mod tests {
     use runebender::automation::script_recipe::ScriptRecipeLayer;
     use runebender::font::compiler::proof as compiled_proof;
     use runebender::font::edit_batch::canonical_glyph_revision;
-    use runebender::workflows::nodes::Registry;
-    use runebender::workflows::nodes_live;
-    use runebender::workflows::nodes_session::{
+    use runebender::workflows::graph::Registry;
+    use runebender::workflows::graph_live;
+    use runebender::workflows::graph_session::{
         GraphEdit, GraphGuard, GraphInteractiveMutationRequest, GraphMutation,
     };
 
@@ -1536,7 +1536,7 @@ mod tests {
     fn setup(
         project: &Project,
         version: u32,
-        graph: runebender::workflows::nodes::NodeGraph,
+        graph: runebender::workflows::graph::NodeGraph,
     ) -> (GraphSession, LiveGraphSubmitRequest) {
         let session = GraphSession::new("graph", "document", graph, Registry::core()).unwrap();
         let snapshot = session.snapshot();
@@ -1577,7 +1577,7 @@ mod tests {
     #[test]
     fn version_two_pair_requires_one_recipe_but_distinct_dag_proofs_are_allowed() {
         let project = project();
-        let mut graph = nodes_live::comparison_starter(project.source_id(0).unwrap());
+        let mut graph = graph_live::comparison_starter(project.source_id(0).unwrap());
         let changed = graph
             .nodes
             .iter_mut()
@@ -1604,7 +1604,7 @@ mod tests {
             .node_mut(extra)
             .unwrap()
             .values
-            .insert("recipe".into(), nodes_live::default_proof_recipe());
+            .insert("recipe".into(), graph_live::default_proof_recipe());
         graph.connect(source_node, "font", extra, "font");
         let (session, request) = setup(&project, 2, graph);
         let result = validate_submit_capture(&session, &project, &request);
@@ -1658,7 +1658,7 @@ mod tests {
         };
         let project = project();
         let root_revision = project.document_revision();
-        let mut graph = nodes_live::comparison_starter(project.source_id(0).unwrap());
+        let mut graph = graph_live::comparison_starter(project.source_id(0).unwrap());
         graph
             .node_mut(3)
             .unwrap()
@@ -1735,7 +1735,7 @@ mod tests {
             return;
         };
         let project = project();
-        let mut graph = nodes_live::comparison_starter(project.source_id(0).unwrap());
+        let mut graph = graph_live::comparison_starter(project.source_id(0).unwrap());
         graph.node_mut(3).unwrap().values.insert(
             "code".into(),
             Value::String("raise RuntimeError('fixture failure')".into()),
@@ -1778,7 +1778,7 @@ mod tests {
             return;
         };
         let project = project();
-        let mut graph = nodes_live::comparison_starter(project.source_id(0).unwrap());
+        let mut graph = graph_live::comparison_starter(project.source_id(0).unwrap());
         graph
             .node_mut(3)
             .unwrap()
@@ -1897,7 +1897,7 @@ mod tests {
             return;
         };
         let project = project();
-        let mut graph = nodes_live::comparison_starter(project.source_id(0).unwrap());
+        let mut graph = graph_live::comparison_starter(project.source_id(0).unwrap());
         graph
             .node_mut(3)
             .unwrap()
@@ -1949,7 +1949,7 @@ mod tests {
             return;
         };
         let project = project();
-        let mut graph = nodes_live::comparison_starter(project.source_id(0).unwrap());
+        let mut graph = graph_live::comparison_starter(project.source_id(0).unwrap());
         graph
             .node_mut(3)
             .unwrap()
@@ -2020,7 +2020,7 @@ mod tests {
                 script: width_script(701),
             })
             .unwrap();
-        let mut graph = nodes_live::comparison_starter(project.source_id(0).unwrap());
+        let mut graph = graph_live::comparison_starter(project.source_id(0).unwrap());
         graph
             .node_mut(3)
             .unwrap()
@@ -2070,7 +2070,7 @@ mod tests {
         };
         let project = project();
         let root_revision = project.document_revision();
-        let mut graph = nodes_live::comparison_starter(project.source_id(0).unwrap());
+        let mut graph = graph_live::comparison_starter(project.source_id(0).unwrap());
         graph
             .node_mut(3)
             .unwrap()
@@ -2176,7 +2176,7 @@ mod tests {
             return;
         };
         let project = project();
-        let mut graph = nodes_live::comparison_starter(project.source_id(0).unwrap());
+        let mut graph = graph_live::comparison_starter(project.source_id(0).unwrap());
         let slow = format!("import time\ntime.sleep(2)\n{}", width_script(777));
         graph
             .node_mut(3)
@@ -2226,7 +2226,7 @@ mod tests {
             return;
         };
         let project = project();
-        let mut graph = nodes_live::comparison_starter(project.source_id(0).unwrap());
+        let mut graph = graph_live::comparison_starter(project.source_id(0).unwrap());
         graph
             .node_mut(3)
             .unwrap()
@@ -2285,7 +2285,7 @@ mod tests {
             return;
         };
         let mut project = project();
-        let mut graph = nodes_live::comparison_starter(project.source_id(0).unwrap());
+        let mut graph = graph_live::comparison_starter(project.source_id(0).unwrap());
         graph
             .node_mut(3)
             .unwrap()

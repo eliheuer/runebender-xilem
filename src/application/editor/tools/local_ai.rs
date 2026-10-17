@@ -147,7 +147,7 @@ pub(crate) struct LocalAiState {
     pub(crate) strength: f64,
     /// The model directories found on disk, scanned when asked.
     pub(crate) installed: Vec<(String, PathBuf)>,
-    /// What font-ml says it can do, from the answer `init_nodes` kept.
+    /// What font-ml says it can do, from the answer `init_graph` kept.
     pub(crate) tasks: Vec<TaskRow>,
     /// What font-ml is doing right now.
     pub(crate) busy: Option<String>,
@@ -410,15 +410,15 @@ impl Workspace {
     /// Where models are looked for: `$RUNEBENDER_MODELS`, else
     /// `~/.runebender/models`, plus the roots core reads.
     pub(crate) fn models_dir() -> Option<PathBuf> {
-        runebender::workflows::nodes_run::default_models_dir()
+        runebender::workflows::graph_run::default_models_dir()
     }
 
     /// Look at the disk again: the model directories and the tasks.
     pub(crate) fn rescan_models(&mut self) {
         self.ai.installed =
-            runebender::workflows::nodes_run::installed(Self::models_dir().as_deref(), false);
+            runebender::workflows::graph_run::installed(Self::models_dir().as_deref(), false);
         self.ai.tasks = self
-            .nodes
+            .graph
             .tasks_json
             .as_ref()
             .and_then(|v| v.get("tasks"))
@@ -849,7 +849,7 @@ impl Workspace {
             self.note = "Choose a model first".into();
             return;
         };
-        let Some(font_ml) = self.nodes.font_ml.clone() else {
+        let Some(font_ml) = self.graph.font_ml.clone() else {
             self.note =
                 "font-ml not found: cargo install --git https://github.com/eliheuer/font-ml, \
                          or set RUNEBENDER_FONT_ML"
@@ -861,11 +861,11 @@ impl Workspace {
             return;
         }
         let glyph_name = (names.len() == 1).then(|| names[0].clone());
-        // Reference fitting remains an explicit Nodes input. The
+        // Reference fitting remains an explicit Graph input. The
         // direct rail uses the visible strength control, which is the
         // dependable bounded workflow for a draft model.
         let strength = self.ai.strength;
-        let device = self.nodes.device.clone();
+        let device = self.graph.device.clone();
         let target_names = names;
         let foreground_revisions = match foreground_revisions(&self.font, &target_names) {
             Ok(revisions) => revisions,
@@ -1241,7 +1241,7 @@ print(json.dumps({'ok': True, 'input_width': width, 'capture_source': str(source
         let revision = workspace.font.project.document_revision();
         let history = workspace.metadata_undo.len();
         workspace.ai.dir = Some(root.0.join("valid"));
-        workspace.nodes.font_ml = Some(offline_model_worker(&root.0));
+        workspace.graph.font_ml = Some(offline_model_worker(&root.0));
         workspace.run_task("bolden", Some(index));
         assert!(workspace.ai.job.is_some(), "{}", workspace.note);
         let report = wait_model(&mut workspace);
@@ -1335,7 +1335,7 @@ print(json.dumps({'ok': True, 'input_width': width, 'capture_source': str(source
             workspace.open_glyph(index);
             let before = workspace.font.project.document_snapshot();
             workspace.ai.dir = Some(root.0.join(mode));
-            workspace.nodes.font_ml = Some(worker.clone());
+            workspace.graph.font_ml = Some(worker.clone());
             workspace.run_task("bolden", Some(index));
             wait_model(&mut workspace);
             assert!(workspace.note.contains(diagnostic), "{}", workspace.note);
@@ -1365,7 +1365,7 @@ print(json.dumps({'ok': True, 'input_width': width, 'capture_source': str(source
 <source filename="Bold.ufo" stylename="Bold"><location><dimension name="Weight" xvalue="1"/></location></source>
 </sources></designspace>"#).unwrap();
         let mut workspace = Workspace::open(&path).unwrap();
-        workspace.nodes.font_ml = Some(offline_model_worker(&root.0));
+        workspace.graph.font_ml = Some(offline_model_worker(&root.0));
         workspace.ai.dir = Some(root.0.join("valid"));
         for source in [0, 1] {
             workspace.font.set_active(source);
@@ -1404,7 +1404,7 @@ print(json.dumps({'ok': True, 'input_width': width, 'capture_source': str(source
         font.default_layer_mut().insert_glyph(glyph);
         font.save(&source).unwrap();
         let mut workspace = Workspace::open(&source).unwrap();
-        workspace.nodes.font_ml = Some(offline_model_worker(&root.0));
+        workspace.graph.font_ml = Some(offline_model_worker(&root.0));
         workspace.ai.dir = Some(root.0.join("valid"));
         let index = workspace.font.index_of("A").unwrap();
         workspace.open_glyph(index);
@@ -1827,7 +1827,7 @@ print(json.dumps({'ok': True, 'input_width': width, 'capture_source': str(source
 
         let mut workspace = Workspace::open(&source).expect("the fixture opens");
         workspace.ai.dir = Some(model);
-        workspace.nodes.font_ml = Some(tool);
+        workspace.graph.font_ml = Some(tool);
         let index = workspace.font.index_of("A").expect("A is indexed");
         workspace.run_task("bolden", Some(index));
         let started = std::time::Instant::now();
@@ -2096,7 +2096,7 @@ print(json.dumps({'ok': True, 'input_width': width, 'capture_source': str(source
             .clone();
         let mut workspace = Workspace::open(&disposable).expect("the disposable UFO opens");
         workspace.load_model(&model);
-        workspace.nodes.device = "cpu".into();
+        workspace.graph.device = "cpu".into();
         let index = workspace.font.index_of("R").expect("Virtua contains R");
         workspace.open_glyph(index);
         workspace.run_task("bolden", Some(index));

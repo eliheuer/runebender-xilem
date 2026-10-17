@@ -4,7 +4,7 @@
 //! The editor's state: the `Workspace` struct and the types it is made of.
 
 use crate::application::editor::session::Session;
-use crate::application::editor::tools::{chat, local_ai, nodes, scripts, sketch};
+use crate::application::editor::tools::{chat, graph, local_ai, scripts, sketch};
 use crate::application::font_model::FontModel;
 use crate::application::platform::{dialogs, export, script_jobs};
 use crate::application::view::canvas;
@@ -322,12 +322,12 @@ pub(crate) struct Workspace {
     /// Current built-in proof string selected from the View menu.
     pub(crate) sample_index: usize,
     /// The nodes file, the files beside the font, and a run.
-    pub(crate) nodes: nodes::NodesState,
+    pub(crate) graph: graph::GraphState,
     #[cfg(unix)]
-    pub(crate) live_nodes: Option<nodes::workspace::LiveNodesState>,
-    /// Shared wake flag for the long-lived live mailbox task while Nodes work is active.
+    pub(crate) live_graph: Option<graph::workspace::LiveGraphState>,
+    /// Shared wake flag for the long-lived live mailbox task while Graph work is active.
     #[cfg(unix)]
-    pub(crate) live_nodes_pending: Arc<std::sync::atomic::AtomicBool>,
+    pub(crate) live_graph_pending: Arc<std::sync::atomic::AtomicBool>,
     /// A font build running outside the UI thread.
     pub(crate) export_job: Option<export::ExportJob>,
     /// Training a neural font from the open source: the run, its status, the versions.
@@ -342,7 +342,7 @@ pub(crate) struct Workspace {
     pub(crate) chat: chat::ChatState,
     /// The non-executing script draft opened explicitly from Chat or the library.
     pub(crate) scripts: scripts::ScriptsState,
-    /// The one native recipe queue shared by Scripts and Nodes.
+    /// The one native recipe queue shared by Scripts and Graph.
     pub(crate) script_jobs: Option<script_jobs::ScriptJobQueue>,
     /// The Kerning section's fields: filter, then the pair being
     /// edited.
@@ -666,8 +666,8 @@ pub(crate) enum Mode {
     Overview,
     /// The editor, on the glyph at this index.
     Editor(usize),
-    /// The nodes canvas: the open `.nodes.json` as boxes and wires.
-    Nodes,
+    /// The nodes canvas: the open `.graph.json` as boxes and wires.
+    Graph,
 }
 
 /// One editing tab: a parked session and the tool it was left on.

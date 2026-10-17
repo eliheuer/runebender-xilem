@@ -54,11 +54,11 @@ fn demo_state() -> AppState {
     )
     .expect("the embedded browser demo font is valid");
     let mut workspace = Workspace::from_model(FontModel::from_project(project)).unwrap();
-    // Open a real, editable graph in memory so Nodes is useful on first visit.
-    workspace.new_nodes_file();
-    let graph = serde_json::from_str(include_str!("../../web/demo.nodes.json")).unwrap();
-    workspace.nodes_changed(graph);
-    workspace.nodes.graph.as_mut().unwrap().path = "example.nodes.json".into();
+    // Open a real, editable graph in memory so Graph is useful on first visit.
+    workspace.new_graph_file();
+    let graph = serde_json::from_str(include_str!("../../web/demo.graph.json")).unwrap();
+    workspace.graph_changed(graph);
+    workspace.graph.open.as_mut().unwrap().path = "example.graph.json".into();
     workspace.mode = Mode::Overview;
     workspace.note = "Browser session — edits stay in this tab".into();
     AppState {
@@ -354,7 +354,7 @@ where
     }
     fn state(&self) -> String {
         let w = self.app.workspace.as_ref().unwrap();
-        serde_json::json!({"nodes":w.nodes.graph.as_ref().map(|g| &g.graph),"simd":cfg!(target_feature="simd128"),"scale":self.scale,"mode":match w.mode { Mode::Overview=>"overview",Mode::Editor(_)=>"editor",Mode::Nodes=>"nodes" },"modified":w.modified,"glyph":w.session.glyph_name,"selected_points":w.selected_points,"glyph_count":w.font.glyphs.len(),"note":w.note,"points":w.session.points().into_iter().map(|p|(p.point.x,p.point.y)).collect::<Vec<_>>(),"zoom":w.session.viewport.zoom}).to_string()
+        serde_json::json!({"graph":w.graph.open.as_ref().map(|g| &g.graph),"simd":cfg!(target_feature="simd128"),"scale":self.scale,"mode":match w.mode { Mode::Overview=>"overview",Mode::Editor(_)=>"editor",Mode::Graph=>"graph" },"modified":w.modified,"glyph":w.session.glyph_name,"selected_points":w.selected_points,"glyph_count":w.font.glyphs.len(),"note":w.note,"points":w.session.points().into_iter().map(|p|(p.point.x,p.point.y)).collect::<Vec<_>>(),"zoom":w.session.viewport.zoom}).to_string()
     }
 }
 fn create<V, F>(

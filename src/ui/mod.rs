@@ -9,7 +9,7 @@
 
 pub mod color;
 pub mod editing;
+pub mod graph;
 pub mod icons;
-pub mod nodes;
 pub mod sidebar;
 pub mod theme;

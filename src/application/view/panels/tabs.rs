@@ -627,13 +627,13 @@ pub(crate) fn tab_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 matches!(app.mode, Mode::Overview),
                 |app: &mut Workspace| app.back_to_overview(),
             ),
-            // Nodes sits beside Font: the workflow over the font, as
+            // Graph sits beside Font: the workflow over the font, as
             // boxes and wires.
             header_tab_chip(
                 pal,
-                "Nodes".into(),
-                matches!(app.mode, Mode::Nodes),
-                |app: &mut Workspace| app.enter_nodes_mode(),
+                "Graph".into(),
+                matches!(app.mode, Mode::Graph),
+                |app: &mut Workspace| app.enter_graph_mode(),
             ),
             xrow(Region::Inline, tabs),
             header_icon_chip(pal, "plus", "New tab", |app: &mut Workspace| {

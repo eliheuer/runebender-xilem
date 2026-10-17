@@ -112,7 +112,7 @@ pub(crate) fn serve_workspace(
     });
     let deadline = Instant::now() + duration;
     while Instant::now() < deadline {
-        app.live_nodes_pump();
+        app.live_graph_pump();
         match receiver.try_recv() {
             Ok(Ok(Control::Shutdown)) | Err(mpsc::TryRecvError::Disconnected) => break,
             Ok(Ok(control)) => {

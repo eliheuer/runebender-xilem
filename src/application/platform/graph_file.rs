@@ -13,7 +13,7 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use runebender::workflows::nodes::{EXTENSION, FILE_VERSION, NodeGraph};
+use runebender::workflows::graph::{EXTENSION, FILE_VERSION, NodeGraph};
 use sha2::{Digest, Sha256};
 
 const MAX_GRAPH_BYTES: usize = 2 * 1024 * 1024;
@@ -40,7 +40,7 @@ pub(crate) struct LiveGraphDocument {
 /// Failure while loading or saving native live graph intent.
 #[derive(Debug)]
 pub(crate) enum LiveGraphFileError {
-    /// The selected path is not a direct `.nodes.json` file in an existing directory.
+    /// The selected path is not a direct `.graph.json` file in an existing directory.
     InvalidPath,
     /// The selected entry is missing, not a regular file, or is a symbolic link.
     NotFound,
@@ -63,7 +63,7 @@ impl fmt::Display for LiveGraphFileError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidPath => formatter.write_str(
-                "live graph path must name a direct .nodes.json file in an existing directory",
+                "live graph path must name a direct .graph.json file in an existing directory",
             ),
             Self::NotFound => formatter.write_str("live graph is missing or is not a regular file"),
             Self::TooLarge => formatter.write_str("live graph exceeds 2097152 UTF-8 bytes"),
@@ -301,7 +301,7 @@ fn read_path(path: &Path) -> Result<Vec<u8>, LiveGraphFileError> {
 fn create_temporary(parent: &Path) -> Result<(PathBuf, File), LiveGraphFileError> {
     for _ in 0..32 {
         let sequence = NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed);
-        let name = format!(".runebender-nodes-{}-{sequence}.tmp", std::process::id());
+        let name = format!(".runebender-graph-{}-{sequence}.tmp", std::process::id());
         let path = parent.join(name);
         match OpenOptions::new().write(true).create_new(true).open(&path) {
             Ok(file) => return Ok((path, file)),
@@ -333,7 +333,7 @@ fn hex_digest(digest: impl AsRef<[u8]>) -> String {
 mod tests {
     use super::*;
     use runebender::font::variable::SourceId;
-    use runebender::workflows::nodes_live;
+    use runebender::workflows::graph_live;
     use serde_json::json;
 
     struct TestDirectory(PathBuf);
@@ -359,8 +359,8 @@ mod tests {
     #[test]
     fn round_trips_intent_without_session_bindings() {
         let root = TestDirectory::new("roundtrip");
-        let path = root.0.join("comparison.nodes.json");
-        let mut graph = nodes_live::comparison_starter(SourceId(3));
+        let path = root.0.join("comparison.graph.json");
+        let mut graph = graph_live::comparison_starter(SourceId(3));
         let python = graph
             .nodes
             .iter_mut()
@@ -379,7 +379,7 @@ mod tests {
             .find(|node| node.type_name == "live.font")
             .unwrap()
             .id;
-        let fork = nodes_live::add_direction(&mut graph, source, [336.0, 900.0]);
+        let fork = graph_live::add_direction(&mut graph, source, [336.0, 900.0]);
         graph
             .nodes
             .iter_mut()
@@ -427,8 +427,8 @@ mod tests {
     #[test]
     fn refuses_existing_paths_and_external_edits() {
         let root = TestDirectory::new("conflict");
-        let path = root.0.join("comparison.nodes.json");
-        let graph = nodes_live::comparison_starter(SourceId(0));
+        let path = root.0.join("comparison.graph.json");
+        let graph = graph_live::comparison_starter(SourceId(0));
         let saved = save(&path, &graph, None).expect("save new graph");
         assert!(matches!(
             save(&path, &graph, None),
@@ -443,8 +443,8 @@ mod tests {
     #[test]
     fn rejects_unknown_authority_version_and_duplicate_ids() {
         let root = TestDirectory::new("identity");
-        let path = root.0.join("comparison.nodes.json");
-        let graph = nodes_live::comparison_starter(SourceId(0));
+        let path = root.0.join("comparison.graph.json");
+        let graph = graph_live::comparison_starter(SourceId(0));
         let mut value = serde_json::to_value(&graph).unwrap();
         value["session_id"] = json!("stale-authority");
         fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();

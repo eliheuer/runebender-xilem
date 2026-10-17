@@ -125,7 +125,7 @@ impl Workspace {
             LocalChatEndpoint::parse(&url, &model).map_err(|error| error.to_string())
         });
         self.chat.installed =
-            runebender::workflows::nodes_run::installed_chat_models(Self::models_dir().as_deref());
+            runebender::workflows::graph_run::installed_chat_models(Self::models_dir().as_deref());
         if self
             .chat
             .model
@@ -197,7 +197,7 @@ impl Workspace {
                 self.note = "Choose a local chat model first".into();
                 return;
             };
-            let Some(font_ml) = self.nodes.font_ml.clone() else {
+            let Some(font_ml) = self.graph.font_ml.clone() else {
                 self.note = "font-ml not found; install it or set RUNEBENDER_FONT_ML".into();
                 return;
             };

@@ -53,7 +53,7 @@ source and 1 to 64 glyphs; captures are bounded to 256 contours and 4096 points 
 at most 256 edit operations are accepted. Run creates a report or \
 proposal only; Apply is separate and uses ordinary editor Undo. When asked to write a script, \
 return a complete python fenced block for Open in Scripts, without running or saving it unless \
-requested. Nodes uses this same recipe contract and retained before/after proof images.";
+requested. Graph uses this same recipe contract and retained before/after proof images.";
 
 const MAX_STRING_BYTES: usize = 256;
 const MAX_PARAMETER_BYTES: usize = 64 * 1024;

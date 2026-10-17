@@ -31,7 +31,7 @@ use masonry::kurbo::{Axis, Point, Rect, Size, Stroke};
 use masonry::layout::{LenReq, Length};
 
 use crate::application::view::canvas::editor::EditorWidget;
-use crate::application::view::canvas::nodes::NodesWidget;
+use crate::application::view::canvas::graph::GraphWidget;
 use crate::application::view::theme::Palette;
 use crate::application::widgets::text_label::{self, Anchor};
 use runebender::outline::glyph_paths::round_units;
@@ -73,7 +73,7 @@ pub(crate) struct MenuRow {
 #[derive(Clone, Copy)]
 pub(crate) enum MenuTarget {
     Editor,
-    Nodes,
+    Graph,
 }
 
 /// The context menu, as a layer.
@@ -225,9 +225,9 @@ impl Widget for ContextMenu {
                         EditorWidget::apply_menu_choice(&mut editor, action, at);
                         editor.ctx.remove_layer(self_id);
                     }),
-                    MenuTarget::Nodes => ctx.mutate_later(self.creator, move |mut nodes| {
-                        let mut nodes = nodes.downcast::<NodesWidget>();
-                        NodesWidget::apply_menu_choice(&mut nodes, action, at);
+                    MenuTarget::Graph => ctx.mutate_later(self.creator, move |mut nodes| {
+                        let mut nodes = nodes.downcast::<GraphWidget>();
+                        GraphWidget::apply_menu_choice(&mut nodes, action, at);
                         nodes.ctx.remove_layer(self_id);
                     }),
                 }
@@ -280,9 +280,9 @@ impl Layer for ContextMenu {
                     EditorWidget::forget_menu(&mut editor);
                     editor.ctx.remove_layer(self_id);
                 }),
-                MenuTarget::Nodes => ctx.mutate_later(self.creator, move |mut nodes| {
-                    let mut nodes = nodes.downcast::<NodesWidget>();
-                    NodesWidget::forget_menu(&mut nodes);
+                MenuTarget::Graph => ctx.mutate_later(self.creator, move |mut nodes| {
+                    let mut nodes = nodes.downcast::<GraphWidget>();
+                    GraphWidget::forget_menu(&mut nodes);
                     nodes.ctx.remove_layer(self_id);
                 }),
             }

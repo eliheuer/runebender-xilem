@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use crate::application::editor::tools::nodes::file_label;
+use crate::application::editor::tools::graph::file_label;
 use crate::application::view::recipes::{self, Group, Row, click};
 use crate::application::workspace::{Mode, Workspace};
 use xilem::WidgetView;
@@ -91,7 +91,7 @@ pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + us
             });
         }
     }
-    if let Some(error) = app.nodes.tasks_error.clone() {
+    if let Some(error) = app.graph.tasks_error.clone() {
         task_rows.push(Row::Meta(error));
     }
     if let Some(note) = app.ai.busy.clone() {
@@ -153,12 +153,12 @@ pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + us
     }
     let proposals = (!proposal_rows.is_empty()).then(|| Group::new("", proposal_rows));
 
-    // Nodes files beside the font: the same files the Nodes tab draws.
-    let files: Vec<String> = app.nodes.files.iter().map(|f| file_label(f)).collect();
-    let file_paths: Vec<_> = app.nodes.files.clone();
+    // Graph files beside the font: the same files the Graph tab draws.
+    let files: Vec<String> = app.graph.files.iter().map(|f| file_label(f)).collect();
+    let file_paths: Vec<_> = app.graph.files.clone();
     let current = app
-        .nodes
         .graph
+        .open
         .as_ref()
         .and_then(|g| file_paths.iter().position(|f| *f == g.path));
     let nodes = (!files.is_empty()).then(|| {
@@ -169,8 +169,8 @@ pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + us
                 chosen: current,
                 on_pick: Arc::new(move |app: &mut Workspace, i| {
                     if let Some(file) = file_paths.get(i) {
-                        app.open_nodes_file(file);
-                        app.enter_nodes_mode();
+                        app.open_graph_file(file);
+                        app.enter_graph_mode();
                     }
                 }),
             }],
@@ -201,7 +201,7 @@ pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + us
         sections.push(recipes::section_of(
             app,
             "Local AI nodes",
-            "Nodes",
+            "Graph",
             vec![nodes],
         ));
     }

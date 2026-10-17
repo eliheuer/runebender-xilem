@@ -965,7 +965,7 @@ pub(crate) fn font_info_section(app: &Workspace) -> impl WidgetView<Workspace> +
         "Font info",
         "Font info",
         xcolumn(Region::List, rows),
-        if matches!(app.mode, Mode::Nodes) && app.collapsed.contains("Font info") {
+        if matches!(app.mode, Mode::Graph) && app.collapsed.contains("Font info") {
             design::NODE_VIEW_SECTION_HEADER_HEIGHT
         } else {
             ControlSize::Row.px()

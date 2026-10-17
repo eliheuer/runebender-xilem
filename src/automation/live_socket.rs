@@ -85,19 +85,19 @@ impl Pending {
                     | "proof_status"
                     | "proof_cancel"
                     | "proof_release"
-                    | "nodes_discover"
-                    | "nodes_snapshot"
-                    | "nodes_mutate"
-                    | "nodes_run"
-                    | "nodes_status"
-                    | "nodes_cancel"
-                    | "nodes_release"
-                    | "nodes_apply"
-                    | "nodes_image"
-                    | "nodes_trace"
-                    | "nodes_trace_status"
-                    | "nodes_trace_cancel"
-                    | "nodes_trace_release"
+                    | "graph_discover"
+                    | "graph_snapshot"
+                    | "graph_mutate"
+                    | "graph_run"
+                    | "graph_status"
+                    | "graph_cancel"
+                    | "graph_release"
+                    | "graph_apply"
+                    | "graph_image"
+                    | "graph_trace"
+                    | "graph_trace_status"
+                    | "graph_trace_cancel"
+                    | "graph_trace_release"
             ) && let Some(args) = self.call.arguments.as_object_mut()
             {
                 args.remove("expected_document_epoch");
@@ -640,8 +640,8 @@ mod tests {
     }
 
     #[test]
-    fn every_nodes_tool_retains_its_required_epoch_through_dispatch() {
-        for tool in super::super::agent_nodes::tools() {
+    fn every_graph_tool_retains_its_required_epoch_through_dispatch() {
+        for tool in super::super::agent_graph::tools() {
             let (reply, receive) = mpsc::channel();
             Pending {
                 call: ToolCall {

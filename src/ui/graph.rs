@@ -3,7 +3,7 @@
 
 //! The nodes canvas as geometry: where each box, port and wire sits.
 //!
-//! A shell draws a [`crate::workflows::nodes::NodeGraph`] as boxes and
+//! A shell draws a [`crate::workflows::graph::NodeGraph`] as boxes and
 //! wires. Everything about that picture that is not a pixel lives
 //! here: the grid pitch, the box sizes, one row per port, where the
 //! dots go, which grid mark colour a port kind or a node type wears,
@@ -21,7 +21,7 @@ use kurbo::{Affine, BezPath, Point, Rect, Shape as _};
 use serde_json::Value;
 
 use crate::ui::editing::viewport::ViewPort;
-use crate::workflows::nodes::{Kind, Node, NodeGraph, Registry};
+use crate::workflows::graph::{Kind, Node, NodeGraph, Registry};
 
 /// The dot grid pitch, in canvas units. Node edges sit on it: the
 /// width, the header, the padding and a row are all multiples, so a
@@ -619,7 +619,7 @@ mod tests {
 
     #[test]
     fn live_controls_and_previews_share_nonoverlapping_hit_geometry() {
-        let g = crate::workflows::nodes_live::starter(crate::font::variable::SourceId(0));
+        let g = crate::workflows::graph_live::starter(crate::font::variable::SourceId(0));
         let boxes = layout(&g, &Registry::core());
         for node in &boxes {
             for (index, _) in actions(&node.type_name).iter().enumerate() {
@@ -742,7 +742,7 @@ mod tests {
         assert_eq!(CODE_H, 112.0);
         assert_eq!(IMAGE_H, 144.0);
         let graph =
-            crate::workflows::nodes_live::comparison_starter(crate::font::variable::SourceId(0));
+            crate::workflows::graph_live::comparison_starter(crate::font::variable::SourceId(0));
         let mut content = NodeContentMap::default();
         for node in &graph.nodes {
             match node.type_name.as_str() {

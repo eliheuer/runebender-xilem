@@ -112,12 +112,12 @@ pub(crate) enum AppAction {
     MeasurePopcount,
     MeasureAllOn,
     MeasureAllOff,
-    /// The Nodes menu: the canvas, a new file, save it, run it.
-    NodesTab,
-    NodesNew,
-    NodesOpen,
-    NodesSave,
-    NodesRun,
+    /// The Graph menu: the canvas, a new file, save it, run it.
+    GraphTab,
+    GraphNew,
+    GraphOpen,
+    GraphSave,
+    GraphRun,
     /// Add every glyph the selected coverage filter is missing.
     GenerateMissing,
     NewGlyph,

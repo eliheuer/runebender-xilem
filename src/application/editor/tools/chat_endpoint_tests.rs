@@ -114,7 +114,7 @@ fn workspace(endpoint: LocalChatEndpoint, name: &str) -> Workspace {
     let mut app = Workspace::from_model(FontModel::from_project(project)).unwrap();
     app.chat.endpoint = Some(Ok(endpoint));
     app.chat.model = None;
-    app.nodes.font_ml = None;
+    app.graph.font_ml = None;
     app
 }
 
@@ -147,7 +147,7 @@ fn persistent_chat_reads_unsaved_font_proposes_and_reuses_server_across_turns() 
         assert!(first["tools"].as_array().unwrap().iter().all(|tool| {
             !matches!(
                 tool["function"]["name"].as_str(),
-                Some("proposal_install" | "nodes_run" | "agent_apply")
+                Some("proposal_install" | "graph_run" | "agent_apply")
             )
         }));
         respond(

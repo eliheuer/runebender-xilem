@@ -4,7 +4,7 @@
 //! Files: opening a project, reloading it when the sources change, saving, and a new font.
 
 use crate::application::editor::session::Session;
-use crate::application::editor::tools::{chat, local_ai, nodes, scripts, sketch, weight_debt};
+use crate::application::editor::tools::{chat, graph, local_ai, scripts, sketch, weight_debt};
 use crate::application::font_model::FontModel;
 use crate::application::view::canvas::grid::cells_of;
 use crate::application::view::panels::sections::metric_bufs;
@@ -361,11 +361,11 @@ impl Workspace {
             reference_layers: std::collections::HashSet::new(),
             show_all_masters: false,
             sample_index: 0,
-            nodes: nodes::NodesState::default(),
+            graph: graph::GraphState::default(),
             #[cfg(unix)]
-            live_nodes: None,
+            live_graph: None,
             #[cfg(unix)]
-            live_nodes_pending: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            live_graph_pending: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             export_job: None,
             train: crate::application::platform::train::TrainState::default(),
             preview_view: crate::application::pieces::PreviewView::default(),
@@ -395,7 +395,7 @@ impl Workspace {
             proof_jobs: super::live_proofs::LiveProofSession::default(),
         };
         app.park();
-        app.init_nodes();
+        app.init_graph();
         if app.font.project.is_neural() {
             app.refresh_model_versions();
         }
@@ -460,10 +460,10 @@ impl Workspace {
         // Headless overrides: RUNEBENDER_NODES=<file> opens a nodes
         // file, and RUNEBENDER_MODE=nodes starts on the canvas.
         if let Some(file) = std::env::var_os("RUNEBENDER_NODES").filter(|f| !f.is_empty()) {
-            app.open_nodes_file(FsPath::new(&file));
+            app.open_graph_file(FsPath::new(&file));
         }
-        if std::env::var("RUNEBENDER_MODE").as_deref() == Ok("nodes") {
-            app.enter_nodes_mode();
+        if std::env::var("RUNEBENDER_MODE").as_deref() == Ok("graph") {
+            app.enter_graph_mode();
         }
         if tool == Tool::Metaball {
             Arc::make_mut(&mut app.session).select_all_metaballs();

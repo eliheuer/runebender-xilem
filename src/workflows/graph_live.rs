@@ -3,7 +3,7 @@
 
 //! Resolve live graph connections to isolated font versions without saving the root.
 
-use super::nodes::{Kind, NodeCachePolicy, NodeEffects, NodeExecution, NodeGraph, NodeType, Port};
+use super::graph::{Kind, NodeCachePolicy, NodeEffects, NodeExecution, NodeGraph, NodeType, Port};
 use crate::font::{experiments, project::Project, variable::SourceId};
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -570,7 +570,7 @@ mod tests {
         assert_eq!(g.link_into(child, "font").unwrap().from(), parent);
         assert!(discard(&mut p, "z-parent").is_err());
         assert!(
-            g.validate(&super::super::nodes::Registry::core())
+            g.validate(&super::super::graph::Registry::core())
                 .is_empty()
         );
         discard(&mut p, "a-child").unwrap();
@@ -618,9 +618,9 @@ mod tests {
         let target = g.add("core.layer", [0.0, 0.0]);
         g.connect(1, "font", target, "source");
         assert!(
-            g.validate(&super::super::nodes::Registry::core())
+            g.validate(&super::super::graph::Registry::core())
                 .iter()
-                .any(|p| matches!(p, super::super::nodes::Problem::KindMismatch { .. }))
+                .any(|p| matches!(p, super::super::graph::Problem::KindMismatch { .. }))
         );
     }
 
@@ -630,7 +630,7 @@ mod tests {
         let source = p.source_id(0).unwrap();
         let mut g = starter(source);
         assert!(
-            g.validate(&super::super::nodes::Registry::core())
+            g.validate(&super::super::graph::Registry::core())
                 .is_empty()
         );
         assert!(resolve(&g, &p, 3).is_err());

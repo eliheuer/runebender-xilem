@@ -306,7 +306,7 @@ impl Workspace {
                     .map(|glyph| glyph.name.clone())
                     .collect()
             }
-            Mode::Nodes => Vec::new(),
+            Mode::Graph => Vec::new(),
         };
         glyphs.sort();
         glyphs.dedup();
@@ -341,7 +341,7 @@ impl Workspace {
         Ok((input, glyphs))
     }
 
-    /// Lazily initialize the one Python queue shared by Scripts and Nodes.
+    /// Lazily initialize the one Python queue shared by Scripts and Graph.
     pub(crate) fn ensure_script_job_queue(&mut self) -> Result<(), String> {
         if self.script_jobs.is_none() {
             let executable = std::env::var_os("RUNEBENDER_PYTHON")

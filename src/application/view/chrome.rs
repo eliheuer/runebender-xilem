@@ -3,7 +3,7 @@
 
 //! The bars around the canvas: the titlebar, the header tools, the status bar.
 
-use crate::application::editor::tools::nodes;
+use crate::application::editor::tools::graph;
 use crate::application::view::design::{
     ButtonShape, ControlSize, Region, Space, Stroke, TextSize, row as xrow,
 };
@@ -297,14 +297,14 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         // Keep the resting edit footer quiet; transient notes still
         // replace this empty string below when an action has something to say.
         Mode::Editor(_) => String::new(),
-        Mode::Nodes => app
-            .nodes
+        Mode::Graph => app
             .graph
+            .open
             .as_ref()
             .map(|g| {
                 format!(
                     "{} \u{00b7} {} nodes \u{00b7} {} links",
-                    nodes::file_label(&g.path),
+                    graph::file_label(&g.path),
                     g.graph.nodes.len(),
                     g.graph.links.len()
                 )
@@ -363,13 +363,13 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 .prop(masonry::properties::LineBreaking::Clip)
                 .dims(Dimensions::new(Dim::Fixed(Length::ZERO), Dim::Auto))
                 .flex(1.0),
-            matches!(app.mode, Mode::Nodes).then(|| {
+            matches!(app.mode, Mode::Graph).then(|| {
                 recipes::action_sized(
                     pal,
                     "Fit graph".into(),
                     ControlSize::Icon,
                     |app: &mut Workspace| {
-                        app.nodes.fit_request = app.nodes.fit_request.wrapping_add(1);
+                        app.graph.fit_request = app.graph.fit_request.wrapping_add(1);
                     },
                 )
             }),

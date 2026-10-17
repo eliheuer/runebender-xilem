@@ -17,15 +17,15 @@ use crate::font::compiler::proof::{
     CompiledProofGlyph, CompiledProofRecipe, CompiledProofRendering, ProofDetailCrop, ProofView,
 };
 use crate::formats::designbot::RendererIdentity;
-use crate::workflows::nodes_run::NodeResult;
-use crate::workflows::nodes_session::{
+use crate::workflows::graph_run::NodeResult;
+use crate::workflows::graph_session::{
     GraphCancelResponse, GraphDiscovery, GraphIdentity, GraphMutationResponse, GraphRunInspection,
     GraphRunResponse, GraphSnapshot,
 };
 
 /// Discovery of the current graph and its authoring contract.
 #[derive(Clone, Debug, PartialEq, Serialize, schemars::JsonSchema)]
-pub struct NodesDiscoverResult {
+pub struct GraphDiscoverResult {
     /// Whether discovery succeeded.
     pub ok: bool,
     /// Current graph and document lifetime.
@@ -40,7 +40,7 @@ pub struct NodesDiscoverResult {
 
 /// One read of the canonical editable graph.
 #[derive(Clone, Debug, PartialEq, Serialize, schemars::JsonSchema)]
-pub struct NodesSnapshotResult {
+pub struct GraphSnapshotResult {
     /// Whether the read succeeded.
     pub ok: bool,
     /// Exact graph state at the time of the read.
@@ -51,7 +51,7 @@ pub struct NodesSnapshotResult {
 
 /// Graph mutation receipt and resulting snapshot.
 #[derive(Clone, Debug, PartialEq, Serialize, schemars::JsonSchema)]
-pub struct NodesMutateResult {
+pub struct GraphMutateResult {
     /// Whether the mutation succeeded.
     pub ok: bool,
     /// Original mutation receipt or exact replay.
@@ -65,7 +65,7 @@ pub struct NodesMutateResult {
 /// Backend selected for one retained native image-to-outline candidate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum NodesTraceBackend {
+pub enum GraphTraceBackend {
     /// Deterministic img2bez tracing using full-image calibration.
     CalibratedTrace,
     /// Host-configured installed sketch model, with no automatic quality approval.
@@ -75,7 +75,7 @@ pub enum NodesTraceBackend {
 /// Phase of one retained asynchronous calibrated image or local sketch candidate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum NodesTracePhase {
+pub enum GraphTracePhase {
     /// Accepted by the global bounded worker, not yet started.
     Queued,
     /// Image decoding or tracing is active off the editor thread.
@@ -96,15 +96,15 @@ pub enum NodesTracePhase {
 
 /// Admission receipt for an asynchronous calibrated trace.
 #[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
-pub struct NodesTraceStartResult {
+pub struct GraphTraceStartResult {
     /// Whether submission or an exact retry succeeded.
     pub ok: bool,
     /// Opaque session-local handle.
     pub handle: u64,
     /// Current phase at the time of admission.
-    pub phase: NodesTracePhase,
+    pub phase: GraphTracePhase,
     /// Exact backend chosen by the request.
-    pub backend: NodesTraceBackend,
+    pub backend: GraphTraceBackend,
     /// Whether this was an exact retry of the retained request.
     pub replayed: bool,
     /// Submission does not mutate the font.
@@ -113,15 +113,15 @@ pub struct NodesTraceStartResult {
 
 /// Inspection and optional graph-mutation receipt for one retained trace.
 #[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
-pub struct NodesTraceStatusResult {
+pub struct GraphTraceStatusResult {
     /// Whether the handle was inspected.
     pub ok: bool,
     /// Opaque session-local handle.
     pub handle: u64,
     /// Current trace phase.
-    pub phase: NodesTracePhase,
+    pub phase: GraphTracePhase,
     /// Exact backend chosen at submission.
-    pub backend: NodesTraceBackend,
+    pub backend: GraphTraceBackend,
     /// Pinned installed runtime once a local sketch worker has inspected it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub local_sketch_runtime: Option<crate::workflows::local_sketch::SketchRuntimeIdentity>,
@@ -139,7 +139,7 @@ pub struct NodesTraceStatusResult {
 
 /// Receipt for dropping one terminal trace and admitting the next in this session.
 #[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
-pub struct NodesTraceReleaseResult {
+pub struct GraphTraceReleaseResult {
     /// Whether the terminal trace was released.
     pub ok: bool,
     /// Opaque released handle.
@@ -150,7 +150,7 @@ pub struct NodesTraceReleaseResult {
 
 /// Receipt for a new or replayed graph run.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
-pub struct NodesRunResult {
+pub struct GraphRunResult {
     /// Whether the submission succeeded.
     pub ok: bool,
     /// Retained session-local run receipt and its original disposition.
@@ -163,7 +163,7 @@ pub struct NodesRunResult {
 
 /// Retained run state and application-owned report metadata.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
-pub struct NodesStatusResult {
+pub struct GraphStatusResult {
     /// Whether inspection succeeded.
     pub ok: bool,
     /// Typed run state, outputs, errors, and immutable lineage.
@@ -184,7 +184,7 @@ pub struct NodesStatusResult {
 
 /// Cancellation receipt for one retained run.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
-pub struct NodesCancelResult {
+pub struct GraphCancelResult {
     /// Whether cancellation succeeded.
     pub ok: bool,
     /// Original cancellation effect or exact replay.
@@ -195,7 +195,7 @@ pub struct NodesCancelResult {
 
 /// Receipt for releasing one terminal graph run.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, schemars::JsonSchema)]
-pub struct NodesReleaseResult {
+pub struct GraphReleaseResult {
     /// Whether the request succeeded.
     pub ok: bool,
     /// Whether the terminal run and its heavy artifacts were released.
@@ -206,7 +206,7 @@ pub struct NodesReleaseResult {
 
 /// Metadata and optional transport bytes for one retained node proof image.
 #[derive(Clone, Debug, PartialEq, Serialize, schemars::JsonSchema)]
-pub struct NodesImageResult {
+pub struct GraphImageResult {
     /// Whether the read succeeded.
     pub ok: bool,
     /// Opaque retained proof artifact identity.
@@ -249,7 +249,7 @@ pub struct NodesImageResult {
 
 /// One headless disk graph run with its resolved file and font paths.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize, schemars::JsonSchema)]
-pub struct DiskNodesRunResult {
+pub struct DiskGraphRunResult {
     /// Whether every node ran or reused a valid cached output.
     pub ok: bool,
     /// Graph file that was executed.
@@ -269,22 +269,22 @@ fn serialized_schema<T: schemars::JsonSchema>() -> schemars::Schema {
 
 /// Generated success schema for a native graph tool.
 ///
-/// `nodes_apply` delegates to the common guarded edit contract and has no graph-specific body.
+/// `graph_apply` delegates to the common guarded edit contract and has no graph-specific body.
 pub fn response_schema(name: &str) -> Option<Value> {
     let schema = match name {
-        "nodes_discover" => serialized_schema::<NodesDiscoverResult>(),
-        "nodes_snapshot" => serialized_schema::<NodesSnapshotResult>(),
-        "nodes_mutate" => serialized_schema::<NodesMutateResult>(),
-        "nodes_trace" => serialized_schema::<NodesTraceStartResult>(),
-        "nodes_trace_status" | "nodes_trace_cancel" => {
-            serialized_schema::<NodesTraceStatusResult>()
+        "graph_discover" => serialized_schema::<GraphDiscoverResult>(),
+        "graph_snapshot" => serialized_schema::<GraphSnapshotResult>(),
+        "graph_mutate" => serialized_schema::<GraphMutateResult>(),
+        "graph_trace" => serialized_schema::<GraphTraceStartResult>(),
+        "graph_trace_status" | "graph_trace_cancel" => {
+            serialized_schema::<GraphTraceStatusResult>()
         }
-        "nodes_trace_release" => serialized_schema::<NodesTraceReleaseResult>(),
-        "nodes_run" => serialized_schema::<NodesRunResult>(),
-        "nodes_status" => serialized_schema::<NodesStatusResult>(),
-        "nodes_cancel" => serialized_schema::<NodesCancelResult>(),
-        "nodes_release" => serialized_schema::<NodesReleaseResult>(),
-        "nodes_image" => serialized_schema::<NodesImageResult>(),
+        "graph_trace_release" => serialized_schema::<GraphTraceReleaseResult>(),
+        "graph_run" => serialized_schema::<GraphRunResult>(),
+        "graph_status" => serialized_schema::<GraphStatusResult>(),
+        "graph_cancel" => serialized_schema::<GraphCancelResult>(),
+        "graph_release" => serialized_schema::<GraphReleaseResult>(),
+        "graph_image" => serialized_schema::<GraphImageResult>(),
         _ => return None,
     };
     Some(serde_json::to_value(schema).expect("graph result schema serializes"))
@@ -293,7 +293,7 @@ pub fn response_schema(name: &str) -> Option<Value> {
 /// Generated response schema for a headless disk graph tool, including failed node runs.
 pub fn disk_response_schema(name: &str) -> Option<Value> {
     let schema = match name {
-        "nodes_run" => serialized_schema::<DiskNodesRunResult>(),
+        "graph_run" => serialized_schema::<DiskGraphRunResult>(),
         _ => return None,
     };
     Some(serde_json::to_value(schema).expect("disk graph result schema serializes"))
@@ -335,13 +335,13 @@ mod tests {
 
     #[test]
     fn graph_result_schemas_require_typed_nested_contracts() {
-        let discovery = response_schema("nodes_discover").unwrap();
+        let discovery = response_schema("graph_discover").unwrap();
         let nested_discovery = field_schema(&discovery, "discovery");
         for field in ["schema_version", "node_types", "limits", "request_schemas"] {
             assert!(required(nested_discovery).contains(&field));
         }
 
-        let snapshot = response_schema("nodes_snapshot").unwrap();
+        let snapshot = response_schema("graph_snapshot").unwrap();
         let nested_snapshot = field_schema(&snapshot, "snapshot");
         for field in [
             "identity",
@@ -353,15 +353,15 @@ mod tests {
             assert!(required(nested_snapshot).contains(&field));
         }
 
-        let mutation = response_schema("nodes_mutate").unwrap();
+        let mutation = response_schema("graph_mutate").unwrap();
         assert!(required(&mutation).contains(&"mutation"));
         assert!(required(field_schema(&mutation, "mutation")).contains(&"receipt"));
 
-        let run = response_schema("nodes_run").unwrap();
+        let run = response_schema("graph_run").unwrap();
         assert!(required(&run).contains(&"replayed"));
         assert!(required(field_schema(&run, "run")).contains(&"receipt"));
 
-        let status = response_schema("nodes_status").unwrap();
+        let status = response_schema("graph_status").unwrap();
         for field in ["run", "current", "stale", "report", "stderr", "can_apply"] {
             assert!(required(&status).contains(&field));
         }
@@ -371,20 +371,20 @@ mod tests {
             assert!(required(field_schema(&status, "run")).contains(&field));
         }
 
-        let cancel = response_schema("nodes_cancel").unwrap();
+        let cancel = response_schema("graph_cancel").unwrap();
         assert!(required(field_schema(&cancel, "cancellation")).contains(&"receipt"));
 
-        let image = response_schema("nodes_image").unwrap();
+        let image = response_schema("graph_image").unwrap();
         for field in ["recipe", "glyphs", "font_sha256", "canonical_input_sha256"] {
             assert!(required(&image).contains(&field));
         }
         assert!(!required(&image).contains(&"png_base64"));
-        assert!(response_schema("nodes_apply").is_none());
+        assert!(response_schema("graph_apply").is_none());
     }
 
     #[test]
     fn image_result_keeps_flat_wire_fields_and_optional_mcp_image() {
-        let result = NodesImageResult {
+        let result = GraphImageResult {
             ok: true,
             artifact_id: "proof-1".into(),
             current: false,
@@ -430,7 +430,7 @@ mod tests {
         assert_eq!(with_image["glyphs"][0]["x_advance"], 500.0);
         assert_eq!(with_image["png_base64"], "iVBORw0KGgo=");
 
-        let without_image = serde_json::to_value(NodesImageResult {
+        let without_image = serde_json::to_value(GraphImageResult {
             png_base64: None,
             ..result
         })
@@ -441,7 +441,7 @@ mod tests {
 
     #[test]
     fn disk_run_result_requires_paths_and_typed_node_results() {
-        let schema = disk_response_schema("nodes_run").unwrap();
+        let schema = disk_response_schema("graph_run").unwrap();
         for field in ["ok", "file", "font", "nodes"] {
             assert!(required(&schema).contains(&field));
         }
@@ -456,9 +456,9 @@ mod tests {
             assert!(required(node_schema).contains(&field));
         }
 
-        let result = DiskNodesRunResult {
+        let result = DiskGraphRunResult {
             ok: true,
-            file: PathBuf::from("comparison.nodes.json"),
+            file: PathBuf::from("comparison.graph.json"),
             font: PathBuf::from("font.ufo"),
             nodes: Vec::new(),
         };
@@ -467,15 +467,15 @@ mod tests {
             wire,
             json!({
                 "ok": true,
-                "file": "comparison.nodes.json",
+                "file": "comparison.graph.json",
                 "font": "font.ufo",
                 "nodes": []
             })
         );
         assert_eq!(
-            serde_json::from_value::<DiskNodesRunResult>(wire).unwrap(),
+            serde_json::from_value::<DiskGraphRunResult>(wire).unwrap(),
             result
         );
-        assert!(disk_response_schema("nodes_status").is_none());
+        assert!(disk_response_schema("graph_status").is_none());
     }
 }

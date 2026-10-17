@@ -51,7 +51,7 @@ cargo clippy --manifest-path web/Cargo.toml --locked \
 With Playwright installed, run `node web/quality.cjs`. The default matrix covers
 1×, 2×, and 1.25× displays; 1000–1440px windows; density changes without reload;
 actual outline dragging and undo/redo; painted zoom; splitter cursors; themes;
-keyboard focus; paste; composition events; and the Nodes canvas. It also checks
+keyboard focus; paste; composition events; and the Graph canvas. It also checks
 that the application does not continually repaint while idle.
 
 Environment variables:
@@ -71,7 +71,7 @@ The canvas tracks physical resolution independently of CSS layout. Masonry recei
 that same scale for layout, painting, and pointer input. Browser resize, resolution,
 and focus events keep it in sync. Mouse motion is coalesced per animation frame;
 only requested repaints run the renderer. A hidden native text input bridges paste
-and composition to the focused Masonry widget. The bundled Nodes example is editable
+and composition to the focused Masonry widget. The bundled Graph example is editable
 in memory; executing its proof/export workflow requires the desktop application.
 
 For menu appearance checks, run `node web/menu-appearance.cjs` with the same

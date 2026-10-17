@@ -265,7 +265,7 @@ impl Workspace {
             self.note = "Choose a model first".into();
             return;
         };
-        let Some(font_ml) = self.nodes.font_ml.clone() else {
+        let Some(font_ml) = self.graph.font_ml.clone() else {
             self.note = "font-ml not found".into();
             return;
         };
@@ -294,7 +294,7 @@ impl Workspace {
             return;
         };
         let drawn: usize = cache.report.groups.iter().map(|g| g.drawn.len()).sum();
-        let device = self.nodes.device.clone();
+        let device = self.graph.device.clone();
         let job = DebtEvalJob {
             document_id: self.document_id,
             heavy_path: heavy.clone(),

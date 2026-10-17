@@ -177,7 +177,7 @@ impl Workspace {
                 "use user-approved only within the user's granted edit authorization",
             );
         }
-        // Direct Scripts/Nodes commands use this same adapter without visiting the socket queue.
+        // Direct Scripts/Graph commands use this same adapter without visiting the socket queue.
         // Admission is idempotent: a transport reservation, including a prevented operation,
         // retains its state and payload identity rather than being replaced here.
         if let Err(error) = cancellations.admit(&cancellation_identity, payload_digest) {

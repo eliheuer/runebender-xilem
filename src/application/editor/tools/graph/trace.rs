@@ -1,7 +1,7 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Bounded off-editor image candidates for the existing live Nodes graph.
+//! Bounded off-editor image candidates for the existing live graph.
 //!
 //! A single process-wide worker handles at most two admitted images or local sketch jobs.
 //! Workspace retains only one candidate receipt per graph session. A finished draft becomes graph
@@ -17,12 +17,12 @@ use runebender::automation::agent::ToolCall;
 use runebender::automation::agent_edit::{
     AgentEditOperation, AgentEditRequest, AgentLayerEdits, AgentLayerGuard,
 };
-use runebender::automation::agent_nodes::results::{
-    NodesTraceBackend, NodesTracePhase, NodesTraceReleaseResult, NodesTraceStartResult,
-    NodesTraceStatusResult,
+use runebender::automation::agent_graph::results::{
+    GraphTraceBackend, GraphTracePhase, GraphTraceReleaseResult, GraphTraceStartResult,
+    GraphTraceStatusResult,
 };
-use runebender::automation::agent_nodes::{
-    NodesLocalSketchSettings, NodesTraceHandleRequest, NodesTraceRequest,
+use runebender::automation::agent_graph::{
+    GraphLocalSketchSettings, GraphTraceHandleRequest, GraphTraceRequest,
 };
 use runebender::automation::glyph_grading::{
     GradingContext, GradingReferenceRequest, capture_replacement_context,
@@ -32,12 +32,12 @@ use runebender::font::variable::{GlyphLayerAddress, LayerId, SourceId};
 use runebender::formats::image_trace::{CalibratedTrace, TraceCalibration, trace_image_calibrated};
 use runebender::outline::drawing::DrawingContour;
 use runebender::outline::glyph_paths::drawing_contours_to_bezpath;
+use runebender::workflows::graph_session::{
+    GraphEdit, GraphGuard, GraphMutation, GraphMutationRequest, GraphMutationResponse,
+};
 use runebender::workflows::local_sketch::{
     SketchCandidate, SketchPlacement, SketchRequest, SketchRuntime, SketchRuntimeIdentity,
     inspect_runtime, run as run_local_sketch,
-};
-use runebender::workflows::nodes_session::{
-    GraphEdit, GraphGuard, GraphMutation, GraphMutationRequest, GraphMutationResponse,
 };
 use runebender::workflows::process::ProcessCancellation;
 use serde_json::{Value, json};
@@ -64,7 +64,7 @@ enum TraceWorkBackend {
     },
     LocalSketch {
         runtime: Box<SketchRuntime>,
-        settings: NodesLocalSketchSettings,
+        settings: GraphLocalSketchSettings,
         glyph: String,
         advance: f64,
     },
@@ -235,11 +235,11 @@ pub(super) struct TraceSession {
     operation_key: String,
     payload_sha256: String,
     intent: TraceIntent,
-    backend: NodesTraceBackend,
+    backend: GraphTraceBackend,
     local_sketch_runtime: Option<SketchRuntimeIdentity>,
     cancelled: ProcessCancellation,
     events: Receiver<TraceEvent>,
-    phase: NodesTracePhase,
+    phase: GraphTracePhase,
     mutation: Option<GraphMutationResponse>,
     error: Option<String>,
 }
@@ -248,7 +248,7 @@ impl TraceSession {
     pub(super) fn needs_pump(&self) -> bool {
         matches!(
             self.phase,
-            NodesTracePhase::Queued | NodesTracePhase::Running | NodesTracePhase::Cancelling
+            GraphTracePhase::Queued | GraphTracePhase::Running | GraphTracePhase::Cancelling
         )
     }
 
@@ -256,8 +256,8 @@ impl TraceSession {
         !self.needs_pump()
     }
 
-    fn status(&self) -> NodesTraceStatusResult {
-        NodesTraceStatusResult {
+    fn status(&self) -> GraphTraceStatusResult {
+        GraphTraceStatusResult {
             ok: true,
             handle: self.handle,
             phase: self.phase,
@@ -271,7 +271,7 @@ impl TraceSession {
     }
 }
 
-fn request_digest(request: &NodesTraceRequest) -> Result<String, String> {
+fn request_digest(request: &GraphTraceRequest) -> Result<String, String> {
     let bytes = serde_json::to_vec(request).map_err(|error| error.to_string())?;
     Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
 }
@@ -311,11 +311,11 @@ impl Workspace {
 
     fn brush_candidate_contours(&self) -> Option<Vec<DrawingContour>> {
         let brush = self.sketch_trace.as_ref()?;
-        let state = self.live_nodes.as_ref()?;
+        let state = self.live_graph.as_ref()?;
         let trace = state.trace.as_ref()?;
         let mutation = trace.mutation.as_ref()?;
         if brush.phase != "completed"
-            || trace.phase != NodesTracePhase::Completed
+            || trace.phase != GraphTracePhase::Completed
             || brush.handle != trace.handle
             || brush.identity != trace.intent.graph.identity
             || trace.intent.target.glyph != self.session.glyph_name
@@ -360,7 +360,7 @@ impl Workspace {
             return;
         };
         let Some(trace) = self
-            .live_nodes
+            .live_graph
             .as_ref()
             .and_then(|state| state.trace.as_ref())
         else {
@@ -413,18 +413,18 @@ impl Workspace {
 
     pub(super) fn handle_trace_call(&mut self, call: &ToolCall) -> Result<Value, String> {
         match call.name.as_str() {
-            "nodes_trace" => {
-                let request: NodesTraceRequest = serde_json::from_value(call.arguments.clone())
+            "graph_trace" => {
+                let request: GraphTraceRequest = serde_json::from_value(call.arguments.clone())
                     .map_err(|error| error.to_string())?;
                 request.validate()?;
                 let backend = if request.local_sketch.is_some() {
-                    NodesTraceBackend::LocalSketch
+                    GraphTraceBackend::LocalSketch
                 } else {
-                    NodesTraceBackend::CalibratedTrace
+                    GraphTraceBackend::CalibratedTrace
                 };
                 let digest = request_digest(&request)?;
                 let state = self
-                    .live_nodes
+                    .live_graph
                     .as_mut()
                     .ok_or("live graph is unavailable")?;
                 let key = (request.actor.clone(), request.operation_key.clone());
@@ -437,10 +437,10 @@ impl Workspace {
                         .as_ref()
                         .is_none_or(|trace| trace.handle != *handle)
                     {
-                        return Ok(json!(NodesTraceStartResult {
+                        return Ok(json!(GraphTraceStartResult {
                             ok: true,
                             handle: *handle,
-                            phase: NodesTracePhase::Released,
+                            phase: GraphTracePhase::Released,
                             backend,
                             replayed: true,
                             root_changed: false,
@@ -456,7 +456,7 @@ impl Workspace {
                                 "trace operation_key already has a different request".into()
                             );
                         }
-                        return Ok(json!(NodesTraceStartResult {
+                        return Ok(json!(GraphTraceStartResult {
                             ok: true,
                             handle: existing.handle,
                             phase: existing.phase,
@@ -549,26 +549,26 @@ impl Workspace {
                     local_sketch_runtime: None,
                     cancelled,
                     events,
-                    phase: NodesTracePhase::Queued,
+                    phase: GraphTracePhase::Queued,
                     mutation: None,
                     error: None,
                 });
-                Ok(json!(NodesTraceStartResult {
+                Ok(json!(GraphTraceStartResult {
                     ok: true,
                     handle,
-                    phase: NodesTracePhase::Queued,
+                    phase: GraphTracePhase::Queued,
                     backend,
                     replayed: false,
                     root_changed: false,
                 }))
             }
-            "nodes_trace_status" | "nodes_trace_cancel" | "nodes_trace_release" => {
-                let request: NodesTraceHandleRequest =
+            "graph_trace_status" | "graph_trace_cancel" | "graph_trace_release" => {
+                let request: GraphTraceHandleRequest =
                     serde_json::from_value(call.arguments.clone())
                         .map_err(|error| error.to_string())?;
                 request.validate()?;
                 let state = self
-                    .live_nodes
+                    .live_graph
                     .as_mut()
                     .ok_or("live graph is unavailable")?;
                 let trace = state.trace.as_mut().ok_or("trace handle is not retained")?;
@@ -576,11 +576,11 @@ impl Workspace {
                 {
                     return Err("trace handle belongs to another graph session".into());
                 }
-                if call.name == "nodes_trace_cancel" && !trace.terminal() {
+                if call.name == "graph_trace_cancel" && !trace.terminal() {
                     trace.cancelled.cancel();
-                    trace.phase = NodesTracePhase::Cancelling;
+                    trace.phase = GraphTracePhase::Cancelling;
                 }
-                if call.name == "nodes_trace_release" {
+                if call.name == "graph_trace_release" {
                     if !trace.terminal() {
                         return Err(
                             "trace is still queued or running; cancel and wait for settlement"
@@ -588,7 +588,7 @@ impl Workspace {
                         );
                     }
                     state.trace = None;
-                    return Ok(json!(NodesTraceReleaseResult {
+                    return Ok(json!(GraphTraceReleaseResult {
                         ok: true,
                         handle: request.handle,
                         root_changed: false,
@@ -601,7 +601,7 @@ impl Workspace {
     }
 
     pub(super) fn poll_live_trace(&mut self) {
-        let Some(state) = self.live_nodes.as_mut() else {
+        let Some(state) = self.live_graph.as_mut() else {
             return;
         };
         let Some(mut trace) = state.trace.take() else {
@@ -611,7 +611,7 @@ impl Workspace {
             match trace.events.try_recv() {
                 Ok(TraceEvent::Started) => {
                     if !trace.cancelled.is_cancelled() {
-                        trace.phase = NodesTracePhase::Running;
+                        trace.phase = GraphTracePhase::Running;
                     }
                 }
                 Ok(TraceEvent::Pinned(runtime)) => {
@@ -619,7 +619,7 @@ impl Workspace {
                 }
                 Ok(TraceEvent::Finished(result)) => {
                     if trace.cancelled.is_cancelled() {
-                        trace.phase = NodesTracePhase::Cancelled;
+                        trace.phase = GraphTracePhase::Cancelled;
                     } else {
                         match result {
                             Ok(result) => match publish_trace(
@@ -631,19 +631,19 @@ impl Workspace {
                             ) {
                                 Ok(mutation) => {
                                     trace.mutation = Some(mutation);
-                                    trace.phase = NodesTracePhase::Completed;
+                                    trace.phase = GraphTracePhase::Completed;
                                 }
                                 Err((stale, message)) => {
                                     trace.phase = if stale {
-                                        NodesTracePhase::Stale
+                                        GraphTracePhase::Stale
                                     } else {
-                                        NodesTracePhase::Failed
+                                        GraphTracePhase::Failed
                                     };
                                     trace.error = Some(message);
                                 }
                             },
                             Err(error) => {
-                                trace.phase = NodesTracePhase::Failed;
+                                trace.phase = GraphTracePhase::Failed;
                                 trace.error = Some(format!("{:?}: {error}", trace.backend));
                             }
                         }
@@ -651,7 +651,7 @@ impl Workspace {
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
-                    trace.phase = NodesTracePhase::Failed;
+                    trace.phase = GraphTracePhase::Failed;
                     trace.error = Some("candidate worker disconnected".into());
                 }
             }
@@ -665,22 +665,22 @@ impl Workspace {
             && brush.identity == trace.intent.graph.identity
         {
             let phase = match trace.phase {
-                NodesTracePhase::Queued => "queued",
-                NodesTracePhase::Running => "running",
-                NodesTracePhase::Cancelling => "cancelling",
-                NodesTracePhase::Completed => "completed",
-                NodesTracePhase::Failed => "failed",
-                NodesTracePhase::Cancelled => "cancelled",
-                NodesTracePhase::Stale => "stale",
-                NodesTracePhase::Released => "released",
+                GraphTracePhase::Queued => "queued",
+                GraphTracePhase::Running => "running",
+                GraphTracePhase::Cancelling => "cancelling",
+                GraphTracePhase::Completed => "completed",
+                GraphTracePhase::Failed => "failed",
+                GraphTracePhase::Cancelled => "cancelled",
+                GraphTracePhase::Stale => "stale",
+                GraphTracePhase::Released => "released",
             };
             if brush.phase != phase {
-                install_virtua = trace.phase == NodesTracePhase::Completed
+                install_virtua = trace.phase == GraphTracePhase::Completed
                     && brush.backend
                         == crate::application::editor::tools::sketch::SketchBackend::Virtua;
                 brush.phase = phase.into();
                 self.note = match trace.phase {
-                    NodesTracePhase::Running => match brush.backend {
+                    GraphTracePhase::Running => match brush.backend {
                         crate::application::editor::tools::sketch::SketchBackend::Virtua => {
                             "Virtua is generating a draft; this may take up to two minutes".into()
                         }
@@ -688,12 +688,12 @@ impl Workspace {
                             "Tracing the sketch into a draft".into()
                         }
                     },
-                    NodesTracePhase::Completed => "Draft ready for review".into(),
-                    NodesTracePhase::Failed => "Draft failed; see the error below".into(),
-                    NodesTracePhase::Stale => {
+                    GraphTracePhase::Completed => "Draft ready for review".into(),
+                    GraphTracePhase::Failed => "Draft failed; see the error below".into(),
+                    GraphTracePhase::Stale => {
                         "Draft stopped because the font or graph changed".into()
                     }
-                    NodesTracePhase::Cancelled => "Draft cancelled; your font is unchanged".into(),
+                    GraphTracePhase::Cancelled => "Draft cancelled; your font is unchanged".into(),
                     _ => self.note.clone(),
                 };
             }
@@ -711,7 +711,7 @@ impl Workspace {
 fn publish_trace(
     project: &runebender::font::project::Project,
     current_epoch: Option<&str>,
-    session: &mut runebender::workflows::nodes_session::GraphSession,
+    session: &mut runebender::workflows::graph_session::GraphSession,
     intent: &TraceIntent,
     output: impl Into<TraceOutput>,
 ) -> Result<GraphMutationResponse, (bool, String)> {
@@ -847,9 +847,9 @@ mod tests {
     use runebender::font::model::glyph_metadata::MarkColor;
     use runebender::font::project::Project;
     use runebender::outline::drawing::{DrawingContour, DrawingPoint, DrawingPointType};
-    use runebender::workflows::nodes::Registry;
-    use runebender::workflows::nodes_live;
-    use runebender::workflows::nodes_session::{GraphInteractiveMutationRequest, GraphSession};
+    use runebender::workflows::graph::Registry;
+    use runebender::workflows::graph_live;
+    use runebender::workflows::graph_session::{GraphInteractiveMutationRequest, GraphSession};
 
     fn fixture() -> (Project, GraphSession, TraceIntent, CalibratedTrace) {
         let mut project = Project::new_font(std::env::temp_dir().join("trace-guard-unsaved.ufo"));
@@ -924,7 +924,7 @@ mod tests {
         let session = GraphSession::new(
             "trace-test",
             "test-epoch",
-            nodes_live::comparison_starter(source),
+            graph_live::comparison_starter(source),
             Registry::core(),
         )
         .unwrap();
@@ -1275,24 +1275,24 @@ mod tests {
         let mutation = publish_trace(
             &app.font.project,
             Some(&intent.epoch),
-            &mut app.live_nodes.as_mut().unwrap().session,
+            &mut app.live_graph.as_mut().unwrap().session,
             &intent,
             TraceOutput::LocalSketch(Box::new(candidate)),
         )
         .unwrap();
         let (events, receiver) = mpsc::channel();
         drop(events);
-        app.live_nodes.as_mut().unwrap().trace = Some(TraceSession {
+        app.live_graph.as_mut().unwrap().trace = Some(TraceSession {
             handle: 7,
             actor: "trace-test".into(),
             operation_key: "cubic".into(),
             payload_sha256: "sha256:test".into(),
             intent,
-            backend: NodesTraceBackend::LocalSketch,
+            backend: GraphTraceBackend::LocalSketch,
             local_sketch_runtime: None,
             cancelled: ProcessCancellation::default(),
             events: receiver,
-            phase: NodesTracePhase::Completed,
+            phase: GraphTracePhase::Completed,
             mutation: Some(mutation),
             error: None,
         });
@@ -1339,7 +1339,7 @@ mod tests {
 
     #[test]
     fn queued_and_running_cancellation_suppress_completed_worker_results() {
-        for initial_phase in [NodesTracePhase::Queued, NodesTracePhase::Running] {
+        for initial_phase in [GraphTracePhase::Queued, GraphTracePhase::Running] {
             let (project, _, mut intent, trace) = fixture();
             let mut app = Workspace::from_model(FontModel::from_project(project)).unwrap();
             app.ensure_live_graph().unwrap();
@@ -1358,13 +1358,13 @@ mod tests {
                 .unwrap()
                 .id;
             let (events, receiver) = mpsc::channel();
-            app.live_nodes.as_mut().unwrap().trace = Some(TraceSession {
+            app.live_graph.as_mut().unwrap().trace = Some(TraceSession {
                 handle: 1,
                 actor: "trace-test".into(),
                 operation_key: "one".into(),
                 payload_sha256: "sha256:test".into(),
                 intent,
-                backend: NodesTraceBackend::CalibratedTrace,
+                backend: GraphTraceBackend::CalibratedTrace,
                 local_sketch_runtime: None,
                 cancelled: ProcessCancellation::default(),
                 events: receiver,
@@ -1387,21 +1387,21 @@ mod tests {
             });
             assert!(
                 app.handle_trace_call(&ToolCall {
-                    name: "nodes_trace_release".into(),
+                    name: "graph_trace_release".into(),
                     arguments: handle_arguments.clone(),
                 })
                 .is_err()
             );
             let cancel = app
                 .handle_trace_call(&ToolCall {
-                    name: "nodes_trace_cancel".into(),
+                    name: "graph_trace_cancel".into(),
                     arguments: handle_arguments.clone(),
                 })
                 .unwrap();
             assert_eq!(cancel["phase"], "cancelling");
             assert!(
                 app.handle_trace_call(&ToolCall {
-                    name: "nodes_trace_release".into(),
+                    name: "graph_trace_release".into(),
                     arguments: handle_arguments.clone(),
                 })
                 .is_err()
@@ -1410,19 +1410,19 @@ mod tests {
             app.poll_live_trace();
             assert_eq!(app.sketch_trace.as_ref().unwrap().phase, "cancelled");
             assert_eq!(
-                app.live_nodes
+                app.live_graph
                     .as_ref()
                     .unwrap()
                     .trace
                     .as_ref()
                     .unwrap()
                     .phase,
-                NodesTracePhase::Cancelled
+                GraphTracePhase::Cancelled
             );
             assert_eq!(app.live_graph_session().unwrap().snapshot(), graph);
             assert_eq!(
                 app.handle_trace_call(&ToolCall {
-                    name: "nodes_trace_release".into(),
+                    name: "graph_trace_release".into(),
                     arguments: handle_arguments,
                 })
                 .unwrap()["ok"],
@@ -1453,17 +1453,17 @@ mod tests {
         let candidate = sketch_candidate(trace);
         let runtime = candidate.runtime.clone();
         let (events, receiver) = mpsc::channel();
-        app.live_nodes.as_mut().unwrap().trace = Some(TraceSession {
+        app.live_graph.as_mut().unwrap().trace = Some(TraceSession {
             handle: 11,
             actor: "sketch-test".into(),
             operation_key: "one".into(),
             payload_sha256: "sha256:test".into(),
             intent,
-            backend: NodesTraceBackend::LocalSketch,
+            backend: GraphTraceBackend::LocalSketch,
             local_sketch_runtime: None,
             cancelled: ProcessCancellation::default(),
             events: receiver,
-            phase: NodesTracePhase::Running,
+            phase: GraphTracePhase::Running,
             mutation: None,
             error: None,
         });
@@ -1473,7 +1473,7 @@ mod tests {
         });
         let cancelled = app
             .handle_trace_call(&ToolCall {
-                name: "nodes_trace_cancel".into(),
+                name: "graph_trace_cancel".into(),
                 arguments: arguments.clone(),
             })
             .unwrap();
@@ -1487,7 +1487,7 @@ mod tests {
         app.poll_live_trace();
         let status = app
             .handle_trace_call(&ToolCall {
-                name: "nodes_trace_status".into(),
+                name: "graph_trace_status".into(),
                 arguments,
             })
             .unwrap();
@@ -1507,7 +1507,7 @@ mod tests {
         app.ensure_live_graph().unwrap();
         let graph = app.live_graph_session().unwrap().snapshot();
         let epoch = app.live.as_ref().unwrap().document_epoch().to_owned();
-        let request = NodesTraceRequest {
+        let request = GraphTraceRequest {
             expected_document_epoch: epoch.clone(),
             guard: GraphGuard {
                 identity: graph.identity.clone(),
@@ -1534,7 +1534,7 @@ mod tests {
         intent.epoch = epoch;
         intent.graph = request.guard.clone();
         intent.operation_key = "new".into();
-        let state = app.live_nodes.as_mut().unwrap();
+        let state = app.live_graph.as_mut().unwrap();
         state
             .trace_receipts
             .insert(("trace-test".into(), "old".into()), (digest, 7));
@@ -1544,17 +1544,17 @@ mod tests {
             operation_key: "new".into(),
             payload_sha256: "sha256:new".into(),
             intent,
-            backend: NodesTraceBackend::CalibratedTrace,
+            backend: GraphTraceBackend::CalibratedTrace,
             local_sketch_runtime: None,
             cancelled: ProcessCancellation::default(),
             events,
-            phase: NodesTracePhase::Queued,
+            phase: GraphTracePhase::Queued,
             mutation: None,
             error: None,
         });
         let replay = app
             .handle_trace_call(&ToolCall {
-                name: "nodes_trace".into(),
+                name: "graph_trace".into(),
                 arguments: serde_json::to_value(&request).unwrap(),
             })
             .unwrap();
@@ -1565,7 +1565,7 @@ mod tests {
         changed.calibration.font_x_at_left = 10.0;
         assert!(
             app.handle_trace_call(&ToolCall {
-                name: "nodes_trace".into(),
+                name: "graph_trace".into(),
                 arguments: serde_json::to_value(changed).unwrap(),
             })
             .is_err()

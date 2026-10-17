@@ -710,14 +710,14 @@ impl Workspace {
     }
 
     /// Pick and open a nodes graph.
-    pub(crate) fn command_open_nodes(&mut self) {
+    pub(crate) fn command_open_graph(&mut self) {
         let start = self
             .font
             .document_source()
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."));
         if let Some(path) = dialogs::nodes(start) {
-            self.open_nodes_file(&path);
+            self.open_graph_file(&path);
         }
     }
 
@@ -974,8 +974,8 @@ impl Workspace {
             A::Quit => unreachable!("Quit is handled at the application shell"),
             A::Save => {
                 // On the nodes canvas, Save writes the graph file too.
-                if matches!(self.mode, Mode::Nodes) {
-                    self.save_nodes_file();
+                if matches!(self.mode, Mode::Graph) {
+                    self.save_graph_file();
                 }
                 self.save();
             }
@@ -990,7 +990,7 @@ impl Workspace {
             A::Undo => self.undo_active_edit(false),
             A::Redo => self.undo_active_edit(true),
             A::Overview => {
-                if matches!(self.mode, Mode::Editor(_) | Mode::Nodes) {
+                if matches!(self.mode, Mode::Editor(_) | Mode::Graph) {
                     self.back_to_overview();
                 }
             }
@@ -1145,15 +1145,15 @@ impl Workspace {
             A::RemoveImage => self.command_remove_image(),
             A::SortByName => self.sort = Sort::Name,
             A::SortByUnicode => self.sort = Sort::Unicode,
-            A::NodesTab => self.enter_nodes_mode(),
-            A::NodesNew => self.new_nodes_file(),
-            A::NodesOpen => self.command_open_nodes(),
-            A::NodesSave => self.save_nodes_file(),
-            A::NodesRun => {
-                if self.nodes.graph.is_none() {
-                    self.enter_nodes_mode();
+            A::GraphTab => self.enter_graph_mode(),
+            A::GraphNew => self.new_graph_file(),
+            A::GraphOpen => self.command_open_graph(),
+            A::GraphSave => self.save_graph_file(),
+            A::GraphRun => {
+                if self.graph.open.is_none() {
+                    self.enter_graph_mode();
                 }
-                self.run_nodes();
+                self.run_graph();
             }
             A::Copy => self.copy_contours(),
             A::Paste => self.paste_contours(),

@@ -120,15 +120,15 @@ pub fn tools() -> Vec<Tool> {
             ),
         },
         Tool {
-            name: "nodes_run".into(),
-            description: "Runs a saved node workflow file (.nodes.json) over the font \
+            name: "graph_run".into(),
+            description: "Runs a saved node workflow file (.graph.json) over the font \
                           and returns each node's status and report. Steps whose \
                           inputs have not changed are skipped. Use it only when the \
                           person names a workflow file."
                 .into(),
             parameters: params(
                 json!({
-                    "file": { "type": "string", "description": "The .nodes.json path." },
+                    "file": { "type": "string", "description": "The .graph.json path." },
                     "glyphs": { "type": "array", "items": { "type": "string" } }
                 }),
                 &["file"],

@@ -133,12 +133,12 @@ impl Workspace {
             return false;
         };
         if self.session.gesture_in_progress()
-            || (matches!(self.mode, Mode::Overview | Mode::Nodes)
+            || (matches!(self.mode, Mode::Overview | Mode::Graph)
                 && self.overview_undo.len() != *overview_undo_depth)
         {
             return false;
         }
-        if matches!(self.mode, Mode::Nodes) {
+        if matches!(self.mode, Mode::Graph) {
             return self
                 .font
                 .project
@@ -151,7 +151,7 @@ impl Workspace {
                 .selected
                 .and_then(|index| self.font.glyphs.get(index))
                 .map(|glyph| glyph.name.as_str()),
-            Mode::Nodes => None,
+            Mode::Graph => None,
         };
         let Some(address) = glyph.and_then(|glyph| self.font.active_layer_address(glyph)) else {
             return false;

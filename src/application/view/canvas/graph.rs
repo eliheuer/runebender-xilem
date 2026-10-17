@@ -1,10 +1,10 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The nodes canvas: the open `.nodes.json` as boxes and wires, drawn
+//! The nodes canvas: the open `.graph.json` as boxes and wires, drawn
 //! by Vello.
 //!
-//! The layout comes from the font engine (`runebender::ui::nodes`): where every
+//! The layout comes from the font engine (`runebender::ui::graph`): where every
 //! box, port and wire sits, in canvas units, and what is under a
 //! point. This widget adds the paint calls and the mouse, the same
 //! way the glyph editor does: the engine's `ViewPort` for pan and zoom, one
@@ -29,14 +29,14 @@ use masonry::peniko::{Blob, ImageAlphaType, ImageData, ImageFormat};
 use masonry::properties::ContentColor;
 use masonry::widgets::{Image as MasonryImage, Portal, TextAction};
 use runebender::ui::editing::viewport::ViewPort;
-use runebender::ui::nodes::{self as nl, Hit, NodeBox, NodeContentMap, NodeRegion};
-use runebender::workflows::nodes::{Kind, NodeGraph, Registry};
-use runebender::workflows::nodes_run::Status;
+use runebender::ui::graph::{self as nl, Hit, NodeBox, NodeContentMap, NodeRegion};
+use runebender::workflows::graph::{Kind, NodeGraph, Registry};
+use runebender::workflows::graph_run::Status;
 use xilem::Color;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewId, ViewMarker, ViewPathTracker};
 use xilem::{Pod, ViewCtx};
 
-use crate::application::editor::tools::nodes::RowState;
+use crate::application::editor::tools::graph::RowState;
 use crate::application::view::theme::Palette;
 use crate::application::widgets::context_menu::{ContextMenu, MenuAction, MenuRow, MenuTarget};
 use crate::application::widgets::icon_paint;
@@ -46,7 +46,7 @@ use crate::application::workspace::Workspace;
 
 /// What the canvas tells the app.
 #[derive(Debug, Clone)]
-pub(crate) enum NodesEvent {
+pub(crate) enum GraphEvent {
     /// The graph was edited: a node moved, a wire made or taken off, a
     /// node deleted.
     Changed(NodeGraph),
@@ -98,7 +98,7 @@ fn rect_path(r: Rect) -> BezPath {
 }
 
 /// The widget.
-pub(crate) struct NodesWidget {
+pub(crate) struct GraphWidget {
     graph: NodeGraph,
     registry: Arc<Registry>,
     palette: Arc<Palette>,
@@ -353,7 +353,7 @@ fn editor_node_from_path(path: &[ViewId]) -> Option<u32> {
         .and_then(|id| u32::try_from(id.routing_id()).ok())
 }
 
-impl NodesWidget {
+impl GraphWidget {
     /// A choice from the right-click menu: a node of that type lands
     /// where the menu was opened, snapped to the grid.
     pub(crate) fn apply_menu_choice(
@@ -374,9 +374,9 @@ impl NodesWidget {
             this.widget.relayout();
             let graph = this.widget.graph.clone();
             this.ctx
-                .submit_action::<NodesEvent>(NodesEvent::Changed(graph));
+                .submit_action::<GraphEvent>(GraphEvent::Changed(graph));
             this.ctx
-                .submit_action::<NodesEvent>(NodesEvent::Selected(Some(id)));
+                .submit_action::<GraphEvent>(GraphEvent::Selected(Some(id)));
         }
         this.ctx.request_render();
     }
@@ -403,7 +403,7 @@ impl NodesWidget {
     }
 
     fn emit_changed(&self, ctx: &mut EventCtx<'_>) {
-        ctx.submit_action::<NodesEvent>(NodesEvent::Changed(self.graph.clone()));
+        ctx.submit_action::<GraphEvent>(GraphEvent::Changed(self.graph.clone()));
     }
 
     /// The grid mark colour a port kind carries, in this palette.
@@ -414,8 +414,8 @@ impl NodesWidget {
     }
 }
 
-impl Widget for NodesWidget {
-    type Action = NodesEvent;
+impl Widget for GraphWidget {
+    type Action = GraphEvent;
 
     fn accepts_focus(&self) -> bool {
         true
@@ -793,7 +793,7 @@ impl Widget for NodesWidget {
                         .collect();
                     let menu = ContextMenu::new(
                         ctx.widget_id(),
-                        MenuTarget::Nodes,
+                        MenuTarget::Graph,
                         rows,
                         self.palette.clone(),
                         at,
@@ -818,7 +818,7 @@ impl Widget for NodesWidget {
                 let drag = match nl::hit(&self.boxes, at) {
                     Hit::Node(id) => {
                         self.selected = Some(id);
-                        ctx.submit_action::<NodesEvent>(NodesEvent::Selected(Some(id)));
+                        ctx.submit_action::<GraphEvent>(GraphEvent::Selected(Some(id)));
                         match nl::node_region_hit(&self.boxes, at).map(|hit| hit.region) {
                             Some(NodeRegion::Header) => {
                                 let origin = self.graph.node(id).map(|n| n.pos).unwrap_or_default();
@@ -878,7 +878,7 @@ impl Widget for NodesWidget {
                     }
                     Hit::Empty => {
                         self.selected = None;
-                        ctx.submit_action::<NodesEvent>(NodesEvent::Selected(None));
+                        ctx.submit_action::<GraphEvent>(GraphEvent::Selected(None));
                         Drag::Pan { last: local }
                     }
                 };
@@ -954,7 +954,7 @@ impl Widget for NodesWidget {
                                 self.graph.connect(from, &output, to, &input);
                                 self.relayout();
                             } else if want != kind {
-                                ctx.submit_action::<NodesEvent>(NodesEvent::Note(format!(
+                                ctx.submit_action::<GraphEvent>(GraphEvent::Note(format!(
                                     "{kind} does not go into {want}"
                                 )));
                             }
@@ -963,7 +963,7 @@ impl Widget for NodesWidget {
                     }
                     Some(Drag::Move { id, .. }) => {
                         if let Some(node) = self.graph.node(id) {
-                            ctx.submit_action::<NodesEvent>(NodesEvent::MoveNode {
+                            ctx.submit_action::<GraphEvent>(GraphEvent::MoveNode {
                                 node: id,
                                 pos: node.pos,
                             });
@@ -975,7 +975,7 @@ impl Widget for NodesWidget {
                             Some(nl::NodeContent::Image(content)) => content.size,
                             None => return,
                         };
-                        ctx.submit_action::<NodesEvent>(NodesEvent::Resize { node: id, size });
+                        ctx.submit_action::<GraphEvent>(GraphEvent::Resize { node: id, size });
                     }
                     _ => {}
                 }
@@ -1029,7 +1029,7 @@ impl Widget for NodesWidget {
         {
             self.graph.remove(id);
             self.relayout();
-            ctx.submit_action::<NodesEvent>(NodesEvent::Selected(None));
+            ctx.submit_action::<GraphEvent>(GraphEvent::Selected(None));
             self.emit_changed(ctx);
             ctx.request_render();
             ctx.set_handled();
@@ -1076,7 +1076,7 @@ fn input_port_label(port: &nl::PortBox) -> String {
 
 /// The view: the file, the registry, the run marks, and the selection
 /// the app remembers.
-pub(crate) struct NodesView<F> {
+pub(crate) struct GraphView<F> {
     fit_request: u64,
     graph: Arc<NodeGraph>,
     registry: Arc<Registry>,
@@ -1087,7 +1087,7 @@ pub(crate) struct NodesView<F> {
     on_event: F,
 }
 
-pub(crate) fn nodes_canvas<F: Fn(&mut Workspace, NodesEvent) + 'static>(
+pub(crate) fn graph_canvas<F: Fn(&mut Workspace, GraphEvent) + 'static>(
     graph: Arc<NodeGraph>,
     registry: Arc<Registry>,
     palette: Arc<Palette>,
@@ -1096,8 +1096,8 @@ pub(crate) fn nodes_canvas<F: Fn(&mut Workspace, NodesEvent) + 'static>(
     selected: Option<u32>,
     fit_request: u64,
     on_event: F,
-) -> NodesView<F> {
-    NodesView {
+) -> GraphView<F> {
+    GraphView {
         fit_request,
         graph,
         registry,
@@ -1109,9 +1109,9 @@ pub(crate) fn nodes_canvas<F: Fn(&mut Workspace, NodesEvent) + 'static>(
     }
 }
 
-impl<F> ViewMarker for NodesView<F> {}
-impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> for NodesView<F> {
-    type Element = Pod<NodesWidget>;
+impl<F> ViewMarker for GraphView<F> {}
+impl<F: Fn(&mut Workspace, GraphEvent) + 'static> View<Workspace, (), ViewCtx> for GraphView<F> {
+    type Element = Pod<GraphWidget>;
     type ViewState = ();
 
     fn build(&self, ctx: &mut ViewCtx, _: &mut Workspace) -> (Self::Element, Self::ViewState) {
@@ -1122,7 +1122,7 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
                 ctx.record_action_source(area_id);
             });
         }
-        let mut widget = NodesWidget {
+        let mut widget = GraphWidget {
             graph: (*self.graph).clone(),
             registry: self.registry.clone(),
             palette: self.palette.clone(),
@@ -1252,7 +1252,7 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
         app: &mut Workspace,
     ) -> MessageResult<()> {
         let editor_node = editor_node_from_path(message.remaining_path());
-        match message.take_message::<NodesEvent>() {
+        match message.take_message::<GraphEvent>() {
             Some(event) => {
                 (self.on_event)(app, *event);
                 MessageResult::Action(())
@@ -1261,7 +1261,7 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
                 Some(action) => match *action {
                     TextAction::Changed(code) | TextAction::Entered(code) => {
                         if let Some(node) = editor_node {
-                            (self.on_event)(app, NodesEvent::EditCode { node, code });
+                            (self.on_event)(app, GraphEvent::EditCode { node, code });
                             MessageResult::Action(())
                         } else {
                             MessageResult::Stale
@@ -1294,10 +1294,10 @@ mod tests {
     use masonry::core::{Ime, TextEvent};
     use masonry_testing::TestHarness;
     use runebender::font::variable::SourceId;
-    use runebender::ui::nodes::{
+    use runebender::ui::graph::{
         ContentState, ImageContent, ImmutablePng, NodeContent, ScriptContent,
     };
-    use runebender::workflows::nodes_live;
+    use runebender::workflows::graph_live;
     use std::io::Cursor;
 
     fn png() -> Arc<[u8]> {
@@ -1313,8 +1313,8 @@ mod tests {
         Arc::from(bytes.into_inner())
     }
 
-    fn fixture_with_scripts(extra_script: bool) -> (NodesWidget, BTreeMap<u32, WidgetId>) {
-        let mut graph = nodes_live::comparison_starter(SourceId(0));
+    fn fixture_with_scripts(extra_script: bool) -> (GraphWidget, BTreeMap<u32, WidgetId>) {
+        let mut graph = graph_live::comparison_starter(SourceId(0));
         if extra_script {
             graph.add("live.python", [320.0, 220.0]);
         }
@@ -1357,7 +1357,7 @@ mod tests {
         let (code_editors, code_area_ids, preview_images) =
             content_children(&content, palette.text);
         let editor_ids = code_area_ids.clone();
-        let mut widget = NodesWidget {
+        let mut widget = GraphWidget {
             graph,
             registry,
             palette,
@@ -1379,7 +1379,7 @@ mod tests {
         (widget, editor_ids)
     }
 
-    fn fixture() -> (NodesWidget, WidgetId) {
+    fn fixture() -> (GraphWidget, WidgetId) {
         let (widget, editor_ids) = fixture_with_scripts(false);
         let editor_id = editor_ids
             .values()
@@ -1402,8 +1402,8 @@ mod tests {
 
         harness.mouse_click_on(editor_id, Some(PointerButton::Primary));
         assert!(matches!(
-            harness.pop_action::<NodesEvent>(),
-            Some((NodesEvent::Selected(Some(3)), _))
+            harness.pop_action::<GraphEvent>(),
+            Some((GraphEvent::Selected(Some(3)), _))
         ));
         harness.process_text_event(TextEvent::Ime(Ime::Commit("#".into())));
         assert!(matches!(
@@ -1432,8 +1432,8 @@ mod tests {
 
         harness.mouse_click_on(second_editor, Some(PointerButton::Primary));
         assert!(matches!(
-            harness.pop_action::<NodesEvent>(),
-            Some((NodesEvent::Selected(Some(node)), _)) if node == second_node
+            harness.pop_action::<GraphEvent>(),
+            Some((GraphEvent::Selected(Some(node)), _)) if node == second_node
         ));
         harness.process_text_event(TextEvent::Ime(Ime::Commit("# second".into())));
         let Some((TextAction::Changed(text), source)) = harness.pop_action::<TextAction>() else {

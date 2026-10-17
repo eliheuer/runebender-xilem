@@ -151,9 +151,9 @@ if (output) fs.mkdirSync(output, { recursive: true });
       await page.keyboard.up('Space');
       await page.mouse.click(750, 450); await settle();
       await page.mouse.click(1150, 15); await settle();
-      assert.equal((await state()).mode, 'nodes');
-      const graph = (await state()).nodes;
-      assert.equal(graph.nodes.length, 4, 'Nodes starts with an editable example');
+      assert.equal((await state()).mode, 'graph');
+      const graph = (await state()).graph;
+      assert.equal(graph.nodes.length, 4, 'Graph starts with an editable example');
       assert.equal(graph.links.length, 2);
       const header = await frame.evaluate(() => {
         const c = document.querySelector('canvas'), s = devicePixelRatio;
@@ -167,9 +167,9 @@ if (output) fs.mkdirSync(output, { recursive: true });
       assert.ok(header, 'Font node header is painted');
       await page.mouse.move(...header); await page.mouse.down();
       await page.mouse.move(header[0] + 40, header[1] - 25, { steps: 8 }); await page.mouse.up(); await settle();
-      assert.notDeepEqual((await state()).nodes.nodes[0].pos, graph.nodes[0].pos, 'drag moves the actual node');
-      assert.deepEqual((await state()).nodes.links, graph.links, 'links survive node movement');
-      await shot('nodes');
+      assert.notDeepEqual((await state()).graph.nodes[0].pos, graph.nodes[0].pos, 'drag moves the actual node');
+      assert.deepEqual((await state()).graph.links, graph.links, 'links survive node movement');
+      await shot('graph');
       await page.mouse.click(900, 500); await page.keyboard.press('Escape'); await settle();
       assert.equal((await state()).mode, 'overview', 'Escape from the canvas opens Font overview');
       // Paste and IME events are dispatched into the DOM input bridge, never the model.

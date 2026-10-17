@@ -9,13 +9,13 @@
 //! selected Master, Model or Adapter node offers its choices in a
 //! second row.
 
-use crate::application::editor::tools::nodes::controls::{
+use crate::application::editor::tools::graph::controls::{
     apply_live_comparison, cancel_live_comparison, change_live_graph, clear_live_results,
     edit_live_code, edit_live_scope, move_live_node, open_live_comparison_file,
     run_live_comparison, save_live_comparison_file, select_live_comparison,
 };
-use crate::application::editor::tools::nodes::file_label;
-use crate::application::view::canvas::nodes::{NodesEvent, nodes_canvas};
+use crate::application::editor::tools::graph::file_label;
+use crate::application::view::canvas::graph::{GraphEvent, graph_canvas};
 use crate::application::view::design::{Region, Space, TextSize, row as xrow};
 use crate::application::view::render::{bottom_keyline, px32};
 use crate::application::view::{design, label, recipes, text_input};
@@ -26,11 +26,11 @@ use masonry::properties::Dimensions;
 use masonry::properties::LineBreaking;
 use masonry::properties::types::CrossAxisAlignment;
 use runebender::font::variable::SourceId;
-use runebender::ui::nodes::{
+use runebender::ui::graph::{
     ContentState, ImageContent, ImmutablePng, NodeContent, NodeContentMap, ScriptContent,
 };
-use runebender::workflows::nodes::{NodeGraph, Registry};
-use runebender::workflows::nodes_session::GraphGuard;
+use runebender::workflows::graph::{NodeGraph, Registry};
+use runebender::workflows::graph_session::GraphGuard;
 use std::sync::Arc;
 use xilem::WidgetView;
 use xilem::style::Style;
@@ -38,15 +38,15 @@ use xilem::view::FlexExt as _;
 use xilem::view::{FlexSpacer, flex_col, portal, sized_box};
 
 #[cfg(unix)]
-use crate::application::editor::tools::nodes::execution::LiveGraphPhase;
+use crate::application::editor::tools::graph::execution::LiveGraphPhase;
 #[cfg(unix)]
-use runebender::workflows::nodes_session::{GraphRunHandle, GraphRunStatus};
+use runebender::workflows::graph_session::{GraphRunHandle, GraphRunStatus};
 
 struct CanvasProjection {
     graph: Arc<NodeGraph>,
 
     registry: Arc<Registry>,
-    rows: Arc<std::collections::BTreeMap<u32, crate::application::editor::tools::nodes::RowState>>,
+    rows: Arc<std::collections::BTreeMap<u32, crate::application::editor::tools::graph::RowState>>,
     content: Arc<NodeContentMap>,
     problems: Vec<String>,
     live: bool,
@@ -78,7 +78,7 @@ fn fixture_png() -> ImmutablePng {
         let mut bytes = Cursor::new(Vec::new());
         DynamicImage::ImageRgba8(image)
             .write_to(&mut bytes, image::ImageFormat::Png)
-            .expect("in-memory Nodes fixture PNG encodes");
+            .expect("in-memory Graph fixture PNG encodes");
         Arc::from(bytes.into_inner())
     });
     ImmutablePng {
@@ -90,7 +90,7 @@ fn fixture_png() -> ImmutablePng {
 }
 
 fn legacy_projection(app: &Workspace) -> Option<CanvasProjection> {
-    let state = app.nodes.graph.as_ref()?;
+    let state = app.graph.open.as_ref()?;
     let mut content = NodeContentMap::default();
     let fixture = std::env::var_os("RUNEBENDER_NODES_CONTENT_FIXTURE").is_some();
     for node in &state.graph.nodes {
@@ -112,7 +112,7 @@ fn legacy_projection(app: &Workspace) -> Option<CanvasProjection> {
                         } else {
                             ContentState::Idle
                         },
-                        size: content_size(app, node.id, runebender::ui::nodes::CODE_H),
+                        size: content_size(app, node.id, runebender::ui::graph::CODE_H),
                     }),
                 );
             }
@@ -127,7 +127,7 @@ fn legacy_projection(app: &Workspace) -> Option<CanvasProjection> {
                         } else {
                             ContentState::Idle
                         },
-                        size: content_size(app, node.id, runebender::ui::nodes::IMAGE_H),
+                        size: content_size(app, node.id, runebender::ui::graph::IMAGE_H),
                     }),
                 );
             }
@@ -141,7 +141,7 @@ fn legacy_projection(app: &Workspace) -> Option<CanvasProjection> {
         content: Arc::new(content),
         problems: state.problems.iter().map(ToString::to_string).collect(),
         live: false,
-        running: app.nodes.job.is_some(),
+        running: app.graph.job.is_some(),
         can_cancel: false,
         can_clear: false,
         can_apply: false,
@@ -152,15 +152,15 @@ fn legacy_projection(app: &Workspace) -> Option<CanvasProjection> {
 }
 
 fn content_size(app: &Workspace, node: u32, height: f64) -> [f32; 2] {
-    app.nodes.content_sizes.get(&node).copied().unwrap_or([
-        px32(runebender::ui::nodes::LIVE_W - runebender::ui::nodes::PAD * 2.0),
+    app.graph.content_sizes.get(&node).copied().unwrap_or([
+        px32(runebender::ui::graph::LIVE_W - runebender::ui::graph::PAD * 2.0),
         px32(height),
     ])
 }
 
 #[cfg(unix)]
 fn proof_images(
-    state: &crate::application::editor::tools::nodes::workspace::LiveNodesState,
+    state: &crate::application::editor::tools::graph::workspace::LiveGraphState,
     handle: GraphRunHandle,
     cache: &std::collections::BTreeMap<String, ImmutablePng>,
 ) -> Option<std::collections::BTreeMap<u32, ImmutablePng>> {
@@ -171,7 +171,7 @@ fn proof_images(
             output.node == node
                 && matches!(
                     output.value,
-                    runebender::workflows::nodes_session::GraphNodeOutputValue::Proof { .. }
+                    runebender::workflows::graph_session::GraphNodeOutputValue::Proof { .. }
                 )
         }) && let Some(image) = cache.get(&artifact)
         {
@@ -183,7 +183,7 @@ fn proof_images(
 
 #[cfg(unix)]
 fn live_projection(app: &Workspace) -> Option<CanvasProjection> {
-    let state = app.live_nodes.as_ref()?;
+    let state = app.live_graph.as_ref()?;
     let snapshot = state.session.snapshot();
     let latest = state.handles.iter().next_back().copied();
     let inspection = latest.and_then(|handle| state.session.inspect_run(handle));
@@ -217,13 +217,13 @@ fn live_projection(app: &Workspace) -> Option<CanvasProjection> {
         ),
     };
     let current_images =
-        latest.and_then(|handle| proof_images(state, handle, &app.nodes.proof_images));
+        latest.and_then(|handle| proof_images(state, handle, &app.graph.proof_images));
     let previous_images = latest.and_then(|latest| {
         state
             .handles
             .range(..latest)
             .rev()
-            .find_map(|handle| proof_images(state, *handle, &app.nodes.proof_images))
+            .find_map(|handle| proof_images(state, *handle, &app.graph.proof_images))
     });
     let mut content = NodeContentMap::default();
     for node in &snapshot.graph.nodes {
@@ -259,7 +259,7 @@ fn live_projection(app: &Workspace) -> Option<CanvasProjection> {
                             .into(),
                         content_hash,
                         state: node_state.clone(),
-                        size: content_size(app, node.id, runebender::ui::nodes::CODE_H),
+                        size: content_size(app, node.id, runebender::ui::graph::CODE_H),
                     }),
                 );
             }
@@ -276,7 +276,7 @@ fn live_projection(app: &Workspace) -> Option<CanvasProjection> {
                             .and_then(|images| images.get(&node.id))
                             .cloned(),
                         state: node_state.clone(),
-                        size: content_size(app, node.id, runebender::ui::nodes::IMAGE_H),
+                        size: content_size(app, node.id, runebender::ui::graph::IMAGE_H),
                     }),
                 );
             }
@@ -297,13 +297,13 @@ fn live_projection(app: &Workspace) -> Option<CanvasProjection> {
             )
         });
     let can_cancel = state.handles.iter().any(|handle| {
-        app.nodes.live_ui_handles.contains(&handle.get())
+        app.graph.live_ui_handles.contains(&handle.get())
             && state.session.inspect_run(*handle).is_some_and(|run| {
                 matches!(run.status, GraphRunStatus::Queued | GraphRunStatus::Running)
             })
     });
     let can_clear = state.handles.iter().any(|handle| {
-        app.nodes.live_ui_handles.contains(&handle.get())
+        app.graph.live_ui_handles.contains(&handle.get())
             && state.session.inspect_run(*handle).is_some_and(|run| {
                 matches!(
                     run.status,
@@ -328,9 +328,9 @@ fn live_projection(app: &Workspace) -> Option<CanvasProjection> {
         .and_then(|node| node.values.get("source"))
         .and_then(serde_json::Value::as_u64)
         .and_then(|source| usize::try_from(source).ok());
-    let selected_result = crate::application::editor::tools::nodes::controls::live_result_node(
+    let selected_result = crate::application::editor::tools::graph::controls::live_result_node(
         &snapshot.graph,
-        app.nodes.selected,
+        app.graph.selected,
     );
     let can_apply =
         fresh && latest.is_some_and(|handle| state.execution.can_apply(handle, selected_result));
@@ -363,7 +363,7 @@ fn live_projection(app: &Workspace) -> Option<CanvasProjection> {
 
 fn projection(app: &Workspace) -> Option<CanvasProjection> {
     #[cfg(unix)]
-    if app.nodes.live_selected {
+    if app.graph.live_selected {
         return live_projection(app);
     }
     legacy_projection(app)
@@ -383,7 +383,7 @@ fn bounded_message(
     .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(64.0))))
 }
 
-pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+pub(crate) fn graph_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     use xilem::core::one_of::Either;
     let pal = &app.palette;
     let Some(view) = projection(app) else {
@@ -399,9 +399,9 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             .padding(Space::Md),
         );
     };
-    let open_path = app.nodes.graph.as_ref().map(|state| state.path.clone());
+    let open_path = app.graph.open.as_ref().map(|state| state.path.clone());
     let files: Vec<_> = app
-        .nodes
+        .graph
         .files
         .iter()
         .cloned()
@@ -412,18 +412,18 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                 file_label(&file),
                 current,
                 move |app: &mut Workspace| {
-                    app.nodes.live_selected = false;
-                    if app.nodes.graph.as_ref().is_none_or(|g| g.path != file) {
-                        app.open_nodes_file(&file);
+                    app.graph.live_selected = false;
+                    if app.graph.open.as_ref().is_none_or(|g| g.path != file) {
+                        app.open_graph_file(&file);
                     }
                 },
             )
         })
         .collect();
     let unlisted = open_path.as_ref().and_then(|path| {
-        (!view.live && !app.nodes.files.contains(path)).then(|| {
+        (!view.live && !app.graph.files.contains(path)).then(|| {
             recipes::toggle(pal, file_label(path), true, |app: &mut Workspace| {
-                app.nodes.live_selected = false;
+                app.graph.live_selected = false;
             })
         })
     });
@@ -460,19 +460,19 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                     FlexSpacer::Flex(1.0),
                     (!live).then(|| {
                         recipes::toggle(pal, "New".into(), false, |app: &mut Workspace| {
-                            app.nodes.live_selected = false;
-                            app.new_nodes_file();
+                            app.graph.live_selected = false;
+                            app.new_graph_file();
                         })
                     }),
                     (!live).then(|| {
                         recipes::toggle(pal, "Open".into(), false, |app: &mut Workspace| {
-                            app.nodes.live_selected = false;
-                            app.command_open_nodes();
+                            app.graph.live_selected = false;
+                            app.command_open_graph();
                         })
                     }),
                     (!live).then(|| {
                         recipes::toggle(pal, "Save".into(), false, |app: &mut Workspace| {
-                            app.save_nodes_file();
+                            app.save_graph_file();
                         })
                     }),
                     live.then(|| {
@@ -505,11 +505,11 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                         running,
                         move |app: &mut Workspace| {
                             if running {
-                                app.note = "A Nodes comparison is already running".into();
+                                app.note = "A Graph comparison is already running".into();
                             } else if live {
                                 run_live_comparison(app);
                             } else {
-                                app.run_nodes();
+                                app.run_graph();
                             }
                         },
                     ),
@@ -530,7 +530,7 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                                 if can_clear {
                                     clear_live_results(app);
                                 } else {
-                                    app.note = "No terminal native Nodes results to clear".into();
+                                    app.note = "No terminal native Graph results to clear".into();
                                 }
                             },
                         )
@@ -561,7 +561,7 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         )),
         pal.outline,
     );
-    let choices = (!live).then(|| nodes_choices(app)).flatten();
+    let choices = (!live).then(|| graph_choices(app)).flatten();
     let scope = live.then(|| {
         xrow(
             Region::List,
@@ -581,7 +581,7 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                     .color(pal.text_muted),
                 sized_box(input_typography::input_typography(
                     text_input(
-                        app.nodes.live_scope.clone(),
+                        app.graph.live_scope.clone(),
                         |app: &mut Workspace, scope| {
                             edit_live_scope(app, scope);
                         },
@@ -603,16 +603,16 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
     let report = view.report.map(|report| bounded_message(pal, report));
     let problems =
         (!view.problems.is_empty()).then(|| bounded_message(pal, view.problems.join("\n")));
-    let canvas = nodes_canvas(
+    let canvas = graph_canvas(
         view.graph,
         view.registry,
         app.palette.clone(),
         view.rows,
         view.content,
-        app.nodes.selected,
-        app.nodes.fit_request,
+        app.graph.selected,
+        app.graph.fit_request,
         move |app: &mut Workspace, ev| match ev {
-            NodesEvent::Changed(graph) => {
+            GraphEvent::Changed(graph) => {
                 if live {
                     if let Some(guard) = live_guard.clone() {
                         change_live_graph(app, guard, (*original_graph).clone(), graph);
@@ -620,11 +620,11 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                         app.note = "The live comparison snapshot is unavailable".into();
                     }
                 } else {
-                    app.nodes_changed(graph);
+                    app.graph_changed(graph);
                 }
             }
-            NodesEvent::Selected(id) => app.nodes.selected = id,
-            NodesEvent::EditCode { node, code } => {
+            GraphEvent::Selected(id) => app.graph.selected = id,
+            GraphEvent::EditCode { node, code } => {
                 if live {
                     if let Some(guard) = live_guard.clone() {
                         edit_live_code(app, guard, node, code);
@@ -632,10 +632,10 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                         app.note = "The live comparison snapshot is unavailable".into();
                     }
                 } else {
-                    app.nodes_set_value(node, "code", serde_json::Value::String(code));
+                    app.graph_set_value(node, "code", serde_json::Value::String(code));
                 }
             }
-            NodesEvent::MoveNode { node, pos } => {
+            GraphEvent::MoveNode { node, pos } => {
                 if live {
                     if let Some(guard) = live_guard.clone() {
                         move_live_node(app, guard, node, pos);
@@ -643,20 +643,20 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                         app.note = "The live comparison snapshot is unavailable".into();
                     }
                 } else {
-                    let Some(state) = app.nodes.graph.as_ref() else {
+                    let Some(state) = app.graph.open.as_ref() else {
                         return;
                     };
                     let mut graph = (*state.graph).clone();
                     if let Some(node) = graph.node_mut(node) {
                         node.pos = pos;
-                        app.nodes_changed(graph);
+                        app.graph_changed(graph);
                     }
                 }
             }
-            NodesEvent::Resize { node, size } => {
-                app.nodes.content_sizes.insert(node, size);
+            GraphEvent::Resize { node, size } => {
+                app.graph.content_sizes.insert(node, size);
             }
-            NodesEvent::Note(note) => app.note = note,
+            GraphEvent::Note(note) => app.note = note,
         },
     );
     Either::B(
@@ -677,10 +677,10 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
 
 /// One toggle per choice for the selected Master, Model or Adapter
 /// node; nothing for any other node.
-fn nodes_choices(app: &Workspace) -> Option<impl WidgetView<Workspace> + use<>> {
+fn graph_choices(app: &Workspace) -> Option<impl WidgetView<Workspace> + use<>> {
     let pal = &app.palette;
-    let state = app.nodes.graph.as_ref()?;
-    let id = app.nodes.selected?;
+    let state = app.graph.open.as_ref()?;
+    let id = app.graph.selected?;
     let node = state.graph.node(id)?;
     let current = node
         .values
@@ -689,11 +689,11 @@ fn nodes_choices(app: &Workspace) -> Option<impl WidgetView<Workspace> + use<>> 
         .map(String::from);
     let options: Vec<String> = match node.type_name.as_str() {
         "core.master" => app.font.master_names().clone(),
-        "core.model" => runebender::workflows::nodes_run::installed(None, false)
+        "core.model" => runebender::workflows::graph_run::installed(None, false)
             .into_iter()
             .map(|(n, _)| n)
             .collect(),
-        "core.adapter" => runebender::workflows::nodes_run::installed(None, true)
+        "core.adapter" => runebender::workflows::graph_run::installed(None, true)
             .into_iter()
             .map(|(n, _)| n)
             .collect(),
@@ -705,7 +705,7 @@ fn nodes_choices(app: &Workspace) -> Option<impl WidgetView<Workspace> + use<>> 
             let on = current.as_deref() == Some(option.as_str());
             let value = option.clone();
             recipes::toggle(pal, option, on, move |app: &mut Workspace| {
-                app.nodes_set_value(id, "name", serde_json::Value::String(value.clone()));
+                app.graph_set_value(id, "name", serde_json::Value::String(value.clone()));
             })
         })
         .collect();

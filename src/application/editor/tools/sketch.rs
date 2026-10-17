@@ -18,7 +18,7 @@ use runebender::automation::agent::ToolCall;
 #[cfg(unix)]
 use runebender::automation::agent_edit::AgentLayerGuard;
 #[cfg(unix)]
-use runebender::automation::agent_nodes::{NodesLocalSketchSettings, NodesTraceRequest};
+use runebender::automation::agent_graph::{GraphLocalSketchSettings, GraphTraceRequest};
 #[cfg(unix)]
 use runebender::automation::glyph_grading::GradingReferenceRequest;
 use runebender::automation::glyph_grading::{GlyphGrade, document_layer_grade};
@@ -30,8 +30,8 @@ use runebender::font::edit_batch::canonical_glyph_revision;
 use runebender::font::variable::{GlyphLayerAddress, LayerId, SourceId};
 use runebender::formats::image_trace::TraceCalibration;
 #[cfg(unix)]
-use runebender::workflows::nodes_session::GraphGuard;
-use runebender::workflows::nodes_session::GraphIdentity;
+use runebender::workflows::graph_session::GraphGuard;
+use runebender::workflows::graph_session::GraphIdentity;
 
 use crate::application::workspace::Mode;
 use crate::application::workspace::Workspace;
@@ -43,7 +43,7 @@ const BASELINE_PIXEL: f64 = 400.0;
 #[cfg(unix)]
 static NEXT_SKETCH_SUBMISSION: AtomicU64 = AtomicU64::new(1);
 
-/// Native presentation of one retained candidate in the existing live Nodes session.
+/// Native presentation of one retained candidate in the existing live Graph session.
 pub(crate) struct SketchTraceUi {
     pub(crate) handle: u64,
     pub(crate) backend: SketchBackend,
@@ -321,7 +321,7 @@ impl Workspace {
     pub(crate) fn refresh_sketch_trace(&mut self) {
         #[cfg(unix)]
         {
-            self.note = match self.sketch_trace_call("nodes_trace_status") {
+            self.note = match self.sketch_trace_call("graph_trace_status") {
                 Ok(status) => {
                     self.update_sketch_trace(&status);
                     self.sketch_trace.as_ref().map_or_else(
@@ -347,7 +347,7 @@ impl Workspace {
     pub(crate) fn cancel_sketch_trace(&mut self) {
         #[cfg(unix)]
         {
-            self.note = match self.sketch_trace_call("nodes_trace_cancel") {
+            self.note = match self.sketch_trace_call("graph_trace_cancel") {
                 Ok(status) => {
                     self.update_sketch_trace(&status);
                     "Cancelling brush trace; check status until it settles".into()
@@ -406,7 +406,7 @@ impl Workspace {
             .as_ref()
             .is_some_and(|trace| trace.phase == "completed")
         {
-            self.mode = Mode::Nodes;
+            self.mode = Mode::Graph;
             self.note = "Review both proof branches before Apply".into();
         }
     }
@@ -425,7 +425,7 @@ impl Workspace {
             })
         };
         let response = self
-            .call_agent_nodes(&ToolCall {
+            .call_agent_graph(&ToolCall {
                 name: name.into(),
                 arguments: request,
             })
@@ -456,7 +456,7 @@ impl Workspace {
         {
             return Err("Wait for the brush trace to settle before releasing it".into());
         }
-        self.sketch_trace_call("nodes_trace_release")?;
+        self.sketch_trace_call("graph_trace_release")?;
         self.sketch_trace = None;
         Ok(())
     }
@@ -500,7 +500,7 @@ impl Workspace {
             if !self.sketch_identity.is_finite() || !(0.0..=1.5).contains(&self.sketch_identity) {
                 return Err("Virtua identity must be between 0 and 1.5".into());
             }
-            Some(NodesLocalSketchSettings {
+            Some(GraphLocalSketchSettings {
                 model: Some(selected.into()),
                 ink_box_px: export.ink_box_px,
                 codepoint: expected_recipe
@@ -532,7 +532,7 @@ impl Workspace {
         self.ensure_live_graph_for_sketch(expected_recipe.clone())?;
         let snapshot = self
             .live_graph_session()
-            .ok_or("live Nodes graph is unavailable")?
+            .ok_or("live graph is unavailable")?
             .snapshot();
         let candidates: Vec<_> = snapshot
             .graph
@@ -555,7 +555,7 @@ impl Workspace {
             "native-brush-{}",
             NEXT_SKETCH_SUBMISSION.fetch_add(1, Ordering::Relaxed)
         );
-        let request = NodesTraceRequest {
+        let request = GraphTraceRequest {
             expected_document_epoch: epoch,
             guard: GraphGuard {
                 identity: snapshot.identity.clone(),
@@ -573,8 +573,8 @@ impl Workspace {
             local_sketch,
         };
         let response = self
-            .call_agent_nodes(&ToolCall {
-                name: "nodes_trace".into(),
+            .call_agent_graph(&ToolCall {
+                name: "graph_trace".into(),
                 arguments: serde_json::to_value(request).map_err(|error| error.to_string())?,
             })
             .ok_or("native trace request is unavailable")?;
@@ -594,9 +594,9 @@ impl Workspace {
             phase: response["phase"].as_str().unwrap_or("queued").into(),
             error: None,
         });
-        self.nodes.live_selected = true;
-        self.nodes.live_scope = glyph;
-        self.nodes.fit_request = self.nodes.fit_request.wrapping_add(1);
+        self.graph.live_selected = true;
+        self.graph.live_scope = glyph;
+        self.graph.fit_request = self.graph.fit_request.wrapping_add(1);
         Ok(handle)
     }
 
@@ -661,7 +661,7 @@ impl Workspace {
     #[cfg(unix)]
     fn check_sketch_proofs(
         &self,
-        graph: &runebender::workflows::nodes::NodeGraph,
+        graph: &runebender::workflows::graph::NodeGraph,
         candidate: u32,
         source: usize,
         expected: &CompiledProofRecipe,

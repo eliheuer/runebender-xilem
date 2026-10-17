@@ -60,7 +60,7 @@ impl Entry {
                 self.action,
                 A::Save
                     | A::ExportFont
-                    | A::NodesRun
+                    | A::GraphRun
                     | A::Copy
                     | A::SelectAll
                     | A::UpdateMetrics
@@ -132,7 +132,7 @@ impl Entry {
                 Mode::Overview => {
                     !app.overview_undo.is_empty() || app.can_metadata_history_step(false)
                 }
-                Mode::Nodes => app.can_metadata_history_step(false),
+                Mode::Graph => app.can_metadata_history_step(false),
             },
             A::Redo => match app.mode {
                 Mode::Editor(index) => {
@@ -146,7 +146,7 @@ impl Entry {
                 Mode::Overview => {
                     !app.overview_redo.is_empty() || app.can_metadata_history_step(true)
                 }
-                Mode::Nodes => app.can_metadata_history_step(true),
+                Mode::Graph => app.can_metadata_history_step(true),
             },
             A::MetaballsToCubic | A::MetaballsToHyperbezier => editor,
             A::FontMetaballsToCubic => matches!(app.mode, Mode::Overview),
@@ -193,7 +193,7 @@ impl Entry {
             A::Reinterpolate => app.selected.is_some() && app.font.master_count() > 1,
             A::NextMaster | A::PreviousMaster => app.font.master_count() > 1,
             A::ShowAllMasters | A::NextSampleString | A::PreviousSampleString => editor,
-            A::NodesSave => app.nodes.graph.is_some(),
+            A::GraphSave => app.graph.open.is_some(),
             _ => true,
         }
     }
@@ -275,28 +275,28 @@ pub(crate) const ACTIONS: &[Entry] = &[
         action: AppAction::ExportFont,
     },
     Entry {
-        menu: "Nodes",
-        title: "New Nodes",
+        menu: "Graph",
+        title: "New Graph",
         accelerator: None,
-        action: AppAction::NodesNew,
+        action: AppAction::GraphNew,
     },
     Entry {
-        menu: "Nodes",
-        title: "Open Nodes…",
+        menu: "Graph",
+        title: "Open Graph…",
         accelerator: None,
-        action: AppAction::NodesOpen,
+        action: AppAction::GraphOpen,
     },
     Entry {
-        menu: "Nodes",
-        title: "Save Nodes",
+        menu: "Graph",
+        title: "Save Graph",
         accelerator: None,
-        action: AppAction::NodesSave,
+        action: AppAction::GraphSave,
     },
     Entry {
-        menu: "Nodes",
-        title: "Run Nodes",
+        menu: "Graph",
+        title: "Run Graph",
         accelerator: None,
-        action: AppAction::NodesRun,
+        action: AppAction::GraphRun,
     },
     Entry {
         menu: "Edit",
@@ -782,9 +782,9 @@ pub(crate) const ACTIONS: &[Entry] = &[
     },
     Entry {
         menu: "",
-        title: "Show Nodes",
+        title: "Show Graph",
         accelerator: None,
-        action: AppAction::NodesTab,
+        action: AppAction::GraphTab,
     },
     Entry {
         menu: "",
@@ -884,7 +884,7 @@ pub(crate) fn actions() -> &'static [Entry] {
 pub(crate) const MENUS: &[&str] = &[
     "Runebender",
     "File",
-    "Nodes",
+    "Graph",
     "Edit",
     "Glyph",
     "Path",
@@ -999,7 +999,7 @@ mod tests {
             &[
                 "Runebender",
                 "File",
-                "Nodes",
+                "Graph",
                 "Edit",
                 "Glyph",
                 "Path",
@@ -1083,12 +1083,12 @@ mod tests {
 
         let nodes: Vec<_> = ACTIONS
             .iter()
-            .filter(|entry| entry.menu == "Nodes")
+            .filter(|entry| entry.menu == "Graph")
             .map(|entry| entry.title)
             .collect();
         assert_eq!(
             nodes,
-            ["New Nodes", "Open Nodes…", "Save Nodes", "Run Nodes"]
+            ["New Graph", "Open Graph…", "Save Graph", "Run Graph"]
         );
 
         let filter: Vec<_> = ACTIONS

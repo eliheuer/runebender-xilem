@@ -46,7 +46,7 @@ pub(crate) fn block(app: &Workspace) -> Option<impl WidgetView<Workspace> + use<
     } else {
         format!("{total} glyphs still match {light_name}")
     };
-    let model_ready = app.ai.dir.is_some() && app.nodes.font_ml.is_some();
+    let model_ready = app.ai.dir.is_some() && app.graph.font_ml.is_some();
     let model_fresh = app
         .debt
         .measured_path

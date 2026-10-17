@@ -36,21 +36,21 @@ fn installed_in_active_source(
 pub(crate) fn with_live<V: xilem::WidgetView<Workspace>>(
     view: V,
     pending: Option<Arc<AtomicBool>>,
-    live_nodes_pending: Arc<AtomicBool>,
+    live_graph_pending: Arc<AtomicBool>,
 ) -> impl xilem::WidgetView<Workspace> + use<V> {
     xilem::core::fork(
         view,
         xilem::view::task_raw(
             move |proxy: xilem::core::MessageProxy<()>, _: &mut Workspace| {
                 let pending = pending.clone();
-                let live_nodes_pending = live_nodes_pending.clone();
+                let live_graph_pending = live_graph_pending.clone();
                 async move {
                     loop {
                         tokio::time::sleep(std::time::Duration::from_millis(40)).await;
                         let has_request = pending
                             .as_ref()
                             .is_some_and(|pending| pending.load(Ordering::Acquire));
-                        if !(has_request || live_nodes_pending.load(Ordering::Acquire)) {
+                        if !(has_request || live_graph_pending.load(Ordering::Acquire)) {
                             continue;
                         }
                         if proxy.message(()).is_err() {
@@ -60,16 +60,16 @@ pub(crate) fn with_live<V: xilem::WidgetView<Workspace>>(
                 }
             },
             |app: &mut Workspace, ()| {
-                if app.live_nodes_need_pump() {
-                    app.live_nodes_pump();
-                    app.sync_live_nodes_presentation();
+                if app.live_graph_need_pump() {
+                    app.live_graph_pump();
+                    app.sync_live_graph_presentation();
                 }
                 let request = app.live.as_ref().and_then(|server| server.try_recv());
                 if let Some(request) = request {
                     request.respond(|call| app.call_live(call));
                 }
-                app.live_nodes_pending
-                    .store(app.live_nodes_need_pump(), Ordering::Release);
+                app.live_graph_pending
+                    .store(app.live_graph_need_pump(), Ordering::Release);
             },
         ),
     )
@@ -89,7 +89,7 @@ impl Workspace {
 
     fn handle_live(&mut self, call: &runebender::automation::agent::ToolCall) -> serde_json::Value {
         use serde_json::json;
-        if let Some(result) = self.call_agent_nodes(call) {
+        if let Some(result) = self.call_agent_graph(call) {
             return result;
         }
         if let Some(result) = self.call_agent_proof(call) {
@@ -181,7 +181,7 @@ impl Workspace {
             "document_epoch": self.live.as_ref().map(|server| server.document_epoch()),
             "document_revision": project.document_revision(),
             "source_id": project.source_id(project.active).map(|source| source.0),
-            "mode": match self.mode { Mode::Overview => "overview", Mode::Editor(_) => "editor", Mode::Nodes => "nodes" },
+            "mode": match self.mode { Mode::Overview => "overview", Mode::Editor(_) => "editor", Mode::Graph => "graph" },
             "tab_id": self.tabs.get(self.active_tab).map(|tab| tab.text_context_id.to_string()),
             "glyph": glyph.map(|_| &self.session.glyph_name),
             "glyph_id": glyph.map(|glyph| glyph.id().to_wire()),

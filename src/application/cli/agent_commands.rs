@@ -358,7 +358,7 @@ fn agent_call_source(
         }
         "propose" => match (text("task"), text("model")) {
             (Some(task), Some(model)) => {
-                let model_dir = nodes_run::installed(None, false)
+                let model_dir = graph_run::installed(None, false)
                     .into_iter()
                     .find(|(n, _)| *n == model)
                     .map(|(_, p)| p)
@@ -401,11 +401,11 @@ fn agent_call_source(
             }
             _ => json!({ "ok": false, "error": "task and model are required" }),
         },
-        "nodes_run" => match text("file") {
+        "graph_run" => match text("file") {
             Some(file) => {
                 let mut a = vec![
                     "--json".to_string(),
-                    "nodes".into(),
+                    "graph".into(),
                     "run".into(),
                     file,
                     "--font".into(),

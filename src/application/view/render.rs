@@ -4,7 +4,7 @@
 //! The render tree: how the workspace's state becomes a frame.
 
 use crate::application::actions;
-use crate::application::editor::tools::{chat, local_ai, nodes, scripts, weight_debt};
+use crate::application::editor::tools::{chat, graph, local_ai, scripts, weight_debt};
 use crate::application::platform::export;
 #[cfg(unix)]
 use crate::application::platform::live;
@@ -16,8 +16,8 @@ use crate::application::view::chrome::{marks_bar, status, titlebar};
 use crate::application::view::design::{DOCK_WIDTH, PROOF_STRIP_HEIGHT};
 use crate::application::view::design::{Space, Stroke, TextSize};
 use crate::application::view::panels::editor::{editor_pane, overview};
+use crate::application::view::panels::graph::graph_pane;
 use crate::application::view::panels::info::info_panel;
-use crate::application::view::panels::nodes::nodes_pane;
 use crate::application::view::panels::preview::{glyph_preview, preview_strip};
 use crate::application::view::panels::tabs::{editor_nav, sidebar};
 use crate::application::view::{design, label};
@@ -325,7 +325,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     let body = match app.mode {
         Mode::Overview => OneOf3::A(overview(app)),
         Mode::Editor(_) => OneOf3::B(editor_pane(app)),
-        Mode::Nodes => OneOf3::C(nodes_pane(app)),
+        Mode::Graph => OneOf3::C(graph_pane(app)),
     };
     let body = if matches!(app.mode, Mode::Editor(_)) && app.preview_visible {
         Either::A(proof_split(body, preview_strip(app), pal.outline))
@@ -340,7 +340,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         .background_color(pal.app);
 
     let left = match app.mode {
-        Mode::Overview | Mode::Nodes => Either::A(sidebar(app)),
+        Mode::Overview | Mode::Graph => Either::A(sidebar(app)),
         Mode::Editor(_) => Either::B(editor_nav(app)),
     };
     // The marks bar sits under the sidebar in both modes, not in the middle
@@ -410,8 +410,8 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     // otherwise the macOS linker receives multi-megabyte symbol names.
     let content = content.boxed();
     #[cfg(unix)]
-    app.live_nodes_pending.store(
-        app.live_nodes_need_pump(),
+    app.live_graph_pending.store(
+        app.live_graph_need_pump(),
         std::sync::atomic::Ordering::Release,
     );
     let content = live::with_live(
@@ -419,7 +419,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         app.live
             .as_ref()
             .map(runebender::automation::live_socket::Server::pending_signal),
-        app.live_nodes_pending.clone(),
+        app.live_graph_pending.clone(),
     );
     #[cfg(target_arch = "wasm32")]
     return content;
@@ -432,13 +432,13 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
                         model_pump(
                             train_pump(
                                 export_pump(
-                                    nodes_pump(
+                                    graph_pump(
                                         preview_pump(
                                             shapes_pump(content, app.shapes.pump.clone()).boxed(),
                                             app.font.project.preview_pending(),
                                         )
                                         .boxed(),
-                                        app.nodes.job.clone(),
+                                        app.graph.job.clone(),
                                     ),
                                     app.export_job.clone(),
                                 )
@@ -752,9 +752,9 @@ fn ai_pump<V: WidgetView<Workspace>>(
 /// the run thread has said and posts it back into the application.
 /// The same pump shape as the watcher and the menu, for the same
 /// reason: Xilem has no hook to drain a channel from a thread.
-fn nodes_pump<V: WidgetView<Workspace>>(
+fn graph_pump<V: WidgetView<Workspace>>(
     view: V,
-    job: Option<nodes::NodeJob>,
+    job: Option<graph::NodeJob>,
 ) -> impl WidgetView<Workspace> + use<V> {
     use xilem::core::{MessageProxy, fork};
     use xilem::view::task_raw;
@@ -762,7 +762,7 @@ fn nodes_pump<V: WidgetView<Workspace>>(
         view,
         job.map(|job| {
             task_raw(
-                move |proxy: MessageProxy<nodes::NodesProgress>, _: &mut Workspace| {
+                move |proxy: MessageProxy<graph::GraphProgress>, _: &mut Workspace| {
                     let job = job.clone();
                     async move {
                         loop {
@@ -777,7 +777,7 @@ fn nodes_pump<V: WidgetView<Workspace>>(
                                 .lock()
                                 .unwrap_or_else(|e| e.into_inner())
                                 .is_some();
-                            if (pending || done) && proxy.message(nodes::NodesProgress).is_err() {
+                            if (pending || done) && proxy.message(graph::GraphProgress).is_err() {
                                 return;
                             }
                             if done {
@@ -786,7 +786,7 @@ fn nodes_pump<V: WidgetView<Workspace>>(
                         }
                     }
                 },
-                |app: &mut Workspace, _: nodes::NodesProgress| app.nodes_pump(),
+                |app: &mut Workspace, _: graph::GraphProgress| app.graph_pump(),
             )
         }),
     )

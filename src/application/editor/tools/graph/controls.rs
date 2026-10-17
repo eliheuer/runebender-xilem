@@ -1,25 +1,25 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Native intent commands for the live Nodes comparison surface.
+//! Native intent commands for the live Graph comparison surface.
 //!
 //! Views project immutable graph and proof state; this module owns selection, guarded graph
 //! edits, explicit run/cancel/release/apply requests, and the presentation byte cache.
 
 use crate::application::workspace::Workspace;
 use runebender::font::variable::SourceId;
-use runebender::workflows::nodes_session::GraphGuard;
+use runebender::workflows::graph_session::GraphGuard;
 
 #[cfg(unix)]
 use crate::application::platform::dialogs;
 #[cfg(unix)]
 use runebender::automation::agent::ToolCall;
 #[cfg(unix)]
-use runebender::ui::nodes::ImmutablePng;
+use runebender::ui::graph::ImmutablePng;
 #[cfg(unix)]
-use runebender::workflows::nodes::NodeGraph;
+use runebender::workflows::graph::NodeGraph;
 #[cfg(unix)]
-use runebender::workflows::nodes_session::{
+use runebender::workflows::graph_session::{
     GraphEdit, GraphInteractiveMutationRequest, GraphMutation, GraphRunStatus,
 };
 #[cfg(unix)]
@@ -30,12 +30,12 @@ pub(crate) fn select_live_comparison(app: &mut Workspace) {
     #[cfg(unix)]
     match app.ensure_live_graph() {
         Ok(()) => {
-            if app.nodes.live_scope.trim().is_empty() {
-                app.nodes.live_scope = selected_glyph_names(app).join(", ");
+            if app.graph.live_scope.trim().is_empty() {
+                app.graph.live_scope = selected_glyph_names(app).join(", ");
             }
-            app.nodes.live_selected = true;
-            app.nodes.fit_request = app.nodes.fit_request.wrapping_add(1);
-            app.note = if app.nodes.live_scope.is_empty() {
+            app.graph.live_selected = true;
+            app.graph.fit_request = app.graph.fit_request.wrapping_add(1);
+            app.note = if app.graph.live_scope.is_empty() {
                 "Live comparison opened; enter at least one glyph before Run".into()
             } else {
                 "Unsaved live comparison opened".into()
@@ -57,7 +57,7 @@ pub(crate) fn open_live_comparison_file(app: &mut Workspace, explicit_source: So
             app.note = "The source selected by Open is no longer loaded".into();
             return;
         }
-        if app.live_nodes.as_ref().is_some_and(|state| {
+        if app.live_graph.as_ref().is_some_and(|state| {
             let revision = state.session.snapshot().revision;
             state
                 .saved_revision
@@ -67,7 +67,7 @@ pub(crate) fn open_live_comparison_file(app: &mut Workspace, explicit_source: So
             return;
         }
         if app
-            .live_nodes
+            .live_graph
             .as_ref()
             .is_some_and(|state| !state.handles.is_empty())
         {
@@ -75,7 +75,7 @@ pub(crate) fn open_live_comparison_file(app: &mut Workspace, explicit_source: So
             return;
         }
         let start = app
-            .live_nodes
+            .live_graph
             .as_ref()
             .and_then(|state| state.file.as_ref())
             .and_then(|metadata| metadata.path.parent())
@@ -84,7 +84,7 @@ pub(crate) fn open_live_comparison_file(app: &mut Workspace, explicit_source: So
         if let Some(path) = dialogs::nodes(start) {
             match app.open_live_graph_file(&path, explicit_source) {
                 Ok(_) => {
-                    app.nodes.fit_request = app.nodes.fit_request.wrapping_add(1);
+                    app.graph.fit_request = app.graph.fit_request.wrapping_add(1);
                 }
                 Err(error) => app.note = error,
             }
@@ -102,20 +102,20 @@ pub(crate) fn save_live_comparison_file(app: &mut Workspace) {
     #[cfg(unix)]
     {
         let start = app
-            .live_nodes
+            .live_graph
             .as_ref()
             .and_then(|state| state.file.as_ref())
             .and_then(|metadata| metadata.path.parent())
             .or_else(|| app.font.document_source().parent())
             .unwrap_or_else(|| std::path::Path::new("."));
         let suggested = app
-            .live_nodes
+            .live_graph
             .as_ref()
             .and_then(|state| state.file.as_ref())
             .and_then(|metadata| metadata.path.file_name())
             .and_then(|name| name.to_str())
-            .unwrap_or("comparison.nodes.json");
-        if let Some(path) = dialogs::save_nodes(start, suggested) {
+            .unwrap_or("comparison.graph.json");
+        if let Some(path) = dialogs::save_graph(start, suggested) {
             match app.save_live_graph_file(&path) {
                 Ok(metadata) => {
                     app.note = format!(
@@ -139,7 +139,7 @@ pub(crate) fn save_live_comparison_file(app: &mut Workspace) {
 
 /// Keep the explicit comparison scope as visible presentation input until Run.
 pub(crate) fn edit_live_scope(app: &mut Workspace, scope: String) {
-    app.nodes.live_scope = scope;
+    app.graph.live_scope = scope;
 }
 
 /// Commit one focused `TextArea` value through the canonical graph guard.
@@ -198,8 +198,8 @@ pub(crate) fn change_live_graph(
 pub(crate) fn change_live_graph(
     app: &mut Workspace,
     _guard: GraphGuard,
-    _before: runebender::workflows::nodes::NodeGraph,
-    _after: runebender::workflows::nodes::NodeGraph,
+    _before: runebender::workflows::graph::NodeGraph,
+    _after: runebender::workflows::graph::NodeGraph,
 ) {
     app.note = "Live graph editing is available in the native editor".into();
 }
@@ -332,12 +332,12 @@ pub(crate) fn run_live_comparison(app: &mut Workspace) {
             }
         };
         let operation = app
-            .live_nodes
+            .live_graph
             .as_ref()
             .map(|state| state.next_job)
             .unwrap_or_default();
         let response = app.call_live(&ToolCall {
-            name: "nodes_run".into(),
+            name: "graph_run".into(),
             arguments: serde_json::json!({
                 "expected_document_epoch": snapshot.identity.document_epoch,
                 "guard": {
@@ -346,7 +346,7 @@ pub(crate) fn run_live_comparison(app: &mut Workspace) {
                     "semantic_hash": snapshot.semantic_hash,
                 },
                 "execution_version": 2,
-                "actor": "native-nodes-ui",
+                "actor": "native-graph-ui",
                 "operation_key": format!("run-{operation}"),
                 "source": source,
                 "glyphs": glyphs,
@@ -354,7 +354,7 @@ pub(crate) fn run_live_comparison(app: &mut Workspace) {
         });
         if response["ok"] == serde_json::Value::Bool(true) {
             if let Some(handle) = response["run"]["receipt"]["handle"].as_u64() {
-                app.nodes.live_ui_handles.insert(handle);
+                app.graph.live_ui_handles.insert(handle);
             }
             app.note = "Live comparison running".into();
         } else {
@@ -374,28 +374,28 @@ pub(crate) fn run_live_comparison(app: &mut Workspace) {
 pub(crate) fn cancel_live_comparison(app: &mut Workspace) {
     #[cfg(unix)]
     {
-        let Some(state) = app.live_nodes.as_ref() else {
+        let Some(state) = app.live_graph.as_ref() else {
             app.note = "No live comparison is open".into();
             return;
         };
         let Some(handle) = state.handles.iter().rev().copied().find(|handle| {
-            app.nodes.live_ui_handles.contains(&handle.get())
+            app.graph.live_ui_handles.contains(&handle.get())
                 && state.session.inspect_run(*handle).is_some_and(|run| {
                     matches!(run.status, GraphRunStatus::Queued | GraphRunStatus::Running)
                 })
         }) else {
-            app.note = "No native Nodes comparison is running".into();
+            app.note = "No native Graph comparison is running".into();
             return;
         };
         let identity = state.session.snapshot().identity;
         let response = app.call_live(&ToolCall {
-            name: "nodes_cancel".into(),
+            name: "graph_cancel".into(),
             arguments: serde_json::json!({
                 "expected_document_epoch": identity.document_epoch,
                 "request": {
                     "identity": identity,
                     "handle": handle,
-                    "actor": "native-nodes-ui",
+                    "actor": "native-graph-ui",
                     "operation_key": format!("cancel-{}", handle.get()),
                 },
             }),
@@ -419,7 +419,7 @@ pub(crate) fn cancel_live_comparison(app: &mut Workspace) {
 pub(crate) fn clear_live_results(app: &mut Workspace) {
     #[cfg(unix)]
     {
-        let Some(state) = app.live_nodes.as_ref() else {
+        let Some(state) = app.live_graph.as_ref() else {
             app.note = "No live comparison is open".into();
             return;
         };
@@ -428,7 +428,7 @@ pub(crate) fn clear_live_results(app: &mut Workspace) {
             .handles
             .iter()
             .copied()
-            .filter(|handle| app.nodes.live_ui_handles.contains(&handle.get()))
+            .filter(|handle| app.graph.live_ui_handles.contains(&handle.get()))
             .filter(|handle| {
                 state.session.inspect_run(*handle).is_some_and(|run| {
                     matches!(
@@ -456,7 +456,7 @@ pub(crate) fn clear_live_results(app: &mut Workspace) {
         let mut released = 0;
         for handle in handles {
             let response = app.call_live(&ToolCall {
-                name: "nodes_release".into(),
+                name: "graph_release".into(),
                 arguments: serde_json::json!({
                     "expected_document_epoch": identity.document_epoch,
                     "identity": identity,
@@ -467,16 +467,16 @@ pub(crate) fn clear_live_results(app: &mut Workspace) {
                 && response["released"] == serde_json::Value::Bool(true)
             {
                 released += 1;
-                app.nodes.live_ui_handles.remove(&handle.get());
+                app.graph.live_ui_handles.remove(&handle.get());
             }
         }
         for artifact in artifact_ids {
-            app.nodes.proof_images.remove(&artifact);
+            app.graph.proof_images.remove(&artifact);
         }
         app.note = if released == 0 {
-            "No terminal native Nodes results to clear".into()
+            "No terminal native Graph results to clear".into()
         } else {
-            format!("Cleared {released} native Nodes result(s)")
+            format!("Cleared {released} native Graph result(s)")
         };
     }
     #[cfg(not(unix))]
@@ -493,7 +493,7 @@ pub(crate) fn live_result_node(graph: &NodeGraph, selected: Option<u32>) -> Opti
     if node.type_name == "live.proof" {
         graph
             .link_into(selected, "font")
-            .map(runebender::workflows::nodes::Link::from)
+            .map(runebender::workflows::graph::Link::from)
     } else {
         Some(selected)
     }
@@ -503,7 +503,7 @@ pub(crate) fn live_result_node(graph: &NodeGraph, selected: Option<u32>) -> Opti
 pub(crate) fn apply_live_comparison(app: &mut Workspace) {
     #[cfg(unix)]
     {
-        let Some(state) = app.live_nodes.as_ref() else {
+        let Some(state) = app.live_graph.as_ref() else {
             app.note = "No live comparison is open".into();
             return;
         };
@@ -512,7 +512,7 @@ pub(crate) fn apply_live_comparison(app: &mut Workspace) {
             return;
         };
         let snapshot = state.session.snapshot();
-        let node = live_result_node(&snapshot.graph, app.nodes.selected);
+        let node = live_result_node(&snapshot.graph, app.graph.selected);
         let identity = snapshot.identity;
         let epoch = identity.document_epoch.clone();
         let revision = app.font.project.document_revision();
@@ -520,7 +520,7 @@ pub(crate) fn apply_live_comparison(app: &mut Workspace) {
             "expected_document_epoch": epoch,
             "identity": identity,
             "handle": handle,
-            "actor": "native-nodes-ui",
+            "actor": "native-graph-ui",
             "operation_key": format!("apply-{}-{node:?}-{revision}", handle.get()),
             "authorization": "user-approved",
         });
@@ -528,7 +528,7 @@ pub(crate) fn apply_live_comparison(app: &mut Workspace) {
             arguments["node"] = serde_json::json!(node);
         }
         let response = app.call_live(&ToolCall {
-            name: "nodes_apply".into(),
+            name: "graph_apply".into(),
             arguments,
         });
         app.note = if response["ok"] == serde_json::Value::Bool(true) {
@@ -549,9 +549,9 @@ pub(crate) fn apply_live_comparison(app: &mut Workspace) {
 #[cfg(unix)]
 impl Workspace {
     /// Cache each retained exact PNG once, keyed by its immutable proof artifact identity.
-    pub(crate) fn sync_live_nodes_presentation(&mut self) {
-        let Some(state) = self.live_nodes.as_ref() else {
-            self.nodes.proof_images.clear();
+    pub(crate) fn sync_live_graph_presentation(&mut self) {
+        let Some(state) = self.live_graph.as_ref() else {
+            self.graph.proof_images.clear();
             return;
         };
         let completed: Vec<_> = state
@@ -563,13 +563,13 @@ impl Workspace {
             .iter()
             .map(|(_, artifact, _)| artifact.clone())
             .collect();
-        self.nodes
+        self.graph
             .proof_images
             .retain(|artifact, _| retained.contains(artifact));
         let images: Vec<_> = completed
             .into_iter()
             .map(|(_, artifact, proof)| (artifact, proof))
-            .filter(|(artifact, _)| !self.nodes.proof_images.contains_key(artifact))
+            .filter(|(artifact, _)| !self.graph.proof_images.contains_key(artifact))
             .filter_map(|(artifact, proof)| {
                 let (width, height) = png_dimensions(&proof.png)?;
                 Some((
@@ -583,7 +583,7 @@ impl Workspace {
                 ))
             })
             .collect();
-        self.nodes.proof_images.extend(images);
+        self.graph.proof_images.extend(images);
     }
 }
 
@@ -608,7 +608,7 @@ fn selected_glyph_names(app: &Workspace) -> Vec<String> {
 fn parse_scope(app: &Workspace) -> Result<Vec<String>, String> {
     let mut glyphs = Vec::new();
     for name in app
-        .nodes
+        .graph
         .live_scope
         .split(|character: char| character == ',' || character.is_whitespace())
         .filter(|name| !name.is_empty())

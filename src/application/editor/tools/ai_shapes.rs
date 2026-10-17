@@ -17,7 +17,7 @@ use std::time::Instant;
 use masonry::kurbo::{self, BezPath, Point, Rect, Shape as _};
 use runebender::font::LayerPointType;
 use runebender::font::generated::{GeneratedContour, GeneratedPoint};
-use runebender::workflows::nodes_run::{self, ShapesModel};
+use runebender::workflows::graph_run::{self, ShapesModel};
 use runebender::workflows::process::{
     self, OutputStream, ProcessCancellation, ProcessLimits, ProcessOutcome,
 };
@@ -254,7 +254,7 @@ impl Workspace {
     pub(crate) fn shapes_rescan(&mut self) {
         let beside = self.font_models_dir();
         self.shapes.installed =
-            nodes_run::installed_shapes(Self::models_dir().as_deref(), beside.as_deref());
+            graph_run::installed_shapes(Self::models_dir().as_deref(), beside.as_deref());
         self.shapes.scanned = true;
         let still_there = self
             .shapes
@@ -374,7 +374,7 @@ impl Workspace {
             self.shapes.note = "No shapes model yet. Train one in the panel.".into();
             return;
         };
-        let Some(font_ml) = self.nodes.font_ml.clone() else {
+        let Some(font_ml) = self.graph.font_ml.clone() else {
             self.shapes.note = "font-ml not found. Install it, or set RUNEBENDER_FONT_ML.".into();
             return;
         };
@@ -399,7 +399,7 @@ impl Workspace {
         } else {
             format!("Another {word}…")
         };
-        let device = self.nodes.device.clone();
+        let device = self.graph.device.clone();
         let job = DrawJob {
             word: word.clone(),
             seed,
@@ -539,7 +539,7 @@ impl Workspace {
             self.shapes.note = "A training run is already going.".into();
             return;
         }
-        let Some(font_ml) = self.nodes.font_ml.clone() else {
+        let Some(font_ml) = self.graph.font_ml.clone() else {
             self.shapes.note = "font-ml not found. Install it, or set RUNEBENDER_FONT_ML.".into();
             return;
         };
@@ -565,13 +565,13 @@ impl Workspace {
                 let init = self.shapes.model.clone().filter(|m| {
                     // Continuing from the font's own earlier model is the
                     // same as training it again with its spare slots.
-                    nodes_run::shapes_model_at(m).is_some_and(|model| model.spare > 0)
+                    graph_run::shapes_model_at(m).is_some_and(|model| model.spare > 0)
                 });
                 (source, format!("{stem}-shapes"), init)
             }
         };
         let out_root = match source {
-            TrainSource::SampleFont => nodes_run::models_dir_for("shapes"),
+            TrainSource::SampleFont => graph_run::models_dir_for("shapes"),
             TrainSource::ThisFont => self.font_models_dir().map(|d| d.join("shapes")),
         };
         let Some(out_root) = out_root else {
@@ -600,7 +600,7 @@ impl Workspace {
             (_, true, false) => 15000,
             (_, false, false) => 6000,
         };
-        let sample_words: Vec<String> = nodes_run::shape_words_in(&ufo)
+        let sample_words: Vec<String> = graph_run::shape_words_in(&ufo)
             .into_iter()
             .take(3)
             .collect();
@@ -616,7 +616,7 @@ impl Workspace {
             .filter_map(|v| v.as_str().map(PathBuf::from))
             .filter(|p| p.is_dir() && p != &ufo)
             .collect();
-        let device = self.nodes.device.clone();
+        let device = self.graph.device.clone();
         let job = TrainJob {
             name: name.clone(),
             out: out.clone(),

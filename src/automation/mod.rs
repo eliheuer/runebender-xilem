@@ -9,7 +9,7 @@
 pub mod agent;
 pub mod agent_cancellation;
 pub mod agent_edit;
-pub mod agent_nodes;
+pub mod agent_graph;
 pub mod agent_proof;
 pub mod agent_session;
 pub mod glyph_grading;

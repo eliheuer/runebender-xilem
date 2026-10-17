@@ -150,11 +150,11 @@ pub fn describe(tool: agent::Tool, surface: ToolSurface) -> ToolDescriptor {
         ("project_info" | "editor_connect", ToolSurface::Live) => Some(live_project_info_schema()),
         ("project_info", ToolSurface::Disk) => Some(disk_project_info_schema()),
         (name, ToolSurface::Disk) => {
-            super::agent_nodes::results::disk_response_schema(name).map(operation_result_schema)
+            super::agent_graph::results::disk_response_schema(name).map(operation_result_schema)
         }
         ("editor_sessions", ToolSurface::Live) => Some(editor_sessions_schema()),
         ("export_proof", ToolSurface::Live) => Some(export_proof_schema()),
-        ("nodes_apply", ToolSurface::Live) => {
+        ("graph_apply", ToolSurface::Live) => {
             super::agent_edit::results::response_schema("agent_apply").map(operation_result_schema)
         }
         (name, ToolSurface::Live) => super::agent_proof::success_schema(name)
@@ -162,7 +162,7 @@ pub fn describe(tool: agent::Tool, surface: ToolSurface) -> ToolDescriptor {
             .or_else(|| {
                 super::agent_edit::results::response_schema(name).map(operation_result_schema)
             })
-            .or_else(|| super::agent_nodes::results::response_schema(name).map(result_schema)),
+            .or_else(|| super::agent_graph::results::response_schema(name).map(result_schema)),
     };
     ToolDescriptor {
         tool,
@@ -181,7 +181,7 @@ fn effects_for(name: &str, surface: ToolSurface) -> Option<ToolEffects> {
             }
             "proof" => ToolEffects::file(),
             "propose" => ToolEffects::document().local_code(),
-            "nodes_run" => ToolEffects::file().local_code(),
+            "graph_run" => ToolEffects::file().local_code(),
             "propose_edits" => ToolEffects {
                 mutates_document: true,
                 ..ToolEffects::file()
@@ -195,19 +195,19 @@ fn effects_for(name: &str, surface: ToolSurface) -> Option<ToolEffects> {
         ToolSurface::Live => match name {
             "project_info" | "font_info" | "read_glyph" | "proof" | "proposal_list"
             | "editor_context" | "glyph_inventory" | "design_context" | "experiment_list"
-            | "read_kerning" | "specimen" | "agent_receipt" | "proof_status" | "nodes_discover"
-            | "nodes_snapshot" | "nodes_status" | "nodes_trace_status" | "nodes_image"
+            | "read_kerning" | "specimen" | "agent_receipt" | "proof_status" | "graph_discover"
+            | "graph_snapshot" | "graph_status" | "graph_trace_status" | "graph_image"
             | "editor_sessions" => ToolEffects::read(),
             "editor_connect" | "editor_open_glyph" | "editor_set_text" | "experiment_fork"
-            | "proof_cancel" | "agent_cancel" | "nodes_cancel" | "nodes_trace_cancel" => {
+            | "proof_cancel" | "agent_cancel" | "graph_cancel" | "graph_trace_cancel" => {
                 ToolEffects::session()
             }
             "proof_start" => ToolEffects::session().idempotent(),
-            "nodes_mutate" => ToolEffects::session().destructive().idempotent(),
-            "proof_release" | "nodes_release" | "nodes_trace_release" => {
+            "graph_mutate" => ToolEffects::session().destructive().idempotent(),
+            "proof_release" | "graph_release" | "graph_trace_release" => {
                 ToolEffects::session().destructive()
             }
-            "nodes_run" | "nodes_trace" => ToolEffects::session().local_code().idempotent(),
+            "graph_run" | "graph_trace" => ToolEffects::session().local_code().idempotent(),
             "experiment_kern" => ToolEffects::session().destructive(),
             "propose_edits" => ToolEffects::document(),
             "proposal_discard" => ToolEffects::document().destructive(),
@@ -215,7 +215,7 @@ fn effects_for(name: &str, surface: ToolSurface) -> Option<ToolEffects> {
             | "experiment_apply"
             | "experiment_undo_apply"
             | "agent_history"
-            | "nodes_apply" => ToolEffects::document().destructive(),
+            | "graph_apply" => ToolEffects::document().destructive(),
             "agent_apply" => ToolEffects::document().destructive().idempotent(),
             "export_proof" => ToolEffects::file(),
             _ => return None,
@@ -419,7 +419,7 @@ mod tests {
                 .is_read_only()
         );
         assert!(
-            find("nodes_run", ToolSurface::Live)
+            find("graph_run", ToolSurface::Live)
                 .effects
                 .unwrap()
                 .open_world
@@ -430,7 +430,7 @@ mod tests {
                 .unwrap()
                 .is_read_only()
         );
-        for name in ["proposal_discard", "proof_release", "nodes_release"] {
+        for name in ["proposal_discard", "proof_release", "graph_release"] {
             assert!(find(name, ToolSurface::Live).effects.unwrap().destructive);
         }
         assert_eq!(
@@ -509,7 +509,7 @@ mod tests {
         for tool in live::tools() {
             if !(tool.name.starts_with("proof_")
                 || tool.name.starts_with("agent_")
-                || tool.name.starts_with("nodes_"))
+                || tool.name.starts_with("graph_"))
             {
                 continue;
             }
@@ -545,7 +545,7 @@ mod tests {
             "agent_receipt",
             "agent_history",
             "agent_cancel",
-            "nodes_apply",
+            "graph_apply",
         ] {
             let schema = contract(name, ToolSurface::Live);
             let body = &schema["anyOf"][0];
@@ -559,10 +559,10 @@ mod tests {
             assert!(body["required"].as_array().unwrap().contains(&json!(field)));
         }
         assert_eq!(
-            contract("nodes_apply", ToolSurface::Live),
+            contract("graph_apply", ToolSurface::Live),
             contract("agent_apply", ToolSurface::Live)
         );
-        let disk = contract("nodes_run", ToolSurface::Disk);
+        let disk = contract("graph_run", ToolSurface::Disk);
         assert_eq!(disk["anyOf"][0]["properties"]["ok"]["type"], "boolean");
         for field in ["file", "font", "nodes"] {
             assert!(
@@ -572,7 +572,7 @@ mod tests {
                     .contains(&json!(field))
             );
         }
-        assert_ne!(disk, contract("nodes_run", ToolSurface::Live));
+        assert_ne!(disk, contract("graph_run", ToolSurface::Live));
     }
 
     // Check the currently emitted fields rather than accepting a generic object contract.

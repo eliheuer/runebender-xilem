@@ -1,13 +1,13 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Nodes: a local AI workflow as boxes and wires.
+//! Graph: a local AI workflow as boxes and wires.
 //!
 //! A node is one step: a master, a model, a task a tool runs, a
 //! compare, an install. A link carries a typed value from one node's
 //! output to another's input. The whole thing is a [`NodeGraph`],
-//! saved as `<name>.nodes.json`, which the editor draws on a canvas
-//! and `runebender nodes run` runs with no window.
+//! saved as `<name>.graph.json`, which the editor draws on a canvas
+//! and `runebender graph run` runs with no window.
 //!
 //! Node types come from two places. Core declares its own
 //! ([`core_types`]): the open font, a layer, install, compare, proof.
@@ -32,7 +32,7 @@ use serde_json::Value;
 pub const FILE_VERSION: u32 = 1;
 
 /// The file extension, after the name.
-pub const EXTENSION: &str = "nodes.json";
+pub const EXTENSION: &str = "graph.json";
 
 /// What a port carries. A link connects equal kinds only.
 ///
@@ -500,7 +500,7 @@ impl Registry {
         Self {
             types: core_types()
                 .into_iter()
-                .chain(super::nodes_live::types())
+                .chain(super::graph_live::types())
                 .collect(),
         }
     }

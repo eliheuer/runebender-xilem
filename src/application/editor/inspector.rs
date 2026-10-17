@@ -81,7 +81,7 @@ impl Workspace {
                 .and_then(|index| self.font.glyphs.get(index))?
                 .name
                 .clone(),
-            Mode::Nodes => return None,
+            Mode::Graph => return None,
         };
         let undo_depth = self.font.history_depth(&glyph, HistoryDirection::Undo);
         Some((
@@ -482,7 +482,7 @@ impl Workspace {
                 .selected
                 .and_then(|index| self.font.glyphs.get(index))
                 .map(|glyph| glyph.name.as_str()),
-            Mode::Nodes => None,
+            Mode::Graph => None,
         };
         if current_name != Some(expected.as_str()) {
             return false;
@@ -690,7 +690,7 @@ impl Workspace {
                 .selected
                 .and_then(|index| self.font.glyphs.get(index))
                 .map(|glyph| glyph.name.as_str()),
-            Mode::Nodes => None,
+            Mode::Graph => None,
         };
         let source_metadata_available = !matches!(edit, MetadataEdit::SourceMetadata { .. })
             || self

@@ -8,33 +8,33 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use runebender::automation::agent_nodes::results::{
-    NodesCancelResult, NodesDiscoverResult, NodesImageResult, NodesMutateResult,
-    NodesReleaseResult, NodesRunResult, NodesSnapshotResult, NodesStatusResult,
+use runebender::automation::agent_graph::results::{
+    GraphCancelResult, GraphDiscoverResult, GraphImageResult, GraphMutateResult,
+    GraphReleaseResult, GraphRunResult, GraphSnapshotResult, GraphStatusResult,
 };
 use runebender::font::compiler::proof::CompiledProofRecipe;
 use runebender::font::variable::SourceId;
-use runebender::workflows::nodes::Registry;
-use runebender::workflows::nodes_live;
-use runebender::workflows::nodes_session::{GraphDocumentState, GraphRunHandle, GraphSession};
+use runebender::workflows::graph::Registry;
+use runebender::workflows::graph_live;
+use runebender::workflows::graph_session::{GraphDocumentState, GraphRunHandle, GraphSession};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
 use super::execution::{LiveGraphExecution, LiveGraphPhase, LiveGraphProofOutputs};
 use super::trace::TraceSession;
-use crate::application::platform::nodes_file::{self, LiveGraphFileMetadata};
-use crate::application::platform::nodes_proofs::{NodeProofInspection, NodeProofJobs};
+use crate::application::platform::graph_file::{self, LiveGraphFileMetadata};
+use crate::application::platform::graph_proofs::{NodeProofInspection, NodeProofJobs};
 use crate::application::workspace::Workspace;
 
 static NEXT_GRAPH_SESSION: AtomicU64 = AtomicU64::new(1);
 
 /// Per-document live graph, retained jobs and bounded transport retry responses.
-pub(crate) struct LiveNodesState {
+pub(crate) struct LiveGraphState {
     pub(crate) session: GraphSession,
     pub(crate) execution: LiveGraphExecution,
     pub(crate) proofs: NodeProofJobs,
     pub(crate) handles: BTreeSet<GraphRunHandle>,
-    pub(crate) requests: BTreeMap<(String, String), (Value, RetainedNodesResponse)>,
+    pub(crate) requests: BTreeMap<(String, String), (Value, RetainedGraphResponse)>,
     pub(crate) next_job: u64,
     pub(crate) file: Option<LiveGraphFileMetadata>,
     pub(crate) saved_revision: Option<u64>,
@@ -45,15 +45,15 @@ pub(crate) struct LiveNodesState {
 
 /// Retained transport retry body for graph runs or delegated font Apply.
 #[derive(Clone)]
-pub(crate) enum RetainedNodesResponse {
-    Run(Box<NodesRunResult>),
+pub(crate) enum RetainedGraphResponse {
+    Run(Box<GraphRunResult>),
     Apply(Value),
 }
 
 impl Workspace {
     /// Whether a retained live comparison still needs its owned jobs observed.
-    pub(crate) fn live_nodes_need_pump(&self) -> bool {
-        self.live_nodes.as_ref().is_some_and(|state| {
+    pub(crate) fn live_graph_need_pump(&self) -> bool {
+        self.live_graph.as_ref().is_some_and(|state| {
             state.trace.as_ref().is_some_and(TraceSession::needs_pump)
                 || state.handles.iter().copied().any(|handle| {
                     matches!(
@@ -72,17 +72,17 @@ impl Workspace {
 
     /// Access the canonical live graph used by both UI and agent commands.
     pub(crate) fn live_graph_session(&self) -> Option<&GraphSession> {
-        self.live_nodes.as_ref().map(|state| &state.session)
+        self.live_graph.as_ref().map(|state| &state.session)
     }
 
     /// Mutate through `GraphSession`'s guarded methods, never a copied canvas graph.
     pub(crate) fn live_graph_session_mut(&mut self) -> Option<&mut GraphSession> {
-        self.live_nodes.as_mut().map(|state| &mut state.session)
+        self.live_graph.as_mut().map(|state| &mut state.session)
     }
 
     /// Create the unsaved comparison starter lazily for this document lifetime.
     pub(crate) fn ensure_live_graph(&mut self) -> Result<(), String> {
-        if self.live_nodes.is_some() {
+        if self.live_graph.is_some() {
             return Ok(());
         }
         let source = self
@@ -150,7 +150,7 @@ impl Workspace {
         &mut self,
         recipe: CompiledProofRecipe,
     ) -> Result<(), String> {
-        if self.live_nodes.is_some() {
+        if self.live_graph.is_some() {
             return Ok(());
         }
         let source = self
@@ -185,7 +185,7 @@ impl Workspace {
             .iter()
             .map(|axis| source_location.get(&axis.name).copied().unwrap_or(0.0))
             .collect();
-        let mut graph = nodes_live::comparison_starter(source);
+        let mut graph = graph_live::comparison_starter(source);
         let selected_recipe = selected_recipe
             .map(|recipe| serde_json::to_value(recipe).map_err(|error| error.to_string()))
             .transpose()?;
@@ -201,7 +201,7 @@ impl Workspace {
                 }
             }
         }
-        self.live_nodes = Some(fresh_live_nodes(self.document_id, epoch, graph, None)?);
+        self.live_graph = Some(fresh_live_graph(self.document_id, epoch, graph, None)?);
         Ok(())
     }
 
@@ -215,7 +215,7 @@ impl Workspace {
     ) -> Result<LiveGraphFileMetadata, String> {
         self.ensure_live_graph()?;
         let state = self
-            .live_nodes
+            .live_graph
             .as_mut()
             .expect("live graph was initialized");
         let expected_revision = state
@@ -224,7 +224,7 @@ impl Workspace {
             .filter(|metadata| metadata.path == path)
             .map(|metadata| metadata.revision.as_str());
         let snapshot = state.session.snapshot();
-        let saved = nodes_file::save(path, &snapshot.graph, expected_revision)
+        let saved = graph_file::save(path, &snapshot.graph, expected_revision)
             .map_err(|error| error.to_string())?;
         state.file = Some(saved.metadata.clone());
         state.saved_revision = Some(snapshot.revision);
@@ -248,7 +248,7 @@ impl Workspace {
             .name()
             .to_owned();
         if self
-            .live_nodes
+            .live_graph
             .as_ref()
             .is_some_and(|state| !state.handles.is_empty() || state.trace.is_some())
         {
@@ -256,7 +256,7 @@ impl Workspace {
                 "release current live graph runs and traces before opening another graph".into(),
             );
         }
-        let mut document = nodes_file::load(path).map_err(|error| error.to_string())?;
+        let mut document = graph_file::load(path).map_err(|error| error.to_string())?;
         let fonts: Vec<usize> = document
             .graph
             .nodes
@@ -277,18 +277,18 @@ impl Workspace {
             .document_epoch()
             .to_owned();
         let metadata = document.metadata;
-        let replacement = fresh_live_nodes(
+        let replacement = fresh_live_graph(
             self.document_id,
             epoch,
             document.graph,
             Some(metadata.clone()),
         )?;
-        self.live_nodes = Some(replacement);
-        self.nodes.live_selected = true;
-        self.nodes.selected = None;
-        self.nodes.live_ui_handles.clear();
-        self.nodes.proof_images.clear();
-        self.nodes.content_sizes.clear();
+        self.live_graph = Some(replacement);
+        self.graph.live_selected = true;
+        self.graph.selected = None;
+        self.graph.live_ui_handles.clear();
+        self.graph.proof_images.clear();
+        self.graph.content_sizes.clear();
         self.note = format!(
             "Opened {} for source {source_name}; no comparison was run",
             path.file_name()
@@ -299,9 +299,9 @@ impl Workspace {
     }
 
     /// Observe only owned Python/proof jobs and publish results with their captured identities.
-    pub(crate) fn live_nodes_pump(&mut self) {
+    pub(crate) fn live_graph_pump(&mut self) {
         self.poll_live_trace();
-        let Some(state) = self.live_nodes.as_mut() else {
+        let Some(state) = self.live_graph.as_mut() else {
             return;
         };
         let Some(queue) = self.script_jobs.as_ref() else {
@@ -322,8 +322,8 @@ impl Workspace {
             if matches!(
                 state.execution.phase(handle),
                 Some(LiveGraphPhase::Terminal(
-                    runebender::workflows::nodes_session::GraphRunStatus::Stale
-                        | runebender::workflows::nodes_session::GraphRunStatus::Cancelled
+                    runebender::workflows::graph_session::GraphRunStatus::Stale
+                        | runebender::workflows::graph_session::GraphRunStatus::Cancelled
                 ))
             ) {
                 state.proofs.release(handle.get());
@@ -410,9 +410,9 @@ impl Workspace {
             if matches!(
                 state.execution.phase(handle),
                 Some(LiveGraphPhase::Terminal(
-                    runebender::workflows::nodes_session::GraphRunStatus::Stale
-                        | runebender::workflows::nodes_session::GraphRunStatus::Cancelled
-                        | runebender::workflows::nodes_session::GraphRunStatus::Failed
+                    runebender::workflows::graph_session::GraphRunStatus::Stale
+                        | runebender::workflows::graph_session::GraphRunStatus::Cancelled
+                        | runebender::workflows::graph_session::GraphRunStatus::Failed
                 ))
             ) {
                 state.proofs.release(handle.get());
@@ -421,21 +421,21 @@ impl Workspace {
     }
 }
 
-fn fresh_live_nodes(
+fn fresh_live_graph(
     document_id: u64,
     epoch: String,
-    graph: runebender::workflows::nodes::NodeGraph,
+    graph: runebender::workflows::graph::NodeGraph,
     file: Option<LiveGraphFileMetadata>,
-) -> Result<LiveNodesState, String> {
+) -> Result<LiveGraphState, String> {
     let generation = NEXT_GRAPH_SESSION.fetch_add(1, Ordering::Relaxed);
     let session = GraphSession::new(
-        format!("nodes-{document_id}-{generation}"),
+        format!("graph-{document_id}-{generation}"),
         epoch,
         graph,
         Registry::core(),
     )
     .map_err(|error| error.to_string())?;
-    Ok(LiveNodesState {
+    Ok(LiveGraphState {
         session,
         execution: LiveGraphExecution::default(),
         proofs: NodeProofJobs::default(),
@@ -459,43 +459,43 @@ fn success(result: impl serde::Serialize) -> Value {
 }
 
 impl Workspace {
-    pub(crate) fn call_agent_nodes(
+    pub(crate) fn call_agent_graph(
         &mut self,
         call: &runebender::automation::agent::ToolCall,
     ) -> Option<Value> {
         if !matches!(
             call.name.as_str(),
-            "nodes_discover"
-                | "nodes_snapshot"
-                | "nodes_mutate"
-                | "nodes_trace"
-                | "nodes_trace_status"
-                | "nodes_trace_cancel"
-                | "nodes_trace_release"
-                | "nodes_run"
-                | "nodes_status"
-                | "nodes_cancel"
-                | "nodes_release"
-                | "nodes_apply"
-                | "nodes_image"
+            "graph_discover"
+                | "graph_snapshot"
+                | "graph_mutate"
+                | "graph_trace"
+                | "graph_trace_status"
+                | "graph_trace_cancel"
+                | "graph_trace_release"
+                | "graph_run"
+                | "graph_status"
+                | "graph_cancel"
+                | "graph_release"
+                | "graph_apply"
+                | "graph_image"
         ) {
             return None;
         }
-        Some(match self.handle_agent_nodes(call) {
+        Some(match self.handle_agent_graph(call) {
             Ok(value) => value,
             Err(error) => {
-                serde_json::json!({"ok":false,"error_code":"nodes_rejected","error":error,"root_changed":false})
+                serde_json::json!({"ok":false,"error_code":"graph_rejected","error":error,"root_changed":false})
             }
         })
     }
 
-    fn handle_agent_nodes(
+    fn handle_agent_graph(
         &mut self,
         call: &runebender::automation::agent::ToolCall,
     ) -> Result<Value, String> {
         use super::execution::LiveGraphSubmitRequest;
         use base64::Engine as _;
-        use runebender::automation::agent_nodes::*;
+        use runebender::automation::agent_graph::*;
         use runebender::automation::script_recipe;
         use runebender::font::compiler::proof as compiled_proof;
         use runebender::font::variable::SourceId;
@@ -515,16 +515,16 @@ impl Workspace {
         {
             return Err("stale document epoch; reconnect to the intended native session".into());
         }
-        if call.name == "nodes_run" {
+        if call.name == "graph_run" {
             self.ensure_script_job_queue()?;
         }
         self.ensure_live_graph()?;
-        if call.name != "nodes_trace_cancel" {
-            self.live_nodes_pump();
+        if call.name != "graph_trace_cancel" {
+            self.live_graph_pump();
         }
         if matches!(
             call.name.as_str(),
-            "nodes_trace" | "nodes_trace_status" | "nodes_trace_cancel" | "nodes_trace_release"
+            "graph_trace" | "graph_trace_status" | "graph_trace_cancel" | "graph_trace_release"
         ) {
             return self.handle_trace_call(call);
         }
@@ -533,14 +533,14 @@ impl Workspace {
             document_revision: self.font.project.document_revision(),
         };
         let state = self
-            .live_nodes
+            .live_graph
             .as_mut()
             .expect("live graph was initialized");
         match call.name.as_str() {
-            "nodes_discover" => {
-                let request: NodesDiscoverRequest = parse(&call.arguments)?;
+            "graph_discover" => {
+                let request: GraphDiscoverRequest = parse(&call.arguments)?;
                 request.validate()?;
-                Ok(success(NodesDiscoverResult {
+                Ok(success(GraphDiscoverResult {
                     ok: true,
                     identity: state.session.snapshot().identity,
                     discovery: state.session.discovery(),
@@ -548,32 +548,32 @@ impl Workspace {
                     root_changed: false,
                 }))
             }
-            "nodes_snapshot" => {
-                let request: NodesSnapshotRequest = parse(&call.arguments)?;
+            "graph_snapshot" => {
+                let request: GraphSnapshotRequest = parse(&call.arguments)?;
                 request.validate()?;
                 check_identity(&state.session, &request.identity)?;
-                Ok(success(NodesSnapshotResult {
+                Ok(success(GraphSnapshotResult {
                     ok: true,
                     snapshot: state.session.snapshot(),
                     root_changed: false,
                 }))
             }
-            "nodes_mutate" => {
-                let request: NodesMutateRequest = parse(&call.arguments)?;
+            "graph_mutate" => {
+                let request: GraphMutateRequest = parse(&call.arguments)?;
                 request.validate()?;
                 let response = state
                     .session
                     .mutate(request.request)
                     .map_err(|error| error.to_string())?;
-                Ok(success(NodesMutateResult {
+                Ok(success(GraphMutateResult {
                     ok: true,
                     mutation: response,
                     snapshot: state.session.snapshot(),
                     root_changed: false,
                 }))
             }
-            "nodes_run" => {
-                let request: NodesRunRequest = parse(&call.arguments)?;
+            "graph_run" => {
+                let request: GraphRunRequest = parse(&call.arguments)?;
                 request.validate()?;
                 request.validate_source(&self.font.project)?;
                 let key = (
@@ -584,7 +584,7 @@ impl Workspace {
                     if payload != &call.arguments {
                         return Err("run key already has a different request".into());
                     }
-                    let RetainedNodesResponse::Run(response) = response else {
+                    let RetainedGraphResponse::Run(response) = response else {
                         return Err("run key collides with a retained Apply response".into());
                     };
                     let mut replay = (**response).clone();
@@ -616,7 +616,7 @@ impl Workspace {
                     &self.font.project,
                     SourceId(request.source),
                     &request.glyphs,
-                    format!("nodes-{}-{}", self.document_id, state.next_job),
+                    format!("graph-{}-{}", self.document_id, state.next_job),
                     parameters.into_iter().collect(),
                 )?;
                 let baseline = compiled_proof::capture(&self.font.project)?;
@@ -642,7 +642,7 @@ impl Workspace {
                     .map_err(|error| error.to_string())?;
                 state.next_job = state.next_job.saturating_add(1);
                 state.handles.insert(submitted.graph.receipt.handle);
-                let response = NodesRunResult {
+                let response = GraphRunResult {
                     ok: true,
                     run: submitted.graph,
                     replayed: false,
@@ -652,13 +652,13 @@ impl Workspace {
                     key,
                     (
                         call.arguments.clone(),
-                        RetainedNodesResponse::Run(Box::new(response.clone())),
+                        RetainedGraphResponse::Run(Box::new(response.clone())),
                     ),
                 );
                 Ok(success(response))
             }
-            "nodes_status" => {
-                let request: NodesStatusRequest = parse(&call.arguments)?;
+            "graph_status" => {
+                let request: GraphStatusRequest = parse(&call.arguments)?;
                 request.validate()?;
                 check_identity(&state.session, &request.identity)?;
                 let inspection = state
@@ -667,7 +667,7 @@ impl Workspace {
                     .ok_or("unknown graph run")?;
                 let fresh = run_is_current(&state.session, &inspection, &current);
                 let summary = state.execution.result_summary(request.handle);
-                Ok(success(NodesStatusResult {
+                Ok(success(GraphStatusResult {
                     ok: true,
                     run: inspection,
                     current: fresh,
@@ -678,8 +678,8 @@ impl Workspace {
                     root_changed: false,
                 }))
             }
-            "nodes_cancel" => {
-                let request: NodesCancelRequest = parse(&call.arguments)?;
+            "graph_cancel" => {
+                let request: GraphCancelToolRequest = parse(&call.arguments)?;
                 request.validate()?;
                 let handle = request.request.handle;
                 let queue = self
@@ -700,20 +700,20 @@ impl Workspace {
                 if state.session.inspect_run(handle).is_some_and(|run| {
                     matches!(
                         run.status,
-                        runebender::workflows::nodes_session::GraphRunStatus::Cancelled
-                            | runebender::workflows::nodes_session::GraphRunStatus::CancellationRequested
+                        runebender::workflows::graph_session::GraphRunStatus::Cancelled
+                            | runebender::workflows::graph_session::GraphRunStatus::CancellationRequested
                     )
                 }) {
                     state.proofs.release(handle.get());
                 }
-                Ok(success(NodesCancelResult {
+                Ok(success(GraphCancelResult {
                     ok: true,
                     cancellation: response.graph,
                     root_changed: false,
                 }))
             }
-            "nodes_release" => {
-                let request: NodesReleaseRequest = parse(&call.arguments)?;
+            "graph_release" => {
+                let request: GraphReleaseRequest = parse(&call.arguments)?;
                 request.validate()?;
                 check_identity(&state.session, &request.identity)?;
                 let queue = self
@@ -728,14 +728,14 @@ impl Workspace {
                     state.proofs.release(request.handle.get());
                     state.handles.remove(&request.handle);
                 }
-                Ok(success(NodesReleaseResult {
+                Ok(success(GraphReleaseResult {
                     ok: true,
                     released,
                     root_changed: false,
                 }))
             }
-            "nodes_apply" => {
-                let request: NodesApplyRequest = parse(&call.arguments)?;
+            "graph_apply" => {
+                let request: GraphApplyRequest = parse(&call.arguments)?;
                 request.validate()?;
                 check_identity(&state.session, &request.identity)?;
                 let key = (
@@ -746,7 +746,7 @@ impl Workspace {
                     if payload != &call.arguments {
                         return Err("Apply key already has a different request".into());
                     }
-                    let RetainedNodesResponse::Apply(response) = response else {
+                    let RetainedGraphResponse::Apply(response) = response else {
                         return Err("Apply key collides with a retained run response".into());
                     };
                     let mut replay = response.clone();
@@ -791,7 +791,7 @@ impl Workspace {
                     ),
                     None => self.apply_retained_agent_edit(edit.request, edit.candidate),
                 };
-                self.live_nodes
+                self.live_graph
                     .as_mut()
                     .expect("Apply does not replace the graph")
                     .requests
@@ -799,13 +799,13 @@ impl Workspace {
                         key,
                         (
                             call.arguments.clone(),
-                            RetainedNodesResponse::Apply(response.clone()),
+                            RetainedGraphResponse::Apply(response.clone()),
                         ),
                     );
                 Ok(response)
             }
-            "nodes_image" => {
-                let request: NodesImageRequest = parse(&call.arguments)?;
+            "graph_image" => {
+                let request: GraphImageRequest = parse(&call.arguments)?;
                 request.validate()?;
                 check_identity(&state.session, &request.identity)?;
                 let inspection = state
@@ -820,14 +820,14 @@ impl Workspace {
                         request.node,
                         request
                             .branch
-                            .map(|branch| branch == NodesImageBranch::Changed),
+                            .map(|branch| branch == GraphImageBranch::Changed),
                     )
                     .map_err(|error| error.to_string())?;
                 if !inspection.outputs.iter().any(|output| {
                     output.node == node
                         && matches!(
                             output.value,
-                            runebender::workflows::nodes_session::GraphNodeOutputValue::Proof { .. }
+                            runebender::workflows::graph_session::GraphNodeOutputValue::Proof { .. }
                         )
                 }) {
                     return Err("proof has no publishable completed output".into());
@@ -841,7 +841,7 @@ impl Workspace {
                 if image.bytes.len() > 5 * 1024 * 1024 {
                     return Err("specimen exceeds the transport image limit".into());
                 }
-                Ok(success(NodesImageResult {
+                Ok(success(GraphImageResult {
                     ok: true,
                     artifact_id,
                     current: fresh,
@@ -862,14 +862,14 @@ impl Workspace {
                     root_changed: false,
                 }))
             }
-            _ => Err("unknown Nodes command".into()),
+            _ => Err("unknown Graph command".into()),
         }
     }
 }
 
 fn check_identity(
     session: &GraphSession,
-    identity: &runebender::workflows::nodes_session::GraphIdentity,
+    identity: &runebender::workflows::graph_session::GraphIdentity,
 ) -> Result<(), String> {
     if &session.snapshot().identity != identity {
         return Err("stale graph session".into());
@@ -879,7 +879,7 @@ fn check_identity(
 
 fn run_is_current(
     session: &GraphSession,
-    run: &runebender::workflows::nodes_session::GraphRunInspection,
+    run: &runebender::workflows::graph_session::GraphRunInspection,
     current: &GraphDocumentState,
 ) -> bool {
     let snapshot = session.snapshot();
@@ -896,7 +896,7 @@ mod tests {
     use crate::application::font_model::FontModel;
     use runebender::automation::agent::ToolCall;
     use runebender::font::project::Project;
-    use runebender::workflows::nodes_session::{
+    use runebender::workflows::graph_session::{
         GraphEdit, GraphGuard, GraphInteractiveMutationRequest, GraphMutation,
     };
     use serde_json::json;
@@ -1057,7 +1057,7 @@ mod tests {
             })
             .unwrap();
         let root = TestDirectory::new();
-        let path = root.0.join("comparison.nodes.json");
+        let path = root.0.join("comparison.graph.json");
         let saved = app.save_live_graph_file(&path).unwrap();
         assert_eq!(app.font.project.document_revision(), document_revision);
         assert_eq!(app.font.project.is_modified(), modified);
@@ -1100,11 +1100,11 @@ mod tests {
             .find(|node| node.type_name == "live.font")
             .unwrap();
         assert_eq!(font.values["source"], source.0);
-        let state = app.live_nodes.as_ref().unwrap();
+        let state = app.live_graph.as_ref().unwrap();
         assert!(state.handles.is_empty());
         assert!(state.requests.is_empty());
         assert_eq!(state.next_job, 0);
-        assert!(app.nodes.proof_images.is_empty());
+        assert!(app.graph.proof_images.is_empty());
         assert_eq!(app.font.project.document_revision(), document_revision);
         assert_eq!(app.font.project.is_modified(), modified);
         assert_eq!(app.script_jobs.is_some(), queue_was_initialized);
@@ -1113,7 +1113,7 @@ mod tests {
         while oversized.nodes.len() <= 64 {
             oversized.add("live.proof", [0.0, 0.0]);
         }
-        let oversized_path = root.0.join("oversized.nodes.json");
+        let oversized_path = root.0.join("oversized.graph.json");
         std::fs::write(&oversized_path, serde_json::to_vec(&oversized).unwrap()).unwrap();
         let current_identity = reopened.identity;
         let error = app
@@ -1126,14 +1126,14 @@ mod tests {
         );
 
         let retained: GraphRunHandle = serde_json::from_value(json!(99)).unwrap();
-        app.live_nodes.as_mut().unwrap().handles.insert(retained);
+        app.live_graph.as_mut().unwrap().handles.insert(retained);
         let error = app.open_live_graph_file(&path, source).unwrap_err();
         assert!(error.contains("release current"));
         assert_eq!(
             app.live_graph_session().unwrap().snapshot().identity,
             current_identity
         );
-        app.live_nodes.as_mut().unwrap().handles.remove(&retained);
+        app.live_graph.as_mut().unwrap().handles.remove(&retained);
 
         let error = app
             .open_live_graph_file(&path, SourceId(usize::MAX))
@@ -1161,10 +1161,10 @@ mod tests {
 
         let directory = std::path::PathBuf::from(directory);
         std::fs::create_dir_all(&directory).unwrap();
-        let mode = std::mem::replace(&mut app.mode, Mode::Nodes);
-        app.nodes.live_selected = true;
-        app.nodes.live_scope = "A".into();
-        app.sync_live_nodes_presentation();
+        let mode = std::mem::replace(&mut app.mode, Mode::Graph);
+        app.graph.live_selected = true;
+        app.graph.live_scope = "A".into();
+        app.sync_live_graph_presentation();
         for theme in ["gray", "light"] {
             app.theme_id = theme;
             app.palette = Arc::new(Palette::load(theme));
@@ -1180,7 +1180,7 @@ mod tests {
                 (1440, 900),
                 1.0,
                 directory
-                    .join(format!("nodes-{theme}.png"))
+                    .join(format!("graph-{theme}.png"))
                     .to_str()
                     .unwrap(),
             );
@@ -1191,7 +1191,7 @@ mod tests {
 
     #[test]
     fn cancelling_a_dag_releases_earlier_proofs_while_script_cancellation_settles() {
-        let mut project = Project::new_font(std::env::temp_dir().join("nodes-cancel-unsaved.ufo"));
+        let mut project = Project::new_font(std::env::temp_dir().join("graph-cancel-unsaved.ufo"));
         project
             .add_document_glyph("A", 400.0, Some(u32::from('A')))
             .unwrap();
@@ -1233,7 +1233,7 @@ mod tests {
         let snapshot = app.live_graph_session().unwrap().snapshot();
         let started = call(
             &mut app,
-            "nodes_run",
+            "graph_run",
             json!({
                 "execution_version":2,"expected_document_epoch":epoch,
                 "guard":{"identity":identity,"semantic_revision":snapshot.semantic_revision,"semantic_hash":snapshot.semantic_hash},
@@ -1245,8 +1245,8 @@ mod tests {
             serde_json::from_value(started["run"]["receipt"]["handle"].clone()).unwrap();
         let deadline = Instant::now() + Duration::from_secs(15);
         loop {
-            app.live_nodes_pump();
-            let state = app.live_nodes.as_ref().unwrap();
+            app.live_graph_pump();
+            let state = app.live_graph.as_ref().unwrap();
             if matches!(
                 state.execution.phase(handle),
                 Some(LiveGraphPhase::ScriptQueued | LiveGraphPhase::ScriptRunning)
@@ -1265,7 +1265,7 @@ mod tests {
         }
         let cancelled = call(
             &mut app,
-            "nodes_cancel",
+            "graph_cancel",
             json!({
                 "expected_document_epoch":epoch,
                 "request":{"identity":identity,"handle":handle,"actor":"cancel-test","operation_key":"cancel"}
@@ -1273,23 +1273,23 @@ mod tests {
         );
         assert_eq!(cancelled["ok"], true, "{cancelled}");
         assert!(
-            app.live_nodes
+            app.live_graph
                 .as_ref()
                 .unwrap()
                 .proofs
                 .inspect_node(handle.get(), original)
                 .is_none()
         );
-        while app.live_nodes_need_pump() {
-            app.live_nodes_pump();
+        while app.live_graph_need_pump() {
+            app.live_graph_pump();
             assert!(Instant::now() < deadline, "cancellation did not settle");
             std::thread::sleep(Duration::from_millis(10));
         }
-        let state = app.live_nodes.as_ref().unwrap();
+        let state = app.live_graph.as_ref().unwrap();
         let run = state.session.inspect_run(handle).unwrap();
         assert_eq!(
             run.status,
-            runebender::workflows::nodes_session::GraphRunStatus::Cancelled
+            runebender::workflows::graph_session::GraphRunStatus::Cancelled
         );
         assert!(run.outputs.is_empty());
     }
@@ -1305,19 +1305,19 @@ mod tests {
     }
 
     #[test]
-    fn calibrated_trace_draws_empty_glyph_through_nodes_proof_and_apply_history() {
+    fn calibrated_trace_draws_empty_glyph_through_graph_proof_and_apply_history() {
         check_calibrated_trace_candidate(false);
     }
 
     #[test]
-    fn calibrated_trace_replaces_junk_through_nodes_proof_and_apply_history() {
+    fn calibrated_trace_replaces_junk_through_graph_proof_and_apply_history() {
         check_calibrated_trace_candidate(true);
     }
 
     fn check_calibrated_trace_candidate(junk: bool) {
         use base64::Engine as _;
 
-        let mut project = Project::new_font(std::env::temp_dir().join("nodes-trace-unsaved.ufo"));
+        let mut project = Project::new_font(std::env::temp_dir().join("graph-trace-unsaved.ufo"));
         for name in ["A", "G"] {
             project
                 .add_document_glyph(name, 400.0, Some(u32::from(name.chars().next().unwrap())))
@@ -1443,9 +1443,9 @@ mod tests {
         });
         let mut stale = request.clone();
         stale["target"]["expected_revision"] = json!("stale");
-        assert_eq!(call(&mut app, "nodes_trace", stale)["ok"], false);
+        assert_eq!(call(&mut app, "graph_trace", stale)["ok"], false);
         assert_eq!(app.live_graph_session().unwrap().snapshot(), graph);
-        let traced = call(&mut app, "nodes_trace", request.clone());
+        let traced = call(&mut app, "graph_trace", request.clone());
         assert_eq!(traced["ok"], true, "{traced}");
         assert_eq!(traced["root_changed"], false);
         assert_eq!(traced["phase"], "queued");
@@ -1467,7 +1467,7 @@ mod tests {
         });
         let trace_deadline = Instant::now() + Duration::from_secs(30);
         loop {
-            let status = call(&mut app, "nodes_trace_status", trace_status_request.clone());
+            let status = call(&mut app, "graph_trace_status", trace_status_request.clone());
             assert_eq!(status["ok"], true, "{status}");
             match status["phase"].as_str() {
                 Some("completed") => {
@@ -1501,15 +1501,15 @@ mod tests {
         let mut mismatched_retry = request.clone();
         mismatched_retry["calibration"]["font_x_at_left"] = json!(10.0);
         assert_eq!(
-            call(&mut app, "nodes_trace", mismatched_retry.clone())["ok"],
+            call(&mut app, "graph_trace", mismatched_retry.clone())["ok"],
             false
         );
-        let replay = call(&mut app, "nodes_trace", request.clone());
+        let replay = call(&mut app, "graph_trace", request.clone());
         assert_eq!(replay["replayed"], true, "{replay}");
         assert_eq!(replay["handle"], traced["handle"]);
         let run = call(
             &mut app,
-            "nodes_run",
+            "graph_run",
             json!({
                 "expected_document_epoch":epoch,
                 "guard":{"identity":graph.identity,"semantic_revision":graph.semantic_revision,
@@ -1523,7 +1523,7 @@ mod tests {
             json!({"expected_document_epoch":epoch,"identity":graph.identity,"handle":handle});
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
-            let status = call(&mut app, "nodes_status", status_request.clone());
+            let status = call(&mut app, "graph_status", status_request.clone());
             match status["run"]["status"].as_str() {
                 Some("completed") => break,
                 Some("queued" | "running") => {
@@ -1535,14 +1535,14 @@ mod tests {
         }
         let original = call(
             &mut app,
-            "nodes_image",
+            "graph_image",
             json!({
                 "expected_document_epoch":epoch,"identity":graph.identity,"handle":handle,"branch":"original"
             }),
         );
         let changed = call(
             &mut app,
-            "nodes_image",
+            "graph_image",
             json!({
                 "expected_document_epoch":epoch,"identity":graph.identity,"handle":handle,"branch":"changed"
             }),
@@ -1557,7 +1557,7 @@ mod tests {
         );
         let apply = call(
             &mut app,
-            "nodes_apply",
+            "graph_apply",
             json!({
                 "expected_document_epoch":epoch,"identity":graph.identity,"handle":handle,
                 "actor":"trace-test","operation_key":"apply-one","authorization":"user-approved"
@@ -1578,7 +1578,7 @@ mod tests {
                 .unwrap(),
             green
         );
-        app.mode = crate::application::workspace::Mode::Nodes;
+        app.mode = crate::application::workspace::Mode::Graph;
         app.undo_active_edit(false);
         assert_eq!(
             app.font.project.capture_document_layer(&address).unwrap(),
@@ -1590,17 +1590,17 @@ mod tests {
             after
         );
         assert_eq!(
-            call(&mut app, "nodes_trace_release", trace_status_request)["ok"],
+            call(&mut app, "graph_trace_release", trace_status_request)["ok"],
             true
         );
-        let released_replay = call(&mut app, "nodes_trace", request);
+        let released_replay = call(&mut app, "graph_trace", request);
         assert_eq!(released_replay["phase"], "released");
         assert_eq!(released_replay["replayed"], true);
-        assert_eq!(call(&mut app, "nodes_trace", mismatched_retry)["ok"], false);
+        assert_eq!(call(&mut app, "graph_trace", mismatched_retry)["ok"], false);
     }
 
     fn check_node_commands(generate_geometry: bool) {
-        let mut project = Project::new_font(std::env::temp_dir().join("nodes-command-unsaved.ufo"));
+        let mut project = Project::new_font(std::env::temp_dir().join("graph-command-unsaved.ufo"));
         project
             .add_document_glyph("A", 400.0, Some(u32::from('A')))
             .unwrap();
@@ -1619,7 +1619,7 @@ mod tests {
         let epoch = app.live.as_ref().unwrap().document_epoch().to_owned();
         let discovery = call(
             &mut app,
-            "nodes_discover",
+            "graph_discover",
             json!({"expected_document_epoch":epoch}),
         );
         assert_eq!(discovery["ok"], true, "{discovery}");
@@ -1629,7 +1629,7 @@ mod tests {
         let identity = discovery["identity"].clone();
         let graph_snapshot = call(
             &mut app,
-            "nodes_snapshot",
+            "graph_snapshot",
             json!({"expected_document_epoch":epoch,"identity":identity}),
         );
         assert_eq!(graph_snapshot["ok"], true, "{graph_snapshot}");
@@ -1685,8 +1685,8 @@ json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],
             })
             .unwrap();
         let snapshot = app.live_graph_session().unwrap().snapshot();
-        let request = json!({"expected_document_epoch":epoch,"guard":{"identity":identity,"semantic_revision":snapshot.semantic_revision,"semantic_hash":snapshot.semantic_hash},"actor":"nodes-test","operation_key":"run-one","source":0,"glyphs":["A"]});
-        let started = call(&mut app, "nodes_run", request.clone());
+        let request = json!({"expected_document_epoch":epoch,"guard":{"identity":identity,"semantic_revision":snapshot.semantic_revision,"semantic_hash":snapshot.semantic_hash},"actor":"graph-test","operation_key":"run-one","source":0,"glyphs":["A"]});
+        let started = call(&mut app, "graph_run", request.clone());
         assert_eq!(started["ok"], true, "{started}");
         assert_eq!(started["replayed"], false);
         assert_eq!(started["run"]["disposition"], "applied");
@@ -1695,7 +1695,7 @@ json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],
             json!({"expected_document_epoch":epoch,"identity":identity,"handle":handle});
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
-            let status = call(&mut app, "nodes_status", status_request.clone());
+            let status = call(&mut app, "graph_status", status_request.clone());
             assert_eq!(status["ok"], true, "{status}");
             assert!(status.get("report").is_some());
             assert!(status.get("stderr").is_some());
@@ -1732,9 +1732,9 @@ json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],
         );
         let mut image_request = status_request.clone();
         image_request["branch"] = json!("original");
-        let original = call(&mut app, "nodes_image", image_request.clone());
+        let original = call(&mut app, "graph_image", image_request.clone());
         image_request["branch"] = json!("changed");
-        let changed = call(&mut app, "nodes_image", image_request);
+        let changed = call(&mut app, "graph_image", image_request);
         assert_eq!(original["ok"], true, "{original}");
         assert_eq!(changed["ok"], true, "{changed}");
         assert_eq!(original["recipe"]["text"], "AA");
@@ -1743,13 +1743,13 @@ json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],
         assert_ne!(original["font_sha256"], changed["font_sha256"]);
         assert_ne!(original["png_base64"], changed["png_base64"]);
         app = capture_completed_comparison(app);
-        let apply = json!({"expected_document_epoch":epoch,"identity":identity,"handle":handle,"actor":"nodes-test","operation_key":"apply-one","authorization":"user-approved"});
+        let apply = json!({"expected_document_epoch":epoch,"identity":identity,"handle":handle,"actor":"graph-test","operation_key":"apply-one","authorization":"user-approved"});
         let address = runebender::font::variable::GlyphLayerAddress {
             glyph: "A".into(),
             layer: layer.clone(),
         };
         let before = app.font.project.capture_document_layer(&address).unwrap();
-        let state = app.live_nodes.as_ref().unwrap();
+        let state = app.live_graph.as_ref().unwrap();
         let retained = state
             .execution
             .apply_request(
@@ -1760,7 +1760,7 @@ json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],
                 },
                 serde_json::from_value(handle.clone()).unwrap(),
                 None,
-                "nodes-test",
+                "graph-test",
                 "apply-one",
                 "user-approved",
             )
@@ -1771,7 +1771,7 @@ json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],
             .preview_document_edit_transaction(&retained.candidate)
             .unwrap();
         assert_eq!(preview.len(), 1);
-        let applied = call(&mut app, "nodes_apply", apply.clone());
+        let applied = call(&mut app, "graph_apply", apply.clone());
         assert_eq!(applied["ok"], true, "{applied}");
         assert_eq!(
             app.font.project.capture_document_layer(&address).unwrap(),
@@ -1786,7 +1786,7 @@ json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],
                 .width(),
             500.0
         );
-        app.mode = crate::application::workspace::Mode::Nodes;
+        app.mode = crate::application::workspace::Mode::Graph;
         let graph_before_undo =
             serde_json::to_value(app.live_graph_session().unwrap().snapshot()).unwrap();
         assert!(app.can_metadata_history_step(false));
@@ -1822,7 +1822,7 @@ json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],
             serde_json::to_value(app.live_graph_session().unwrap().snapshot()).unwrap(),
             graph_before_undo
         );
-        let replay = call(&mut app, "nodes_apply", apply);
+        let replay = call(&mut app, "graph_apply", apply);
         assert_eq!(replay["replayed"], true);
         assert_eq!(replay["receipt"], applied["receipt"]);
         assert_eq!(replay["history_state"], "undone");
@@ -1835,15 +1835,15 @@ json.dump({"schema_version":1,"job_id":p["job_id"],"input_hash":p["input_hash"],
                 .width(),
             400.0
         );
-        let run_replay = call(&mut app, "nodes_run", request);
+        let run_replay = call(&mut app, "graph_run", request);
         assert_eq!(run_replay["replayed"], true);
         assert_eq!(run_replay["run"], started["run"]);
         assert_eq!(
-            call(&mut app, "nodes_status", status_request.clone())["stale"],
+            call(&mut app, "graph_status", status_request.clone())["stale"],
             true
         );
         assert_eq!(
-            call(&mut app, "nodes_release", status_request)["released"],
+            call(&mut app, "graph_release", status_request)["released"],
             true
         );
     }

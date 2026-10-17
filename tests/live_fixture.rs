@@ -624,21 +624,21 @@ fn mcp_graph_results_preserve_captures_images_and_explicit_apply_receipts() {
     ]));
     mcp.rpc("initialize", json!({"protocolVersion":"2025-11-25"}));
     mcp.assert_contracts(&[
-        "nodes_discover",
-        "nodes_snapshot",
-        "nodes_mutate",
-        "nodes_run",
-        "nodes_status",
-        "nodes_cancel",
-        "nodes_release",
-        "nodes_apply",
-        "nodes_image",
+        "graph_discover",
+        "graph_snapshot",
+        "graph_mutate",
+        "graph_run",
+        "graph_status",
+        "graph_cancel",
+        "graph_release",
+        "graph_apply",
+        "graph_image",
     ]);
     let epoch = &ready["document_epoch"];
-    let discovered = mcp.tool("nodes_discover", json!({"expected_document_epoch":epoch}));
+    let discovered = mcp.tool("graph_discover", json!({"expected_document_epoch":epoch}));
     let identity = &discovered["identity"];
     let snapshot = mcp.tool(
-        "nodes_snapshot",
+        "graph_snapshot",
         json!({
             "expected_document_epoch":epoch,"identity":identity
         }),
@@ -680,8 +680,8 @@ json.dump({"schema_version":p["schema_version"],"job_id":p["job_id"],"input_hash
         "actor":"graph-fixture","operation_key":"configure",
         "mutation":{"mutation":"patch","edits":edits}
     }});
-    let mutated = mcp.tool("nodes_mutate", mutation.clone());
-    let mutation_retry = mcp.tool("nodes_mutate", mutation);
+    let mutated = mcp.tool("graph_mutate", mutation.clone());
+    let mutation_retry = mcp.tool("graph_mutate", mutation);
     assert_eq!(mutation_retry["mutation"]["disposition"], "replayed");
     assert_eq!(
         mutation_retry["mutation"]["receipt"],
@@ -692,12 +692,12 @@ json.dump({"schema_version":p["schema_version"],"job_id":p["job_id"],"input_hash
         "guard":{"identity":identity,"semantic_revision":snapshot["semantic_revision"],
             "semantic_hash":snapshot["semantic_hash"]},
         "actor":"graph-fixture","operation_key":"compare","source":0,"glyphs":["A"]});
-    let started = mcp.tool("nodes_run", run_request.clone());
+    let started = mcp.tool("graph_run", run_request.clone());
     let status_args = json!({"expected_document_epoch":epoch,"identity":identity,
         "handle":started["run"]["receipt"]["handle"]});
     let deadline = Instant::now() + Duration::from_secs(30);
     let completed = loop {
-        let status = mcp.tool("nodes_status", status_args.clone());
+        let status = mcp.tool("graph_status", status_args.clone());
         match status["run"]["status"].as_str() {
             Some("completed") => break status,
             Some("queued" | "running") => {
@@ -715,7 +715,7 @@ json.dump({"schema_version":p["schema_version"],"job_id":p["job_id"],"input_hash
         mcp.tool("read_glyph", read_args.clone())["contours"],
         before["contours"]
     );
-    let retry = mcp.tool("nodes_run", run_request);
+    let retry = mcp.tool("graph_run", run_request);
     assert_eq!(retry["replayed"], true);
     assert_eq!(retry["run"], started["run"]);
 
@@ -723,7 +723,7 @@ json.dump({"schema_version":p["schema_version"],"job_id":p["job_id"],"input_hash
     for (branch, advance) in [("original", 412.0), ("changed", 512.0)] {
         let mut args = status_args.clone();
         args["branch"] = json!(branch);
-        let result = mcp.rpc("tools/call", json!({"name":"nodes_image","arguments":args}));
+        let result = mcp.rpc("tools/call", json!({"name":"graph_image","arguments":args}));
         assert_eq!(result["isError"], false, "{result}");
         let metadata: Value =
             serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap();
@@ -738,7 +738,7 @@ json.dump({"schema_version":p["schema_version"],"job_id":p["job_id"],"input_hash
         let socket = live_socket::call(
             std::path::Path::new(endpoint),
             &ToolCall {
-                name: "nodes_image".into(),
+                name: "graph_image".into(),
                 arguments: args,
             },
         )
@@ -749,7 +749,7 @@ json.dump({"schema_version":p["schema_version"],"job_id":p["job_id"],"input_hash
     }
     assert_ne!(images[0]["font_sha256"], images[1]["font_sha256"]);
     let cancelled = mcp.tool(
-        "nodes_cancel",
+        "graph_cancel",
         json!({"expected_document_epoch":epoch,"request":{
             "identity":identity,"handle":started["run"]["receipt"]["handle"],
             "actor":"graph-fixture","operation_key":"cancel-completed"
@@ -759,7 +759,7 @@ json.dump({"schema_version":p["schema_version"],"job_id":p["job_id"],"input_hash
     let apply = json!({"expected_document_epoch":epoch,"identity":identity,
         "handle":started["run"]["receipt"]["handle"],"actor":"graph-fixture",
         "operation_key":"apply","authorization":"user-approved"});
-    let applied = mcp.tool("nodes_apply", apply.clone());
+    let applied = mcp.tool("graph_apply", apply.clone());
     serde_json::from_value::<AgentApplyResponse>(applied.clone()).unwrap();
     assert_eq!(applied["root_changed"], true);
     assert_eq!(fixture.control("state")["canonical_advance"], 512.0);
@@ -789,7 +789,7 @@ json.dump({"schema_version":p["schema_version"],"job_id":p["job_id"],"input_hash
     let undone = mcp.tool("read_glyph", read_args.clone());
     assert_eq!(undone["contours"], before["contours"]);
     assert_eq!(undone["contour_ids"], before["contour_ids"]);
-    let replay = mcp.tool("nodes_apply", apply);
+    let replay = mcp.tool("graph_apply", apply);
     serde_json::from_value::<AgentApplyResponse>(replay.clone()).unwrap();
     assert_eq!(replay["receipt"], applied["receipt"]);
     assert_eq!(replay["history_state"], "undone");
@@ -803,15 +803,15 @@ json.dump({"schema_version":p["schema_version"],"job_id":p["job_id"],"input_hash
     assert_eq!(redone["contour_ids"], after["contour_ids"]);
     assert_eq!(redone["contours"], after["contours"]);
     assert_eq!(fixture.control("undo")["canonical_advance"], 412.0);
-    let stale = mcp.tool("nodes_status", status_args.clone());
+    let stale = mcp.tool("graph_status", status_args.clone());
     assert_eq!(stale["stale"], true);
     assert_eq!(stale["can_apply"], false);
     assert_eq!(
-        mcp.tool("nodes_release", status_args.clone())["released"],
+        mcp.tool("graph_release", status_args.clone())["released"],
         true
     );
     assert_eq!(
-        mcp.tool("nodes_status", status_args)["run"]["status"],
+        mcp.tool("graph_status", status_args)["run"]["status"],
         "released"
     );
     let state = fixture.control("state");
@@ -913,7 +913,7 @@ fn mcp_generated_contours_reject_invalid_batches_and_reconcile_retries() {
 #[test]
 fn mcp_dag_chains_branches_and_keeps_successful_proofs_after_partial_failure() {
     use runebender::font::variable::SourceId;
-    use runebender::workflows::nodes_live;
+    use runebender::workflows::graph_live;
     use std::time::{Duration, Instant};
 
     let mut fixture = Fixture::spawn(Command::new(env!("CARGO_BIN_EXE_runebender")).args([
@@ -930,18 +930,18 @@ fn mcp_dag_chains_branches_and_keeps_successful_proofs_after_partial_failure() {
     ]));
     mcp.rpc("initialize", json!({"protocolVersion":"2025-11-25"}));
     mcp.assert_contracts(&[
-        "nodes_discover",
-        "nodes_run",
-        "nodes_status",
-        "nodes_apply",
-        "nodes_image",
+        "graph_discover",
+        "graph_run",
+        "graph_status",
+        "graph_apply",
+        "graph_image",
     ]);
     let epoch = &ready["document_epoch"];
-    let discovered = mcp.tool("nodes_discover", json!({"expected_document_epoch":epoch}));
+    let discovered = mcp.tool("graph_discover", json!({"expected_document_epoch":epoch}));
     assert_eq!(discovered["discovery"]["execution_versions"], json!([1, 2]));
     let identity = &discovered["identity"];
     let snapshot = mcp.tool(
-        "nodes_snapshot",
+        "graph_snapshot",
         json!({"expected_document_epoch":epoch,"identity":identity}),
     )["snapshot"]
         .clone();
@@ -949,7 +949,7 @@ fn mcp_dag_chains_branches_and_keeps_successful_proofs_after_partial_failure() {
         "read_glyph",
         json!({"expected_document_epoch":epoch,"source":0,"glyph":"A"}),
     );
-    let mut graph = nodes_live::comparison_starter(SourceId(0));
+    let mut graph = graph_live::comparison_starter(SourceId(0));
     graph.node_mut(3).unwrap().values.insert("code".into(), json!(r#"import json,sys
 p=json.load(sys.stdin)
 l=p['layers'][0]
@@ -993,7 +993,7 @@ json.dump({'schema_version':2,'job_id':p['job_id'],'input_hash':p['input_hash'],
     graph.connect(blocked, "font", blocked_proof, "font");
     for node in &mut graph.nodes {
         if node.type_name == "live.proof" {
-            let mut recipe = nodes_live::default_proof_recipe();
+            let mut recipe = graph_live::default_proof_recipe();
             recipe["text"] = json!(if node.id == child_proof { "AAA" } else { "AA" });
             node.values.insert("recipe".into(), recipe);
         }
@@ -1016,7 +1016,7 @@ json.dump({'schema_version':2,'job_id':p['job_id'],'input_hash':p['input_hash'],
             .iter()
             .map(|link| json!({"edit":"connect","link":link})),
     );
-    let mutated = mcp.tool("nodes_mutate", json!({"expected_document_epoch":epoch,"request":{
+    let mutated = mcp.tool("graph_mutate", json!({"expected_document_epoch":epoch,"request":{
         "guard":{"identity":identity,"revision":snapshot["revision"]},"actor":"dag-fixture","operation_key":"configure",
         "mutation":{"mutation":"patch","edits":edits}
     }}));
@@ -1027,17 +1027,17 @@ json.dump({'schema_version':2,'job_id':p['job_id'],'input_hash':p['input_hash'],
     let mut legacy = request.clone();
     legacy.as_object_mut().unwrap().remove("execution_version");
     legacy["operation_key"] = json!("legacy-rejects-dag");
-    mcp.rejected_tool("nodes_run", legacy);
-    let started = mcp.tool("nodes_run", request.clone());
+    mcp.rejected_tool("graph_run", legacy);
+    let started = mcp.tool("graph_run", request.clone());
     let status_args = json!({"expected_document_epoch":epoch,"identity":identity,"handle":started["run"]["receipt"]["handle"]});
     // Layout changes during execution preserve semantic identity and the captured input.
-    mcp.tool("nodes_mutate", json!({"expected_document_epoch":epoch,"request":{
+    mcp.tool("graph_mutate", json!({"expected_document_epoch":epoch,"request":{
         "guard":{"identity":identity,"revision":snapshot["revision"]},"actor":"dag-fixture","operation_key":"layout",
         "mutation":{"mutation":"patch","edits":[{"edit":"move_node","node":child,"pos":[710.0,60.0]}]}
     }}));
     let deadline = Instant::now() + Duration::from_secs(60);
     let completed = loop {
-        let status = mcp.tool("nodes_status", status_args.clone());
+        let status = mcp.tool("graph_status", status_args.clone());
         match status["run"]["status"].as_str() {
             Some("partially_failed") => break status,
             Some("queued" | "running") => {
@@ -1076,7 +1076,7 @@ json.dump({'schema_version':2,'job_id':p['job_id'],'input_hash':p['input_hash'],
         )["contours"],
         before["contours"]
     );
-    let retry = mcp.tool("nodes_run", request);
+    let retry = mcp.tool("graph_run", request);
     assert_eq!(retry["run"], started["run"]);
     assert_eq!(retry["replayed"], true);
     let outputs = completed["run"]["outputs"].as_array().unwrap();
@@ -1088,7 +1088,7 @@ json.dump({'schema_version':2,'job_id':p['job_id'],'input_hash':p['input_hash'],
     ] {
         let mut args = status_args.clone();
         args["node"] = json!(proof_node);
-        let proof = mcp.tool("nodes_image", args);
+        let proof = mcp.tool("graph_image", args);
         assert_eq!(proof["glyphs"][0]["x_advance"], advance);
         let expected = if parent == 1 {
             &completed["run"]["identity"]["capture"]["font"]["capture_sha256"]
@@ -1104,14 +1104,14 @@ json.dump({'schema_version':2,'job_id':p['job_id'],'input_hash':p['input_hash'],
     }
     let mut alias = status_args.clone();
     alias["branch"] = json!("changed");
-    mcp.rejected_tool("nodes_image", alias);
+    mcp.rejected_tool("graph_image", alias);
     let mut apply = status_args.clone();
     apply["actor"] = json!("dag-fixture");
     apply["operation_key"] = json!("apply-child");
     apply["authorization"] = json!("user-approved");
-    mcp.rejected_tool("nodes_apply", apply.clone());
+    mcp.rejected_tool("graph_apply", apply.clone());
     apply["node"] = json!(child);
-    let applied = mcp.tool("nodes_apply", apply.clone());
+    let applied = mcp.tool("graph_apply", apply.clone());
     assert_eq!(fixture.control("state")["canonical_advance"], 529.0);
     let after = mcp.tool(
         "read_glyph",
@@ -1130,12 +1130,12 @@ json.dump({'schema_version':2,'job_id':p['job_id'],'input_hash':p['input_hash'],
         last[0]["id"].as_str().unwrap()
     );
     assert_eq!(fixture.control("undo")["canonical_advance"], 412.0);
-    let replay = mcp.tool("nodes_apply", apply.clone());
+    let replay = mcp.tool("graph_apply", apply.clone());
     assert_eq!(replay["receipt"], applied["receipt"]);
     assert_eq!(replay["history_state"], "undone");
     let mut different = apply;
     different["node"] = json!(sibling);
-    mcp.rejected_tool("nodes_apply", different);
+    mcp.rejected_tool("graph_apply", different);
     assert_eq!(fixture.control("redo")["canonical_advance"], 529.0);
     let redone = mcp.tool(
         "read_glyph",
@@ -1143,13 +1143,13 @@ json.dump({'schema_version':2,'job_id':p['job_id'],'input_hash':p['input_hash'],
     );
     assert_eq!(redone["contours"], after["contours"]);
     assert_eq!(fixture.control("undo")["canonical_advance"], 412.0);
-    assert_eq!(mcp.tool("nodes_status", status_args.clone())["stale"], true);
+    assert_eq!(mcp.tool("graph_status", status_args.clone())["stale"], true);
     assert_eq!(
-        mcp.tool("nodes_release", status_args.clone())["released"],
+        mcp.tool("graph_release", status_args.clone())["released"],
         true
     );
     assert_eq!(
-        mcp.tool("nodes_status", status_args)["run"]["status"],
+        mcp.tool("graph_status", status_args)["run"]["status"],
         "released"
     );
     assert_eq!(fixture.control("state")["source_exists"], false);

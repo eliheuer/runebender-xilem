@@ -46,6 +46,6 @@ pub(crate) mod live_fixture;
 pub(crate) mod live_host;
 
 #[cfg(unix)]
-pub(crate) mod nodes_file;
+pub(crate) mod graph_file;
 #[cfg(unix)]
-pub(crate) mod nodes_proofs;
+pub(crate) mod graph_proofs;

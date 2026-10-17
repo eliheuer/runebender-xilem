@@ -30,7 +30,7 @@ use crate::font::LayerView;
 use crate::font::project::Project;
 use crate::font::proposal;
 use crate::font::variable::{GlyphLayerAddress, LayerId, SourceId};
-use crate::workflows::nodes::{Kind, NodeGraph, NodeType, Port, Registry, RowsInputEncoding};
+use crate::workflows::graph::{Kind, NodeGraph, NodeType, Port, Registry, RowsInputEncoding};
 use crate::workflows::process::{
     self, OutputStream, ProcessCancellation, ProcessLimits, ProcessOutcome,
 };
@@ -357,7 +357,7 @@ pub fn cache_path(graph: &Path) -> PathBuf {
     let name = graph
         .file_name()
         .and_then(|n| n.to_str())
-        .unwrap_or("nodes");
+        .unwrap_or("graph");
     graph.with_file_name(format!(".{name}.cache"))
 }
 
@@ -1950,7 +1950,7 @@ mod tests {
 
     use super::*;
     use crate::font::project::SourceInput;
-    use crate::workflows::nodes::{NodeCachePolicy, NodeEffects, NodeExecution};
+    use crate::workflows::graph::{NodeCachePolicy, NodeEffects, NodeExecution};
 
     struct Scratch(PathBuf);
 
@@ -1958,7 +1958,7 @@ mod tests {
         fn new() -> Self {
             static NEXT: AtomicUsize = AtomicUsize::new(0);
             let path = std::env::temp_dir().join(format!(
-                "runebender-nodes-run-{}-{}",
+                "runebender-graph-run-{}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));
@@ -2094,11 +2094,11 @@ mod tests {
         });
         let registry = Registry {
             types: vec![
-                crate::workflows::nodes::core_types()
+                crate::workflows::graph::core_types()
                     .into_iter()
                     .find(|node| node.name == "core.model")
                     .unwrap(),
-                crate::workflows::nodes::core_types()
+                crate::workflows::graph::core_types()
                     .into_iter()
                     .find(|node| node.name == "core.adapter")
                     .unwrap(),
@@ -2439,8 +2439,8 @@ mod tests {
 
     #[test]
     fn cache_sits_hidden_beside_the_file() {
-        let p = cache_path(Path::new("/x/bolden.nodes.json"));
-        assert_eq!(p, Path::new("/x/.bolden.nodes.json.cache"));
+        let p = cache_path(Path::new("/x/bolden.graph.json"));
+        assert_eq!(p, Path::new("/x/.bolden.graph.json.cache"));
     }
 
     #[test]

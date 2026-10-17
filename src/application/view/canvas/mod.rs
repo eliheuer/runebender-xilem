@@ -4,6 +4,6 @@
 //! The two canvases: the glyph grid and the glyph editor.
 
 pub(crate) mod editor;
+pub(crate) mod graph;
 pub(crate) mod grid;
 pub(crate) mod list;
-pub(crate) mod nodes;

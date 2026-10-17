@@ -1,15 +1,15 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Saved Nodes graph commands and external node discovery.
+//! Saved graph commands and external node discovery.
 
 use runebender::workflows::process::{self, ProcessCancellation, ProcessLimits, ProcessOutcome};
 
 use super::font_commands::find_font_ml;
 use super::*;
 
-fn node_registry(tool: Option<&Path>) -> (nodes::Registry, Option<String>) {
-    let mut registry = nodes::Registry::core();
+fn node_registry(tool: Option<&Path>) -> (graph::Registry, Option<String>) {
+    let mut registry = graph::Registry::core();
     let Some(font_ml) = find_font_ml(tool) else {
         return (registry, None);
     };
@@ -33,7 +33,7 @@ fn node_registry(tool: Option<&Path>) -> (nodes::Registry, Option<String>) {
     (registry, Some(font_ml.display().to_string()))
 }
 
-pub(super) fn nodes_types(tool: Option<&Path>, json: bool) -> i32 {
+pub(super) fn graph_types(tool: Option<&Path>, json: bool) -> i32 {
     let (registry, font_ml) = node_registry(tool);
     if json {
         println!(
@@ -68,8 +68,8 @@ pub(super) fn nodes_types(tool: Option<&Path>, json: bool) -> i32 {
     exit::OK
 }
 
-pub(super) fn nodes_check(file: &Path, tool: Option<&Path>, json: bool) -> i32 {
-    let graph = match nodes::NodeGraph::load(file) {
+pub(super) fn graph_check(file: &Path, tool: Option<&Path>, json: bool) -> i32 {
+    let graph = match graph::NodeGraph::load(file) {
         Ok(g) => g,
         Err(e) => return fail(json, exit::USAGE, &e),
     };
@@ -119,7 +119,7 @@ pub(super) fn nodes_check(file: &Path, tool: Option<&Path>, json: bool) -> i32 {
     clippy::too_many_arguments,
     reason = "one argument per flag the command takes"
 )]
-pub(super) fn nodes_run(
+pub(super) fn graph_run(
     file: &Path,
     font: &Path,
     master: Option<&str>,
@@ -131,7 +131,7 @@ pub(super) fn nodes_run(
     proposal_only: bool,
     json: bool,
 ) -> i32 {
-    let graph = match nodes::NodeGraph::load(file) {
+    let graph = match graph::NodeGraph::load(file) {
         Ok(g) => g,
         Err(e) => return fail(json, exit::USAGE, &e),
     };
@@ -139,7 +139,7 @@ pub(super) fn nodes_run(
         return fail(json, exit::USAGE, &format!("{}: not found", font.display()));
     }
     let (registry, _) = node_registry(tool);
-    if proposal_only && let Err(e) = nodes_run::validate_proposal_workflow(&graph) {
+    if proposal_only && let Err(e) = graph_run::validate_proposal_workflow(&graph) {
         return fail(json, exit::USAGE, &e);
     }
     let problems = graph.validate(&registry);
@@ -155,17 +155,17 @@ pub(super) fn nodes_run(
     if let Some(font_ml) = find_font_ml(tool) {
         tools.insert("font-ml".to_string(), font_ml);
     }
-    let mut on_event = |event: nodes_run::Event| match event {
-        nodes_run::Event::Start {
+    let mut on_event = |event: graph_run::Event| match event {
+        graph_run::Event::Start {
             id,
             type_name,
             index,
             total,
         } => eprintln!("node {index}/{total} {id} {type_name}"),
-        nodes_run::Event::Progress {
+        graph_run::Event::Progress {
             done, total, label, ..
         } => eprintln!("progress {done}/{total} {label}"),
-        nodes_run::Event::End {
+        graph_run::Event::End {
             id,
             status,
             seconds,
@@ -175,27 +175,27 @@ pub(super) fn nodes_run(
             None => eprintln!("node {id} {status:?} {seconds:.1}s"),
         },
     };
-    let mut ctx = nodes_run::RunContext {
+    let mut ctx = graph_run::RunContext {
         font,
         master,
         glyphs: glyphs.map(<[String]>::to_vec).unwrap_or_default(),
         tools,
         models_dir: models
             .map(Path::to_path_buf)
-            .or_else(nodes_run::default_models_dir),
+            .or_else(graph_run::default_models_dir),
         device: None,
         force,
-        cache: (!no_cache).then(|| nodes_run::cache_path(file)),
+        cache: (!no_cache).then(|| graph_run::cache_path(file)),
         cancellation: ProcessCancellation::default(),
         process_limits: ProcessLimits::default(),
         on_event: &mut on_event,
     };
-    let report = nodes_run::run(&graph, &registry, &mut ctx);
+    let report = graph_run::run(&graph, &registry, &mut ctx);
     if json {
         println!(
             "{}",
             serde_json::to_value(
-                runebender::automation::agent_nodes::results::DiskNodesRunResult {
+                runebender::automation::agent_graph::results::DiskGraphRunResult {
                     ok: report.ok,
                     file: file.to_owned(),
                     font: font.to_owned(),
@@ -207,7 +207,7 @@ pub(super) fn nodes_run(
     } else {
         for n in &report.nodes {
             let note = match n.status {
-                nodes_run::Status::Failed => n
+                graph_run::Status::Failed => n
                     .report
                     .get("error")
                     .and_then(serde_json::Value::as_str)
@@ -217,9 +217,9 @@ pub(super) fn nodes_run(
                     .outputs
                     .iter()
                     .map(|(k, v)| match v {
-                        nodes_run::RunValue::Layer { name, .. } => format!("{k}={name}"),
-                        nodes_run::RunValue::Rows { rows } => format!("{k}={} rows", rows.len()),
-                        nodes_run::RunValue::Path { path } => format!("{k}={}", path.display()),
+                        graph_run::RunValue::Layer { name, .. } => format!("{k}={name}"),
+                        graph_run::RunValue::Rows { rows } => format!("{k}={} rows", rows.len()),
+                        graph_run::RunValue::Path { path } => format!("{k}={}", path.display()),
                         _ => String::new(),
                     })
                     .filter(|s| !s.is_empty())

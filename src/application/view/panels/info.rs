@@ -28,7 +28,7 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             format!("{}", app.session.point_count()),
             String::new(),
         ),
-        Mode::Overview | Mode::Nodes => {
+        Mode::Overview | Mode::Graph => {
             let g = app.selected.and_then(|i| app.font.glyphs.get(i));
             (
                 g.map(|g| g.name.clone()).unwrap_or_default(),
@@ -42,7 +42,7 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         }
     };
     let editing = matches!(app.mode, Mode::Editor(_));
-    let nodes = matches!(app.mode, Mode::Nodes);
+    let nodes = matches!(app.mode, Mode::Graph);
     // Width, LSB, and RSB share one row. Each field commits
     // live; LSB shifts the glyph, RSB changes the advance.
     // A neural item has no advance, code point or kerning group.
