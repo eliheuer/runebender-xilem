@@ -18,6 +18,7 @@ use crate::application::widgets::drag_region::drag_region;
 use crate::application::widgets::icon_button::icon_button;
 use crate::application::widgets::icon_button::named_icon_button;
 use crate::application::widgets::icon_paint;
+use crate::application::widgets::text_button::text_button;
 use crate::application::widgets::tool_group::{ToolGroup, tool_group};
 use crate::application::workspace::{Mode, Tool, Workspace};
 use masonry::layout::{Dim, Length};
@@ -369,7 +370,7 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 xrow(
                     Region::Inline,
                     (
-                        status_text_button(pal, "Center Graph", |app: &mut Workspace| {
+                        text_button(pal, "Center Graph", |app: &mut Workspace| {
                             app.graph.fit_request = app.graph.fit_request.wrapping_add(1);
                         }),
                         // Zoom moves in equal steps per doubling, as the scroll wheel does.
@@ -559,27 +560,6 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
             .width(Length::px(STATUS_SLIDER_WIDTH)),
         ),
     )
-}
-
-/// A footer action named in words, drawn bare like the footer's icons.
-fn status_text_button<F>(
-    pal: &Palette,
-    text: &'static str,
-    on_click: F,
-) -> impl WidgetView<Workspace> + use<F>
-where
-    F: Fn(&mut Workspace) + Send + Sync + 'static,
-{
-    button(
-        pal,
-        label(text)
-            .text_size(TextSize::Body.px())
-            .color(pal.editor_control_ink()),
-        on_click,
-    )
-    .padding(Length::ZERO)
-    .background_color(Color::TRANSPARENT)
-    .border_width(Length::ZERO)
 }
 
 /// One stable footer control for hiding and restoring the left dock in every mode.

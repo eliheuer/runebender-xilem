@@ -20,6 +20,7 @@ pub(crate) mod quadrant_picker;
 pub(crate) mod rounded_clip;
 pub(crate) mod shortcuts;
 pub(crate) mod source_text_area;
+pub(crate) mod text_button;
 pub(crate) mod text_label;
 pub(crate) mod tool_group;
 
