@@ -308,8 +308,12 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                             pal,
                             ZOOM_MIN.log2(),
                             ZOOM_MAX.log2(),
-                            app.graph.zoom.clamp(ZOOM_MIN, ZOOM_MAX).log2(),
-                            |app: &mut Workspace, v| app.graph.zoom = v.exp2(),
+                            app.graph
+                                .zoom
+                                .unwrap_or(1.0)
+                                .clamp(ZOOM_MIN, ZOOM_MAX)
+                                .log2(),
+                            |app: &mut Workspace, v| app.graph.zoom = Some(v.exp2()),
                         )
                         .width(Length::px(
                             crate::application::view::design::STATUS_SLIDER_WIDTH,

@@ -609,7 +609,7 @@ pub(crate) fn graph_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         view.content,
         app.graph.selected,
         app.graph.fit_request,
-        app.graph.zoom,
+        app.graph.zoom.unwrap_or(1.0),
         move |app: &mut Workspace, ev| match ev {
             GraphEvent::Changed(graph) => {
                 if live {
@@ -656,7 +656,7 @@ pub(crate) fn graph_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                 app.graph.content_sizes.insert(node, size);
             }
             GraphEvent::Note(note) => app.note = note,
-            GraphEvent::Zoom(zoom) => app.graph.zoom = zoom,
+            GraphEvent::Zoom(zoom) => app.graph.zoom = Some(zoom),
         },
     );
     Either::B(
