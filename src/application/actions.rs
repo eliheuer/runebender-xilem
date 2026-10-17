@@ -824,7 +824,7 @@ pub(crate) const ACTIONS: &[Entry] = &[
     },
     Entry {
         menu: "",
-        title: "Local AI Shape",
+        title: "Local AI Shapes",
         accelerator: None,
         action: AppAction::Tool(Tool::AiShape),
     },

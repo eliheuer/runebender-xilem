@@ -166,8 +166,8 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
 
     recipes::section(
         app,
-        "Local AI shapes tool",
-        "Local AI shapes tool",
+        "Local AI Shapes",
+        "Local AI Shapes",
         xcolumn(
             Region::List,
             (

@@ -76,7 +76,7 @@ const SHAPE_CHOICES: &[Choice] = &[
         tool: Tool::Metaball,
     },
     Choice {
-        label: "Local AI shape",
+        label: "Local AI Shapes",
         icon: "shape-ai",
         tool: Tool::AiShape,
     },
