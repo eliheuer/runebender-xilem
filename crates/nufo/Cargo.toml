@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.85"
 license = "Apache-2.0 OR MIT"
 description = "The NUFO neural font source format: labeled samples of writing in a UFO"
-repository = "https://github.com/eliheuer/runebender-xilem"
+repository = "https://github.com/fontgarden/runebender"
 publish = false
 
 [lints]
