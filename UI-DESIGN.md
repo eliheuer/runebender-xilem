@@ -1,48 +1,77 @@
-# Adding a panel section
+# Panel language
 
-Panel sections share a layout contract so a new section inherits balanced spacing, theme styling, and collapse behavior.
-Start with the recipes in [`src/application/view/recipes.rs`](src/application/view/recipes.rs) rather than assembling another panel frame.
-The same contract applies to the left sidebar and right inspector.
+A panel section is built from `recipes::Row` values grouped under captions.
+There is no other way to put content in a section.
+The vocabulary, its rules, and every measurement live in [`src/application/view/recipes/rows.rs`](src/application/view/recipes/rows.rs); this page is the summary.
+`tests/panel_vocabulary.rs` fails the build when a panel module reaches past the vocabulary to a bare label, column, or button.
 
-## Choose the composition
+## Four rules
 
-- `recipes::panel_section(app, key, title, body)` builds a complete collapsible panel section.
-- `recipes::section(app, key, title, body)` builds the header and collapsible contents without an outer inset or divider.
-- `recipes::panel_group(pal, body)` adds the shared outer inset and full-width divider to contents that do not need a collapse header.
-- `recipes::panel_stack((section, ...))` stacks complete sections without adding space beside their dividers or another outer inset.
+1. A section is one question. Its title is a short noun phrase in title case. It holds groups, and each group answers one part of the question.
+2. A group is a caption and its rows. Rows sit 4 pixels apart. Groups are separated by a hairline that stops at the section margin, with 12 pixels above and below. Sections are separated by the full-width rule. Three spacings, two dividers, no others.
+3. Prose is state, not instruction. A section never explains itself at the top. `Row::Meta` is one muted line under the thing it describes. Instructions live where the action is.
+4. One `Row::Primary` per section. Everything else is `Row::Secondary` or `Row::Quiet`. Facts go behind `Row::Details`.
 
-`panel_section` composes `panel_group` and `section`, so do not wrap it in another `panel_group`.
-Use a stable section key for the existing `Workspace` collapse state and a separate display title for its label.
-Choose a unique key for unrelated sections; reuse a key only when both dock appearances should share collapse state.
-When a section appears in both docks, reuse its contents and apply the same recipe in each location.
-Keep a deliberate exception, such as the compact node inspector header, in `section_with_header_height` with a named measurement from `design`.
+Captions and titles are title case, never all caps. Nothing in the view uppercases text, and the gate test keeps it that way.
 
-## Spacing and styling
+## The rows
 
-`panel_group` owns an 8-pixel inset on all four sides and the dividing line that spans the panel width.
-This leaves the same space between the last field and the divider as between that field and the panel sides.
-`section` owns the standard header and a 4-pixel gap before its expanded contents.
-Section bodies have no outer padding; adding it duplicates the recipe's inset.
-Standalone tool panes use `Region::Panel` to own their inset; the rail must not add another wrapper inset around them.
-
-Use `design::column` and `design::row` to state the kind of layout:
-
-| Region | Gap | Typical contents |
+| Row | Looks like | Use for |
 | --- | --- | --- |
-| `Region::Form` | 8 pixels | Groups of fields and form rows |
-| `Region::Inline` | 4 pixels | Labels, icons, and small controls on one line |
-| `Region::List` | 2 pixels | Dense rows or a field's caption and input |
+| `Meta` | One muted line | What the row above is: "14 words, 2 spare" |
+| `Prose` | One line in body ink | A note or a result |
+| `Field` | Caption over an input | A value you type |
+| `Picker` | The current choice with a chevron | One of several models or files; never a stack of toggles |
+| `Chips` | Small outlined pills over as many lines as needed | A set of words or tags |
+| `Choice` | Segmented control | Two or three exclusive options |
+| `Primary` | Filled button, full width | The one thing the section is for |
+| `Secondary` | Outlined button, full width | The other way to do it |
+| `Quiet` | Muted text button | Rare or reversible: Stop, Cancel, Undo |
+| `Status` | One sentence and a thin bar | Something in progress |
+| `Tiles` | Squares with a caption each | Samples, layers, masters |
+| `KeyValue` | Name left, value right | Facts: steps, loss, folder |
+| `Details` | Disclosure, closed by default | Rows nobody needs every day |
+| `Slider` | Caption and a slider | A value on a range |
+| `Legacy` | A view from an older module | Only while that module moves to the vocabulary |
 
-Use `recipes::field` for an edit that can commit on each change and `recipes::field_enter` when the whole value must be entered before committing.
-These recipes provide the standard input height, caption typography, theme colors, outline, and control radius.
-Wrap direct `text_input` views with `input_typography(input, pal.text)` so their retained text editor receives theme changes as well as their placeholder label.
-The wrapper bridges the pinned Xilem input's color-update behavior without replacing focused fields or losing selections.
-Use `recipes::labeled_control(pal, caption, controls)` for a shared caption over a control row; empty field captions leave no blank label row.
-For equal columns in a `Region::Form` row, wrap each field in `recipes::field_column(field)`; the row shares its available width after gaps, and the fields grow when the dock widens.
-Use the shared button and list recipes for the same reason.
+If a feature needs a row that is not here, add it to `Row` once, with a reason in its doc comment.
+
+## Build a section
+
+```rust
+use crate::application::view::recipes::{self, Group, Row, click};
+use crate::application::workspace::Workspace;
+use xilem::WidgetView;
+
+fn width_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    let model = Group::new(
+        "Model",
+        vec![
+            Row::Picker { choices: vec!["shapes-base".into()], chosen: Some(0), on_pick: std::sync::Arc::new(|_, _| {}) },
+            Row::Meta("14 words, 2 spare".into()),
+        ],
+    );
+    let train = Group::new(
+        "Train",
+        vec![Row::Primary { text: "Train From This Font".into(), on_click: click(|app| app.shapes_train(Default::default())) }],
+    );
+    recipes::section_of(app, "Local AI Shapes", "Local AI Shapes", vec![model, train])
+}
+```
+
+`recipes::section_of` owns the header, collapse state, inset, group dividers, and the full-width rule.
+`recipes::body_of` gives the groups without the header, for a caller that owns its own frame.
+`recipes::panel_stack` stacks sections.
+The reference section is `src/application/view/panels/ai_shapes.rs`; the Local AI rail in `panels/local_ai.rs` is the second.
+Views read workspace state and forward edits to existing workspace intents; font mutations and undo stay in the commands and font engine.
+
+## Older sections
+
+Sections written before the vocabulary use `recipes::panel_section`, `recipes::section`, `recipes::panel_group`, `recipes::field`, and `design::column` and `design::row` with a `Region` directly.
+They are listed in `tests/panel_vocabulary.rs` and leave that list as they move.
+Until then: `panel_group` owns an 8-pixel inset and the full-width divider; `section` owns the header and a 4-pixel gap; section bodies add no outer padding.
 Read colors from `view::theme::Palette` and measurements from `view::design` instead of assigning local colors, radii, or pixel values.
-Let the dock own its width; section contents should fit the available width without repeating the dock's default or minimum width.
-If a reusable control needs a new spacing rule, change its recipe or introduce a named design measurement with a reason rather than tuning each call site.
+Let the dock own its width; section contents fit the available width.
 
 ## Built-in theme baseline
 
@@ -134,36 +163,6 @@ The 10-pixel side inset gives controls optical clearance from the curved panel c
 Neutral slider tracks use the shared 2-pixel `SLIDER_TRACK_THICKNESS`, independently of the thumb size and hit area.
 Keep icon clusters in unpadded `Region::Inline` rows and use `STATUS_ICON_SIZE` for compact footer buttons.
 Do not add a local footer height or horizontal padding; change the shared recipe and geometry when the footer contract changes.
-
-## Example
-
-This section uses the existing editor width buffer and commit method.
-Only show it in the glyph editor, where `set_advance_from_buf` applies to the active editing session.
-For an overview edit, use the corresponding overview command instead.
-
-```rust
-use crate::application::view::{design, recipes};
-use crate::application::workspace::Workspace;
-use xilem::WidgetView;
-
-fn glyph_width_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
-    let pal = &app.palette;
-    let body = design::column(
-        design::Region::Form,
-        (recipes::field(
-            pal,
-            "Width",
-            app.advance_buf.clone(),
-            |app: &mut Workspace, value| app.set_advance_from_buf(value),
-        ),),
-    );
-    recipes::panel_section(app, "Glyph width", "Glyph width", body)
-}
-```
-
-Views read workspace state and forward edits to existing workspace intents.
-Keep font mutations and undo behavior in the commands and font engine rather than putting them in a layout closure.
-For an operation such as renaming, let the change callback update the input buffer and the Enter callback invoke the rename intent.
 
 ## Check a new section
 

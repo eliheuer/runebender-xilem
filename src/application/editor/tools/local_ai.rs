@@ -145,8 +145,6 @@ pub(crate) struct LocalAiState {
     pub(crate) summary: Option<String>,
     /// Scales what a model predicts.
     pub(crate) strength: f64,
-    /// What the Shapes box says: the sentence the `draw` task gets.
-    pub(crate) prompt: String,
     /// The model directories found on disk, scanned when asked.
     pub(crate) installed: Vec<(String, PathBuf)>,
     /// What font-ml says it can do, from the answer `init_nodes` kept.
@@ -834,25 +832,6 @@ impl Workspace {
     /// explicitly installs or discards it.
     pub(crate) fn run_task_on(&mut self, task: &str, names: Vec<String>) {
         self.run_task_with(task, names, None);
-    }
-
-    /// The Shapes box: run `draw` on the open glyph with the sentence
-    /// typed in the panel.
-    pub(crate) fn run_draw(&mut self) {
-        let prompt = self.ai.prompt.trim().to_string();
-        if prompt.is_empty() {
-            self.note = "Type what to draw first, such as: a circle 64 units wide".into();
-            return;
-        }
-        let Mode::Editor(index) = self.mode else {
-            self.note = "Open a glyph to draw into".into();
-            return;
-        };
-        let Some(entry) = self.font.glyphs.get(index) else {
-            return;
-        };
-        let names = vec![entry.name.clone()];
-        self.run_task_with("draw", names, Some(prompt));
     }
 
     /// Runs a task over named glyphs; `prompt` is the sentence a text

@@ -184,6 +184,7 @@ impl Workspace {
             Ok("label") => Tool::Label,
             Ok("text") => Tool::Text,
             Ok("sketch") => Tool::Sketch,
+            Ok("shapes") => Tool::AiShape,
             _ => Tool::Select,
         };
         let has_text_session = tool == Tool::Text || !initial_text.is_empty();
@@ -430,6 +431,10 @@ impl Workspace {
             Ok("scripts") => app.rail = Rail::Scripts,
             Ok("shapes") => app.rail = Rail::Shapes,
             _ => {}
+        }
+        if app.tool == Tool::AiShape {
+            // The tool was set directly, not picked, so scan for its models here.
+            app.shapes_rescan();
         }
         if let Some(index) = std::env::var("RUNEBENDER_COMPONENT")
             .ok()

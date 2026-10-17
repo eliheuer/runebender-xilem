@@ -1,264 +1,209 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The Local AI panel: installed models, the tasks font-ml runs, and
-//! the proposals waiting.
-//!
-//! This panel lives in the editor's left rail. Rows come from the tool: a task font-ml
-//! gains appears here with no change to this file.
+//! The Local AI rail: the bolden model, the tasks font-ml runs, the
+//! proposals waiting, and the nodes files beside the font. Built from
+//! the panel language in `recipes::rows`; a task font-ml gains appears
+//! here with no change to this file.
+
+use std::sync::Arc;
 
 use crate::application::editor::tools::nodes::file_label;
-use crate::application::view::design::{Region, column as xcolumn, row as xrow};
-use crate::application::view::recipes;
+use crate::application::view::recipes::{self, Group, Row, click};
 use crate::application::workspace::{Mode, Workspace};
-use masonry::layout::Length;
 use xilem::WidgetView;
-use xilem::style::Style;
-use xilem::view::FlexSpacer;
 
 pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
-    let pal = &app.palette;
     let in_editor = matches!(app.mode, Mode::Editor(_));
-    let muted = |text: String| recipes::prose_muted(pal, text);
-    let plain = |text: String| recipes::prose(pal, text);
 
-    // Which model, from the installed list.
-    let chosen = app.ai.dir.clone();
-    let models: Vec<_> = app
+    // Each section here is one group, so the section title is its caption.
+    // Model: which one, what it says about itself, how hard it pushes.
+    let names: Vec<String> = app.ai.installed.iter().map(|(n, _)| n.clone()).collect();
+    let paths: Vec<_> = app.ai.installed.iter().map(|(_, p)| p.clone()).collect();
+    let chosen = app
         .ai
-        .installed
-        .iter()
-        .cloned()
-        .map(|(name, path)| {
-            let current = chosen.as_deref() == Some(path.as_path());
-            recipes::toggle(pal, name, current, move |app: &mut Workspace| {
-                app.load_model(&path);
-            })
-        })
-        .collect();
-    let where_models = Workspace::models_dir()
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|| "~/.runebender/models".into());
-    let no_models = app.ai.installed.is_empty().then(|| {
-        muted(format!(
-            "Drop a model folder in {where_models} and it appears here. Nothing is downloaded."
-        ))
-    });
-    let summary = app.ai.summary.clone().map(plain);
-    // Strength, because a model can be right about direction and
-    // short on distance.
-    let strength = app.ai.strength;
-    let strength_row = app.ai.dir.is_some().then(|| {
-        xrow(
-            Region::Inline,
-            (
-                muted(format!("Strength {strength:.2}\u{00d7}")),
-                recipes::neutral_slider(
-                    &app.palette,
-                    0.0,
-                    3.0,
-                    strength,
-                    |app: &mut Workspace, v| {
-                        app.ai.strength = (v * 20.0).round() / 20.0;
-                    },
-                )
-                .width(Length::px(96.0)),
-            ),
-        )
-    });
+        .dir
+        .as_ref()
+        .and_then(|d| paths.iter().position(|p| p == d));
+    let mut model_rows = vec![Row::Picker {
+        choices: names,
+        chosen,
+        on_pick: Arc::new(move |app: &mut Workspace, i| {
+            if let Some(path) = paths.get(i) {
+                app.load_model(path);
+            }
+        }),
+    }];
+    if app.ai.installed.is_empty() {
+        let where_models = Workspace::models_dir()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "~/Runebender/models".into());
+        model_rows.push(Row::Meta(format!(
+            "Model folders in {where_models} appear here"
+        )));
+    }
+    if let Some(summary) = app.ai.summary.clone() {
+        model_rows.push(Row::Meta(summary));
+    }
+    if app.ai.dir.is_some() {
+        model_rows.push(Row::Slider {
+            caption: format!("Strength {:.2}\u{00d7}", app.ai.strength),
+            min: 0.0,
+            max: 3.0,
+            value: app.ai.strength,
+            on_change: Arc::new(|app: &mut Workspace, v| {
+                app.ai.strength = (v * 20.0).round() / 20.0;
+            }),
+        });
+    }
+    let model = Group::new("", model_rows);
 
-    // The Shapes box: a sentence in, a drawing in the open glyph out.
-    // Shown when the installed font-ml has the `draw` task.
-    let has_draw = app
-        .ai
-        .tasks
-        .iter()
-        .any(|t| t.implemented && t.name == "draw");
-    let shapes = has_draw.then(|| {
-        xcolumn(
-            Region::List,
-            (
-                muted("Shapes".into()),
-                // The example sits in the box as its placeholder, so the
-                // rail stays its width; Enter draws, as the button does.
-                recipes::field_bare(
-                    pal,
-                    "a circle 64 wide in the center",
-                    app.ai.prompt.clone(),
-                    |app: &mut Workspace, value| app.ai.prompt = value,
-                    |app: &mut Workspace, value| {
-                        app.ai.prompt = value;
-                        app.run_draw();
-                    },
-                ),
-                recipes::toggle(
-                    pal,
-                    "Draw: this glyph".into(),
-                    in_editor,
-                    |app: &mut Workspace| app.run_draw(),
-                ),
-            ),
-        )
-    });
-
-    // One row per task font-ml says it runs. A task that takes a
-    // sentence has its own box above and no plain row.
-    let tasks: Vec<_> = app
+    // Tasks: one row per task font-ml says it runs. The first task on
+    // the open glyph is the section's primary action.
+    let mut task_rows = Vec::new();
+    let mut primary_taken = false;
+    for task in app
         .ai
         .tasks
         .iter()
         .filter(|t| t.implemented && !t.takes_text())
-        .map(|task| {
-            let one = task.takes_glyph();
-            let all = task.takes_glyphs();
-            let name_one = task.name.clone();
-            let name_all = task.name.clone();
-            // One chip per row: the rail is 220px and two chips side
-            // by side clip, which the GPUI panel avoids by wrapping.
-            xcolumn(
-                Region::List,
-                (
-                    one.then(|| {
-                        recipes::toggle(
-                            pal,
-                            format!("{}: this glyph", task.title),
-                            in_editor,
-                            move |app: &mut Workspace| {
-                                if let Mode::Editor(index) = app.mode {
-                                    app.run_task(&name_one, Some(index));
-                                }
-                            },
-                        )
-                    }),
-                    all.then(|| {
-                        recipes::toggle(
-                            pal,
-                            format!("{}: every glyph", task.title),
-                            true,
-                            move |app: &mut Workspace| app.run_task(&name_all, None),
-                        )
-                    }),
-                ),
-            )
-        })
-        .collect();
-    let no_tool = app.nodes.tasks_error.clone().map(muted);
+    {
+        if task.takes_glyph() {
+            let name = task.name.clone();
+            let text = format!("{} This Glyph", task.title);
+            let on_click = click(move |app| {
+                if let Mode::Editor(index) = app.mode {
+                    app.run_task(&name, Some(index));
+                }
+            });
+            task_rows.push(if in_editor && !primary_taken {
+                primary_taken = true;
+                Row::Primary { text, on_click }
+            } else {
+                Row::Secondary { text, on_click }
+            });
+        }
+        if task.takes_glyphs() {
+            let name = task.name.clone();
+            task_rows.push(Row::Secondary {
+                text: format!("{} Every Glyph", task.title),
+                on_click: click(move |app| app.run_task(&name, None)),
+            });
+        }
+    }
+    if let Some(error) = app.nodes.tasks_error.clone() {
+        task_rows.push(Row::Meta(error));
+    }
+    if let Some(note) = app.ai.busy.clone() {
+        task_rows.push(Row::Status {
+            text: note,
+            fraction: None,
+        });
+        task_rows.push(Row::Quiet {
+            text: "Cancel".into(),
+            on_click: click(|app| app.cancel_task()),
+        });
+    }
+    let tasks = Group::new("", task_rows);
 
-    // What is running, and a way to stop it.
-    let busy = app.ai.busy.clone().map(|note| {
-        xrow(
-            Region::Inline,
-            (
-                plain(note),
-                FlexSpacer::Flex(1.0),
-                recipes::toggle(pal, "Cancel".into(), false, |app: &mut Workspace| {
-                    app.cancel_task();
-                }),
-            ),
-        )
-    });
+    let debt = super::weight_debt::block(app)
+        .map(|block| Group::new("", vec![Row::Legacy(Box::new(block))]));
 
-    // Proposals waiting: what each holds, and the two answers.
-    let proposals: Vec<_> = app
-        .ai
-        .proposals
-        .iter()
-        .map(|p| {
-            let compare_task = p.task.clone();
-            let install_task = p.task.clone();
-            let discard_task = p.task.clone();
-            let comparing = app.ai.preview_task.as_deref() == Some(p.task.as_str());
-            xcolumn(
-                Region::List,
-                (
-                    plain(format!(
-                        "{}: {} glyph proposal{}",
-                        p.task,
-                        p.glyphs.len(),
-                        if p.glyphs.len() == 1 { "" } else { "s" }
-                    )),
-                    muted(format!("{} structurally compatible", p.compatible.len())),
-                    recipes::toggle(
-                        pal,
-                        "Compare on canvas".into(),
-                        comparing,
-                        move |app: &mut Workspace| {
-                            app.toggle_proposal_preview(&compare_task);
-                        },
-                    ),
-                    xrow(
-                        Region::Inline,
-                        (
-                            recipes::toggle(
-                                pal,
-                                "Install".into(),
-                                true,
-                                move |app: &mut Workspace| {
-                                    app.install_proposal(&install_task, None);
-                                },
-                            ),
-                            recipes::toggle(
-                                pal,
-                                "Discard".into(),
-                                false,
-                                move |app: &mut Workspace| {
-                                    app.discard_proposal(&discard_task);
-                                },
-                            ),
-                        ),
-                    ),
-                ),
-            )
-        })
-        .collect();
-    let undo = (!app.ai.installed_order.is_empty()).then(|| {
-        recipes::toggle(
-            pal,
-            format!("Undo install ({})", app.ai.installed_order.len()),
-            false,
-            |app: &mut Workspace| app.undo_install(),
-        )
-    });
+    // Proposals: what each holds and the two answers.
+    let mut proposal_rows = Vec::new();
+    for p in &app.ai.proposals {
+        let compare_task = p.task.clone();
+        let install_task = p.task.clone();
+        let discard_task = p.task.clone();
+        let comparing = app.ai.preview_task.as_deref() == Some(p.task.as_str());
+        proposal_rows.push(Row::Prose(format!(
+            "{}: {} glyph{}",
+            p.task,
+            p.glyphs.len(),
+            if p.glyphs.len() == 1 { "" } else { "s" }
+        )));
+        proposal_rows.push(Row::Meta(format!(
+            "{} structurally compatible",
+            p.compatible.len()
+        )));
+        proposal_rows.push(Row::Choice {
+            options: vec!["Compare".into(), "Hide".into()],
+            chosen: usize::from(!comparing),
+            on_pick: Arc::new(move |app: &mut Workspace, i| {
+                let showing = app.ai.preview_task.as_deref() == Some(compare_task.as_str());
+                if (i == 0) != showing {
+                    app.toggle_proposal_preview(&compare_task);
+                }
+            }),
+        });
+        proposal_rows.push(Row::Secondary {
+            text: "Install".into(),
+            on_click: click(move |app| app.install_proposal(&install_task, None)),
+        });
+        proposal_rows.push(Row::Quiet {
+            text: "Discard".into(),
+            on_click: click(move |app| app.discard_proposal(&discard_task)),
+        });
+    }
+    if !app.ai.installed_order.is_empty() {
+        proposal_rows.push(Row::Quiet {
+            text: format!("Undo Install ({})", app.ai.installed_order.len()),
+            on_click: click(|app| app.undo_install()),
+        });
+    }
+    let proposals = (!proposal_rows.is_empty()).then(|| Group::new("", proposal_rows));
 
-    // Nodes files beside the font, as rows: the same files the Nodes
-    // tab draws.
-    let files: Vec<_> = app
+    // Nodes files beside the font: the same files the Nodes tab draws.
+    let files: Vec<String> = app.nodes.files.iter().map(|f| file_label(f)).collect();
+    let file_paths: Vec<_> = app.nodes.files.clone();
+    let current = app
         .nodes
-        .files
-        .iter()
-        .cloned()
-        .map(|file| {
-            let current = app.nodes.graph.as_ref().is_some_and(|g| g.path == file);
-            recipes::toggle(
-                pal,
-                file_label(&file),
-                current,
-                move |app: &mut Workspace| {
-                    app.open_nodes_file(&file);
-                    app.enter_nodes_mode();
-                },
-            )
-        })
-        .collect();
+        .graph
+        .as_ref()
+        .and_then(|g| file_paths.iter().position(|f| *f == g.path));
+    let nodes = (!files.is_empty()).then(|| {
+        Group::new(
+            "",
+            vec![Row::Picker {
+                choices: files,
+                chosen: current,
+                on_pick: Arc::new(move |app: &mut Workspace, i| {
+                    if let Some(file) = file_paths.get(i) {
+                        app.open_nodes_file(file);
+                        app.enter_nodes_mode();
+                    }
+                }),
+            }],
+        )
+    });
 
-    xcolumn(
-        Region::Panel,
-        (
-            muted("Model".into()),
-            xcolumn(Region::List, models),
-            no_models,
-            summary,
-            strength_row,
-            shapes,
-            muted("Tasks".into()),
-            xcolumn(Region::List, tasks),
-            no_tool,
-            super::weight_debt::block(app),
-            busy,
-            xcolumn(Region::List, proposals),
-            undo,
-            muted("Nodes".into()),
-            xcolumn(Region::List, files),
-        ),
-    )
+    let mut sections = vec![
+        recipes::section_of(app, "Local AI model", "Model", vec![model]),
+        recipes::section_of(app, "Local AI tasks", "Tasks", vec![tasks]),
+    ];
+    if let Some(debt) = debt {
+        sections.push(recipes::section_of(
+            app,
+            "Local AI weight debt",
+            "Weight Debt",
+            vec![debt],
+        ));
+    }
+    if let Some(proposals) = proposals {
+        sections.push(recipes::section_of(
+            app,
+            "Local AI proposals",
+            "Proposals",
+            vec![proposals],
+        ));
+    }
+    if let Some(nodes) = nodes {
+        sections.push(recipes::section_of(
+            app,
+            "Local AI nodes",
+            "Nodes",
+            vec![nodes],
+        ));
+    }
+    recipes::panel_stack(sections)
 }
