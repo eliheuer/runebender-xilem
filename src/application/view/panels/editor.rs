@@ -95,8 +95,8 @@ pub(crate) fn editor_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<>
                 app.command_toggle_component_alignment();
             }
             canvas::editor::EditorEvent::AiShapeBox { rect } => app.shapes_box_set(rect),
-            canvas::editor::EditorEvent::AiShapeDraw { rect, word, seed } => {
-                app.shapes_draw(rect, &word, seed);
+            canvas::editor::EditorEvent::AiShapeDraw { rect, detail, seed } => {
+                app.shapes_draw_detail(rect, &detail, seed);
             }
             canvas::editor::EditorEvent::AiShapeDrop => app.shapes_drop(),
             canvas::editor::EditorEvent::AiShapeKept { word } => app.shapes_kept(&word),

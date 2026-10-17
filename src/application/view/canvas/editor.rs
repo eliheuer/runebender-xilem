@@ -387,7 +387,11 @@ pub(crate) enum EditorEvent {
     AiShapeBox { rect: Rect },
     /// The local AI shapes tool: draw `word` into `rect`; `seed` 0 is
     /// the most likely drawing, another seed another option.
-    AiShapeDraw { rect: Rect, word: String, seed: u64 },
+    AiShapeDraw {
+        rect: Rect,
+        detail: String,
+        seed: u64,
+    },
     /// The local AI shapes tool: the box was dismissed.
     AiShapeDrop,
     /// The local AI shapes tool: the ghost was added to the glyph.
@@ -580,7 +584,13 @@ pub(crate) struct EditorWidget {
     /// The local AI shapes tool: the box dragged, the word typed into
     /// the field painted under it, and what the model drew.
     ai_box: Option<Rect>,
+    /// Detail typed under the box, added to the picked shape's prompt.
     ai_word: String,
+    /// The shape picked in the panel, shown before the detail.
+    ai_shape: String,
+    /// The detail the ghost was drawn for, so Enter knows whether to
+    /// keep it or draw again.
+    ai_drawn: Option<String>,
     ai_ghost: Option<Arc<ShapeGhost>>,
     ai_note: String,
     /// Text caret blink phase; reset whenever the person moves or edits it.
@@ -655,6 +665,7 @@ impl EditorWidget {
         self.ai_box = Some(rect);
         self.ai_ghost = None;
         self.ai_word.clear();
+        self.ai_drawn = Some(String::new());
         self.ai_note.clear();
         ctx.submit_action::<EditorEvent>(EditorEvent::AiShapeBox { rect });
         ctx.request_focus();
@@ -683,41 +694,41 @@ impl EditorWidget {
                 self.ai_box = None;
                 self.ai_ghost = None;
                 self.ai_word.clear();
+                self.ai_drawn = None;
                 ctx.submit_action::<EditorEvent>(EditorEvent::AiShapeDrop);
                 true
             }
             Key::Named(NamedKey::Enter) => {
-                let word = self.ai_word.trim().to_lowercase();
+                let detail = self.ai_word.trim().to_lowercase();
+                let current = self.ai_drawn.as_deref() == Some(detail.as_str());
                 if let Some(ghost) = self.ai_ghost.clone()
-                    && ghost.word == word
+                    && current
                 {
                     if self.session.add_generated_contours(&ghost.contours) {
                         self.ai_box = None;
                         self.ai_ghost = None;
                         self.ai_word.clear();
+                        self.ai_drawn = None;
                         ctx.submit_action::<EditorEvent>(EditorEvent::AiShapeKept {
                             word: ghost.word.clone(),
                         });
                         self.emit(ctx, true);
                     }
-                } else if !word.is_empty() {
+                } else {
+                    self.ai_drawn = Some(detail.clone());
                     ctx.submit_action::<EditorEvent>(EditorEvent::AiShapeDraw {
                         rect,
-                        word,
+                        detail,
                         seed: 0,
                     });
                 }
                 true
             }
             Key::Named(NamedKey::Tab) => {
-                let word = self.ai_word.trim().to_lowercase();
-                if !word.is_empty() {
-                    let seed = match &self.ai_ghost {
-                        Some(g) if g.word == word => g.seed + 1,
-                        _ => 1,
-                    };
-                    ctx.submit_action::<EditorEvent>(EditorEvent::AiShapeDraw { rect, word, seed });
-                }
+                let detail = self.ai_word.trim().to_lowercase();
+                let seed = self.ai_ghost.as_ref().map_or(1, |g| g.seed + 1);
+                self.ai_drawn = Some(detail.clone());
+                ctx.submit_action::<EditorEvent>(EditorEvent::AiShapeDraw { rect, detail, seed });
                 true
             }
             _ => false,
@@ -795,10 +806,19 @@ impl EditorWidget {
                 pal.text,
             )
             .draw();
-        let (shown, color) = if self.ai_word.is_empty() {
-            ("what shape?".to_string(), pal.text_muted)
+        // The shape from the panel, then the typed detail with a caret.
+        let shape = if self.ai_shape.is_empty() {
+            "pick a shape".to_string()
         } else {
-            (format!("{}|", self.ai_word), pal.text)
+            self.ai_shape.clone()
+        };
+        let (shown, color) = if self.ai_word.is_empty() {
+            (
+                format!("{shape}: add detail, such as pointing left"),
+                pal.text_muted,
+            )
+        } else {
+            (format!("{shape}: {}|", self.ai_word), pal.text)
         };
         text_label::draw(
             painter,
@@ -816,7 +836,7 @@ impl EditorWidget {
         } else if self.ai_ghost.is_some() {
             "Enter keeps · Tab another · Esc drops".to_string()
         } else {
-            "Type a word, then Enter · Esc cancels".to_string()
+            "Drawing · Esc cancels".to_string()
         };
         text_label::draw(
             painter,
@@ -4296,6 +4316,8 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
             field_buf: String::new(),
             ai_box: None,
             ai_word: String::new(),
+            ai_shape: self.ai_pick.0.clone(),
+            ai_drawn: None,
             ai_ghost: None,
             ai_note: String::new(),
             cursor_blink_elapsed_ns: 0,
@@ -4338,6 +4360,7 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
                 element.widget.ai_box = None;
                 element.widget.ai_ghost = None;
                 element.widget.ai_word.clear();
+                element.widget.ai_drawn = None;
             }
             if self.tool == Tool::Text {
                 element.ctx.request_anim_frame();
@@ -4364,10 +4387,9 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
             element.widget.ai_note = self.ai_note.clone();
             dirty = true;
         }
-        if self.ai_pick.1 != prev.ai_pick.1 && element.widget.ai_box.is_some() {
-            // A pill in the panel chose the word; the field shows it so
-            // Enter keeps and Tab varies as if it had been typed.
-            element.widget.ai_word = self.ai_pick.0.clone();
+        if self.ai_pick != prev.ai_pick {
+            // The panel's picked shape, shown before the typed detail.
+            element.widget.ai_shape = self.ai_pick.0.clone();
             dirty = true;
         }
         if self.sketch_revision != prev.sketch_revision {
@@ -4556,6 +4578,8 @@ mod tests {
             field_buf: String::new(),
             ai_box: None,
             ai_word: String::new(),
+            ai_shape: String::new(),
+            ai_drawn: None,
             ai_ghost: None,
             ai_note: String::new(),
             cursor_blink_elapsed_ns: 0,

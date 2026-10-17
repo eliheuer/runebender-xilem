@@ -97,8 +97,8 @@ pub(crate) struct AiShapesState {
     pub(crate) pump: Option<Arc<AtomicBool>>,
     /// The box on the canvas, while one is open.
     pub(crate) rect: Option<Rect>,
-    /// The word picked in the panel, with a counter so picking the
-    /// same word twice still reaches the canvas.
+    /// The shape picked in the panel, which stays picked from box to
+    /// box, with a counter so re-picking still reaches the canvas.
     pub(crate) pick: (String, u64),
 }
 
@@ -266,6 +266,7 @@ impl Workspace {
             .chosen()
             .map(|m| m.words.clone())
             .unwrap_or_default();
+        self.shapes_default_pick();
     }
 
     pub(crate) fn choose_shapes_model(&mut self, path: &Path) {
@@ -277,6 +278,17 @@ impl Workspace {
             .unwrap_or_default();
         self.shapes.ghost = None;
         self.shapes.note.clear();
+        self.shapes_default_pick();
+    }
+
+    /// Keep the picked shape one the model knows, so a dragged box
+    /// always draws something.
+    fn shapes_default_pick(&mut self) {
+        if !self.shapes.words.contains(&self.shapes.pick.0)
+            && let Some(first) = self.shapes.words.first()
+        {
+            self.shapes.pick = (first.clone(), self.shapes.pick.1 + 1);
+        }
     }
 
     fn shapes_pump_token(&mut self) -> Arc<AtomicBool> {
@@ -296,9 +308,15 @@ impl Workspace {
             job.cancellation.cancel();
         }
         self.shapes.rect = Some(rect);
-        self.shapes.pick.0.clear();
         self.shapes.ghost = None;
         self.shapes.note.clear();
+        // The picked shape goes in at once; typing is optional detail.
+        let shape = self.shapes.pick.0.clone();
+        if shape.is_empty() {
+            self.shapes.note = "Pick a shape in the panel".into();
+        } else {
+            self.shapes_draw(rect, &shape, 0);
+        }
         if !self.shapes.scanned {
             self.shapes_rescan();
         }
@@ -312,13 +330,12 @@ impl Workspace {
             job.cancellation.cancel();
         }
         self.shapes.rect = None;
-        self.shapes.pick.0.clear();
         self.shapes.ghost = None;
         self.shapes.note.clear();
     }
 
-    /// A word was clicked in the panel. With a box open, draw it there;
-    /// without one, say what to do, since the pill is the only feedback.
+    /// A shape was clicked in the panel. It stays picked; with a box
+    /// open, it goes in there now.
     pub(crate) fn shapes_pick_word(&mut self, word: &str) {
         self.shapes.pick = (word.to_owned(), self.shapes.pick.1 + 1);
         match self.shapes.rect {
@@ -327,9 +344,24 @@ impl Workspace {
         }
     }
 
+    /// Draw the picked shape in `rect` with the detail typed under the
+    /// box, such as "pointing left", as extra words in the prompt.
+    pub(crate) fn shapes_draw_detail(&mut self, rect: Rect, detail: &str, seed: u64) {
+        let shape = self.shapes.pick.0.clone();
+        if shape.is_empty() {
+            self.shapes.note = "Pick a shape in the panel".into();
+            return;
+        }
+        let prompt = if detail.trim().is_empty() {
+            shape
+        } else {
+            format!("{shape} {}", detail.trim())
+        };
+        self.shapes_draw(rect, &prompt, seed);
+    }
+
     pub(crate) fn shapes_kept(&mut self, word: &str) {
         self.shapes.rect = None;
-        self.shapes.pick.0.clear();
         self.shapes.ghost = None;
         self.shapes.note = format!("Added {word}. Undo removes it.");
         self.finish_open_glyph_refresh();

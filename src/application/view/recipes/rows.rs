@@ -359,8 +359,9 @@ fn quiet(pal: &Palette, text: String, on_click: Click) -> impl WidgetView<Worksp
     .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Row)))
 }
 
-/// The choices as rows, the chosen one inverted. With nothing to
-/// choose from, one muted line says so.
+/// The choices as rows at control height, the chosen one inverted,
+/// the same silhouette as every other control in the section. With
+/// nothing to choose from, one muted line says so.
 fn picker(
     pal: &Palette,
     choices: Vec<String>,
@@ -375,12 +376,33 @@ fn picker(
         .enumerate()
         .map(|(i, text)| {
             let on_pick = on_pick.clone();
-            super::list_row(pal, text, String::new(), chosen == Some(i), move |app| {
-                on_pick(app, i);
-            })
+            let active = chosen == Some(i);
+            let (fg, border, bg) = if active {
+                (
+                    pal.selected_ink(),
+                    pal.selected_outline(pal.outline),
+                    pal.selected_bg(),
+                )
+            } else {
+                (pal.text, pal.outline, Palette::FLAT)
+            };
+            sized_box(
+                button(
+                    pal,
+                    label(text).text_size(TextSize::Body.px()).color(fg),
+                    move |app: &mut Workspace| on_pick(app, i),
+                )
+                .background_color(bg)
+                .border_color(border)
+                .border_width(Stroke::Hairline.length()),
+            )
+            .dims(Dimensions::new(
+                Dim::Stretch,
+                Dim::from(ControlSize::Control),
+            ))
         })
         .collect();
-    column(Region::List, (empty, rows)).gap(Space::Xs)
+    column(Region::List, (empty, rows)).gap(Space::Sm)
 }
 
 /// Words as pills. Masonry's flex does not wrap, so the lines are cut

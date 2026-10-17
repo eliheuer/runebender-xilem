@@ -42,7 +42,7 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     }
     groups.push(Group::new("Model", model_rows));
 
-    // The shapes the model draws. A pill picks one for the open box.
+    // The shapes the model draws. The picked pill is what a box gets.
     if !st.words.is_empty() {
         let picked = st
             .ghost
