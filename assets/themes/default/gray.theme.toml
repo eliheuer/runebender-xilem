@@ -275,7 +275,7 @@ blurAppearance = "auto"
 # The three radii are independent; rendering caps them to fit the actual shape.
 # Changing this bundled file requires rebuilding before the application uses it.
 [geometry]
-# General corner radius for glyph tiles and small popups, in logical pixels.
+# General corner radius for glyph tiles, graph nodes, and small popups, in logical pixels.
 # 0 gives square corners; larger values make rounder corners.
 radius = 6.0
 # Separate corner radius for the large floating workspace panels.
@@ -289,8 +289,8 @@ shadowPanel = true
 # 0 gives square controls; this changes corner shape, not control height or padding.
 radiusControl = 4.0
 # Shared normal stroke width, in logical pixels; values must be nonnegative.
-# Currently parsed but not applied to native line widths, which remain fixed in code.
+# Control outlines, keylines, rules, and editor lines use it.
 stroke = 1.0
 # Shared emphasized stroke width, normally larger than stroke; must be nonnegative.
-# Currently parsed but not applied to native line widths.
+# Selected graph nodes, graph wires, and active chips use it.
 strokeEmphasis = 2.0

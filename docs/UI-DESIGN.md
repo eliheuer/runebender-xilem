@@ -5,6 +5,21 @@ There is no other way to put content in a section.
 The vocabulary, its rules, and every measurement live in [`src/application/view/recipes/rows.rs`](../src/application/view/recipes/rows.rs); this page is the summary.
 `tests/panel_vocabulary.rs` fails the build when a panel module reaches past the vocabulary to a bare label, column, or button.
 
+## The design system
+
+Panels are one part of the design system.
+Its entry point is [`src/application/view/design/mod.rs`](../src/application/view/design/mod.rs).
+Styles come from three layers:
+
+1. The theme files in `assets/themes/default/` give every color and shape value.
+2. `src/application/view/design/` gives the scales, the control states, and the themed stock widgets.
+3. `src/application/view/design/areas.rs` gives each exception for an area of the window, with its reason.
+
+A control names a `ControlKind`.
+The state table then gives it a look at rest, under the pointer, pressed, selected, disabled, and with keyboard focus.
+`tests/design_system.rs` fails the build when a view sets a color, opacity, stroke, radius, or text size by itself.
+That test counts the older exceptions, and each count can only go down.
+
 ## Four rules
 
 1. A section is one question. Its title is a short noun phrase in title case. It holds groups, and each group answers one part of the question.
