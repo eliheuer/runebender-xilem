@@ -41,6 +41,8 @@ pub(crate) struct ShapeGhost {
 pub(crate) struct DrawJob {
     pub(crate) word: String,
     pub(crate) seed: u64,
+    /// The box the shape is for; what comes back is fitted to it.
+    pub(crate) rect: Rect,
     finished: DrawOutcome,
     cancellation: ProcessCancellation,
 }
@@ -400,6 +402,7 @@ impl Workspace {
         let job = DrawJob {
             word: word.clone(),
             seed,
+            rect,
             finished: Arc::new(Mutex::new(None)),
             cancellation: ProcessCancellation::default(),
         };
@@ -466,7 +469,8 @@ impl Workspace {
             if let Some(result) = finished {
                 self.shapes.job = None;
                 match result {
-                    Ok(contours) => {
+                    Ok(mut contours) => {
+                        fit_contours(&mut contours, job.rect);
                         let points: usize = contours.iter().map(|c| c.points.len()).sum();
                         let path = contours_path(&contours);
                         self.shapes.ghost = Some(Arc::new(ShapeGhost {
@@ -711,6 +715,32 @@ impl Workspace {
 }
 
 /// A ghost or sample path fitted into a square of `size` pixels.
+/// Stretch the drawing to fill `rect` exactly. The model draws inside
+/// the box it was given but rarely to its edges, and the box is what
+/// the person asked for.
+pub(crate) fn fit_contours(contours: &mut [GeneratedContour], rect: Rect) {
+    let mut bounds: Option<Rect> = None;
+    for p in contours.iter().flat_map(|c| c.points.iter()) {
+        let r = Rect::from_points(p.position, p.position);
+        bounds = Some(bounds.map_or(r, |b| b.union(r)));
+    }
+    let Some(bounds) = bounds else {
+        return;
+    };
+    if bounds.width() <= 0.0 || bounds.height() <= 0.0 {
+        return;
+    }
+    let affine = kurbo::Affine::translate((rect.x0, rect.y0))
+        * kurbo::Affine::scale_non_uniform(
+            rect.width() / bounds.width(),
+            rect.height() / bounds.height(),
+        )
+        * kurbo::Affine::translate((-bounds.x0, -bounds.y0));
+    for p in contours.iter_mut().flat_map(|c| c.points.iter_mut()) {
+        p.position = (affine * p.position).round();
+    }
+}
+
 pub(crate) fn fit_path(path: &BezPath, size: f64, inset: f64) -> BezPath {
     let bounds = path.bounding_box();
     if bounds.width() <= 0.0 || bounds.height() <= 0.0 {

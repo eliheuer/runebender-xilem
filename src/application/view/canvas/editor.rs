@@ -456,6 +456,11 @@ enum Drag {
         point_count: usize,
         active_contour: Option<ContourId>,
     },
+    /// The local AI shapes box being resized by an edge or corner:
+    /// which sides move, as -1, 0, or 1 on each axis in design space.
+    AiResize {
+        handle: (i8, i8),
+    },
     /// Rubber-band selection in screen space.
     Marquee {
         start: Point,
@@ -656,6 +661,57 @@ impl EditorWidget {
         ctx.request_focus();
     }
 
+    /// Which edge or corner of the shapes box is under `at`, in screen
+    /// space, as the sides that a drag there moves.
+    fn ai_box_handle(&self, at: Point) -> Option<(i8, i8)> {
+        let rect = self.ai_box?;
+        let affine = self.glyph_affine();
+        let screen = affine.transform_rect_bbox(rect);
+        let near = |a: f64, b: f64| (a - b).abs() <= HIT_RADIUS_PX;
+        let inside_x = at.x >= screen.x0 - HIT_RADIUS_PX && at.x <= screen.x1 + HIT_RADIUS_PX;
+        let inside_y = at.y >= screen.y0 - HIT_RADIUS_PX && at.y <= screen.y1 + HIT_RADIUS_PX;
+        if !(inside_x && inside_y) {
+            return None;
+        }
+        // Screen y grows down and design y grows up, so the top edge on
+        // screen is the box's y1.
+        let dx = if near(at.x, screen.x0) {
+            -1
+        } else if near(at.x, screen.x1) {
+            1
+        } else {
+            0
+        };
+        let dy = if near(at.y, screen.y1) {
+            -1
+        } else if near(at.y, screen.y0) {
+            1
+        } else {
+            0
+        };
+        (dx != 0 || dy != 0).then_some((dx, dy))
+    }
+
+    /// Move the sides named by `handle` to `to`, keeping the box at
+    /// least a few units wide and tall.
+    fn ai_resize(&mut self, handle: (i8, i8), to: Point) {
+        let Some(mut rect) = self.ai_box else {
+            return;
+        };
+        const MIN: f64 = 8.0;
+        match handle.0 {
+            -1 => rect.x0 = to.x.min(rect.x1 - MIN),
+            1 => rect.x1 = to.x.max(rect.x0 + MIN),
+            _ => {}
+        }
+        match handle.1 {
+            -1 => rect.y0 = to.y.min(rect.y1 - MIN),
+            1 => rect.y1 = to.y.max(rect.y0 + MIN),
+            _ => {}
+        }
+        self.ai_box = Some(rect);
+    }
+
     /// Keys while the shapes tool has a box: Enter keeps the ghost, Tab
     /// asks for another, Esc drops the box.
     fn ai_key(&mut self, ctx: &mut EventCtx<'_>, key: &masonry::core::KeyboardEvent) -> bool {
@@ -712,13 +768,26 @@ impl EditorWidget {
             )
             .draw();
         if let Some(ghost) = &self.ai_ghost {
+            // The ghost fills the box it was drawn for; while the box is
+            // being resized it is stretched to the new one.
+            let bounds = ghost.path.bounding_box();
+            let fit = if bounds.width() > 0.0 && bounds.height() > 0.0 {
+                Affine::translate((rect.x0, rect.y0))
+                    * Affine::scale_non_uniform(
+                        rect.width() / bounds.width(),
+                        rect.height() / bounds.height(),
+                    )
+                    * Affine::translate((-bounds.x0, -bounds.y0))
+            } else {
+                Affine::IDENTITY
+            };
             painter
                 .fill(&ghost.path, accent.with_alpha(0.35))
-                .transform(affine)
+                .transform(affine * fit)
                 .draw();
             painter
                 .stroke(&ghost.path, &Stroke::new(1.5), accent)
-                .transform(affine)
+                .transform(affine * fit)
                 .draw();
         }
         // The size, so the box reads in font units while it is dragged.
@@ -2877,6 +2946,16 @@ impl Widget for EditorWidget {
                         return;
                     }
                     Some(PointerButton::Primary)
+                        if self.tool == Tool::AiShape
+                            && let Some(handle) = self.ai_box_handle(at) =>
+                    {
+                        ctx.request_focus();
+                        ctx.capture_pointer();
+                        self.drag = Drag::AiResize { handle };
+                        ctx.set_handled();
+                        return;
+                    }
+                    Some(PointerButton::Primary)
                         if matches!(
                             self.tool,
                             Tool::Rect | Tool::Ellipse | Tool::Knife | Tool::AiShape
@@ -3265,6 +3344,11 @@ impl Widget for EditorWidget {
                         *current = glyph_design;
                         ctx.request_render();
                     }
+                    Drag::AiResize { handle } => {
+                        let handle = *handle;
+                        self.ai_resize(handle, glyph_design);
+                        ctx.request_render();
+                    }
                     Drag::None => {}
                 }
             }
@@ -3489,6 +3573,22 @@ impl Widget for EditorWidget {
                         }
                         self.drag = Drag::None;
                         self.emit(ctx, !cancelled);
+                    }
+                    Drag::AiResize { .. } => {
+                        self.drag = Drag::None;
+                        if !cancelled && let Some(rect) = self.ai_box {
+                            let rect = Rect::new(
+                                rect.x0.round(),
+                                rect.y0.round(),
+                                rect.x1.round(),
+                                rect.y1.round(),
+                            );
+                            self.ai_box = Some(rect);
+                            // The shape is drawn again for the new box; until
+                            // it arrives the old ghost is shown stretched.
+                            ctx.submit_action::<EditorEvent>(EditorEvent::AiShapeBox { rect });
+                        }
+                        ctx.request_render();
                     }
                     Drag::Pan { .. } => self.drag = Drag::None,
                     Drag::None => {}
