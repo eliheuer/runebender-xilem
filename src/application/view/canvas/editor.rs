@@ -433,6 +433,28 @@ pub(crate) fn label_colors(pal: &Palette) -> Vec<xilem::Color> {
     }
 }
 
+/// The eight resize handles of a shapes box in screen space: which
+/// sides each moves, in design terms, and where it is drawn.
+fn ai_handles(screen: Rect) -> [((i8, i8), Point); 8] {
+    let (cx, cy) = (screen.center().x, screen.center().y);
+    // Screen y grows down and design y grows up, so the top edge on
+    // screen is the box's y1.
+    [
+        ((-1, 1), Point::new(screen.x0, screen.y0)),
+        ((0, 1), Point::new(cx, screen.y0)),
+        ((1, 1), Point::new(screen.x1, screen.y0)),
+        ((-1, 0), Point::new(screen.x0, cy)),
+        ((1, 0), Point::new(screen.x1, cy)),
+        ((-1, -1), Point::new(screen.x0, screen.y1)),
+        ((0, -1), Point::new(cx, screen.y1)),
+        ((1, -1), Point::new(screen.x1, screen.y1)),
+    ]
+}
+
+/// The side of a resize handle, at rest and when hovered or dragged.
+const AI_HANDLE_PX: f64 = 7.0;
+const AI_HANDLE_HOT_PX: f64 = 9.0;
+
 enum Drag {
     Metaballs {
         last: Point,
@@ -585,6 +607,8 @@ pub(crate) struct EditorWidget {
     /// The local AI shapes tool: the box dragged, the word typed into
     /// the field painted under it, and what the model drew.
     ai_box: Option<Rect>,
+    /// The resize handle under the pointer, for its hover state.
+    ai_hover: Option<(i8, i8)>,
     ai_ghost: Option<Arc<ShapeGhost>>,
     /// Text caret blink phase; reset whenever the person moves or edits it.
     cursor_blink_elapsed_ns: u64,
@@ -665,31 +689,11 @@ impl EditorWidget {
     /// space, as the sides that a drag there moves.
     fn ai_box_handle(&self, at: Point) -> Option<(i8, i8)> {
         let rect = self.ai_box?;
-        let affine = self.glyph_affine();
-        let screen = affine.transform_rect_bbox(rect);
-        let near = |a: f64, b: f64| (a - b).abs() <= HIT_RADIUS_PX;
-        let inside_x = at.x >= screen.x0 - HIT_RADIUS_PX && at.x <= screen.x1 + HIT_RADIUS_PX;
-        let inside_y = at.y >= screen.y0 - HIT_RADIUS_PX && at.y <= screen.y1 + HIT_RADIUS_PX;
-        if !(inside_x && inside_y) {
-            return None;
-        }
-        // Screen y grows down and design y grows up, so the top edge on
-        // screen is the box's y1.
-        let dx = if near(at.x, screen.x0) {
-            -1
-        } else if near(at.x, screen.x1) {
-            1
-        } else {
-            0
-        };
-        let dy = if near(at.y, screen.y1) {
-            -1
-        } else if near(at.y, screen.y0) {
-            1
-        } else {
-            0
-        };
-        (dx != 0 || dy != 0).then_some((dx, dy))
+        let screen = self.glyph_affine().transform_rect_bbox(rect);
+        ai_handles(screen)
+            .into_iter()
+            .find(|(_, center)| center.distance(at) <= HIT_RADIUS_PX)
+            .map(|(handle, _)| handle)
     }
 
     /// Move the sides named by `handle` to `to`, keeping the box at
@@ -721,6 +725,7 @@ impl EditorWidget {
         match &key.key {
             Key::Named(NamedKey::Escape) => {
                 self.ai_box = None;
+                self.ai_hover = None;
                 self.ai_ghost = None;
                 ctx.submit_action::<EditorEvent>(EditorEvent::AiShapeDrop);
                 true
@@ -799,6 +804,24 @@ impl EditorWidget {
             pal.text_muted,
             Anchor::Start,
         );
+        // The resize handles: outlined at rest, filled when hovered,
+        // filled and larger while dragged.
+        let active = match self.drag {
+            Drag::AiResize { handle } => Some(handle),
+            _ => None,
+        };
+        for (handle, center) in ai_handles(screen) {
+            let hot = active == Some(handle) || (active.is_none() && self.ai_hover == Some(handle));
+            let side = if active == Some(handle) {
+                AI_HANDLE_HOT_PX
+            } else {
+                AI_HANDLE_PX
+            };
+            let square = Rect::from_center_size(center, (side, side));
+            let fill = if hot { accent } else { pal.canvas };
+            painter.fill(square.to_path(0.1), fill).draw();
+            painter.stroke(square, &Stroke::new(1.0), accent).draw();
+        }
     }
 
     fn metric_key(&mut self, key: &masonry::core::KeyboardEvent) -> (bool, bool) {
@@ -3141,6 +3164,13 @@ impl Widget for EditorWidget {
                 let glyph_design = self.session.viewport.screen_to_design(at) - active_origin;
                 let glyph_affine =
                     self.session.viewport.affine() * Affine::translate(active_origin);
+                if self.tool == Tool::AiShape && matches!(self.drag, Drag::None) {
+                    let hover = self.ai_box_handle(at);
+                    if hover != self.ai_hover {
+                        self.ai_hover = hover;
+                        ctx.request_render();
+                    }
+                }
                 if matches!(self.tool, Tool::Pen | Tool::HyperPen) {
                     self.hover = Some(glyph_design);
                     if self.session.contour_drawing_is_active() {
@@ -4061,6 +4091,18 @@ impl Widget for EditorWidget {
     }
 
     fn get_cursor(&self, _ctx: &QueryCtx<'_>, _pos: Point) -> CursorIcon {
+        let resizing = match self.drag {
+            Drag::AiResize { handle } => Some(handle),
+            _ => self.ai_hover,
+        };
+        if let Some(handle) = resizing {
+            return match handle {
+                (0, _) => CursorIcon::NsResize,
+                (_, 0) => CursorIcon::EwResize,
+                (-1, 1) | (1, -1) => CursorIcon::NwseResize,
+                _ => CursorIcon::NeswResize,
+            };
+        }
         if self.tool == Tool::Hand {
             if matches!(self.drag, Drag::Pan { .. }) {
                 CursorIcon::Grabbing
@@ -4293,6 +4335,7 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
             field: None,
             field_buf: String::new(),
             ai_box: None,
+            ai_hover: None,
             ai_ghost: None,
             cursor_blink_elapsed_ns: 0,
             cursor_visible: true,
@@ -4540,6 +4583,7 @@ mod tests {
             field: None,
             field_buf: String::new(),
             ai_box: None,
+            ai_hover: None,
             ai_ghost: None,
             cursor_blink_elapsed_ns: 0,
             cursor_visible: true,
