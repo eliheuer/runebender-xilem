@@ -7,6 +7,7 @@
 //! rest of its word. Once clicked, the strip takes the keyboard: typing, Space, Backspace,
 //! Delete and the arrows edit its text; Escape gives the keyboard back to the editor.
 
+use crate::application::view::design::areas::model_strip;
 use masonry::accesskit::{Node, Role};
 use masonry::core::keyboard::{Key, KeyState, NamedKey};
 use masonry::core::{
@@ -246,9 +247,15 @@ impl Widget for ModelStripWidget {
             let path = t * path.clone();
             painter.fill(&path, inks.cloud).draw();
             painter
-                .stroke(&path, &Stroke::new(3.0), inks.outline)
+                .stroke(
+                    &path,
+                    &Stroke::new(model_strip::STRAND_KEYLINE),
+                    inks.outline,
+                )
                 .draw();
-            painter.stroke(&path, &Stroke::new(1.5), inks.active).draw();
+            painter
+                .stroke(&path, &Stroke::new(model_strip::STRAND), inks.active)
+                .draw();
         }
         for path in &render.paths {
             painter.fill(&(t * path.clone()), inks.ink).draw();
@@ -303,9 +310,11 @@ impl Widget for ModelStripWidget {
         );
         let ring: BezPath = ring.path_elements(0.1).collect();
         painter
-            .stroke(&ring, &Stroke::new(5.5), inks.outline)
+            .stroke(&ring, &Stroke::new(model_strip::RING_KEYLINE), inks.outline)
             .draw();
-        painter.stroke(&ring, &Stroke::new(3.5), inks.ring).draw();
+        painter
+            .stroke(&ring, &Stroke::new(model_strip::RING), inks.ring)
+            .draw();
     }
 
     fn on_pointer_event(

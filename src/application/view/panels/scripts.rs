@@ -5,7 +5,7 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::application::view::design::ControlSize;
-use crate::application::view::design::{Region, Space, Stroke, TextSize, column as xcolumn};
+use crate::application::view::design::{Region, Space, TextSize, column as xcolumn};
 use crate::application::view::recipes;
 use crate::application::view::{label, text_input};
 use crate::application::widgets::input_typography;
@@ -46,14 +46,11 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
                     })
                     .placeholder("Script name.py")
                     .text_color(pal.text)
-                    .placeholder_color(pal.text_muted)
-                    .background_color(pal.field())
-                    .border_color(pal.field_outline)
-                    .border_width(Stroke::Hairline.length())
-                    .corner_radius(Length::px(pal.control_radius)),
+                    .placeholder_color(pal.text_muted),
                     pal.text,
                 ),
-                sized_box(
+                recipes::field_box(
+                    pal,
                     portal(
                         source_text_area(draft.content, |app: &mut Workspace, value| {
                             app.script_content_changed(value);
@@ -62,16 +59,12 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
                     )
                     .must_fill(true),
                 )
-                .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(280.0))))
-                .padding(Space::Sm)
-                .background_color(pal.field())
-                .border_color(pal.field_outline)
-                .border_width(Stroke::Hairline.length())
-                .corner_radius(Length::px(pal.control_radius)),
+                .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(280.0)))),
                 label("Parameters · JSON object")
                     .text_size(TextSize::Caption.px())
                     .color(pal.text_muted),
-                sized_box(
+                recipes::field_box(
+                    pal,
                     portal(
                         source_text_area(
                             app.scripts.parameters.clone(),
@@ -83,12 +76,7 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
                     )
                     .must_fill(true),
                 )
-                .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(88.0))))
-                .padding(Space::Sm)
-                .background_color(pal.field())
-                .border_color(pal.field_outline)
-                .border_width(Stroke::Hairline.length())
-                .corner_radius(Length::px(pal.control_radius)),
+                .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(88.0)))),
                 selectable_text::<Workspace, ()>(app.script_scope_label())
                     .text_size(TextSize::Body.px())
                     .color(pal.text_muted),

@@ -871,11 +871,14 @@ impl Widget for GridWidget {
             let track_h = self.size.height;
             let thumb_h = (track_h * track_h / self.content_height(total)).max(24.0);
             let thumb_y = (self.scroll / max) * (track_h - thumb_h);
-            let sx = self.size.width - 6.0;
+            let width = crate::application::view::design::SCROLL_THUMB_WIDTH;
+            let sx = self.size.width - width - 2.0;
             painter
                 .fill(
-                    Rect::new(sx, thumb_y, sx + 4.0, thumb_y + thumb_h).to_rounded_rect(2.0),
-                    pal.text_muted.with_alpha(0.5),
+                    Rect::new(sx, thumb_y, sx + width, thumb_y + thumb_h)
+                        .to_rounded_rect(width / 2.0),
+                    pal.text_muted
+                        .with_alpha(crate::application::view::design::Alpha::ScrollThumb.value()),
                 )
                 .draw();
         }

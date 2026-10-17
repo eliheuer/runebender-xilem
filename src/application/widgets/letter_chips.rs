@@ -56,6 +56,9 @@ pub(crate) struct ChipInks {
     pub outline: Color,
     /// The ring around the active chip.
     pub ring: Color,
+    /// The theme's normal and emphasized line widths.
+    pub stroke: f64,
+    pub stroke_emphasis: f64,
 }
 
 pub(crate) struct LetterChipsWidget {
@@ -153,19 +156,23 @@ impl Widget for LetterChipsWidget {
             if chip.done {
                 painter.fill(face, chip.color).draw();
                 painter
-                    .stroke(face, &Stroke::new(1.0), self.inks.outline)
+                    .stroke(face, &Stroke::new(self.inks.stroke), self.inks.outline)
                     .draw();
             } else {
                 painter.fill(face, self.inks.face).draw();
                 painter
-                    .stroke(face, &Stroke::new(1.0), self.inks.hollow)
+                    .stroke(face, &Stroke::new(self.inks.stroke), self.inks.hollow)
                     .draw();
             }
             if active || hovered {
                 painter
                     .stroke(
                         Circle::new(*center, radius + 3.0),
-                        &Stroke::new(if active { 1.5 } else { 1.0 }),
+                        &Stroke::new(if active {
+                            self.inks.stroke_emphasis
+                        } else {
+                            self.inks.stroke
+                        }),
                         self.inks.ring,
                     )
                     .draw();

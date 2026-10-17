@@ -85,6 +85,8 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         face: pal.panel,
                         outline: pal.mark_outline.unwrap_or(pal.outline),
                         ring: pal.text,
+                        stroke: pal.stroke,
+                        stroke_emphasis: pal.stroke_emphasis,
                     },
                     |app: &mut Workspace, event| {
                         let session = Arc::make_mut(&mut app.session);

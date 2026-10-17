@@ -6,7 +6,7 @@
 //! LSB, RSB, the two kerning groups, and the category.
 
 use crate::application::view::design::{
-    ControlKind, ControlStyle, Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
+    ControlKind, ControlStyle, Region, Space, TextSize, column as xcolumn, row as xrow,
 };
 use crate::application::view::label;
 use crate::application::view::recipes::button;
@@ -80,23 +80,7 @@ pub(crate) fn glyph_list(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             let value = |text: String, w: f64| {
                 col(w, label(text).text_size(TextSize::Body.px()).color(muted))
             };
-            // The mark, painted the way the grid paints it: the fill
-            // and the keyline, on a small cell.
-            let mark_bg = cell.mark.unwrap_or(pal.panel);
-            let mark_border = if cell.mark.is_some() {
-                pal.mark_outline.unwrap_or(pal.outline)
-            } else {
-                xilem::Color::TRANSPARENT
-            };
-            let mark = sized_box(label(""))
-                .dims(Dimensions::new(
-                    Dim::Fixed(Length::px(12.0)),
-                    Dim::Fixed(Length::px(12.0)),
-                ))
-                .background_color(mark_bg)
-                .border_color(mark_border)
-                .border_width(Stroke::Hairline.length())
-                .corner_radius(Length::px(pal.corner_radius));
+            let mark = crate::application::view::recipes::mark_dot(pal, cell.mark);
             sized_box(
                 button(
                     style,

@@ -331,12 +331,7 @@ fn editor_glyph_rail(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     };
     flex_col((
         sized_box(glyph_search(app)).padding(Space::Md),
-        sized_box(label(""))
-            .dims(Dimensions::new(
-                Dim::Stretch,
-                Dim::Fixed(Stroke::Hairline.length()),
-            ))
-            .background_color(app.palette.outline),
+        recipes::hairline(&app.palette),
         grid(
             cells,
             app.rail_cell_metrics(),
@@ -803,12 +798,7 @@ fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             ),
         )
         .padding(Space::Md),
-        sized_box(label(""))
-            .dims(Dimensions::new(
-                Dim::Stretch,
-                Dim::Fixed(Stroke::Hairline.length()),
-            ))
-            .background_color(pal.outline),
+        recipes::hairline(pal),
         portal(recipes::panel_stack((
             sidebar_group(app, "Categories", cat_rows),
             (!lang_rows.is_empty()).then(|| sidebar_group(app, "Global Scripts", lang_rows)),

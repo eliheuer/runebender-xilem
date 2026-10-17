@@ -768,7 +768,7 @@ impl EditorWidget {
         painter
             .stroke(
                 screen,
-                &Stroke::new(1.0).with_dashes(0.0, [6.0, 4.0]),
+                &Stroke::new(pal.stroke).with_dashes(0.0, [6.0, 4.0]),
                 accent,
             )
             .draw();
@@ -820,7 +820,9 @@ impl EditorWidget {
             let square = Rect::from_center_size(center, (side, side));
             let fill = if hot { accent } else { pal.canvas };
             painter.fill(square.to_path(0.1), fill).draw();
-            painter.stroke(square, &Stroke::new(1.0), accent).draw();
+            painter
+                .stroke(square, &Stroke::new(pal.stroke), accent)
+                .draw();
         }
     }
 
@@ -1258,7 +1260,7 @@ impl EditorWidget {
                 painter
                     .stroke(
                         affine * sample.boundary_path(),
-                        &Stroke::new(1.0),
+                        &Stroke::new(pal.stroke),
                         pal.text_muted.with_alpha(0.4),
                     )
                     .draw();
@@ -1323,7 +1325,7 @@ impl EditorWidget {
             path.close_path();
             painter.fill(&path, color.with_alpha(0.14)).draw();
             painter
-                .stroke(&path, &Stroke::new(1.0), pal.role("pathStroke"))
+                .stroke(&path, &Stroke::new(pal.stroke), pal.role("pathStroke"))
                 .draw();
             // Every shape shows its corners; the active letter's and the picked ones are
             // larger.
@@ -1350,7 +1352,7 @@ impl EditorWidget {
                 let handle = Circle::new(affine * *corner, radius);
                 painter.fill(handle, color).draw();
                 painter
-                    .stroke(handle, &Stroke::new(1.0), pal.role("pathStroke"))
+                    .stroke(handle, &Stroke::new(pal.stroke), pal.role("pathStroke"))
                     .draw();
             }
             // A corner would go here: the edge under the pointer shows it.
@@ -1360,7 +1362,7 @@ impl EditorWidget {
                 let ghost = Circle::new(affine * *at, 3.5);
                 painter.fill(ghost, color.with_alpha(0.5)).draw();
                 painter
-                    .stroke(ghost, &Stroke::new(1.0), pal.role("pathStroke"))
+                    .stroke(ghost, &Stroke::new(pal.stroke), pal.role("pathStroke"))
                     .draw();
             }
         }
@@ -1396,7 +1398,7 @@ impl EditorWidget {
             painter
                 .stroke(
                     Circle::new(center, radius),
-                    &Stroke::new(1.0),
+                    &Stroke::new(pal.stroke),
                     pal.role("pathStroke"),
                 )
                 .draw();
@@ -1407,7 +1409,7 @@ impl EditorWidget {
                 .fill(rect, pal.role("selection").with_alpha(0.1))
                 .draw();
             painter
-                .stroke(rect, &Stroke::new(1.0), pal.role("selection"))
+                .stroke(rect, &Stroke::new(pal.stroke), pal.role("selection"))
                 .draw();
         }
         // A freehand drag in progress: a cut is a straight line, a lasso a loop.
@@ -1811,7 +1813,9 @@ impl Widget for EditorWidget {
                 } else {
                     pal.role("selection")
                 };
-                painter.stroke(&frame, &Stroke::new(1.0), selection).draw();
+                painter
+                    .stroke(&frame, &Stroke::new(pal.stroke), selection)
+                    .draw();
                 for (corner, _) in Self::image_corners(transform, width, height)
                     .into_iter()
                     .filter(|_| !locked)
@@ -1823,7 +1827,7 @@ impl Widget for EditorWidget {
                     painter
                         .stroke(
                             Rect::from_center_size(at, (7.0, 7.0)),
-                            &Stroke::new(1.0),
+                            &Stroke::new(pal.stroke),
                             selection,
                         )
                         .draw();
@@ -1840,7 +1844,7 @@ impl Widget for EditorWidget {
             painter
                 .stroke(
                     &(affine * (**background).clone()),
-                    &Stroke::new(1.0),
+                    &Stroke::new(pal.stroke),
                     pal.text_muted.with_alpha(0.5),
                 )
                 .draw();
@@ -1870,7 +1874,11 @@ impl Widget for EditorWidget {
                 .fill(&path, pal.role("warning").with_alpha(0.35))
                 .draw();
             painter
-                .stroke(&path, &Stroke::new(2.0), pal.role("warning"))
+                .stroke(
+                    &path,
+                    &Stroke::new(pal.stroke_emphasis),
+                    pal.role("warning"),
+                )
                 .draw();
         }
 
@@ -1879,7 +1887,7 @@ impl Widget for EditorWidget {
             painter
                 .stroke(
                     &(affine * (**ghost).clone()),
-                    &Stroke::new(1.0),
+                    &Stroke::new(pal.stroke),
                     pal.role("reference").with_alpha(0.55),
                 )
                 .draw();
@@ -2012,7 +2020,7 @@ impl Widget for EditorWidget {
                     painter
                         .stroke(
                             &(affine * selected.clone()),
-                            &Stroke::new(2.0),
+                            &Stroke::new(pal.stroke_emphasis),
                             pal.role("selection"),
                         )
                         .draw();
@@ -2046,7 +2054,7 @@ impl Widget for EditorWidget {
                         painter
                             .stroke(
                                 &quad,
-                                &Stroke::new(2.0),
+                                &Stroke::new(pal.stroke_emphasis),
                                 pal.point_outline.unwrap_or(pal.text),
                             )
                             .draw();
@@ -2062,12 +2070,12 @@ impl Widget for EditorWidget {
                 .fill(&outline, pal.outline_fill())
                 .draw();
             painter
-                .stroke(&outline, &Stroke::new(1.0), pal.role("pathStroke"))
+                .stroke(&outline, &Stroke::new(pal.stroke), pal.role("pathStroke"))
                 .draw();
 
             // Labeling reads the ink as a whole; points and handles would only hide it.
             let point_chrome = self.tool != Tool::Label;
-            let handle = Stroke::new(1.0);
+            let handle = Stroke::new(pal.stroke);
             for line in self
                 .session
                 .handle_lines()
@@ -2327,7 +2335,7 @@ impl Widget for EditorWidget {
                     _ => pal.role("selection"),
                 };
                 painter
-                    .stroke(Line::new(a, b), &Stroke::new(1.0), color)
+                    .stroke(Line::new(a, b), &Stroke::new(pal.stroke), color)
                     .draw();
                 let mid = Point::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0);
                 let text = self.view.label(m.length);
@@ -2342,7 +2350,7 @@ impl Widget for EditorWidget {
                     let b = affine * Point::new(bounds.x1, bounds.y1);
                     let screen = Rect::from_points(a, b);
                     painter
-                        .stroke(screen, &Stroke::new(1.0), pal.role("metricQuiet"))
+                        .stroke(screen, &Stroke::new(pal.stroke), pal.role("metricQuiet"))
                         .draw();
                     let label = format!("{:.0}×{:.0}", bounds.width(), bounds.height());
                     text_label::draw(
@@ -2365,12 +2373,16 @@ impl Widget for EditorWidget {
                 let ink_r = affine * Point::new(sb.max_x, 0.0);
                 let adv = affine * Point::new(sb.advance, 0.0);
                 painter
-                    .stroke(Line::new((l.x, y), (ink_l.x, y)), &Stroke::new(1.0), quiet)
+                    .stroke(
+                        Line::new((l.x, y), (ink_l.x, y)),
+                        &Stroke::new(pal.stroke),
+                        quiet,
+                    )
                     .draw();
                 painter
                     .stroke(
                         Line::new((ink_r.x, y), (adv.x, y)),
-                        &Stroke::new(1.0),
+                        &Stroke::new(pal.stroke),
                         quiet,
                     )
                     .draw();
@@ -2475,7 +2487,7 @@ impl Widget for EditorWidget {
             painter
                 .stroke(
                     rect,
-                    &Stroke::new(1.0),
+                    &Stroke::new(pal.stroke),
                     pal.role("selection").with_alpha(0.8),
                 )
                 .draw();
@@ -2502,7 +2514,7 @@ impl Widget for EditorWidget {
             painter
                 .stroke(
                     &path,
-                    &Stroke::new(1.0),
+                    &Stroke::new(pal.stroke),
                     pal.role("selection").with_alpha(0.8),
                 )
                 .draw();
@@ -2517,7 +2529,7 @@ impl Widget for EditorWidget {
                 Tool::Knife => {
                     let danger = pal.role("danger");
                     painter
-                        .stroke(Line::new(p0, p1), &Stroke::new(1.0), danger)
+                        .stroke(Line::new(p0, p1), &Stroke::new(pal.stroke), danger)
                         .draw();
                     for hit in self.session.knife_hits(*start, *current) {
                         let sp = affine * hit;
@@ -2528,11 +2540,11 @@ impl Widget for EditorWidget {
                     let c = ((p0.x + p1.x) / 2.0, (p0.y + p1.y) / 2.0);
                     let rr = ((p1.x - p0.x).abs() / 2.0, (p1.y - p0.y).abs() / 2.0);
                     let e = kurbo::Ellipse::new(c, rr, 0.0);
-                    painter.stroke(e, &Stroke::new(1.0), accent).draw();
+                    painter.stroke(e, &Stroke::new(pal.stroke), accent).draw();
                 }
                 _ => {
                     painter
-                        .stroke(Rect::from_points(p0, p1), &Stroke::new(1.0), accent)
+                        .stroke(Rect::from_points(p0, p1), &Stroke::new(pal.stroke), accent)
                         .draw();
                 }
             }

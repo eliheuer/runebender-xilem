@@ -94,3 +94,20 @@ pub(crate) mod graph {
         )
     }
 }
+
+/// The neural model strip: a diagram of strands and nodes over the ink.
+pub(crate) mod model_strip {
+    /// The selected strand's line, and the keyline around it.
+    ///
+    /// Why: a strand is drawn over glyph ink of any weight; a 1.5 px line
+    /// in a 3 px keyline stays visible on both the ink and the ground.
+    pub(crate) const STRAND: f64 = 1.5;
+    pub(crate) const STRAND_KEYLINE: f64 = 3.0;
+
+    /// The active node's half ring, and the keyline around it.
+    ///
+    /// Why: it is the handle the pointer drags, so it reads heavier than
+    /// the strand it sits on.
+    pub(crate) const RING: f64 = 3.5;
+    pub(crate) const RING_KEYLINE: f64 = 5.5;
+}

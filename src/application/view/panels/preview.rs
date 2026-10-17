@@ -53,7 +53,9 @@ fn model_strip_view(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             strand: mark("red", pal.role("danger")),
             active: mark("orange", pal.role("selection")),
             ring: mark("yellow", pal.role("pointSelected")),
-            cloud: pal.role("previewFill").with_alpha(0.22),
+            cloud: pal
+                .role("previewFill")
+                .with_alpha(design::Alpha::Underlay.value()),
         },
         |app: &mut Workspace, event| app.model_strip_event(event),
     )
@@ -76,6 +78,7 @@ fn piece_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         app.palette.proof_strip
     };
     let missing = app.palette.text_muted;
+    let line = app.palette.stroke;
     let placed = assemble(&app.piece_preview_text(), &app.pieces.pieces);
     let bounds = placed
         .iter()
@@ -93,7 +96,7 @@ fn piece_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 None => p
                     .stroke(
                         t.transform_rect_bbox(letter.frame).to_path(0.1),
-                        &Stroke::new(1.0),
+                        &Stroke::new(line),
                         missing,
                     )
                     .draw(),
@@ -321,7 +324,7 @@ pub(crate) fn glyph_preview(app: &Workspace) -> impl WidgetView<Workspace> + use
             let t = Affine::translate(-bounds.center().to_vec2())
                 .then_scale_non_uniform(scale, -scale)
                 .then_translate((size.width / 2.0, size.height / 2.0).into());
-            let stroke = Stroke::new(1.0);
+            let stroke = Stroke::new(pal.stroke);
             p.stroke(&(t * (**outline).clone()), &stroke, pal.role("pathStroke"))
                 .draw();
             for contour in contours {

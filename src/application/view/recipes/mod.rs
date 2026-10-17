@@ -295,6 +295,55 @@ where
     )
 }
 
+/// A box with a text field's face around content that is not a stock
+/// text field, such as a code editor in a scroll area. Set its size at
+/// the call site.
+pub(crate) fn field_box<V>(
+    pal: &Palette,
+    body: V,
+) -> impl WidgetView<Workspace, Widget: Sized> + use<V>
+where
+    V: WidgetView<Workspace>,
+{
+    sized_box(body)
+        .padding(Space::Sm)
+        .background_color(pal.field())
+        .border_color(pal.field_outline)
+        .border_width(Length::px(pal.stroke))
+        .corner_radius(Length::px(pal.control_radius))
+}
+
+/// A one-stroke rule across its container in the outline color.
+pub(crate) fn hairline(pal: &Palette) -> impl WidgetView<Workspace, Widget: Sized> + use<> {
+    sized_box(label(""))
+        .dims(Dimensions::new(
+            Dim::Stretch,
+            Dim::Fixed(Length::px(pal.stroke)),
+        ))
+        .background_color(pal.outline)
+}
+
+/// A glyph's mark as a small tile, painted the way the grid paints it:
+/// the mark's fill in its keyline, or nothing for an unmarked glyph.
+pub(crate) fn mark_dot(
+    pal: &Palette,
+    mark: Option<xilem::Color>,
+) -> impl WidgetView<Workspace, Widget: Sized> + use<> {
+    let (fill, keyline) = match mark {
+        Some(color) => (color, pal.mark_outline.unwrap_or(pal.outline)),
+        None => (pal.panel, xilem::Color::TRANSPARENT),
+    };
+    sized_box(label(""))
+        .dims(Dimensions::fixed(
+            Length::px(crate::application::view::design::MARK_DOT_SIZE),
+            Length::px(crate::application::view::design::MARK_DOT_SIZE),
+        ))
+        .background_color(fill)
+        .border_color(keyline)
+        .border_width(Length::px(pal.stroke))
+        .corner_radius(Length::px(pal.corner_radius))
+}
+
 /// An equal-width field column that fits its row and grows with the dock.
 /// Pair with `row(Region::Form, ...)`; the row divides the available width after its gaps.
 pub(crate) fn field_column<V>(body: V) -> impl xilem::view::FlexSequence<Workspace, ()> + use<V>

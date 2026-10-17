@@ -18,6 +18,7 @@
 //! file exists because the editor is a hand-written Masonry widget and can
 //! therefore reach `create_layer` directly.
 
+use crate::application::view::design::{ControlKind, ControlStyle};
 use std::sync::Arc;
 
 use masonry::accesskit::{Node, Role};
@@ -150,6 +151,10 @@ impl Widget for ContextMenu {
     ) {
         let pal = &self.palette;
         let frame = self.size.to_rect();
+        // A menu row under the pointer looks like a list row under it.
+        let hover = ControlStyle::new(pal, ControlKind::Row)
+            .face(true, false)
+            .fill;
         painter
             .fill(
                 crate::application::view::design::rounded_rect_path(frame, pal.corner_radius),
@@ -159,7 +164,7 @@ impl Widget for ContextMenu {
         painter
             .stroke(
                 crate::application::view::design::rounded_rect_path(frame, pal.corner_radius),
-                &Stroke::new(1.0),
+                &Stroke::new(pal.stroke),
                 pal.outline,
             )
             .draw();
@@ -173,7 +178,7 @@ impl Widget for ContextMenu {
                             rect,
                             pal.control_radius,
                         ),
-                        pal.selected_bg().with_alpha(0.25),
+                        hover,
                     )
                     .draw();
             }

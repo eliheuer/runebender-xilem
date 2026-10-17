@@ -501,7 +501,7 @@ fn status(
 }
 
 fn tiles_view(pal: &Palette, tiles: Vec<Tile>) -> impl WidgetView<Workspace> + use<> {
-    let (ink, ground, outline) = (pal.text, pal.field(), pal.outline);
+    let (ink, ground, outline, line) = (pal.text, pal.field(), pal.outline, pal.stroke);
     let views: Vec<_> = tiles
         .into_iter()
         .map(|tile| {
@@ -515,7 +515,7 @@ fn tiles_view(pal: &Palette, tiles: Vec<Tile>) -> impl WidgetView<Workspace> + u
                         let mut painter = Painter::new(scene);
                         let frame = Rect::new(0.0, 0.0, size.width, size.height);
                         painter.fill(frame.to_path(0.1), ground).draw();
-                        painter.stroke(frame, &Stroke::new(1.0), outline).draw();
+                        painter.stroke(frame, &Stroke::new(line), outline).draw();
                         painter.fill(&path, ink).draw();
                     }))
                     .dims(Dimensions::new(

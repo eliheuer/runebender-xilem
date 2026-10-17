@@ -6,8 +6,7 @@
 use crate::application::editor::session::Session;
 use crate::application::view::chrome::direction_chips;
 use crate::application::view::design::{
-    ControlKind, ControlSize, ControlStyle, Region, Space, Stroke, TextSize, column as xcolumn,
-    row as xrow,
+    ControlKind, ControlSize, ControlStyle, Region, Space, TextSize, column as xcolumn, row as xrow,
 };
 use crate::application::view::panels::tabs::tab_chip;
 use crate::application::view::recipes::button;
@@ -103,8 +102,7 @@ fn glyph_layer_controls(app: &Workspace) -> Box<xilem::AnyWidgetView<Workspace>>
                 text_input(app.layer_name_buf.clone(), |app: &mut Workspace, value| {
                     app.layer_name_buf = value;
                 })
-                .text_color(pal.text)
-                .background_color(pal.field()),
+                .text_color(pal.text),
                 pal.text,
             ),
             xrow(
@@ -172,8 +170,7 @@ pub(crate) fn masters_section(app: &Workspace) -> Option<impl WidgetView<Workspa
                     text_input(app.source_name_buf.clone(), |app: &mut Workspace, value| {
                         app.source_name_buf = value;
                     })
-                    .text_color(pal.text)
-                    .background_color(pal.field()),
+                    .text_color(pal.text),
                     pal.text,
                 ),
                 label("Uses the axis sliders below")
@@ -662,11 +659,7 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
                             app.set_coord_size(axis == 2, v);
                         }
                     })
-                    .text_color(pal.text)
-                    .background_color(pal.field())
-                    .border_color(pal.field_outline)
-                    .border_width(Stroke::Hairline.length())
-                    .corner_radius(Length::px(pal.control_radius)),
+                    .text_color(pal.text),
                     pal.text,
                 ))
                 .dims(Dimensions::new(

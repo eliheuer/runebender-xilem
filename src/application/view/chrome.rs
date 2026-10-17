@@ -5,7 +5,7 @@
 
 use crate::application::editor::tools::graph;
 use crate::application::view::design::{
-    ControlKind, ControlSize, ControlStyle, Ground, Region, Space, Stroke, TextSize, row as xrow,
+    ControlKind, ControlSize, ControlStyle, Ground, Region, Space, TextSize, row as xrow,
 };
 use crate::application::view::design::{MARK_SWATCH_GAP, STATUS_ICON_SIZE, TITLEBAR_HEIGHT};
 use crate::application::view::panels::tabs::{tab_chip, tab_strip};
@@ -181,7 +181,6 @@ pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace, Widget: S
         .map(|(name, color)| (Some(name), color))
         .collect::<Vec<_>>();
     marks.push((None, pal.panel));
-    let outline = pal.mark_outline.unwrap_or(pal.outline);
     let count = marks.len();
     let swatches = marks
         .into_iter()
@@ -197,12 +196,7 @@ pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace, Widget: S
         .collect::<Vec<_>>();
     sized_box(
         flex_col((
-            sized_box(label(""))
-                .dims(Dimensions::new(
-                    Dim::Stretch,
-                    Dim::Fixed(Stroke::Hairline.length()),
-                ))
-                .background_color(outline),
+            recipes::hairline(pal),
             crate::application::widgets::swatch_strip::swatch_strip(
                 flex_row(swatches)
                     .cross_axis_alignment(CrossAxisAlignment::Stretch)

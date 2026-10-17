@@ -186,6 +186,13 @@ pub(crate) const HEADER_TAB_HEIGHT: f64 = 19.0;
 pub(crate) const HEADER_TAB_TEXT_INSET: f64 = 6.0;
 /// Icon tabs share a short rectangular silhouette with the text tabs.
 pub(crate) const HEADER_TAB_ICON_WIDTH: f64 = 24.0;
+/// The width of a canvas scroll thumb; its ends are fully round.
+pub(crate) const SCROLL_THUMB_WIDTH: f64 = 4.0;
+/// Line width of stroked icons from the icon UFO. Icons are drawn on a
+/// 16 px grid where 1.5 px matches the weight of the filled icons.
+pub(crate) const ICON_STROKE: f64 = 1.5;
+/// A glyph's mark shown as a small tile in a list row.
+pub(crate) const MARK_DOT_SIZE: f64 = 12.0;
 /// A small inline symbol inside a control: close, add, delete.
 pub(crate) const SMALL_ICON_SIZE: f64 = 12.0;
 
@@ -338,6 +345,15 @@ pub(crate) enum Alpha {
     Disabled,
     /// Selected text behind its glyphs, light enough to keep them legible.
     TextSelection,
+    /// A hard shadow under a floating menu or card.
+    Shadow,
+    /// A scroll thumb, present without competing with the content.
+    ScrollThumb,
+    /// A disabled menu command: fainter than an enabled one, but still
+    /// read, since a menu is also the list of what the app can do.
+    DisabledCommand,
+    /// A faint fill under a drawing, such as the proof's ink cloud.
+    Underlay,
     /// Inactive header text and icons, in themes without `headerMutedInk`.
     HeaderInk,
     /// Inactive header keylines, in themes without `headerMutedInk`.
@@ -350,6 +366,10 @@ impl Alpha {
         match self {
             Self::Disabled => 0.4,
             Self::TextSelection => 0.35,
+            Self::Shadow => 0.5,
+            Self::ScrollThumb => 0.5,
+            Self::DisabledCommand => 0.65,
+            Self::Underlay => 0.22,
             Self::HeaderInk => 0.7,
             Self::HeaderKeyline => 0.5,
         }

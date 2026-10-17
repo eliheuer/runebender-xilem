@@ -9,8 +9,7 @@
 //! a text area.
 
 use crate::application::view::design::{
-    ControlKind, ControlSize, ControlStyle, Region, Space, Stroke, TextSize, column as xcolumn,
-    row as xrow,
+    ControlKind, ControlSize, ControlStyle, Region, Space, TextSize, column as xcolumn, row as xrow,
 };
 use crate::application::view::recipes::button;
 use crate::application::view::theme::Palette;
@@ -547,18 +546,10 @@ pub(crate) fn features_section(app: &Workspace) -> impl WidgetView<Workspace> + 
                     })
                     .insert_newline(masonry::widgets::InsertNewline::OnEnter)
                     .text_color(pal.text)
-                    .clip(true)
-                    .background_color(pal.field())
-                    .border_color(pal.field_outline)
-                    .border_width(Stroke::Hairline.length())
-                    .corner_radius(Length::px(pal.corner_radius)),
+                    .clip(true),
                     pal.text,
                 )))
-                .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(260.0))))
-                .background_color(pal.field())
-                .border_color(pal.field_outline)
-                .border_width(Stroke::Hairline.length())
-                .corner_radius(Length::px(pal.corner_radius)),
+                .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(260.0)))),
                 xrow(
                     Region::Inline,
                     (

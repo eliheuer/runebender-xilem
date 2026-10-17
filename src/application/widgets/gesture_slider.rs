@@ -97,7 +97,8 @@ impl Widget for GestureSliderWidget {
             SLIDER_THUMB_RADIUS - SLIDER_THUMB_STROKE / 2.0,
         );
         let outline = if ctx.is_disabled() {
-            self.thumb_outline.with_alpha(0.4)
+            self.thumb_outline
+                .with_alpha(crate::application::view::design::Alpha::Disabled.value())
         } else {
             self.thumb_outline
         };
@@ -107,7 +108,7 @@ impl Widget for GestureSliderWidget {
             self.thumb
         };
         let fill = if ctx.is_disabled() {
-            fill.with_alpha(0.4)
+            fill.with_alpha(crate::application::view::design::Alpha::Disabled.value())
         } else {
             fill
         };

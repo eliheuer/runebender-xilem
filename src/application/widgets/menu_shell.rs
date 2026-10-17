@@ -59,7 +59,8 @@ fn title_width(title: &str) -> f64 {
 // Disabled commands remain legible, but never receive an active highlight.
 fn row_ink(pal: &Palette, enabled: bool, selected: bool) -> xilem::Color {
     if !enabled {
-        pal.header_ink.with_alpha(0.65)
+        pal.header_ink
+            .with_alpha(crate::application::view::design::Alpha::DisabledCommand.value())
     } else if selected {
         pal.selected_ink()
     } else {
@@ -939,7 +940,7 @@ impl Widget for MenuPopup {
         let pal = &self.palette;
         painter.fill(self.size.to_rect(), pal.header).draw();
         painter
-            .stroke(self.size.to_rect(), &Stroke::new(1.0), pal.outline)
+            .stroke(self.size.to_rect(), &Stroke::new(pal.stroke), pal.outline)
             .draw();
         for (index, row) in rows(self.menu, self.submenu).into_iter().enumerate() {
             let state = row_state(row, &self.states);
@@ -949,7 +950,7 @@ impl Widget for MenuPopup {
                 painter
                     .stroke(
                         Line::new(Point::new(6.0, top), Point::new(POPUP_WIDTH - 6.0, top)),
-                        &Stroke::new(1.0),
+                        &Stroke::new(pal.stroke),
                         pal.outline,
                     )
                     .draw();

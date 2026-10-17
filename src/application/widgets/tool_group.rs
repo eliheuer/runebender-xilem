@@ -422,13 +422,30 @@ impl Widget for ToolMenu {
                     frame + Vec2::new(-MENU_SHADOW, MENU_SHADOW),
                     self.palette.corner_radius,
                 ),
-                self.palette.cell_shadow().with_alpha(0.5),
+                self.palette
+                    .cell_shadow()
+                    .with_alpha(crate::application::view::design::Alpha::Shadow.value()),
             )
             .draw();
         painter.fill(&shape, self.palette.header).draw();
         painter
-            .stroke(&shape, &Stroke::new(1.0), self.palette.outline)
+            .stroke(
+                &shape,
+                &Stroke::new(self.palette.stroke),
+                self.palette.outline,
+            )
             .draw();
+        // A row under the pointer looks like a list row under it, on the header's ground.
+        let hover = crate::application::view::design::ControlStyle::new(
+            &self.palette,
+            crate::application::view::design::ControlKind::Row,
+        )
+        .on(
+            &self.palette,
+            crate::application::view::design::Ground::Header,
+        )
+        .face(true, false)
+        .fill;
         for (index, choice) in self.group.choices().iter().enumerate() {
             let top = MENU_PAD + index as f64 * ROW_HEIGHT;
             let selected = self.hovered == Some(index) || self.selected == index;
@@ -444,7 +461,7 @@ impl Widget for ToolMenu {
                             ),
                             self.palette.control_radius,
                         ),
-                        self.palette.header_ink.with_alpha(0.18),
+                        hover,
                     )
                     .draw();
             }
