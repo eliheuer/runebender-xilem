@@ -70,11 +70,11 @@ Do not add local path patches to a committed Cargo configuration.
 
 Read [the design principles](https://runebender.org/docs/design-principles.html) before changing a view.
 Use `view::theme` for colors, `view::design` for measurements, and `view::recipes` for repeated controls.
-A panel section is built only from `recipes::Row` values; read [the panel language](UI-DESIGN.md) and `src/application/view/recipes/rows.rs` first, and `tests/panel_vocabulary.rs` fails the build when a panel reaches past them.
+A panel section is built only from `recipes::Row` values; read [the panel language](docs/UI-DESIGN.md) and `src/application/view/recipes/rows.rs` first, and `tests/panel_vocabulary.rs` fails the build when a panel reaches past them.
 Read [the theme guide](https://runebender.org/docs/themes.html) before changing colors; it names the Base UI and Rainbow palettes and traces their tokens through the editor.
 Views read workspace state; commands own intent; the font engine owns font behavior.
 
-Use the [headless screenshot path](UI-DESIGN.md#headless-screenshots) for visual checks.
+Use the [headless screenshot path](docs/UI-DESIGN.md#headless-screenshots) for visual checks.
 For ordinary UI work, inspect only the default theme (currently Gray), and wait for idle auto-hide before accepting a capture.
 Check other themes when working on themes or when the user explicitly requests them.
 A headless image does not prove native pointer, IME, accessibility, or GPU behavior.
@@ -105,6 +105,9 @@ Record an honest support limit in the [known limitations guide](https://runebend
 - Prefer a reasoned `expect` or a structural fix to a local lint allowance.
 
 ## Documentation conventions
+
+- Put repository-wide guides, testing checklists, plans, and release notes in `docs/`, and link them from [the documentation index](docs/README.md).
+  Keep README.md and AGENTS.md at the root as entry points; keep component-specific README files beside their components.
 
 - Put each prose sentence on its own source line, as required by the Linebender formatting scheme.
 - Update the website's architecture, design, or known-limitations page when a change invalidates its guidance.

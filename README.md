@@ -15,6 +15,10 @@ For documentation and installation instructions, see [runebender.org](https://ru
 
 ![Runebender Arabic calligraphy editing with a rendered preview](https://runebender.org/images/runebender-xilem-nufo-editing.png)
 
+## Documentation
+
+Start with the [documentation index](docs/README.md) for release, testing, interface, and local-model guides.
+
 ## Local native builds
 
 For UI development, use an optimized build with incremental compilation:
@@ -38,8 +42,8 @@ Use `cargo build --release --locked` for final release builds and performance co
 ## Local sketch models
 
 The native Brush panel can draft with an installed Virtua model and compare the result before applying it.
-Put compatible model packages in `~/runebender/models`; see [Local models](LOCAL-MODELS.md) for the package layout and runtime requirements.
-Use the [Virtua testing guide](VIRTUA-REGULAR-TESTING.md) for the first Arabic trial.
+Put compatible model packages in `~/runebender/models`; see [Local models](docs/LOCAL-MODELS.md) for the package layout and runtime requirements.
+Use the [Virtua testing guide](docs/VIRTUA-REGULAR-TESTING.md) for the first Arabic trial.
 
 ## Persistent local chat
 

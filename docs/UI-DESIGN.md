@@ -2,7 +2,7 @@
 
 A panel section is built from `recipes::Row` values grouped under captions.
 There is no other way to put content in a section.
-The vocabulary, its rules, and every measurement live in [`src/application/view/recipes/rows.rs`](src/application/view/recipes/rows.rs); this page is the summary.
+The vocabulary, its rules, and every measurement live in [`src/application/view/recipes/rows.rs`](../src/application/view/recipes/rows.rs); this page is the summary.
 `tests/panel_vocabulary.rs` fails the build when a panel module reaches past the vocabulary to a bare label, column, or button.
 
 ## Four rules
@@ -171,7 +171,7 @@ Check its narrowest supported dock width and any other mode that reuses the same
 Run focused tests for changed interaction or layout behavior and the repository formatting checks.
 Reuse shared recipe tests for common spacing instead of adding identical tests to every section.
 Headless screenshots do not verify native pointer, input method, accessibility, or GPU behavior; validate those separately when the change requires it.
-See [`AGENTS.md`](AGENTS.md) for the full validation guidance and the [design principles](https://runebender.org/docs/design-principles.html) for the broader visual rules.
+See [`AGENTS.md`](../AGENTS.md) for the full validation guidance and the [design principles](https://runebender.org/docs/design-principles.html) for the broader visual rules.
 
 ## Headless screenshots
 

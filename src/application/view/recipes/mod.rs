@@ -8,7 +8,7 @@
 //! header, collapse state, symmetric inset, body gap, and full-width divider.
 //! [`panel_stack`] composes sections without duplicating their spacing.
 //! Body layouts use `Region::Form`, `Region::Inline`, or `Region::List` without
-//! adding another outer inset. See `UI-DESIGN.md` for a complete contributor example.
+//! adding another outer inset. See `docs/UI-DESIGN.md` for a complete contributor example.
 
 use crate::application::widgets::icon_paint;
 use crate::application::widgets::input_typography;
