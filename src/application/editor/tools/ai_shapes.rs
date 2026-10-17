@@ -122,12 +122,13 @@ pub(crate) fn sample_shapes_ufo() -> Option<PathBuf> {
     if let Ok(exe) = std::env::current_exe()
         && let Some(dir) = exe.parent()
     {
-        let bundled = dir.join("../Resources/shapes/Shapes.ufo");
+        let bundled = dir.join("../Resources/font-sources/static-fonts/Shapes.ufo");
         if bundled.is_dir() {
             return Some(bundled);
         }
     }
-    let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/shapes/Shapes.ufo");
+    let checkout =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/font-sources/static-fonts/Shapes.ufo");
     checkout.is_dir().then_some(checkout)
 }
 
