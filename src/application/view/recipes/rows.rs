@@ -97,16 +97,22 @@ pub(crate) enum Row {
         on_change: Typed,
         on_enter: Typed,
     },
-    /// One of several, shown as the current choice. Clicking moves to
-    /// the next choice. A single choice is shown and is not a control.
+    /// One of several, as a list of rows with the chosen one inverted.
+    /// A list, not a popup or a field, so what is available and what
+    /// is chosen are both visible at once.
     Picker {
         choices: Vec<String>,
         chosen: Option<usize>,
         on_pick: Pick,
     },
-    /// A set of words or tags as small outlined pills, in as many
-    /// lines as the dock needs.
-    Chips(Vec<String>),
+    /// A set of words or tags as pills, in as many lines as the dock
+    /// needs. Each pill is a control: clicking picks it, and the chosen
+    /// one is inverted.
+    Chips {
+        items: Vec<String>,
+        chosen: Option<usize>,
+        on_pick: Pick,
+    },
     /// Two or three exclusive options as one segmented control.
     Choice {
         options: Vec<String>,
@@ -128,6 +134,10 @@ pub(crate) enum Row {
     KeyValue(Vec<(String, String)>),
     /// Rows nobody needs every day, behind a disclosure. The key is the
     /// collapse key; details start closed.
+    #[expect(
+        dead_code,
+        reason = "the vocabulary is closed: a row nothing uses yet is still part of it"
+    )]
     Details { key: &'static str, rows: Vec<Self> },
     /// A value on a range, with its caption and current reading.
     Slider {
@@ -167,6 +177,22 @@ pub(crate) fn section_of(
     groups: Vec<Group>,
 ) -> impl WidgetView<Workspace> + use<> {
     super::panel_section(app, key, title, body_of(app, groups))
+}
+
+/// A section and, under its full-width rule, a Details strip: the facts
+/// nobody needs every day, visibly outside the section they describe.
+pub(crate) fn section_with_details(
+    app: &Workspace,
+    key: &'static str,
+    title: &'static str,
+    groups: Vec<Group>,
+    details: Vec<Row>,
+) -> impl WidgetView<Workspace> + use<> {
+    let strip = details_view(app, key, details);
+    super::panel_stack((
+        section_of(app, key, title, groups),
+        super::panel_group(&app.palette, strip),
+    ))
 }
 
 /// The groups of a section without the header, for a caller that owns
@@ -241,7 +267,11 @@ fn row_view(app: &Workspace, row: Row) -> Box<AnyWidgetView<Workspace>> {
             chosen,
             on_pick,
         } => picker(pal, choices, chosen, on_pick).boxed(),
-        Row::Chips(words) => chips(pal, words).boxed(),
+        Row::Chips {
+            items,
+            chosen,
+            on_pick,
+        } => chips(pal, items, chosen, on_pick).boxed(),
         Row::Choice {
             options,
             chosen,
@@ -329,88 +359,100 @@ fn quiet(pal: &Palette, text: String, on_click: Click) -> impl WidgetView<Worksp
     .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Row)))
 }
 
-/// The current choice with a chevron; a click moves to the next one.
+/// The choices as rows, the chosen one inverted. With nothing to
+/// choose from, one muted line says so.
 fn picker(
     pal: &Palette,
     choices: Vec<String>,
     chosen: Option<usize>,
     on_pick: Pick,
 ) -> impl WidgetView<Workspace> + use<> {
-    let count = choices.len();
-    let current = chosen
-        .and_then(|i| choices.get(i).cloned())
-        .unwrap_or_else(|| "None".to_owned());
-    let several = count > 1;
-    let next = chosen.map_or(0, |i| (i + 1) % count.max(1));
-    let text_ink = if chosen.is_some() {
-        pal.text
-    } else {
-        pal.text_muted
-    };
-    sized_box(
-        button(
-            pal,
-            row(
-                Region::Inline,
-                (
-                    label(current)
-                        .text_size(TextSize::Body.px())
-                        .color(text_ink),
-                    FlexSpacer::Flex(1.0),
-                    several.then(|| marker(Marker::Open, pal.text_muted)),
-                ),
-            ),
-            move |app: &mut Workspace| {
-                if several {
-                    on_pick(app, next);
-                }
-            },
-        )
-        .background_color(pal.field())
-        .border_color(pal.field_outline)
-        .border_width(Stroke::Hairline.length()),
-    )
-    .dims(Dimensions::new(
-        Dim::Stretch,
-        Dim::from(ControlSize::Control),
-    ))
+    let empty = choices
+        .is_empty()
+        .then(|| prose_muted(pal, "None installed".to_owned()));
+    let rows: Vec<_> = choices
+        .into_iter()
+        .enumerate()
+        .map(|(i, text)| {
+            let on_pick = on_pick.clone();
+            super::list_row(pal, text, String::new(), chosen == Some(i), move |app| {
+                on_pick(app, i);
+            })
+        })
+        .collect();
+    column(Region::List, (empty, rows)).gap(Space::Xs)
 }
 
 /// Words as pills. Masonry's flex does not wrap, so the lines are cut
 /// here from the dock width and an average glyph width.
-fn chips(pal: &Palette, words: Vec<String>) -> impl WidgetView<Workspace> + use<> {
+fn chips(
+    pal: &Palette,
+    items: Vec<String>,
+    chosen: Option<usize>,
+    on_pick: Pick,
+) -> impl WidgetView<Workspace> + use<> {
     const GLYPH_PX: f64 = 6.5;
     let budget = DOCK_WIDTH - 2.0 * Space::Lg.px() - 2.0 * Space::Md.px();
     let width = |w: &str| w.chars().count() as f64 * GLYPH_PX + 2.0 * Space::Md.px();
-    let mut lines: Vec<Vec<String>> = Vec::new();
+    let mut lines: Vec<Vec<(usize, String)>> = Vec::new();
     let mut used = 0.0;
-    for word in words {
+    for (i, word) in items.into_iter().enumerate() {
         let w = width(&word);
         if lines.is_empty() || used + w + Space::Sm.px() > budget {
-            lines.push(vec![word]);
+            lines.push(vec![(i, word)]);
             used = w;
         } else {
             used += w + Space::Sm.px();
-            lines.last_mut().expect("a line was just pushed").push(word);
+            lines
+                .last_mut()
+                .expect("a line was just pushed")
+                .push((i, word));
         }
     }
     let rows: Vec<_> = lines
         .into_iter()
         .map(|line| {
-            let chips: Vec<_> = line.into_iter().map(|w| chip(pal, w)).collect();
+            let chips: Vec<_> = line
+                .into_iter()
+                .map(|(i, w)| {
+                    let on_pick = on_pick.clone();
+                    chip(pal, w, chosen == Some(i), move |app| on_pick(app, i))
+                })
+                .collect();
             row(Region::Inline, chips)
         })
         .collect();
     column(Region::List, rows).gap(Space::Sm)
 }
 
-fn chip(pal: &Palette, text: String) -> impl WidgetView<Workspace> + use<> {
+/// A pill: a button, so its text is centered by the same code that
+/// centers every other button, inverted when chosen.
+fn chip<F: Fn(&mut Workspace) + Send + Sync + 'static>(
+    pal: &Palette,
+    text: String,
+    active: bool,
+    on_click: F,
+) -> impl WidgetView<Workspace> + use<F> {
+    let (fg, border, bg) = if active {
+        (
+            pal.selected_ink(),
+            pal.selected_outline(pal.outline),
+            pal.selected_bg(),
+        )
+    } else {
+        (pal.text, pal.outline, Palette::FLAT)
+    };
     sized_box(
-        sized_box(label(text).text_size(TextSize::Body.px()).color(pal.text))
-            .padding(masonry::properties::Padding::horizontal(Space::Md.length()))
-            .border_color(pal.outline)
-            .border_width(Stroke::Hairline.length())
-            .corner_radius(Length::px(ControlSize::Swatch.px() / 2.0)),
+        button(
+            pal,
+            label(text).text_size(TextSize::Body.px()).color(fg),
+            on_click,
+        )
+        .padding(masonry::properties::Padding::horizontal(Space::Md.length()))
+        .background_color(bg)
+        .border_color(border)
+        .border_width(Stroke::Hairline.length())
+        .corner_radius(Length::px(ControlSize::Swatch.px() / 2.0)),
     )
     .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Swatch)))
 }
@@ -499,15 +541,25 @@ fn tiles_view(pal: &Palette, tiles: Vec<Tile>) -> impl WidgetView<Workspace> + u
     row(Region::Inline, views)
 }
 
-/// A disclosure row and, when open, its rows indented by nothing: the
-/// section margin is enough.
 fn details(
     app: &Workspace,
     key: &'static str,
     rows: Vec<Row>,
 ) -> impl WidgetView<Workspace> + use<> {
+    details_view(app, key, rows)
+}
+
+/// The disclosure and its rows. The collapse key is the section's with
+/// a suffix, so a section and its details fold independently.
+fn details_view(
+    app: &Workspace,
+    key: &'static str,
+    rows: Vec<Row>,
+) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
-    // Details start closed, so the key's presence means open.
+    // Details start closed, so the key's presence means open. One leak
+    // per distinct section key, a fixed set.
+    let key: &'static str = Box::leak(format!("{key} details").into_boxed_str());
     let open = app.collapsed.contains(key);
     let inner: Vec<Box<AnyWidgetView<Workspace>>> = if open {
         rows.into_iter().map(|r| row_view(app, r)).collect()

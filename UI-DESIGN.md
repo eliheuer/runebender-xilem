@@ -60,7 +60,7 @@ fn width_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
 ```
 
 `recipes::section_of` owns the header, collapse state, inset, group dividers, and the full-width rule.
-`recipes::body_of` gives the groups without the header, for a caller that owns its own frame.
+`recipes::section_with_details` adds a Details strip under the section rule.
 `recipes::panel_stack` stacks sections.
 The reference section is `src/application/view/panels/ai_shapes.rs`; the Local AI rail in `panels/local_ai.rs` is the second.
 Views read workspace state and forward edits to existing workspace intents; font mutations and undo stay in the commands and font engine.

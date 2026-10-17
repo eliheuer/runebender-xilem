@@ -3,8 +3,10 @@
 
 //! The Local AI Shapes section of the inspector, shown while the tool
 //! is active. The reference section for the panel language in
-//! `recipes::rows`: a model group, a words group, a training group,
-//! and the facts behind Details.
+//! `recipes::rows`: a model group, a shapes group, a training group,
+//! and the facts in a Details strip under the section.
+
+use std::sync::Arc;
 
 use crate::application::editor::tools::ai_shapes::{TrainSource, fit_path, sample_shapes_ufo};
 use crate::application::view::recipes::{self, Group, Row, Tile, click};
@@ -19,7 +21,7 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let st = &app.shapes;
     let mut groups = Vec::new();
 
-    // Which model. The font's own first, as scanned.
+    // Which model: the list, the font's own first, as scanned.
     let names: Vec<String> = st.installed.iter().map(|m| m.name.clone()).collect();
     let chosen = st
         .model
@@ -29,28 +31,37 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let mut model_rows = vec![Row::Picker {
         choices: names,
         chosen,
-        on_pick: std::sync::Arc::new(move |app: &mut Workspace, i| {
+        on_pick: Arc::new(move |app: &mut Workspace, i| {
             if let Some(path) = paths.get(i) {
                 app.choose_shapes_model(path);
             }
         }),
     }];
-    model_rows.push(Row::Meta(match st.chosen() {
-        Some(m) => format!(
-            "{} word{}, {} spare",
-            m.words.len(),
-            if m.words.len() == 1 { "" } else { "s" },
-            m.spare
-        ),
-        None => "No shapes model yet".to_owned(),
-    }));
     if !st.note.is_empty() {
         model_rows.push(Row::Prose(st.note.clone()));
     }
     groups.push(Group::new("Model", model_rows));
 
+    // The shapes the model draws. A pill picks one for the open box.
     if !st.words.is_empty() {
-        groups.push(Group::new("Words", vec![Row::Chips(st.words.clone())]));
+        let picked = st
+            .ghost
+            .as_ref()
+            .map_or(st.pick.0.as_str(), |g| g.word.as_str());
+        let chosen = st.words.iter().position(|w| w == picked);
+        let words = st.words.clone();
+        groups.push(Group::new(
+            "Shapes",
+            vec![Row::Chips {
+                items: st.words.clone(),
+                chosen,
+                on_pick: Arc::new(move |app: &mut Workspace, i| {
+                    if let Some(word) = words.get(i) {
+                        app.shapes_pick_word(word);
+                    }
+                }),
+            }],
+        ));
     }
 
     // Training: what runs now, or how to start one.
@@ -100,7 +111,7 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     format!("Thorough, {THOROUGH_MINUTES} min"),
                 ],
                 chosen: usize::from(thorough),
-                on_pick: std::sync::Arc::new(|app: &mut Workspace, i| {
+                on_pick: Arc::new(|app: &mut Workspace, i| {
                     app.shapes.thorough = i == 1;
                 }),
             }];
@@ -122,24 +133,14 @@ pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         }
     }
 
-    if let Some(m) = st.chosen() {
-        groups.push(Group::new(
-            "",
-            vec![Row::Details {
-                key: "Local AI Shapes details",
-                rows: vec![Row::KeyValue(vec![
-                    ("Words".into(), m.words.len().to_string()),
-                    ("Spare slots".into(), m.spare.to_string()),
-                    ("Folder".into(), m.path.display().to_string()),
-                ])],
-            }],
-        ));
-    }
+    let details = match st.chosen() {
+        Some(m) => vec![Row::KeyValue(vec![
+            ("Shapes".into(), m.words.len().to_string()),
+            ("Spare slots".into(), m.spare.to_string()),
+            ("Folder".into(), m.path.display().to_string()),
+        ])],
+        None => vec![Row::Meta("No model chosen".into())],
+    };
 
-    recipes::section(
-        app,
-        "Local AI Shapes",
-        "Local AI Shapes",
-        recipes::body_of(app, groups),
-    )
+    recipes::section_with_details(app, "Local AI Shapes", "Local AI Shapes", groups, details)
 }

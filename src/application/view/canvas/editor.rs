@@ -384,7 +384,7 @@ pub(crate) enum EditorEvent {
     /// Session-only brush ink changed; the canonical glyph did not.
     SketchChanged,
     /// The local AI shapes tool: a box was dragged; the old ghost is stale.
-    AiShapeBox,
+    AiShapeBox { rect: Rect },
     /// The local AI shapes tool: draw `word` into `rect`; `seed` 0 is
     /// the most likely drawing, another seed another option.
     AiShapeDraw { rect: Rect, word: String, seed: u64 },
@@ -656,7 +656,7 @@ impl EditorWidget {
         self.ai_ghost = None;
         self.ai_word.clear();
         self.ai_note.clear();
-        ctx.submit_action::<EditorEvent>(EditorEvent::AiShapeBox);
+        ctx.submit_action::<EditorEvent>(EditorEvent::AiShapeBox { rect });
         ctx.request_focus();
     }
 
@@ -4111,6 +4111,7 @@ pub(crate) struct EditorView<F> {
     text: Option<crate::application::editor::tools::text::TextInputs>,
     ai_ghost: Option<Arc<ShapeGhost>>,
     ai_note: String,
+    ai_pick: (String, u64),
     focus_target: Arc<Mutex<Option<WidgetId>>>,
     on_event: F,
 }
@@ -4137,6 +4138,7 @@ pub(crate) fn editor<F: Fn(&mut Workspace, EditorEvent) + 'static>(
     text: Option<crate::application::editor::tools::text::TextInputs>,
     ai_ghost: Option<Arc<ShapeGhost>>,
     ai_note: String,
+    ai_pick: (String, u64),
     focus_target: Arc<Mutex<Option<WidgetId>>>,
     on_event: F,
 ) -> EditorView<F> {
@@ -4161,6 +4163,7 @@ pub(crate) fn editor<F: Fn(&mut Workspace, EditorEvent) + 'static>(
         text,
         ai_ghost,
         ai_note,
+        ai_pick,
         focus_target,
         on_event,
     }
@@ -4359,6 +4362,12 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
         }
         if self.ai_note != prev.ai_note {
             element.widget.ai_note = self.ai_note.clone();
+            dirty = true;
+        }
+        if self.ai_pick.1 != prev.ai_pick.1 && element.widget.ai_box.is_some() {
+            // A pill in the panel chose the word; the field shows it so
+            // Enter keeps and Tab varies as if it had been typed.
+            element.widget.ai_word = self.ai_pick.0.clone();
             dirty = true;
         }
         if self.sketch_revision != prev.sketch_revision {

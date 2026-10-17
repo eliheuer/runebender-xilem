@@ -218,8 +218,7 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                     recipes::section(app, "Neural", "Neural", super::neural::panel(app)),
                 )
             }),
-            (editing && app.tool == Tool::AiShape)
-                .then(|| recipes::panel_group(pal, super::ai_shapes::panel(app))),
+            (editing && app.tool == Tool::AiShape).then(|| super::ai_shapes::panel(app)),
             (editing && app.tool == Tool::Metaball)
                 .then(|| recipes::panel_group(pal, super::metaballs::panel(app))),
             (editing && app.tool == Tool::Sketch)

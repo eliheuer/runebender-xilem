@@ -577,4 +577,4 @@ where
 }
 
 pub(crate) mod rows;
-pub(crate) use rows::{Group, Row, Tile, body_of, click, section_of};
+pub(crate) use rows::{Group, Row, Tile, click, section_of, section_with_details};

@@ -95,6 +95,11 @@ pub(crate) struct AiShapesState {
     pub(crate) scanned: bool,
     /// Set while a worker runs, so the view polls; cleared when idle.
     pub(crate) pump: Option<Arc<AtomicBool>>,
+    /// The box on the canvas, while one is open.
+    pub(crate) rect: Option<Rect>,
+    /// The word picked in the panel, with a counter so picking the
+    /// same word twice still reaches the canvas.
+    pub(crate) pick: (String, u64),
 }
 
 impl AiShapesState {
@@ -286,10 +291,12 @@ impl Workspace {
     }
 
     /// A new box was dragged: whatever was drawn before no longer applies.
-    pub(crate) fn shapes_box_set(&mut self) {
+    pub(crate) fn shapes_box_set(&mut self, rect: Rect) {
         if let Some(job) = self.shapes.job.take() {
             job.cancellation.cancel();
         }
+        self.shapes.rect = Some(rect);
+        self.shapes.pick.0.clear();
         self.shapes.ghost = None;
         self.shapes.note.clear();
         if !self.shapes.scanned {
@@ -304,11 +311,25 @@ impl Workspace {
         if let Some(job) = self.shapes.job.take() {
             job.cancellation.cancel();
         }
+        self.shapes.rect = None;
+        self.shapes.pick.0.clear();
         self.shapes.ghost = None;
         self.shapes.note.clear();
     }
 
+    /// A word was clicked in the panel. With a box open, draw it there;
+    /// without one, say what to do, since the pill is the only feedback.
+    pub(crate) fn shapes_pick_word(&mut self, word: &str) {
+        self.shapes.pick = (word.to_owned(), self.shapes.pick.1 + 1);
+        match self.shapes.rect {
+            Some(rect) => self.shapes_draw(rect, word, 0),
+            None => self.shapes.note = format!("Drag a box on the glyph to place a {word}"),
+        }
+    }
+
     pub(crate) fn shapes_kept(&mut self, word: &str) {
+        self.shapes.rect = None;
+        self.shapes.pick.0.clear();
         self.shapes.ghost = None;
         self.shapes.note = format!("Added {word}. Undo removes it.");
         self.finish_open_glyph_refresh();
