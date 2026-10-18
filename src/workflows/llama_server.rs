@@ -489,10 +489,10 @@ mod real_server {
         let text = answer["choices"][0]["message"]["content"]
             .as_str()
             .unwrap_or_default();
-        eprintln!(
-            "loaded in {load:?}; answered in {:?}: {text:?}",
+        assert!(
+            text.to_lowercase().contains("ready"),
+            "loaded in {load:?}; answered in {:?}: {answer}",
             started.elapsed() - load
         );
-        assert!(text.to_lowercase().contains("ready"), "{answer}");
     }
 }
