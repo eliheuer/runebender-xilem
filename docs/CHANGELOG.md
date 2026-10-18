@@ -11,6 +11,7 @@ Entries under Unreleased describe work being prepared, not an available public r
 - Live MCP tool `analyze_font`: one audit of a whole source, with counts by mark label, off-grid points, kinks, stem medians per case and missing or incompatible glyphs against every other source, worst offenders named.
 - Live MCP tool `analyze_glyph`: stem and bar, ink spans, node continuity, grid fit, mark label, and point-structure compatibility with every other source, with a reason.
 - The Chat panel serves a selected GGUF through a supervised `llama-server` child when that binary is found beside the editor, at `RUNEBENDER_LLAMA_SERVER`, or on PATH: loopback only, the model's own chat template for tool calls, thinking off by default, one server kept across turns and stopped with the panel. `font-ml chat` remains the fallback. A chat model folder now needs only a `.gguf`.
+- Live MCP tool `flag_glyph`: the agent's needs-eyes flag. Marks a glyph pink and appends a dated reason to its UFO note; refuses green, purple and yellow glyphs and never clears a mark.
 - A `triage-font` workflow, served as an MCP prompt and a skill, that runs `analyze_font` and ranks what needs the designer's eyes.
 - The editor removes dead live-session sockets left by crashed or killed editors when it starts.
 - `analyze_glyph` on the saved-file tool surface too (`runebender agent call analyze_glyph --font`), with compatibility against the other masters of a designspace.

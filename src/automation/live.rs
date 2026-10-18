@@ -117,6 +117,15 @@ pub fn tools() -> Vec<agent::Tool> {
         }, "required":["glyph"], "additionalProperties":false}),
     });
     result.push(agent::Tool {
+        name: "flag_glyph".into(),
+        description: "Mark one live glyph pink with a dated note so the designer looks at it: the agent's needs-eyes flag. Refuses glyphs marked green, purple or yellow, which only the designer grades, and never clears a mark. The note is appended to the glyph's UFO note and stays with the font until the designer removes it. Give one reason with a number, such as 'kink at 312,640' or 'stem 136 against a median of 192'.".into(),
+        parameters: json!({"type":"object", "properties":{
+            "glyph":{"type":"string","minLength":1},
+            "reason":{"type":"string","minLength":3,"maxLength":400},
+            "source":{"type":"integer","minimum":0}
+        }, "required":["glyph","reason"], "additionalProperties":false}),
+    });
+    result.push(agent::Tool {
         name: "analyze_font".into(),
         description: "Audit one whole live source without changing it: glyph counts by mark label, points off the 8 unit grid with the worst glyphs named, widths off the 8 grid, glyphs with kinks or G1 curve joins, stem medians for uppercase, lowercase and other with the farthest glyphs and the glyphs that have no vertical stem listed apart, and for every other source which glyphs are missing or not point compatible with a reason. Each list holds at most limit names, default 20. Call it to triage a font, then analyze_glyph on the names it returns.".into(),
         parameters: json!({"type":"object", "properties":{
@@ -214,6 +223,25 @@ pub fn tools() -> Vec<agent::Tool> {
     result.extend(super::agent_graph::tools());
     result.extend(super::agent_proof::tools());
     result
+}
+
+/// Today's civil date in UTC as `YYYY-MM-DD`, for notes written into a font.
+fn today() -> String {
+    let days = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() / 86_400)
+        .unwrap_or_default();
+    // Howard Hinnant's days-to-civil algorithm.
+    let z = i64::try_from(days).unwrap_or_default() + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02}")
 }
 
 /// Handles a call on the GUI thread. Reads include unsaved changes; proposals mark
@@ -669,6 +697,72 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
                 }
             }
         }
+        "flag_glyph" => {
+            let glyph = object
+                .get("glyph")
+                .and_then(Value::as_str)
+                .ok_or("glyph is required")?;
+            let reason = object
+                .get("reason")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|reason| (3..=400).contains(&reason.len()))
+                .ok_or("reason is required, 3 to 400 characters")?;
+            if reason.chars().any(|c| c.is_control()) {
+                return Err("reason must be one line without control characters".into());
+            }
+            if branch.is_some() {
+                return Err("flag_glyph marks a source glyph, not an experiment branch".into());
+            }
+            let layer_id = project
+                .document_source(source)
+                .ok_or("unknown source")?
+                .default_layer();
+            let theme = crate::ui::theme::load_theme("dark").ok_or("missing built-in theme")?;
+            let (previous, note) = {
+                let layer = project
+                    .document_layer(glyph, &layer_id)
+                    .ok_or_else(|| format!("no glyph named {glyph}"))?;
+                (
+                    crate::ui::theme::mark_label_for_layer(layer, &theme),
+                    layer.note().map(str::to_owned),
+                )
+            };
+            if let Some(label) = previous.as_deref()
+                && matches!(label, "green" | "purple" | "yellow")
+            {
+                return Err(format!(
+                    "{glyph} is marked {label}, a grade only the designer changes; report it in words instead"
+                ));
+            }
+            let pink = crate::ui::theme::ufo_rgba_for_label("pink")
+                .and_then(|rgba| crate::font::model::glyph_metadata::MarkColor::parse(&rgba))
+                .ok_or("the pink mark color is not defined")?;
+            let line = format!("[agent {}] {reason}", today());
+            let note = match note.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
+                Some(existing) if existing.contains(&line) => existing.to_owned(),
+                Some(existing) => format!("{existing}\n{line}"),
+                None => line.clone(),
+            };
+            let outcome = project
+                .edit_document_layer(glyph, &layer_id, |draft| {
+                    draft.set_mark(Some("pink"), Some(pink))?;
+                    draft.set_note(Some(note.clone()));
+                    Ok(())
+                })
+                .map_err(|error| error.to_string())?;
+            json!({
+                "ok": true,
+                "glyph": glyph,
+                "mark": "pink",
+                "previous_mark": previous,
+                "note": note,
+                "changed": matches!(outcome, crate::font::project::DocumentEditOutcome::Changed { .. }),
+                "revision": edit_batch::canonical_glyph_revision(
+                    project.document_layer(glyph, &layer_id).ok_or("glyph vanished")?
+                )?,
+            })
+        }
         "analyze_font" => {
             let limit = object.get("limit").map_or(Ok(20), |v| {
                 v.as_u64()
@@ -945,6 +1039,70 @@ mod tests {
                 .width(),
             512.0
         );
+    }
+
+    #[test]
+    fn flag_glyph_marks_pink_with_a_note_and_refuses_graded_glyphs() {
+        let mut project = Project::new_font("never-saved.ufo".into());
+        project.add_document_glyph("rough", 500.0, None).unwrap();
+        project.add_document_glyph("done", 500.0, None).unwrap();
+        let source = project.source_id(0).unwrap();
+        let layer = project.document_source(source).unwrap().default_layer();
+        let green = crate::ui::theme::ufo_rgba_for_label("green")
+            .and_then(|rgba| crate::font::model::glyph_metadata::MarkColor::parse(&rgba))
+            .unwrap();
+        project
+            .edit_document_layer("done", &layer, |draft| {
+                draft.set_mark(Some("green"), Some(green))?;
+                Ok(())
+            })
+            .unwrap();
+        let refused = call(
+            &mut project,
+            "flag_glyph",
+            &json!({"glyph":"done","reason":"kink at 10,20"}),
+        );
+        assert_eq!(refused["ok"], false, "{refused}");
+        assert!(refused["error"].as_str().unwrap().contains("green"));
+        let flagged = call(
+            &mut project,
+            "flag_glyph",
+            &json!({"glyph":"rough","reason":"kink at 10,20"}),
+        );
+        assert_eq!(flagged["ok"], true, "{flagged}");
+        assert_eq!(flagged["mark"], "pink");
+        assert_eq!(flagged["previous_mark"], Value::Null);
+        let view = project.document_layer("rough", &layer).unwrap();
+        assert!(view.note().unwrap().ends_with("] kink at 10,20"));
+        assert!(view.note().unwrap().starts_with("[agent 20"));
+        let theme = crate::ui::theme::load_theme("dark").unwrap();
+        assert_eq!(
+            crate::ui::theme::mark_label_for_layer(view, &theme).as_deref(),
+            Some("pink")
+        );
+        let again = call(
+            &mut project,
+            "flag_glyph",
+            &json!({"glyph":"rough","reason":"stem 136 against a median of 192"}),
+        );
+        assert_eq!(again["ok"], true);
+        let note = again["note"].as_str().unwrap();
+        assert_eq!(note.lines().count(), 2, "{note}");
+        let same = call(
+            &mut project,
+            "flag_glyph",
+            &json!({"glyph":"rough","reason":"stem 136 against a median of 192"}),
+        );
+        assert_eq!(same["changed"], false);
+        assert!(
+            call(
+                &mut project,
+                "flag_glyph",
+                &json!({"glyph":"rough","reason":"x"})
+            )["ok"]
+                == false
+        );
+        assert_eq!(today().len(), 10);
     }
 
     #[test]

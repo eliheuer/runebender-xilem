@@ -210,7 +210,7 @@ fn effects_for(name: &str, surface: ToolSurface) -> Option<ToolEffects> {
             }
             "graph_run" | "graph_trace" => ToolEffects::session().local_code().idempotent(),
             "experiment_kern" => ToolEffects::session().destructive(),
-            "propose_edits" => ToolEffects::document(),
+            "propose_edits" | "flag_glyph" => ToolEffects::document(),
             "proposal_discard" => ToolEffects::document().destructive(),
             "proposal_install"
             | "experiment_apply"
