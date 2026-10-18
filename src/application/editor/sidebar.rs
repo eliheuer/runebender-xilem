@@ -3,9 +3,9 @@
 
 //! The sidebar's filters and the grid selection.
 
+use crate::application::design;
 use crate::application::font_model as model;
 use crate::application::view::canvas::grid::{Cell, CellMetrics};
-use crate::application::view::design;
 use crate::application::workspace::{Mode, Sel, Sort, Workspace};
 use runebender::GlyphCategory;
 use runebender::outline::glyph_paths::round_units;

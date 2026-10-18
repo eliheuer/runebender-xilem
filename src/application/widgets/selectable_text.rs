@@ -22,7 +22,7 @@ pub(crate) fn selectable_text<State, Action>(
     SelectableText {
         content: content.into(),
         color: None,
-        size: crate::application::view::design::TextSize::Body.px(),
+        size: crate::application::design::TextSize::Body.px(),
         phantom: PhantomData,
     }
 }

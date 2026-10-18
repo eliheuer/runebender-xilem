@@ -270,9 +270,7 @@ impl Palette {
     pub(crate) fn widget_properties(&self) -> std::sync::Arc<masonry::core::DefaultProperties> {
         self.widget_properties
             .get_or_init(|| {
-                std::sync::Arc::new(crate::application::view::design::stock::widget_properties(
-                    self,
-                ))
+                std::sync::Arc::new(crate::application::design::stock::widget_properties(self))
             })
             .clone()
     }

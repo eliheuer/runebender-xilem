@@ -29,8 +29,8 @@ use xilem::view::{FlexExt as _, flex_col, sized_box};
 use xilem::{Pod, ViewCtx, WidgetView};
 
 use crate::application::actions::{MENUS, actions};
-use crate::application::view::design::Space;
-use crate::application::view::theme::Palette;
+use crate::application::design::Space;
+use crate::application::design::theme::Palette;
 use crate::application::widgets::icon_paint;
 use crate::application::widgets::shortcuts::AppAction;
 use crate::application::widgets::text_label::{self, Anchor};
@@ -40,7 +40,7 @@ use runebender::outline::glyph_paths::round_units;
 #[path = "menu_header.rs"]
 mod header;
 
-const BAR_HEIGHT: f64 = crate::application::view::design::TITLEBAR_HEIGHT;
+const BAR_HEIGHT: f64 = crate::application::design::TITLEBAR_HEIGHT;
 
 /// Platforms without an OS menu share one application header row.
 pub(crate) fn in_window() -> bool {
@@ -60,7 +60,7 @@ fn title_width(title: &str) -> f64 {
 fn row_ink(pal: &Palette, enabled: bool, selected: bool) -> xilem::Color {
     if !enabled {
         pal.header_ink
-            .with_alpha(crate::application::view::design::Alpha::DisabledCommand.value())
+            .with_alpha(crate::application::design::Alpha::DisabledCommand.value())
     } else if selected {
         pal.selected_ink()
     } else {

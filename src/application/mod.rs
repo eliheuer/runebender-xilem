@@ -14,6 +14,7 @@ pub(crate) mod actions;
 pub(crate) mod browser;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod cli;
+pub(crate) mod design;
 pub(crate) mod editor;
 pub(crate) mod font_model;
 #[cfg(not(target_arch = "wasm32"))]

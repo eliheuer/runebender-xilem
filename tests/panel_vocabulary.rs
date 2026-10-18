@@ -79,7 +79,7 @@ fn panels_are_built_from_the_row_vocabulary() {
             for raw in RAW_VIEWS {
                 if calls(code, raw) {
                     failures.push(format!(
-                        "{name}:{}: `{raw}` — build this from recipes::Row; see src/application/view/recipes/rows.rs",
+                        "{name}:{}: `{raw}` — build this from recipes::Row; see src/application/design/recipes/rows.rs",
                         number + 1
                     ));
                 }

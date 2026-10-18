@@ -3,8 +3,9 @@
 
 //! Brush controls for session-only ink and explicit guarded trace submission.
 
-use crate::application::view::design::{Region, TextSize, column as xcolumn, row as xrow};
-use crate::application::view::{label, recipes};
+use crate::application::design::recipes;
+use crate::application::design::{Region, TextSize, column as xcolumn, row as xrow};
+use crate::application::view::label;
 use crate::application::workspace::Workspace;
 use masonry::layout::Length;
 use masonry::properties::LineBreaking;

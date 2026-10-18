@@ -3,6 +3,7 @@
 
 //! The editor's state: the `Workspace` struct and the types it is made of.
 
+use crate::application::design::theme::Palette;
 use crate::application::editor::session::Session;
 use crate::application::editor::tools::{chat, graph, local_ai, scripts, sketch};
 use crate::application::font_model::FontModel;
@@ -10,7 +11,6 @@ use crate::application::platform::{dialogs, export, script_jobs};
 use crate::application::view::canvas;
 use crate::application::view::canvas::grid::Cell;
 use crate::application::view::panels::tabs::Rail;
-use crate::application::view::theme::Palette;
 use crate::application::widgets::shortcuts;
 use runebender::GlyphCategory;
 use std::sync::Arc;
@@ -539,7 +539,7 @@ impl AppState {
         if action == shortcuts::AppAction::ToggleTranslucency {
             // The native window follows the palette on the next view rebuild; the theme's
             // own setting applies again after a restart.
-            crate::application::view::theme::set_translucency_override(Some(
+            crate::application::design::theme::set_translucency_override(Some(
                 !self.palette.blur_background,
             ));
             self.dispatch(shortcuts::AppAction::Theme(self.theme_id));

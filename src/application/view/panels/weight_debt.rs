@@ -5,9 +5,10 @@
 //! still owes a lighter one, by script, with the measured error of each
 //! way of drafting it, and a batch button for each.
 
+use crate::application::design::recipes;
+use crate::application::design::{Region, TextSize, column as xcolumn};
 use crate::application::editor::tools::weight_debt::{BATCH, ModelScore};
-use crate::application::view::design::{Region, TextSize, column as xcolumn};
-use crate::application::view::{label, recipes};
+use crate::application::view::label;
 use crate::application::workspace::Workspace;
 use runebender::analysis::weight_debt::OffsetFit;
 use xilem::WidgetView;

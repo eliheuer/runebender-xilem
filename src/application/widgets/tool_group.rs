@@ -18,8 +18,8 @@ use masonry::layout::{LenReq, Length};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
-use crate::application::view::design::{ControlSize, Space, TITLEBAR_HEIGHT};
-use crate::application::view::theme::Palette;
+use crate::application::design::theme::Palette;
+use crate::application::design::{ControlSize, Space, TITLEBAR_HEIGHT};
 use crate::application::widgets::icon_paint;
 use crate::application::widgets::text_label::{self, Anchor};
 use crate::application::workspace::{Tool, Workspace};
@@ -415,16 +415,16 @@ impl Widget for ToolMenu {
             self.size.height - MENU_SHADOW,
         );
         let shape =
-            crate::application::view::design::rounded_rect_path(frame, self.palette.corner_radius);
+            crate::application::design::rounded_rect_path(frame, self.palette.corner_radius);
         painter
             .fill(
-                crate::application::view::design::rounded_rect_path(
+                crate::application::design::rounded_rect_path(
                     frame + Vec2::new(-MENU_SHADOW, MENU_SHADOW),
                     self.palette.corner_radius,
                 ),
                 self.palette
                     .cell_shadow()
-                    .with_alpha(crate::application::view::design::Alpha::Shadow.value()),
+                    .with_alpha(crate::application::design::Alpha::Shadow.value()),
             )
             .draw();
         painter.fill(&shape, self.palette.header).draw();
@@ -436,14 +436,11 @@ impl Widget for ToolMenu {
             )
             .draw();
         // A row under the pointer looks like a list row under it, on the header's ground.
-        let hover = crate::application::view::design::ControlStyle::new(
+        let hover = crate::application::design::ControlStyle::new(
             &self.palette,
-            crate::application::view::design::ControlKind::Row,
+            crate::application::design::ControlKind::Row,
         )
-        .on(
-            &self.palette,
-            crate::application::view::design::Ground::Header,
-        )
+        .on(&self.palette, crate::application::design::Ground::Header)
         .face(true, false)
         .fill;
         for (index, choice) in self.group.choices().iter().enumerate() {
@@ -452,7 +449,7 @@ impl Widget for ToolMenu {
             if selected {
                 painter
                     .fill(
-                        crate::application::view::design::rounded_rect_path(
+                        crate::application::design::rounded_rect_path(
                             Rect::new(
                                 MENU_SHADOW + MENU_PAD,
                                 top,

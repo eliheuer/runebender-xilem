@@ -3,7 +3,7 @@
 
 //! macOS window state and optional native backdrop, outside the font engine.
 
-use crate::application::view::theme::BackdropStyle;
+use crate::application::design::theme::BackdropStyle;
 use crate::application::workspace::AppState;
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
@@ -193,7 +193,7 @@ fn apply_backdrop_style(effect: &NSVisualEffectView, style: BackdropStyle) {
         BlurAppearance::Dark => true,
         BlurAppearance::Light => false,
         BlurAppearance::Auto => {
-            crate::application::view::theme::window_theme_for_color(style.ground)
+            crate::application::design::theme::window_theme_for_color(style.ground)
                 == winit::window::Theme::Dark
         }
     };

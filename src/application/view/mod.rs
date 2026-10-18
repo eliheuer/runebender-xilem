@@ -4,15 +4,12 @@
 //! What the window shows: the canvases, the panels, the chrome, the
 //! render tree, the design system, the recipes, and the theme.
 
-use self::design::TextSize;
+use crate::application::design::TextSize;
 
 pub(crate) mod canvas;
 pub(crate) mod chrome;
-pub(crate) mod design;
 pub(crate) mod panels;
-pub(crate) mod recipes;
 pub(crate) mod render;
-pub(crate) mod theme;
 
 /// The interface font that ships with the editor.
 pub(crate) const UI_FONT: &[u8] = include_bytes!("../../../assets/fonts/VirtuaGrotesk-Regular.ttf");
@@ -23,7 +20,9 @@ pub(crate) const UI_FONT_FAMILY: &str = "Virtua Grotesk";
 /// that start before a window can follow the active theme.
 pub(crate) fn default_property_set() -> masonry::core::DefaultProperties {
     let theme_id = crate::application::platform::themes::catalog().initial_id();
-    design::stock::widget_properties(&theme::Palette::load(theme_id))
+    crate::application::design::stock::widget_properties(
+        &crate::application::design::theme::Palette::load(theme_id),
+    )
 }
 
 /// A label in the interface font.

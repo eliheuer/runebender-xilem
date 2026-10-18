@@ -43,12 +43,12 @@ use xilem::view::{FlexSpacer, canvas, sized_box};
 use xilem::{AnyWidgetView, WidgetView};
 
 use super::{Marker, button, kv, marker, prose, prose_muted};
-use crate::application::view::design::{
+use crate::application::design::theme::Palette;
+use crate::application::design::{
     ControlKind, ControlSize, ControlStyle, DOCK_WIDTH, Region, Space, Stroke, TextSize, column,
     row,
 };
 use crate::application::view::label;
-use crate::application::view::theme::Palette;
 use crate::application::workspace::Workspace;
 
 /// A click handler a row carries. Boxed so rows of different kinds can

@@ -3,10 +3,10 @@
 
 //! The image inspector, shown while the picture behind the glyph is selected.
 
+use crate::application::design::recipes;
+use crate::application::design::{Region, TextSize, column as xcolumn, row as xrow};
 use crate::application::editor::tools::trace::ImageAdjust;
-use crate::application::view::design::{Region, TextSize, column as xcolumn, row as xrow};
 use crate::application::view::label;
-use crate::application::view::recipes;
 use crate::application::widgets::gesture_slider::gesture_slider;
 use crate::application::workspace::Workspace;
 use xilem::WidgetView;

@@ -7,7 +7,7 @@
 //! rest of its word. Once clicked, the strip takes the keyboard: typing, Space, Backspace,
 //! Delete and the arrows edit its text; Escape gives the keyboard back to the editor.
 
-use crate::application::view::design::areas::model_strip;
+use crate::application::design::areas::model_strip;
 use masonry::accesskit::{Node, Role};
 use masonry::core::keyboard::{Key, KeyState, NamedKey};
 use masonry::core::{

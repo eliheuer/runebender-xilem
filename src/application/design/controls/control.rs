@@ -30,7 +30,7 @@ use masonry::properties::{Background, BorderColor, BorderWidth, CornerRadius};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewId, ViewMarker, ViewPathTracker};
 use xilem::{Pod, ViewCtx, WidgetView};
 
-use crate::application::view::design::ControlStyle;
+use crate::application::design::ControlStyle;
 
 /// A control was clicked.
 #[derive(Debug, PartialEq, Eq)]
@@ -259,7 +259,7 @@ const CONTENT: ViewId = ViewId::new(0xc0_7701);
 /// A pressable control around `content`, drawn in `style`.
 ///
 /// Every button in the application is one of these. Choose its look by
-/// [`ControlKind`](crate::application::view::design::ControlKind) through
+/// [`ControlKind`](crate::application::design::ControlKind) through
 /// [`ControlStyle`]; set only its size and padding at the call site.
 pub(crate) fn control<State, V, F>(
     style: ControlStyle,
@@ -377,8 +377,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::application::view::design::ControlKind;
-    use crate::application::view::theme::Palette;
+    use crate::application::design::ControlKind;
+    use crate::application::design::theme::Palette;
     use masonry::widgets::Label;
     use masonry_testing::TestHarness;
 

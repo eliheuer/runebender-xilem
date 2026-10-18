@@ -193,8 +193,8 @@ pub(crate) fn run(
             .with_options(|options| {
                 let options = options
                     .with_initial_inner_size(LogicalSize::new(
-                        crate::application::view::design::DEFAULT_WINDOW_WIDTH,
-                        crate::application::view::design::DEFAULT_WINDOW_HEIGHT,
+                        crate::application::design::DEFAULT_WINDOW_WIDTH,
+                        crate::application::design::DEFAULT_WINDOW_HEIGHT,
                     ))
                     .on_close(AppState::request_quit)
                     .on_file_drop(AppState::file_dropped);

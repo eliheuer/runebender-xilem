@@ -3,12 +3,13 @@
 
 //! Local Chat transcript, model selection, prompt, and process controls.
 
-use crate::application::editor::tools::chat::ChatEntry;
-use crate::application::editor::tools::scripts::ScriptArtifact;
-use crate::application::view::design::{
+use crate::application::design::recipes;
+use crate::application::design::{
     Radius, Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
 };
-use crate::application::view::{label, recipes};
+use crate::application::editor::tools::chat::ChatEntry;
+use crate::application::editor::tools::scripts::ScriptArtifact;
+use crate::application::view::label;
 use crate::application::widgets::scroll_viewport::portal;
 use crate::application::widgets::selectable_text::selectable_text;
 use crate::application::workspace::Workspace;

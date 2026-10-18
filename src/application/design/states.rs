@@ -19,8 +19,8 @@
 use masonry::peniko::color::Oklab;
 use xilem::Color;
 
-use crate::application::view::design::{Alpha, ButtonShape, ControlSize};
-use crate::application::view::theme::Palette;
+use crate::application::design::theme::Palette;
+use crate::application::design::{Alpha, ButtonShape, ControlSize};
 
 /// What a pressable control is for. Closed: when a feature needs a kind
 /// that is not here, add it once, with a reason, and every view has it.

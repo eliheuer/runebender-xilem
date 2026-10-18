@@ -24,7 +24,7 @@ pub(crate) fn paint(painter: &mut Painter<'_>, name: &str, frame: Rect, color: C
         painter
             .stroke(
                 &path,
-                &Stroke::new(crate::application::view::design::ICON_STROKE)
+                &Stroke::new(crate::application::design::ICON_STROKE)
                     .with_caps(Cap::Round)
                     .with_join(Join::Round),
                 color,

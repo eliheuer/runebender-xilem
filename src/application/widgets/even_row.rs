@@ -288,7 +288,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::{EvenRowWidget, child_id, even_row, slot_widths};
-    use crate::application::widgets::icon_button::{IconClicked, IconWidget, icon_button};
+    use crate::application::design::controls::icon_button::{IconClicked, IconWidget, icon_button};
     use masonry_testing::TestHarness;
     use std::sync::Arc;
     use xilem::ViewCtx;
@@ -328,9 +328,9 @@ mod tests {
     fn clicks_reach_the_tab_they_target_after_the_tab_set_changes() {
         let tab = |index: usize| {
             icon_button(
-                crate::application::view::design::ControlStyle::new(
-                    &crate::application::view::theme::Palette::load("gray"),
-                    crate::application::view::design::ControlKind::Tab,
+                crate::application::design::ControlStyle::new(
+                    &crate::application::design::theme::Palette::load("gray"),
+                    crate::application::design::ControlKind::Tab,
                 ),
                 "text",
                 "Text",

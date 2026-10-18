@@ -3,8 +3,8 @@
 
 //! The label inspector, shown beside a neural canvas while the label tool is active.
 
-use crate::application::view::design::{Region, column as xcolumn};
-use crate::application::view::recipes;
+use crate::application::design::recipes;
+use crate::application::design::{Region, column as xcolumn};
 use crate::application::workspace::Workspace;
 use std::sync::Arc;
 use xilem::WidgetView;

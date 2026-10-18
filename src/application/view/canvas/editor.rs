@@ -24,17 +24,17 @@ use runebender::font::{AnchorId, ContourId, PointId};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
+use crate::application::design::theme::Palette;
 use crate::application::editor::session::{Session, SessionSyncOutcome};
 use crate::application::editor::tools::ai_shapes::ShapeGhost;
 use crate::application::editor::tools::label::LABEL_GRID;
 use crate::application::editor::tools::sketch::SketchLayer;
-use crate::application::view::theme::Palette;
 use crate::application::widgets::context_menu::{ContextMenu, MenuAction, MenuRow, MenuTarget};
 use crate::application::widgets::text_label::{self, Anchor};
 use crate::application::workspace::Tool;
 use crate::application::workspace::Workspace;
 
-use crate::application::view::design::{
+use crate::application::design::{
     ANCHOR_DIAMOND_SCALE, METRICS_CARD_BOTTOM, METRICS_CARD_HEADER as PANEL_HEADER,
     METRICS_CARD_HEIGHT as PANEL_HEIGHT, METRICS_CARD_INSET as PANEL_PAD,
     METRICS_CARD_WIDTH as PANEL_WIDTH, METRICS_FIELD_GAP, METRICS_FIELD_HEIGHT as PANEL_ROW,
@@ -940,7 +940,7 @@ impl EditorWidget {
         };
         let width = PANEL_WIDTH;
         let frame = Rect::new(left, top, left + width, top + PANEL_HEIGHT);
-        let rounded = crate::application::view::design::rounded_rect_path;
+        let rounded = crate::application::design::rounded_rect_path;
         let radius = pal.corner_radius;
         painter
             .fill(
@@ -1094,7 +1094,7 @@ impl EditorWidget {
                 text_label::draw(
                     painter,
                     Point::new(
-                        rect.x0 + crate::application::view::design::INPUT_HORIZONTAL_INSET,
+                        rect.x0 + crate::application::design::INPUT_HORIZONTAL_INSET,
                         baseline,
                     ),
                     &value,

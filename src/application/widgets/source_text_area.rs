@@ -27,7 +27,7 @@ use masonry::widgets::{InsertNewline, TextAction, TextArea};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
-use crate::application::view::design::TextSize;
+use crate::application::design::TextSize;
 
 type Callback<State, Action> = Box<dyn Fn(&mut State, String) -> Action + Send + Sync + 'static>;
 

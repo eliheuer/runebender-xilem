@@ -3,14 +3,15 @@
 
 //! Files: opening a project, reloading it when the sources change, saving, and a new font.
 
+use crate::application::design;
+use crate::application::design::theme::Palette;
 use crate::application::editor::session::Session;
 use crate::application::editor::tools::{chat, graph, local_ai, scripts, sketch, weight_debt};
 use crate::application::font_model::FontModel;
+use crate::application::view::canvas;
 use crate::application::view::canvas::grid::cells_of;
 use crate::application::view::panels::sections::metric_bufs;
 use crate::application::view::panels::tabs::Rail;
-use crate::application::view::theme::Palette;
-use crate::application::view::{canvas, design};
 use crate::application::workspace::{Mode, Sel, Sort, Tab, TextContext, Tool, Workspace};
 use runebender::GlyphCategory;
 use runebender::outline::glyph_paths::round_units;

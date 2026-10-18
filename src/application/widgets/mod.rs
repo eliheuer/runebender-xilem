@@ -5,13 +5,11 @@
 //! menu, and the shortcut host.
 
 pub(crate) mod context_menu;
-pub(crate) mod control;
 pub(crate) mod drag_region;
 pub(crate) mod even_row;
 pub(crate) mod frame_stats;
 pub(crate) mod gesture_slider;
 pub(crate) mod ground;
-pub(crate) mod icon_button;
 pub(crate) mod icon_paint;
 pub(crate) mod letter_chips;
 pub(crate) mod menu_shell;

@@ -18,7 +18,7 @@
 //! file exists because the editor is a hand-written Masonry widget and can
 //! therefore reach `create_layer` directly.
 
-use crate::application::view::design::{ControlKind, ControlStyle};
+use crate::application::design::{ControlKind, ControlStyle};
 use std::sync::Arc;
 
 use masonry::accesskit::{Node, Role};
@@ -31,9 +31,9 @@ use masonry::imaging::Painter;
 use masonry::kurbo::{Axis, Point, Rect, Size, Stroke};
 use masonry::layout::{LenReq, Length};
 
+use crate::application::design::theme::Palette;
 use crate::application::view::canvas::editor::EditorWidget;
 use crate::application::view::canvas::graph::GraphWidget;
-use crate::application::view::theme::Palette;
 use crate::application::widgets::text_label::{self, Anchor};
 use runebender::outline::glyph_paths::round_units;
 
@@ -157,13 +157,13 @@ impl Widget for ContextMenu {
             .fill;
         painter
             .fill(
-                crate::application::view::design::rounded_rect_path(frame, pal.corner_radius),
+                crate::application::design::rounded_rect_path(frame, pal.corner_radius),
                 pal.panel,
             )
             .draw();
         painter
             .stroke(
-                crate::application::view::design::rounded_rect_path(frame, pal.corner_radius),
+                crate::application::design::rounded_rect_path(frame, pal.corner_radius),
                 &Stroke::new(pal.stroke),
                 pal.outline,
             )
@@ -174,10 +174,7 @@ impl Widget for ContextMenu {
             if self.hovered == Some(index) {
                 painter
                     .fill(
-                        crate::application::view::design::rounded_rect_path(
-                            rect,
-                            pal.control_radius,
-                        ),
+                        crate::application::design::rounded_rect_path(rect, pal.control_radius),
                         hover,
                     )
                     .draw();

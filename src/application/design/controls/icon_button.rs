@@ -23,7 +23,7 @@ use runebender::ui::icons::icons;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
-use crate::application::view::design::{self, ControlStyle, RAIL_TAB_ICON};
+use crate::application::design::{self, ControlStyle, RAIL_TAB_ICON};
 use crate::application::widgets::icon_paint;
 
 const TILE: f64 = 24.0;
@@ -431,9 +431,9 @@ impl<State: 'static, F: Fn(&mut State) + 'static> View<State, (), ViewCtx> for I
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::application::design::ControlKind;
+    use crate::application::design::theme::Palette;
     use crate::application::view::default_property_set;
-    use crate::application::view::design::ControlKind;
-    use crate::application::view::theme::Palette;
     use masonry::core::NewWidget;
     use masonry::widgets::{Button, Flex, Label};
     use masonry_testing::TestHarness;

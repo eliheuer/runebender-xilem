@@ -14,7 +14,7 @@ use masonry::layout::{LenReq, Length};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
-use crate::application::view::design::COORD_PICKER_EDGE;
+use crate::application::design::COORD_PICKER_EDGE;
 use crate::application::widgets::icon_paint;
 
 pub(crate) struct QuadrantGridWidget {

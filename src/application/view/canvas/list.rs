@@ -5,11 +5,11 @@
 //! the bottom bar's List box: a mark cell, the name, Unicode, width,
 //! LSB, RSB, the two kerning groups, and the category.
 
-use crate::application::view::design::{
+use crate::application::design::recipes::button;
+use crate::application::design::{
     ControlKind, ControlStyle, Region, Space, TextSize, column as xcolumn, row as xrow,
 };
 use crate::application::view::label;
-use crate::application::view::recipes::button;
 use crate::application::widgets::scroll_viewport::portal;
 use crate::application::workspace::Workspace;
 use masonry::layout::{Dim, Length};
@@ -80,7 +80,7 @@ pub(crate) fn glyph_list(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             let value = |text: String, w: f64| {
                 col(w, label(text).text_size(TextSize::Body.px()).color(muted))
             };
-            let mark = crate::application::view::recipes::mark_dot(pal, cell.mark);
+            let mark = crate::application::design::recipes::mark_dot(pal, cell.mark);
             sized_box(
                 button(
                     style,

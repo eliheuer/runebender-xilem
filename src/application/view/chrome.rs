@@ -3,17 +3,18 @@
 
 //! The bars around the canvas: the titlebar, the header tools, the status bar.
 
-use crate::application::editor::tools::graph;
-use crate::application::view::design::{
+use crate::application::design::controls::icon_button::icon_button;
+use crate::application::design::recipes;
+use crate::application::design::recipes::button;
+use crate::application::design::theme::Palette;
+use crate::application::design::{
     ControlKind, ControlSize, ControlStyle, Ground, Region, Space, TextSize, row as xrow,
 };
-use crate::application::view::design::{MARK_SWATCH_GAP, STATUS_ICON_SIZE, TITLEBAR_HEIGHT};
+use crate::application::design::{MARK_SWATCH_GAP, STATUS_ICON_SIZE, TITLEBAR_HEIGHT};
+use crate::application::editor::tools::graph;
+use crate::application::view::label;
 use crate::application::view::panels::tabs::{tab_chip, tab_strip};
-use crate::application::view::recipes::button;
-use crate::application::view::theme::Palette;
-use crate::application::view::{label, recipes};
 use crate::application::widgets::drag_region::drag_region;
-use crate::application::widgets::icon_button::icon_button;
 use crate::application::widgets::tool_group::{ToolGroup, tool_group};
 use crate::application::workspace::{Mode, Tool, Workspace};
 use masonry::layout::{Dim, Length};
@@ -315,9 +316,7 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                                 .log2(),
                             |app: &mut Workspace, v| app.graph.zoom = Some(v.exp2()),
                         )
-                        .width(Length::px(
-                            crate::application::view::design::STATUS_SLIDER_WIDTH,
-                        )),
+                        .width(Length::px(crate::application::design::STATUS_SLIDER_WIDTH)),
                     ),
                 )
             }),
@@ -348,9 +347,7 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                                 app.cell_size = v;
                             },
                         )
-                        .width(Length::px(
-                            crate::application::view::design::STATUS_SLIDER_WIDTH,
-                        )),
+                        .width(Length::px(crate::application::design::STATUS_SLIDER_WIDTH)),
                     ),
                 )
             }),
@@ -381,7 +378,7 @@ where
 
 /// Compact editor footer: proof appearance controls surround the live status.
 fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + use<> {
-    use crate::application::view::design::STATUS_SLIDER_WIDTH;
+    use crate::application::design::STATUS_SLIDER_WIDTH;
     let pal = &app.palette;
     recipes::panel_footer(
         pal,
@@ -480,7 +477,7 @@ fn footer_button<F>(
 where
     F: Fn(&mut Workspace) + Send + Sync + 'static,
 {
-    use crate::application::view::design::areas::footer;
+    use crate::application::design::areas::footer;
     let style = ControlStyle::new(pal, ControlKind::Secondary);
     sized_box(
         button(

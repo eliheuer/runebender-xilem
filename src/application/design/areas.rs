@@ -15,7 +15,7 @@
 
 /// The bar under the center column.
 pub(crate) mod footer {
-    use crate::application::view::design::{ControlSize, FOOTER_HEIGHT, Space};
+    use crate::application::design::{ControlSize, FOOTER_HEIGHT, Space};
 
     /// Controls in the footer are one step shorter than panel controls.
     ///
@@ -38,10 +38,10 @@ pub(crate) mod footer {
 
 /// The graph canvas: nodes as cards, wires between them.
 pub(crate) mod graph {
-    use crate::application::view::design::{
+    use crate::application::design::theme::Palette;
+    use crate::application::design::{
         GRID_CELL_SELECTED_SHADOW_OFFSET, GRID_CELL_SHADOW_OFFSET, TextSize,
     };
-    use crate::application::view::theme::Palette;
 
     /// A node's corner radius, at zoom 1.
     ///

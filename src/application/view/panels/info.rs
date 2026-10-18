@@ -3,7 +3,9 @@
 
 //! The info panel: which sections show for the grid and for a glyph.
 
-use crate::application::view::design::{ControlSize, Region, column as xcolumn, row as xrow};
+use crate::application::design;
+use crate::application::design::recipes;
+use crate::application::design::{ControlSize, Region, column as xcolumn, row as xrow};
 use crate::application::view::panels::editor_info::{
     compare_section, dimensions_section, features_section, groups_section, kerning_section,
     related_section,
@@ -13,7 +15,6 @@ use crate::application::view::panels::sections::{
     font_info_section, layers_section, mark_section, masters_section, measure_section,
     path_operations_section, shaping_section, transformations_section,
 };
-use crate::application::view::{design, recipes};
 use crate::application::workspace::{Mode, Tool, Workspace};
 use runebender::outline::glyph_paths::round_units;
 use xilem::WidgetView;

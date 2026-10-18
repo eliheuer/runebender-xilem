@@ -13,7 +13,7 @@ use masonry::layout::{LenReq, Length};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
-use crate::application::view::design;
+use crate::application::design;
 
 pub(crate) struct PanelFrameWidget {
     outline: Color,

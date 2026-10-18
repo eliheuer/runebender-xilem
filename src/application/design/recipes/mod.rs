@@ -3,21 +3,21 @@
 
 //! The recipes this application repeats.
 //!
-//! Measurements come from `view::design`; colors and corner radii come from `view::theme`.
+//! Measurements come from `design`; colors and corner radii come from `design::theme`.
 //! [`panel_section`] is the default for a new folding panel section: it owns the
 //! header, collapse state, symmetric inset, body gap, and full-width divider.
 //! [`panel_stack`] composes sections without duplicating their spacing.
 //! Body layouts use `Region::Form`, `Region::Inline`, or `Region::List` without
 //! adding another outer inset. See `docs/UI-DESIGN.md` for a complete contributor example.
 
-use crate::application::widgets::control::{ControlWidget, control};
+use crate::application::design::controls::control::{ControlWidget, control};
 use crate::application::widgets::icon_paint;
 use crate::application::widgets::input_typography;
 
-use crate::application::view::design::{
+use crate::application::design::{
     ControlKind, ControlSize, ControlStyle, ROW_MARKER_SIZE, Region, Space, Stroke, TextSize,
 };
-use crate::application::view::design::{column, row};
+use crate::application::design::{column, row};
 use crate::application::view::{label, text_input};
 use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
@@ -26,7 +26,7 @@ use xilem::style::Style;
 use xilem::view::FlexExt as _;
 use xilem::view::{FlexSpacer, canvas, sized_box};
 
-use crate::application::view::theme::Palette;
+use crate::application::design::theme::Palette;
 use crate::application::workspace::Workspace;
 
 /// The application's base button: a [`control`] in the given style.
@@ -93,7 +93,7 @@ where
     State: 'static,
     Seq: xilem::view::FlexSequence<State, ()> + Send + Sync,
 {
-    use crate::application::view::design::{FOOTER_HEIGHT, FOOTER_INSET};
+    use crate::application::design::{FOOTER_HEIGHT, FOOTER_INSET};
     crate::application::view::render::top_keyline(
         sized_box(
             row(Region::Inline, controls).padding(masonry::properties::Padding::horizontal(
@@ -122,7 +122,7 @@ where
     column(
         Region::List,
         (
-            sized_box(body).padding(crate::application::view::design::PANEL_SECTION_INSET),
+            sized_box(body).padding(crate::application::design::PANEL_SECTION_INSET),
             sized_box(label(""))
                 .dims(Dimensions::new(
                     Dim::Stretch,
@@ -188,7 +188,7 @@ where
             open.then_some(body),
         ),
     )
-    .gap(crate::application::view::design::PANEL_SECTION_BODY_GAP)
+    .gap(crate::application::design::PANEL_SECTION_BODY_GAP)
 }
 
 /// A complete folding section with the shared padding, header, body spacing, and divider.
@@ -335,8 +335,8 @@ pub(crate) fn mark_dot(
     };
     sized_box(label(""))
         .dims(Dimensions::fixed(
-            Length::px(crate::application::view::design::MARK_DOT_SIZE),
-            Length::px(crate::application::view::design::MARK_DOT_SIZE),
+            Length::px(crate::application::design::MARK_DOT_SIZE),
+            Length::px(crate::application::design::MARK_DOT_SIZE),
         ))
         .background_color(fill)
         .border_color(keyline)
@@ -454,7 +454,7 @@ pub(crate) fn list_row_marked<F: Fn(&mut Workspace) + Send + Sync + 'static>(
             move |app: &mut Workspace| on_click(app),
         )
         .padding(masonry::properties::Padding::horizontal(Length::px(
-            crate::application::view::design::SIDEBAR_ROW_INSET,
+            crate::application::design::SIDEBAR_ROW_INSET,
         ))),
     )
     .dims(Dimensions::new(
@@ -548,7 +548,7 @@ pub(crate) fn mark_swatch<F>(
 where
     F: Fn(&mut Workspace) + Send + Sync + 'static,
 {
-    use crate::application::view::design::MARK_SELECTED_RING_INSET;
+    use crate::application::design::MARK_SELECTED_RING_INSET;
     let outline = pal.mark_outline.unwrap_or(pal.outline);
     let selected_ring = pal.outline;
     let clear_ink = pal.editor_control_ink();

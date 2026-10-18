@@ -25,10 +25,10 @@ use masonry::widgets::{
     Button, Checkbox, Divider, Label, ProgressBar, RadioButton, Slider, TextArea, TextInput,
 };
 
-use crate::application::view::design::{
+use crate::application::design::theme::Palette;
+use crate::application::design::{
     Alpha, INPUT_BASELINE_OFFSET, INPUT_HORIZONTAL_INSET, INPUT_INSET,
 };
-use crate::application::view::theme::Palette;
 
 /// The stock widget properties for `pal`.
 pub(crate) fn widget_properties(pal: &Palette) -> DefaultProperties {

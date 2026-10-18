@@ -22,12 +22,12 @@ use masonry::layout::{LenReq, Length};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
-use crate::application::font_model::FontModel;
-use crate::application::view::design::{
+use crate::application::design::theme::Palette;
+use crate::application::design::{
     GRID_CELL_SELECTED_SHADOW_OFFSET, GRID_CELL_SHADOW_OFFSET, Stroke as DesignStroke,
 };
+use crate::application::font_model::FontModel;
 use crate::application::view::render::px32;
-use crate::application::view::theme::Palette;
 use crate::application::widgets::text_label::{self, Anchor};
 use runebender::outline::glyph_paths::round_units;
 
@@ -871,14 +871,14 @@ impl Widget for GridWidget {
             let track_h = self.size.height;
             let thumb_h = (track_h * track_h / self.content_height(total)).max(24.0);
             let thumb_y = (self.scroll / max) * (track_h - thumb_h);
-            let width = crate::application::view::design::SCROLL_THUMB_WIDTH;
+            let width = crate::application::design::SCROLL_THUMB_WIDTH;
             let sx = self.size.width - width - 2.0;
             painter
                 .fill(
                     Rect::new(sx, thumb_y, sx + width, thumb_y + thumb_h)
                         .to_rounded_rect(width / 2.0),
                     pal.text_muted
-                        .with_alpha(crate::application::view::design::Alpha::ScrollThumb.value()),
+                        .with_alpha(crate::application::design::Alpha::ScrollThumb.value()),
                 )
                 .draw();
         }
@@ -1197,9 +1197,9 @@ mod thumbnail_tests {
                     .collect(),
             ),
             metrics: CellMetrics {
-                cell: crate::application::view::design::RAIL_CELL_SIZE,
-                padding: crate::application::view::design::RAIL_GRID_INSET,
-                padding_y: crate::application::view::design::RAIL_GRID_INSET,
+                cell: crate::application::design::RAIL_CELL_SIZE,
+                padding: crate::application::design::RAIL_GRID_INSET,
+                padding_y: crate::application::design::RAIL_GRID_INSET,
                 captions_below: false,
                 ascender: 800.0,
                 descender: -200.0,

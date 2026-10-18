@@ -4,16 +4,16 @@
 //! The design system gate.
 //!
 //! Every color, shape, and interaction state in the window comes from the
-//! design system: the theme files, then `src/application/view/design/`,
-//! then an area override in `design/areas.rs`. This test reads the view
-//! layer and fails when code reaches past it: a face set by hand, a
-//! literal opacity, stroke, radius, or text size, a stock button, or a
-//! theme role no theme defines.
+//! design system: the theme files, then `src/application/design/`, then an
+//! area override in `design/areas.rs`. This test reads all application
+//! code outside `design/` and fails when it reaches past the system: a
+//! face set by hand, a literal opacity, stroke, radius, or text size, a
+//! stock button, or a theme role no theme defines.
 //!
 //! Older code that still does so is counted in [`BUDGET`]. A count may
 //! only go down: when you remove a bypass, lower its number here; when
 //! you would add one, use the design system instead. See
-//! `src/application/view/design/mod.rs` for where each thing lives.
+//! `src/application/design/mod.rs` for where each thing lives.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -41,36 +41,36 @@ fn number(rest: &str) -> bool {
     rest.trim_start().starts_with(|c: char| c.is_ascii_digit())
 }
 
-const DESIGN: &[&str] = &["view/design/", "view/theme.rs"];
-const DESIGN_AND_RECIPES: &[&str] = &["view/design/", "view/theme.rs", "view/recipes/"];
+/// The design system itself, which owns every style.
+const DESIGN: &[&str] = &["design/"];
 
 const RULES: &[Rule] = &[
     Rule {
         name: "local face",
         needle: ".background_color(",
         then: always,
-        owners: DESIGN_AND_RECIPES,
+        owners: DESIGN,
         instead: "a ControlKind for a control, or a recipe for a surface",
     },
     Rule {
         name: "local face",
         needle: ".border_color(",
         then: always,
-        owners: DESIGN_AND_RECIPES,
+        owners: DESIGN,
         instead: "a ControlKind for a control, or a recipe for a surface",
     },
     Rule {
         name: "local face",
         needle: ".border_width(",
         then: always,
-        owners: DESIGN_AND_RECIPES,
+        owners: DESIGN,
         instead: "a ControlKind for a control, or a recipe for a surface",
     },
     Rule {
         name: "local face",
         needle: ".corner_radius(",
         then: always,
-        owners: DESIGN_AND_RECIPES,
+        owners: DESIGN,
         instead: "a ControlKind for a control, or a recipe for a surface",
     },
     Rule {
@@ -142,11 +142,11 @@ fn application_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src/application")
 }
 
-/// Every Rust file under the view layer and the widgets, relative to `src/application/`.
+/// Every Rust file of the application, relative to `src/application/`.
 fn view_files() -> Vec<(String, String)> {
     let root = application_dir();
     let mut files = Vec::new();
-    let mut stack = vec![root.join("view"), root.join("widgets")];
+    let mut stack = vec![root.clone()];
     while let Some(dir) = stack.pop() {
         for entry in fs::read_dir(&dir).expect("view directory") {
             let path = entry.expect("entry").path();

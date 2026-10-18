@@ -3,9 +3,9 @@
 
 //! The preview strip and the glyph preview.
 
+use crate::application::design;
+use crate::application::design::Space;
 use crate::application::editor::tools::text as text_tool;
-use crate::application::view::design;
-use crate::application::view::design::Space;
 use crate::application::widgets::preview_blur;
 use crate::application::workspace::Workspace;
 use masonry::layout::Dim;

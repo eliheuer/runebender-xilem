@@ -2,18 +2,18 @@
 
 A panel section is built from `recipes::Row` values grouped under captions.
 There is no other way to put content in a section.
-The vocabulary, its rules, and every measurement live in [`src/application/view/recipes/rows.rs`](../src/application/view/recipes/rows.rs); this page is the summary.
+The vocabulary, its rules, and every measurement live in [`src/application/design/recipes/rows.rs`](../src/application/design/recipes/rows.rs); this page is the summary.
 `tests/panel_vocabulary.rs` fails the build when a panel module reaches past the vocabulary to a bare label, column, or button.
 
 ## The design system
 
 Panels are one part of the design system.
-Its entry point is [`src/application/view/design/mod.rs`](../src/application/view/design/mod.rs).
+Its entry point is [`src/application/design/mod.rs`](../src/application/design/mod.rs).
 Styles come from three layers:
 
 1. The theme files in `assets/themes/default/` give every color and shape value.
-2. `src/application/view/design/` gives the scales, the control states, and the themed stock widgets.
-3. `src/application/view/design/areas.rs` gives each exception for an area of the window, with its reason.
+2. `src/application/design/` gives the scales, the control states, and the themed stock widgets.
+3. `src/application/design/areas.rs` gives each exception for an area of the window, with its reason.
 
 A control names a `ControlKind`.
 The state table then gives it a look at rest, under the pointer, pressed, selected, disabled, and with keyboard focus.
@@ -54,7 +54,7 @@ If a feature needs a row that is not here, add it to `Row` once, with a reason i
 ## Build a section
 
 ```rust
-use crate::application::view::recipes::{self, Group, Row, click};
+use crate::application::design::recipes::{self, Group, Row, click};
 use crate::application::workspace::Workspace;
 use xilem::WidgetView;
 
@@ -85,7 +85,7 @@ Views read workspace state and forward edits to existing workspace intents; font
 Sections written before the vocabulary use `recipes::panel_section`, `recipes::section`, `recipes::panel_group`, `recipes::field`, and `design::column` and `design::row` with a `Region` directly.
 They are listed in `tests/panel_vocabulary.rs` and leave that list as they move.
 Until then: `panel_group` owns an 8-pixel inset and the full-width divider; `section` owns the header and a 4-pixel gap; section bodies add no outer padding.
-Read colors from `view::theme::Palette` and measurements from `view::design` instead of assigning local colors, radii, or pixel values.
+Read colors from `design::theme::Palette` and measurements from `design` instead of assigning local colors, radii, or pixel values.
 Let the dock own its width; section contents fit the available width.
 
 ## Built-in theme baseline

@@ -4,8 +4,8 @@
 //! The Neural inspector section: train a font from the open `.nufo`, pick a version, and set
 //! the text the proof strip shows.
 
-use crate::application::view::design::{Region, TextSize, column as xcolumn};
-use crate::application::view::recipes;
+use crate::application::design::recipes;
+use crate::application::design::{Region, TextSize, column as xcolumn};
 use crate::application::workspace::Workspace;
 use xilem::WidgetView;
 use xilem::style::Style as _;

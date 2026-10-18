@@ -8,8 +8,8 @@
 
 use std::sync::Arc;
 
+use crate::application::design::recipes::{self, Group, Row, Tile, click};
 use crate::application::editor::tools::ai_shapes::{TrainSource, fit_path, sample_shapes_ufo};
-use crate::application::view::recipes::{self, Group, Row, Tile, click};
 use crate::application::workspace::Workspace;
 use xilem::WidgetView;
 

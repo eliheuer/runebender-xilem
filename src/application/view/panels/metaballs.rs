@@ -3,9 +3,9 @@
 
 //! The live metaball inspector, shown beside the glyph while its tool is active.
 
-use crate::application::view::design::{Region, TextSize, column as xcolumn, row as xrow};
+use crate::application::design::recipes;
+use crate::application::design::{Region, TextSize, column as xcolumn, row as xrow};
 use crate::application::view::label;
-use crate::application::view::recipes;
 use crate::application::widgets::gesture_slider::gesture_slider;
 use crate::application::workspace::Workspace;
 use std::sync::Arc;

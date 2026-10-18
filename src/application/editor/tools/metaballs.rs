@@ -554,7 +554,7 @@ mod tests {
         if let Ok(dir) = std::env::var("RUNEBENDER_METABALL_PROOF_DIR") {
             std::fs::create_dir_all(&dir).unwrap();
             for theme in ["gray", "light"] {
-                app.palette = Arc::new(crate::application::view::theme::Palette::load(theme));
+                app.palette = Arc::new(crate::application::design::theme::Palette::load(theme));
                 let background = app.palette.panel;
                 app = crate::application::platform::screenshot::render_to(
                     app,

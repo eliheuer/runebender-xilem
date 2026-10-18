@@ -4,24 +4,26 @@
 //! The left edge: the tab strip, the editor's rail, and the sidebar of
 //! categories, languages, and filters.
 
-use crate::application::view::canvas::grid::{GridEvent, grid};
-use crate::application::view::design::{
+use crate::application::design;
+use crate::application::design::controls::icon_button::icon_button;
+use crate::application::design::recipes;
+use crate::application::design::recipes::button;
+use crate::application::design::theme::Palette;
+use crate::application::design::{
     ControlKind, ControlSize, ControlStyle, Ground, Region, Space, Stroke, TextSize,
     column as xcolumn, row as xrow,
 };
-use crate::application::view::design::{
+use crate::application::design::{
     RAIL_TAB_ACTIVE_HEIGHT, RAIL_TAB_HEIGHT, RAIL_TAB_INACTIVE_HEIGHT,
 };
+use crate::application::view::canvas::grid::{GridEvent, grid};
 use crate::application::view::panels::chat::chat_panel;
 use crate::application::view::panels::local_ai::local_ai_panel;
 use crate::application::view::panels::scripts::scripts_panel;
 use crate::application::view::panels::sections::axes_section;
-use crate::application::view::recipes::button;
 use crate::application::view::render::top_keyline;
-use crate::application::view::theme::Palette;
-use crate::application::view::{design, label, recipes, text_input};
+use crate::application::view::{label, text_input};
 use crate::application::widgets::even_row::even_row;
-use crate::application::widgets::icon_button::icon_button;
 use crate::application::widgets::icon_paint;
 use crate::application::widgets::input_typography;
 use crate::application::widgets::scroll_viewport::portal;
@@ -218,9 +220,7 @@ fn shapes_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
 
 /// One navigation strip for the font, node, and glyph workspaces.
 fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use<> {
-    use crate::application::view::design::{
-        RAIL_TAB_ICON, RAIL_TAB_ICON_FULL_FRAME, RAIL_TAB_INSET,
-    };
+    use crate::application::design::{RAIL_TAB_ICON, RAIL_TAB_ICON_FULL_FRAME, RAIL_TAB_INSET};
     let pal = &app.palette;
     let radius = design::rail_tab_radius(pal.corner_radius);
     let is_active = |which: Rail| {
@@ -267,7 +267,8 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
             let background = pal.tab_rail.with_alpha(pal.side_panel_alpha());
             let outline = pal.outline;
             move |_: &mut Workspace, _, scene, size| {
-                use crate::application::widgets::{even_row::slot_widths, icon_button};
+                use crate::application::design::controls::icon_button;
+                use crate::application::widgets::even_row::slot_widths;
                 use masonry::imaging::Painter;
                 use masonry::kurbo::{Rect, Shape as _};
                 let mut painter = Painter::new(scene);
@@ -322,7 +323,7 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
 
 /// The glyph grid owns its inset; padding the whole rail would count it twice.
 fn editor_glyph_rail(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
-    use crate::application::view::design::{RAIL_CELL_MAX, RAIL_CELL_MIN, STATUS_SLIDER_WIDTH};
+    use crate::application::design::{RAIL_CELL_MAX, RAIL_CELL_MIN, STATUS_SLIDER_WIDTH};
     let cells = app.filtered_cells();
     let count = cells.len();
     let current = match app.mode {

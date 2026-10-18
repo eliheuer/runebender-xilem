@@ -8,8 +8,8 @@
 
 use std::sync::Arc;
 
+use crate::application::design::recipes::{self, Group, Row, click};
 use crate::application::editor::tools::graph::file_label;
-use crate::application::view::recipes::{self, Group, Row, click};
 use crate::application::workspace::{Mode, Workspace};
 use xilem::WidgetView;
 

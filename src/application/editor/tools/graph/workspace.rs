@@ -1154,7 +1154,7 @@ mod tests {
         let Some(directory) = std::env::var_os("RUNEBENDER_NODES_PROOFS") else {
             return app;
         };
-        use crate::application::view::theme::Palette;
+        use crate::application::design::theme::Palette;
         use crate::application::workspace::Mode;
         use std::sync::Arc;
         use xilem::WidgetView as _;

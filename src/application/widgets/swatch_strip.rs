@@ -39,13 +39,11 @@ impl<W: Widget> Widget for SwatchStrip<W> {
             return match request {
                 LenReq::FitContent(space) => space,
                 LenReq::MinContent => Length::ZERO,
-                LenReq::MaxContent => {
-                    crate::application::view::design::ControlSize::Swatch.length()
-                }
+                LenReq::MaxContent => crate::application::design::ControlSize::Swatch.length(),
             };
         }
         if axis == Axis::Vertical {
-            let width = cross.map_or(crate::application::view::design::DOCK_WIDTH, Length::get);
+            let width = cross.map_or(crate::application::design::DOCK_WIDTH, Length::get);
             Length::px(strip_height(width, self.count))
         } else {
             ctx.redirect_measurement(&mut self.child, axis, cross)
@@ -73,7 +71,7 @@ impl<W: Widget> Widget for SwatchStrip<W> {
 }
 
 fn strip_height(width: f64, count: usize) -> f64 {
-    let gap = crate::application::view::design::MARK_SWATCH_GAP;
+    let gap = crate::application::design::MARK_SWATCH_GAP;
     ((width - gap * (count + 1) as f64) / count.max(1) as f64).max(1.0) + 2.0 * gap
 }
 

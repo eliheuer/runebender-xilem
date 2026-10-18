@@ -16,10 +16,10 @@ use masonry::widgets::{Slider, SliderMoved};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
-use crate::application::view::design::{
+use crate::application::design::theme::Palette;
+use crate::application::design::{
     SLIDER_THUMB_RADIUS, SLIDER_THUMB_STROKE, SLIDER_TRACK_THICKNESS,
 };
-use crate::application::view::theme::Palette;
 use crate::application::workspace::Workspace;
 
 #[derive(Debug, PartialEq)]
@@ -98,7 +98,7 @@ impl Widget for GestureSliderWidget {
         );
         let outline = if ctx.is_disabled() {
             self.thumb_outline
-                .with_alpha(crate::application::view::design::Alpha::Disabled.value())
+                .with_alpha(crate::application::design::Alpha::Disabled.value())
         } else {
             self.thumb_outline
         };
@@ -108,7 +108,7 @@ impl Widget for GestureSliderWidget {
             self.thumb
         };
         let fill = if ctx.is_disabled() {
-            fill.with_alpha(crate::application::view::design::Alpha::Disabled.value())
+            fill.with_alpha(crate::application::design::Alpha::Disabled.value())
         } else {
             fill
         };

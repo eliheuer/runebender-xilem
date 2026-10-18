@@ -38,9 +38,9 @@ use xilem::Color;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewId, ViewMarker, ViewPathTracker};
 use xilem::{Pod, ViewCtx};
 
+use crate::application::design::areas;
+use crate::application::design::theme::Palette;
 use crate::application::editor::tools::graph::RowState;
-use crate::application::view::design::areas;
-use crate::application::view::theme::Palette;
 use crate::application::widgets::context_menu::{ContextMenu, MenuAction, MenuRow, MenuTarget};
 use crate::application::widgets::icon_paint;
 use crate::application::widgets::source_text_area::SourceTextArea;
@@ -141,7 +141,7 @@ pub(crate) struct GraphWidget {
 fn code_editor(text: &str, text_color: Color) -> (WidgetPod<Portal<SourceTextArea>>, WidgetId) {
     let source = NewWidget::new(
         SourceTextArea::new(text)
-            .with_text_size(crate::application::view::design::TextSize::Caption.px()),
+            .with_text_size(crate::application::design::TextSize::Caption.px()),
     )
     .with_props({
         let mut props = PropertySet::new();
@@ -505,7 +505,7 @@ impl Widget for GraphWidget {
         }
         let zoom = crate::application::view::render::px32(self.viewport.zoom);
         let code_font_size =
-            (crate::application::view::design::TextSize::Caption.px() * zoom).clamp(6.0, 40.0);
+            (crate::application::design::TextSize::Caption.px() * zoom).clamp(6.0, 40.0);
         if (self.code_font_size - code_font_size).abs() > f32::EPSILON {
             self.code_font_size = code_font_size;
             for editor in self.code_editors.values_mut() {

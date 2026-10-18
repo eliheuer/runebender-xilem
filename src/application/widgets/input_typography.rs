@@ -28,7 +28,7 @@ fn style_placeholder(mut input: WidgetMut<'_, TextInput>) {
     );
     Label::insert_style(
         &mut label,
-        StyleProperty::FontSize(crate::application::view::design::TextSize::Body.px()),
+        StyleProperty::FontSize(crate::application::design::TextSize::Body.px()),
     );
 }
 
@@ -159,7 +159,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::application::view::theme::Palette;
+    use crate::application::design::theme::Palette;
     use masonry::properties::{ContentColor, PlaceholderColor};
     use masonry::widgets::TextArea;
     use masonry_testing::TestHarness;
@@ -330,7 +330,7 @@ mod tests {
                 crate::application::view::UI_FONT_FAMILY.into(),
             ))
             .with_style(StyleProperty::FontSize(
-                crate::application::view::design::TextSize::Body.px(),
+                crate::application::design::TextSize::Body.px(),
             ))
             .prepare()
             .with_props(ContentColor::new(Color::BLACK));
@@ -376,7 +376,7 @@ mod tests {
                 crate::application::view::UI_FONT_FAMILY.into(),
             ))
             .with_style(StyleProperty::FontSize(
-                crate::application::view::design::TextSize::Body.px(),
+                crate::application::design::TextSize::Body.px(),
             ))
             .prepare()
             .with_props(ContentColor::new(Color::BLACK));

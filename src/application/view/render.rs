@@ -4,6 +4,9 @@
 //! The render tree: how the workspace's state becomes a frame.
 
 use crate::application::actions;
+use crate::application::design;
+use crate::application::design::{DOCK_WIDTH, PROOF_STRIP_HEIGHT};
+use crate::application::design::{Space, Stroke, TextSize};
 use crate::application::editor::tools::{chat, graph, local_ai, scripts, weight_debt};
 use crate::application::platform::export;
 #[cfg(unix)]
@@ -13,14 +16,12 @@ use crate::application::platform::train;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::application::platform::watch;
 use crate::application::view::chrome::{marks_bar, status, titlebar};
-use crate::application::view::design::{DOCK_WIDTH, PROOF_STRIP_HEIGHT};
-use crate::application::view::design::{Space, Stroke, TextSize};
+use crate::application::view::label;
 use crate::application::view::panels::editor::{editor_pane, overview};
 use crate::application::view::panels::graph::graph_pane;
 use crate::application::view::panels::info::info_panel;
 use crate::application::view::panels::preview::{glyph_preview, preview_strip};
 use crate::application::view::panels::tabs::{editor_nav, sidebar};
-use crate::application::view::{design, label};
 use crate::application::widgets::ground::ground;
 use crate::application::widgets::menu_shell;
 use crate::application::widgets::scroll_viewport::portal;
@@ -123,7 +124,7 @@ where
 /// Frame a workspace panel without letting rectangular child backgrounds erase its corners.
 fn floating_panel<State, V>(
     content: V,
-    pal: &crate::application::view::theme::Palette,
+    pal: &design::theme::Palette,
     face: Color,
     ground_color: Color,
 ) -> impl WidgetView<State, Widget: Sized> + use<State, V>
@@ -175,7 +176,7 @@ where
     B: WidgetView<State>,
     C: WidgetView<State>,
 {
-    use crate::application::view::design::{
+    use crate::application::design::{
         CENTER_MIN_WIDTH, SIDEBAR_SPLITTER_HIT_WIDTH, SPLITTER_HIT_WIDTH, WORKSPACE_GUTTER,
     };
     let shadow_extent = design::PANEL_SHADOW_OFFSET;
@@ -229,7 +230,7 @@ where
 /// Window resizing stops here, at the same limits that dragging a splitter respects.
 /// Below it, the splitters cannot meet their minimums and squeeze the docks.
 pub(crate) fn workspace_min_width(collapsed: bool) -> f64 {
-    use crate::application::view::design::{CENTER_MIN_WIDTH, WORKSPACE_GUTTER};
+    use crate::application::design::{CENTER_MIN_WIDTH, WORKSPACE_GUTTER};
     let shadow_extent = design::PANEL_SHADOW_OFFSET;
     let panel_width = DOCK_WIDTH + shadow_extent;
     let panel_gutter = WORKSPACE_GUTTER - shadow_extent;
@@ -1222,9 +1223,9 @@ mod panel_resize_tests {
 
     #[test]
     fn center_footer_icons_and_slider_share_edge_clearance_in_both_modes() {
-        use crate::application::view::design::{FOOTER_HEIGHT, FOOTER_INSET, STATUS_ICON_SIZE};
+        use crate::application::design::controls::icon_button::IconWidget;
+        use crate::application::design::{FOOTER_HEIGHT, FOOTER_INSET, STATUS_ICON_SIZE};
         use crate::application::widgets::gesture_slider::GestureSliderWidget;
-        use crate::application::widgets::icon_button::IconWidget;
         use masonry::core::{Widget, WidgetRef};
         use masonry::kurbo::Rect;
         use xilem::core::View;
@@ -1327,8 +1328,8 @@ mod panel_resize_tests {
 
     #[test]
     fn panel_groups_keep_equal_side_and_bottom_insets_at_the_divider() {
-        use crate::application::view::recipes;
-        use crate::application::view::theme::Palette;
+        use crate::application::design::recipes;
+        use crate::application::design::theme::Palette;
         use masonry::layout::{Dim, Length};
         use masonry::properties::Dimensions;
         use xilem::core::View;
@@ -1384,7 +1385,8 @@ mod panel_resize_tests {
 
     #[test]
     fn panel_field_columns_fit_the_minimum_dock_and_grow_evenly() {
-        use crate::application::view::{design, recipes};
+        use crate::application::design;
+        use crate::application::design::recipes;
         use xilem::core::View;
         use xilem::view::sized_box;
 
@@ -1481,7 +1483,7 @@ mod panel_resize_tests {
 
     #[test]
     fn floating_panel_rounds_children_without_blocking_clicks() {
-        use crate::application::view::theme::Palette;
+        use crate::application::design::theme::Palette;
         use masonry::layout::{Dim, Length};
         use masonry::properties::Dimensions;
         use masonry::widgets::ButtonPress;
@@ -1532,7 +1534,7 @@ mod panel_resize_tests {
 
     #[test]
     fn rounded_panel_face_stays_inside_its_outline() {
-        use crate::application::view::theme::Palette;
+        use crate::application::design::theme::Palette;
         use masonry::layout::{Dim, Length};
         use masonry::properties::Dimensions;
         use xilem::core::View;
@@ -1583,7 +1585,7 @@ mod panel_resize_tests {
 
     #[test]
     fn panel_shadows_toggle_without_moving_content_and_survive_resizing() {
-        use crate::application::view::theme::Palette;
+        use crate::application::design::theme::Palette;
         use image::Rgba;
         use masonry::layout::Length;
         use xilem::core::View;
@@ -1682,10 +1684,10 @@ mod panel_resize_tests {
         use xilem::style::Style;
         use xilem::view::{canvas, label, sized_box};
 
-        let mut palette = crate::application::view::theme::Palette::load("gray");
+        let mut palette = crate::application::design::theme::Palette::load("gray");
         palette.panel_shadow = None;
         palette.panel_radius = 16.0;
-        let logic = |pal: &crate::application::view::theme::Palette| {
+        let logic = |pal: &crate::application::design::theme::Palette| {
             xilem::view::zstack((
                 canvas(|_: &mut (), _, scene, size| {
                     let mut painter = Painter::new(scene);
@@ -1796,7 +1798,7 @@ mod panel_resize_tests {
         h.mouse_button_release(None);
         assert_eq!(
             widths(&h).0,
-            crate::application::view::design::DOCK_WIDTH + super::design::PANEL_SHADOW_OFFSET
+            crate::application::design::DOCK_WIDTH + super::design::PANEL_SHADOW_OFFSET
         );
         let right_divider = 1100.0 - widths(&h).2;
         h.mouse_move(Point::new(right_divider, 100.0));
@@ -1805,7 +1807,7 @@ mod panel_resize_tests {
         h.mouse_button_release(None);
         assert_eq!(
             widths(&h).2,
-            crate::application::view::design::DOCK_WIDTH + super::design::PANEL_SHADOW_OFFSET
+            crate::application::design::DOCK_WIDTH + super::design::PANEL_SHADOW_OFFSET
         );
     }
 
@@ -1814,7 +1816,7 @@ mod panel_resize_tests {
         use masonry_testing::TestHarnessParams;
         use xilem::core::View;
         use xilem::view::label;
-        let mut palette = crate::application::view::theme::Palette::load("gray");
+        let mut palette = crate::application::design::theme::Palette::load("gray");
         // Over the native backdrop, Gray draws no panel shadow; it would darken the gutter.
         palette.panel_shadow = None;
         let ground = xilem::Color::from_rgba8(255, 0, 0, 128);
@@ -1850,7 +1852,7 @@ mod panel_resize_tests {
 
     #[test]
     fn minimum_window_width_keeps_dragged_docks_at_their_minimums() {
-        use crate::application::view::design::{
+        use crate::application::design::{
             CENTER_MIN_WIDTH, DOCK_WIDTH, PANEL_SHADOW_OFFSET, WORKSPACE_GUTTER,
         };
         use xilem::core::View;
@@ -1998,10 +2000,7 @@ mod panel_resize_tests {
         h.mouse_button_press(None);
         h.mouse_move(Point::new(400.0, 748.0));
         h.mouse_button_release(None);
-        assert_eq!(
-            heights(&h).1,
-            crate::application::view::design::PROOF_MIN_HEIGHT
-        );
+        assert_eq!(heights(&h).1, crate::application::design::PROOF_MIN_HEIGHT);
     }
 
     #[test]

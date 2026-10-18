@@ -1,38 +1,12 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The design system: start here for any change to how the window looks.
+//! The measurement scales: spacing, control sizes, strokes, radii, text
+//! sizes, opacities, and what each kind of container measures.
 //!
-//! Every color, shape, and interaction state comes from three layers.
-//! A view never chooses a color or a size by itself.
-//!
-//! 1. The theme files, `assets/themes/default/*.theme.toml`, hold every
-//!    color and shape value. `src/ui/theme.rs` parses them, and
-//!    `view::theme::Palette` gives them to the views.
-//! 2. This module turns the theme into a system:
-//!    - The scales in this file give spacing, control sizes, strokes,
-//!      text sizes, and opacities ([`Alpha`]).
-//!    - [`states`] gives each pressable control its look at rest, under
-//!      the pointer, pressed, selected, disabled, and with keyboard focus.
-//!      A control names a [`ControlKind`], never a color.
-//!    - [`stock`] dresses the stock Masonry widgets in the theme, so a
-//!      plain `label`, `text_input`, or `slider` matches without settings.
-//! 3. [`areas`] holds each place where an area of the window departs from
-//!    the base, with the reason. A view uses the value from there.
-//!
-//! To add a feature, build it from `view::recipes` and
-//! `widgets::control::control` with a [`ControlStyle`]. Set only size and
-//! padding at the call site. If the base does not fit, add one override
-//! to [`areas`] with its reason.
-//!
-//! `tests/design_system.rs` fails the build when view code sets a face,
-//! a color, an opacity, a stroke, a radius, or a text size by itself.
-
-pub(crate) mod areas;
-pub(crate) mod states;
-pub(crate) mod stock;
-
-pub(crate) use states::{ControlKind, ControlStyle, Ground};
+//! Upstream Xilem takes a number wherever a measurement is needed, so the
+//! application brings its own closed vocabulary. Views name a step from
+//! these scales, never a number.
 
 use masonry::layout::{Dim, Length};
 use masonry::properties::types::CrossAxisAlignment;

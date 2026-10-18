@@ -3,8 +3,8 @@
 
 //! Document identity and controls beside the in-window application menus.
 
+use crate::application::design::{Space, TextSize};
 use crate::application::view::chrome::header_tools;
-use crate::application::view::design::{Space, TextSize};
 use crate::application::view::label;
 use crate::application::view::panels::tabs::tab_strip;
 use crate::application::widgets::text_label::{self, Anchor};

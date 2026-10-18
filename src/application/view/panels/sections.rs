@@ -3,16 +3,18 @@
 
 //! The info panel's sections: layers, axes, paths, coordinates, curves, measure, background, marks, font info.
 
-use crate::application::editor::session::Session;
-use crate::application::view::chrome::direction_chips;
-use crate::application::view::design::{
+use crate::application::design;
+use crate::application::design::controls::icon_button;
+use crate::application::design::recipes;
+use crate::application::design::recipes::button;
+use crate::application::design::theme::Palette;
+use crate::application::design::{
     ControlKind, ControlSize, ControlStyle, Region, Space, TextSize, column as xcolumn, row as xrow,
 };
+use crate::application::editor::session::Session;
+use crate::application::view::chrome::direction_chips;
 use crate::application::view::panels::tabs::tab_chip;
-use crate::application::view::recipes::button;
-use crate::application::view::theme::Palette;
-use crate::application::view::{design, label, recipes, text_input};
-use crate::application::widgets::icon_button;
+use crate::application::view::{label, text_input};
 use crate::application::widgets::icon_paint;
 use crate::application::widgets::input_typography;
 use crate::application::workspace::{Mode, Workspace};
@@ -561,7 +563,7 @@ pub(crate) fn tbtn(
 /// GPUI keeps this panel up whether or not anything is selected, so the
 /// inspector does not jump.
 pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
-    use crate::application::view::design::{
+    use crate::application::design::{
         COORD_LABEL_WIDTH, COORD_PICKER_EDGE, COORD_PICKER_GAP, COORD_PICKER_INSET,
     };
     use crate::application::widgets::quadrant_picker::quadrant_grid;

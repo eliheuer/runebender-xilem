@@ -8,12 +8,14 @@
 //! and offers Generate and Apply; editing the text by hand waits for
 //! a text area.
 
-use crate::application::view::design::{
+use crate::application::design;
+use crate::application::design::recipes;
+use crate::application::design::recipes::button;
+use crate::application::design::theme::Palette;
+use crate::application::design::{
     ControlKind, ControlSize, ControlStyle, Region, Space, TextSize, column as xcolumn, row as xrow,
 };
-use crate::application::view::recipes::button;
-use crate::application::view::theme::Palette;
-use crate::application::view::{design, label, recipes, text_input};
+use crate::application::view::{label, text_input};
 use crate::application::widgets::icon_paint;
 use crate::application::widgets::input_typography;
 use crate::application::widgets::scroll_viewport::portal;

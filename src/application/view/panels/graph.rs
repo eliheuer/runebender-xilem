@@ -9,6 +9,9 @@
 //! selected Master, Model or Adapter node offers its choices in a
 //! second row.
 
+use crate::application::design;
+use crate::application::design::recipes;
+use crate::application::design::{Region, Space, TextSize, row as xrow};
 use crate::application::editor::tools::graph::controls::{
     apply_live_comparison, cancel_live_comparison, change_live_graph, clear_live_results,
     edit_live_code, edit_live_scope, move_live_node, open_live_comparison_file,
@@ -16,9 +19,8 @@ use crate::application::editor::tools::graph::controls::{
 };
 use crate::application::editor::tools::graph::file_label;
 use crate::application::view::canvas::graph::{GraphEvent, graph_canvas};
-use crate::application::view::design::{Region, Space, TextSize, row as xrow};
 use crate::application::view::render::{bottom_keyline, px32};
-use crate::application::view::{design, label, recipes, text_input};
+use crate::application::view::{label, text_input};
 use crate::application::widgets::input_typography;
 use crate::application::workspace::Workspace;
 use masonry::layout::{Dim, Length};
@@ -370,7 +372,7 @@ fn projection(app: &Workspace) -> Option<CanvasProjection> {
 }
 
 fn bounded_message(
-    pal: &crate::application::view::theme::Palette,
+    pal: &design::theme::Palette,
     text: String,
 ) -> impl WidgetView<Workspace> + use<> {
     sized_box(portal(

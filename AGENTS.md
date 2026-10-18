@@ -69,11 +69,11 @@ Do not add local path patches to a committed Cargo configuration.
 ## Interface work
 
 Read [the design principles](https://runebender.org/docs/design-principles.html) before changing a view.
-Read `src/application/view/design/mod.rs` first: it explains the design system and its three layers.
+Read `src/application/design/mod.rs` first: it explains the design system and its three layers.
 Colors and shapes come from the theme files, controls name a `ControlKind`, and area exceptions go in `design/areas.rs` with a reason.
 Do not set a color, opacity, stroke, radius, or text size in a view.
 `tests/design_system.rs` fails the build when a view does.
-A panel section is built only from `recipes::Row` values; read [the panel language](docs/UI-DESIGN.md) and `src/application/view/recipes/rows.rs` first, and `tests/panel_vocabulary.rs` fails the build when a panel reaches past them.
+A panel section is built only from `recipes::Row` values; read [the panel language](docs/UI-DESIGN.md) and `src/application/design/recipes/rows.rs` first, and `tests/panel_vocabulary.rs` fails the build when a panel reaches past them.
 Read [the theme guide](https://runebender.org/docs/themes.html) before changing colors; it names the Base UI and Rainbow palettes and traces their tokens through the editor.
 Views read workspace state; commands own intent; the font engine owns font behavior.
 
