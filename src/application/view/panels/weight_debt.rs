@@ -1,44 +1,27 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The Weight debt block of the Local AI panel: what the active master
+//! The Weight debt rows of the Local AI panel: what the active master
 //! still owes a lighter one, by script, with the measured error of each
-//! way of drafting it, and a batch button for each.
+//! way of drafting it, and a batch button for each. Rows only, so every
+//! line wraps at the dock and every button is a control the design
+//! system knows.
 
-use crate::application::design::recipes;
-use crate::application::design::{Region, TextSize, column as xcolumn};
+use crate::application::design::recipes::{Row, click};
 use crate::application::editor::tools::weight_debt::{BATCH, ModelScore};
-use crate::application::view::label;
 use crate::application::workspace::Workspace;
 use runebender::analysis::weight_debt::OffsetFit;
-use xilem::WidgetView;
-use xilem::style::Style;
 
-/// The block, or nothing when the font has one master.
-pub(crate) fn block(app: &Workspace) -> Option<impl WidgetView<Workspace> + use<>> {
+/// The rows, or nothing when the font has one master. The section
+/// caption names the block, so no row repeats "Weight debt".
+pub(crate) fn rows(app: &Workspace) -> Option<Vec<Row>> {
     if app.font.project.document_sources().count() < 2 {
         return None;
     }
-    let pal = &app.palette;
-    let muted = |text: String| {
-        label(text)
-            .text_size(TextSize::Body.px())
-            .color(pal.text_muted)
-    };
-    let plain = |text: String| label(text).text_size(TextSize::Body.px()).color(pal.text);
-
     let Some(cache) = app.weight_debt() else {
-        let hint = "Switch to a heavier master to see its debt";
-        return Some(xcolumn(
-            Region::List,
-            (
-                muted("Weight debt".into()),
-                muted(hint.into()),
-                None,
-                Vec::new(),
-                None,
-            ),
-        ));
+        return Some(vec![Row::Meta(
+            "Switch to a heavier master to see its debt".into(),
+        )]);
     };
     let light_name = app.lighter_master_name(cache.report.light);
     let total = cache.report.pending_total();
@@ -54,95 +37,79 @@ pub(crate) fn block(app: &Workspace) -> Option<impl WidgetView<Workspace> + use<
         .as_deref()
         .is_some_and(|path| path == app.font.source());
 
-    let groups: Vec<_> = cache
-        .report
-        .groups
-        .iter()
-        .filter(|group| !group.pending.is_empty())
-        .map(|group| {
-            let script = group.script;
-            let count = group.pending.len().min(BATCH);
-            let offset_line = match cache.fits.get(&script) {
-                Some((fit, own)) => offset_text(fit, *own),
-                None => "Offset: nothing drawn in both masters".to_owned(),
-            };
-            let model_line = model_fresh
-                .then(|| app.debt.model_scores.get(&script).map(model_text))
-                .flatten();
-            xcolumn(
-                Region::List,
-                (
-                    plain(format!(
-                        "{}: {} to draw",
-                        script.display_name(),
-                        group.pending.len()
-                    )),
-                    muted(offset_line),
-                    model_line.map(muted),
-                    cache.fits.contains_key(&script).then(|| {
-                        recipes::toggle(
-                            pal,
-                            format!("Draft {count} by offset"),
-                            true,
-                            move |app: &mut Workspace| app.draft_debt_with_offset(script),
-                        )
-                    }),
-                    model_ready.then(|| {
-                        recipes::toggle(
-                            pal,
-                            format!("Draft {count} with the model"),
-                            true,
-                            move |app: &mut Workspace| app.draft_debt_with_model(script),
-                        )
-                    }),
-                ),
-            )
-        })
-        .collect();
+    let mut rows = vec![Row::Meta(summary)];
 
     // One row for the measurement: its state, and the one button that
     // starts or stops it.
     let measuring = app.debt.eval_busy.is_some();
-    let measure = (measuring || (model_ready && total > 0)).then(|| {
+    if measuring || (model_ready && total > 0) {
         let (text, button, active) = match &app.debt.eval_busy {
             Some(note) => (note.clone(), "Cancel", false),
             None if model_fresh => ("Model measured on disk".to_owned(), "Again", false),
             None => ("Model not measured here".to_owned(), "Measure", true),
         };
-        // The rail is narrow: the button takes its own line.
-        xcolumn(
-            Region::List,
-            (
-                plain(text),
-                recipes::toggle(pal, button.into(), active, |app: &mut Workspace| {
-                    if app.debt.eval_job.is_some() {
-                        app.cancel_debt_measure();
-                    } else {
-                        app.measure_debt_model();
-                    }
-                }),
-            ),
-        )
-    });
-    let mark = (!app.debt.unmarked.is_empty()).then(|| {
-        recipes::toggle(
-            pal,
-            format!("Mark {} installed drafts orange", app.debt.unmarked.len()),
-            true,
-            |app: &mut Workspace| app.mark_debt_drafts(),
-        )
-    });
+        rows.push(Row::Prose(text));
+        let on_click = click(|app: &mut Workspace| {
+            if app.debt.eval_job.is_some() {
+                app.cancel_debt_measure();
+            } else {
+                app.measure_debt_model();
+            }
+        });
+        rows.push(if active {
+            Row::Secondary {
+                text: button.into(),
+                on_click,
+            }
+        } else {
+            Row::Quiet {
+                text: button.into(),
+                on_click,
+            }
+        });
+    }
 
-    Some(xcolumn(
-        Region::List,
-        (
-            muted("Weight debt".into()),
-            muted(summary),
-            measure,
-            groups,
-            mark.map(|mark| xcolumn(Region::List, (mark,))),
-        ),
-    ))
+    for group in cache
+        .report
+        .groups
+        .iter()
+        .filter(|group| !group.pending.is_empty())
+    {
+        let script = group.script;
+        let count = group.pending.len().min(BATCH);
+        rows.push(Row::Prose(format!(
+            "{}: {} to draw",
+            script.display_name(),
+            group.pending.len()
+        )));
+        rows.push(Row::Meta(match cache.fits.get(&script) {
+            Some((fit, own)) => offset_text(fit, *own),
+            None => "Offset: nothing drawn in both masters".to_owned(),
+        }));
+        if model_fresh && let Some(score) = app.debt.model_scores.get(&script) {
+            rows.push(Row::Meta(model_text(score)));
+        }
+        if cache.fits.contains_key(&script) {
+            rows.push(Row::Secondary {
+                text: format!("Draft {count} by offset"),
+                on_click: click(move |app: &mut Workspace| app.draft_debt_with_offset(script)),
+            });
+        }
+        if model_ready {
+            rows.push(Row::Secondary {
+                text: format!("Draft {count} with the model"),
+                on_click: click(move |app: &mut Workspace| app.draft_debt_with_model(script)),
+            });
+        }
+    }
+
+    if !app.debt.unmarked.is_empty() {
+        rows.push(Row::Secondary {
+            text: format!("Mark {} installed drafts orange", app.debt.unmarked.len()),
+            on_click: click(|app: &mut Workspace| app.mark_debt_drafts()),
+        });
+    }
+    Some(rows)
 }
 
 /// Error in font units against the plain shift, and how often it won,

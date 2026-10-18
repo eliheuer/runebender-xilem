@@ -22,6 +22,8 @@ Entries under Unreleased describe work being prepared, not an available public r
 
 ### Changed
 
+- The Local AI panel's weight debt block is built from the panel row vocabulary, so its lines wrap at the dock; it had used bare labels that pushed the whole left column wider than the dock, which cut off the buttons and stretched the marks bar. The last legacy row kind is gone from the vocabulary, and a layout test now renders every rail with the marks bar at the dock width and fails on the first widget that leaves it.
+
 - The canonical source repository is now [fontgarden/runebender](https://github.com/fontgarden/runebender).
   Existing GitHub repository links redirect to the new location.
 

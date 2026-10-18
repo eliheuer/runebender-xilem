@@ -225,6 +225,21 @@ where
     clip_split(columns)
 }
 
+/// The left dock: the rail or sidebar for the mode, with the marks bar under
+/// it in both modes rather than in the middle column's bar. The layout test
+/// renders this same column at the dock width, so a panel that would push it
+/// wider fails there before anyone sees it.
+pub(crate) fn left_column(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    use xilem::core::one_of::Either;
+    let panel = match app.mode {
+        Mode::Overview | Mode::Graph => Either::A(sidebar(app)),
+        Mode::Editor(_) => Either::B(editor_nav(app)),
+    };
+    flex_col((panel.flex(1.0), marks_bar(app)))
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(Space::None)
+}
+
 /// The narrowest window that keeps both docks and the center at their minimum widths.
 ///
 /// Window resizing stops here, at the same limits that dragging a splitter respects.
@@ -340,15 +355,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         .gap(Space::None)
         .background_color(pal.app);
 
-    let left = match app.mode {
-        Mode::Overview | Mode::Graph => Either::A(sidebar(app)),
-        Mode::Editor(_) => Either::B(editor_nav(app)),
-    };
-    // The marks bar sits under the sidebar in both modes, not in the middle
-    // column's bar.
-    let left = flex_col((left.flex(1.0), marks_bar(app)))
-        .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(Space::None);
+    let left = left_column(app);
     let inspector_sections = || {
         // The portal can clip the final section rule at its measured boundary.
         // Paint the same keyline inside the viewport so the preview separator
@@ -2126,5 +2133,156 @@ mod panel_resize_tests {
             Point::new(408.0, 458.5),
             "proof",
         );
+    }
+}
+
+#[cfg(test)]
+mod rail_width_tests {
+    //! Every rail panel fits the dock. A row that does not wrap, or a
+    //! control wider than the column, pushes the whole left column past
+    //! its width, and the marks bar under it stretches with it. This
+    //! renders each rail at the dock width on a two-master font and fails
+    //! on the first widget whose right edge leaves the column.
+    use super::panel_resize_tests_support::{context, workspace_for_layout};
+    use crate::application::design::DOCK_WIDTH;
+    use crate::application::view::panels::tabs::Rail;
+    use crate::application::workspace::Mode;
+    use masonry::core::{Widget, WidgetRef};
+    use masonry_testing::TestHarness;
+    use xilem::core::View;
+    use xilem::view::sized_box;
+
+    fn widest(widget: WidgetRef<'_, dyn Widget>, out: &mut Vec<(String, f64)>) {
+        // A stashed widget, such as a portal's hidden scrollbar, keeps no layout.
+        if widget.ctx().is_stashed() {
+            return;
+        }
+        let rect = widget
+            .ctx()
+            .window_transform()
+            .transform_rect_bbox(widget.ctx().border_box());
+        out.push((widget.short_type_name().to_owned(), rect.x1));
+        for child in widget.children() {
+            widest(child, out);
+        }
+    }
+
+    fn overflow(name: &str, harness: &TestHarness<impl Widget>, width: f64) -> Option<String> {
+        let mut edges = Vec::new();
+        widest(harness.root_widget().as_dyn(), &mut edges);
+        let over: Vec<_> = edges
+            .iter()
+            .filter(|(_, right)| *right > width + 0.5)
+            .collect();
+        let mut kinds: Vec<String> = over
+            .iter()
+            .map(|(kind, right)| format!("{kind}@{right}"))
+            .collect();
+        kinds.sort();
+        kinds.dedup();
+        (!over.is_empty()).then(|| {
+            format!(
+                "{name}: {} widgets reach past the dock width {width}: {}",
+                over.len(),
+                kinds.join(", ")
+            )
+        })
+    }
+
+    #[test]
+    fn every_rail_panel_stays_inside_the_dock() {
+        let Some(mut app) = workspace_for_layout() else {
+            return;
+        };
+        let width = DOCK_WIDTH;
+        let mut failures = Vec::new();
+        for rail in [
+            Rail::Glyphs,
+            Rail::Shapes,
+            Rail::Axes,
+            Rail::LocalAi,
+            Rail::Chat,
+            Rail::Scripts,
+        ] {
+            app.rail = rail;
+            let mut ctx = context();
+            let view = sized_box(super::left_column(&app));
+            let (pod, _) = view.build(&mut ctx, &mut app);
+            let harness = TestHarness::create_with_size(
+                crate::application::view::default_property_set(),
+                pod.new_widget,
+                (width as u32, 1200),
+            );
+            failures.extend(overflow(
+                crate::application::view::panels::tabs::rail_name(rail, true),
+                &harness,
+                width,
+            ));
+        }
+        app.mode = Mode::Overview;
+        let mut ctx = context();
+        let view = sized_box(super::left_column(&app));
+        let (pod, _) = view.build(&mut ctx, &mut app);
+        let harness = TestHarness::create_with_size(
+            crate::application::view::default_property_set(),
+            pod.new_widget,
+            (width as u32, 1200),
+        );
+        failures.extend(overflow("sidebar", &harness, width));
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+    }
+}
+
+#[cfg(test)]
+pub(super) mod panel_resize_tests_support {
+    //! Shared pieces for the view layout tests.
+    use crate::application::font_model::FontModel;
+    use crate::application::workspace::Workspace;
+    use runebender::font::project::Project;
+    use std::sync::Arc;
+    use xilem::ViewCtx;
+    use xilem::core::{ProxyError, RawProxy, SendMessage, ViewId};
+
+    #[derive(Debug)]
+    struct NoProxy;
+    impl RawProxy for NoProxy {
+        fn send_message(&self, _: Arc<[ViewId]>, _: SendMessage) -> Result<(), ProxyError> {
+            Ok(())
+        }
+        fn dyn_debug(&self) -> &dyn std::fmt::Debug {
+            self
+        }
+    }
+
+    pub(super) fn context() -> ViewCtx {
+        ViewCtx::new(
+            Arc::new(NoProxy),
+            Arc::new(
+                tokio::runtime::Builder::new_current_thread()
+                    .build()
+                    .unwrap(),
+            ),
+        )
+    }
+
+    /// A workspace on the two-master Virtua fixture with the glyph A open
+    /// in the lighter master, so panels that depend on a second master
+    /// show their rows. `None` when the fixture is not checked out.
+    pub(super) fn workspace_for_layout() -> Option<Workspace> {
+        let dir = match std::env::var_os("RUNEBENDER_TEST_FONTS") {
+            Some(dir) => std::path::PathBuf::from(dir),
+            None => std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../virtua-grotesk/sources"),
+        };
+        let designspace = dir.join("VirtuaGrotesk.designspace");
+        if !designspace.is_file() {
+            return None;
+        }
+        let project = Project::load(&designspace).ok()?;
+        let mut app = Workspace::from_model(FontModel::from_project(project)).ok()?;
+        app.set_theme("gray");
+        let index = app.font.index_of("A")?;
+        app.open_glyph(index);
+        Some(app)
     }
 }

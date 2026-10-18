@@ -148,10 +148,6 @@ pub(crate) enum Row {
         value: f64,
         on_change: Slide,
     },
-    /// A view from a module that predates this vocabulary. It is here
-    /// so those modules can be moved one at a time; a new panel adds a
-    /// row instead.
-    Legacy(Box<AnyWidgetView<Workspace>>),
 }
 
 /// A caption and its rows.
@@ -300,7 +296,6 @@ fn row_view(app: &Workspace, row: Row) -> Box<AnyWidgetView<Workspace>> {
             value,
             on_change,
         } => slider(pal, caption, min, max, value, on_change).boxed(),
-        Row::Legacy(view) => view,
     }
 }
 

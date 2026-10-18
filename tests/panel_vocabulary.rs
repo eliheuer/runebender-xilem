@@ -28,7 +28,6 @@ const LEGACY_PANELS: &[&str] = &[
     "sections.rs",
     "sketch.rs",
     "tabs.rs",
-    "weight_debt.rs",
 ];
 
 /// What a panel module may not call. Each is owned by a row.

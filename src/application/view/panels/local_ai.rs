@@ -106,8 +106,7 @@ pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + us
     }
     let tasks = Group::new("", task_rows);
 
-    let debt = super::weight_debt::block(app)
-        .map(|block| Group::new("", vec![Row::Legacy(Box::new(block))]));
+    let debt = super::weight_debt::rows(app).map(|rows| Group::new("", rows));
 
     // Proposals: what each holds and the two answers.
     let mut proposal_rows = Vec::new();
