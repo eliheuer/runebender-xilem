@@ -5,7 +5,8 @@
 
 use crate::application::design::recipes;
 use crate::application::design::{
-    Radius, Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
+    ControlKind, ControlSize, ControlStyle, Region, Space, Stroke, TextSize, column as xcolumn,
+    row as xrow,
 };
 use crate::application::editor::tools::chat::ChatEntry;
 use crate::application::editor::tools::scripts::ScriptArtifact;
@@ -15,39 +16,10 @@ use crate::application::widgets::selectable_text::selectable_text;
 use crate::application::workspace::Workspace;
 use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
-use xilem::Color;
 use xilem::WidgetView;
 use xilem::style::Style;
 use xilem::view::FlexExt as _;
-use xilem::view::sized_box;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum TranscriptKind {
-    User,
-    Assistant,
-    Tool,
-    Error,
-}
-
-fn transcript_text(entry: &ChatEntry) -> (String, TranscriptKind) {
-    match entry {
-        ChatEntry::User(text) => (text.clone(), TranscriptKind::User),
-        ChatEntry::Assistant(text) => (
-            if text.is_empty() {
-                "…".into()
-            } else {
-                text.clone()
-            },
-            TranscriptKind::Assistant,
-        ),
-        ChatEntry::Script(_) => (String::new(), TranscriptKind::Assistant),
-        ChatEntry::Tool { name, ok, note } => (
-            format!("[{}] {name}: {note}", if *ok { "ok" } else { "error" }),
-            TranscriptKind::Tool,
-        ),
-        ChatEntry::Error(text) => (format!("Error: {text}"), TranscriptKind::Error),
-    }
-}
+use xilem::view::{FlexSpacer, sized_box};
 
 fn script_artifact_row(
     app: &Workspace,
@@ -75,136 +47,228 @@ fn script_artifact_row(
     .boxed()
 }
 
-pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+/// A tool call as a sentence a designer can read, not a log line.
+fn tool_sentence(name: &str, ok: bool, note: &str) -> String {
+    let running = note == "…";
+    let verb = match (name, running) {
+        ("font_info" | "project_info", false) => "Read the font info",
+        ("font_info" | "project_info", true) => "Reading the font info",
+        ("editor_context", false) => "Looked at the editor",
+        ("editor_context", true) => "Looking at the editor",
+        ("glyph_inventory", false) => "Listed the glyphs",
+        ("glyph_inventory", true) => "Listing the glyphs",
+        ("analyze_glyph", false) => "Measured a glyph",
+        ("analyze_glyph", true) => "Measuring a glyph",
+        ("analyze_font", false) => "Measured the font",
+        ("analyze_font", true) => "Measuring the font",
+        ("read_glyph", false) => "Read a glyph",
+        ("read_glyph", true) => "Reading a glyph",
+        ("read_kerning", false) => "Read the kerning",
+        ("read_kerning", true) => "Reading the kerning",
+        ("proof" | "specimen", false) => "Prepared a proof",
+        ("proof" | "specimen", true) => "Preparing a proof",
+        ("proposal_list", false) => "Listed the proposals",
+        ("proposal_list", true) => "Listing the proposals",
+        ("propose_edits", false) => "Proposed edits for review",
+        ("propose_edits", true) => "Proposing edits",
+        (_, false) => "Used a tool",
+        (_, true) => "Using a tool",
+    };
+    if running {
+        format!("{verb}…")
+    } else if !ok {
+        format!("{verb}, which failed: {note}")
+    } else if name == "read_glyph" || name == "propose_edits" {
+        format!("{verb}: {note}")
+    } else {
+        verb.to_string()
+    }
+}
+
+/// A word on a control: the base button with a kind, at control height.
+fn word_button<F: Fn(&mut Workspace) + Send + Sync + 'static>(
+    pal: &crate::application::design::theme::Palette,
+    kind: ControlKind,
+    text: &'static str,
+    on_click: F,
+) -> impl WidgetView<Workspace> + use<F> {
+    let style = ControlStyle::new(pal, kind);
+    sized_box(
+        recipes::button(
+            style,
+            label(text)
+                .text_size(TextSize::Body.px())
+                .color(style.ink()),
+            on_click,
+        )
+        .padding(masonry::properties::Padding::horizontal(Space::Md.length())),
+    )
+    .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Swatch)))
+}
+
+/// One entry of the conversation.
+fn transcript_row(app: &Workspace, entry: &ChatEntry) -> Box<xilem::AnyWidgetView<Workspace>> {
     let pal = &app.palette;
-    let selected = app.chat.model.clone();
-    let models: Vec<_> = app
-        .chat
-        .installed
-        .iter()
-        .filter(|_| app.chat.endpoint.is_none())
-        .cloned()
-        .map(|(name, path)| {
-            let active = selected.as_deref() == Some(path.as_path());
-            recipes::toggle(pal, name, active, move |app: &mut Workspace| {
-                if app.chat.job.is_none() {
-                    app.chat.model = Some(path.clone());
-                }
-            })
-        })
-        .collect();
-    let no_model = (app.chat.endpoint.is_none() && app.chat.installed.is_empty()).then(|| {
-        label("No local chat model. Add a GGUF folder with tokenizer.json under the model root.")
-            .color(pal.text_muted)
-    });
-
-    let endpoint = app.chat.endpoint.as_ref().map(|endpoint| {
-        let text = match endpoint {
-            Ok(endpoint) => format!("{} · {}", endpoint.model(), endpoint.url()),
-            Err(error) => format!("Local server configuration: {error}"),
-        };
-        label(text).color(pal.text_muted)
-    });
-
-    let intro =
-        (app.chat.entries.is_empty() && app.chat.streaming_artifacts.is_empty()).then(|| {
-            recipes::prose_muted(
-                pal,
-                "Pick a model, then ask about the open font in the field below. \
-             The model runs on this machine and can measure glyphs, read \
-             kerning, and propose edits for you to review. Try: \
-             \"How does the stem of H compare with the other capitals?\""
-                    .into(),
-            )
-        });
-
-    let mut transcript: Vec<Box<xilem::AnyWidgetView<Workspace>>> = app
-        .chat
-        .entries
-        .iter()
-        .map(|entry| match entry {
-            ChatEntry::Script(artifact) => script_artifact_row(app, artifact),
-            entry => {
-                let (text, kind) = transcript_text(entry);
-                let (color, background, border, radius, padding) = match kind {
-                    TranscriptKind::User => (
-                        pal.selected_ink(),
-                        pal.selected_bg(),
-                        Color::TRANSPARENT,
-                        Radius::Sm,
-                        masonry::properties::Padding {
-                            left: Space::Md.length(),
-                            right: Space::Md.length(),
-                            top: Space::Sm.length(),
-                            bottom: Space::Sm.length(),
-                        },
-                    ),
-                    TranscriptKind::Assistant => (
-                        pal.text,
-                        Color::TRANSPARENT,
-                        Color::TRANSPARENT,
-                        Radius::None,
-                        Space::Sm.into(),
-                    ),
-                    TranscriptKind::Tool => (
-                        pal.text_muted,
-                        pal.control,
-                        pal.field_outline,
-                        Radius::Sm,
-                        masonry::properties::Padding {
-                            left: Space::Md.length(),
-                            right: Space::Md.length(),
-                            top: Space::Xs.length(),
-                            bottom: Space::Xs.length(),
-                        },
-                    ),
-                    TranscriptKind::Error => (
-                        pal.role("danger"),
-                        Color::TRANSPARENT,
-                        Color::TRANSPARENT,
-                        Radius::None,
-                        Space::Sm.into(),
-                    ),
-                };
-                sized_box(
-                    selectable_text::<Workspace, ()>(text)
-                        .color(color)
-                        .text_size(TextSize::Body.px()),
+    match entry {
+        ChatEntry::Script(artifact) => script_artifact_row(app, artifact),
+        ChatEntry::User(text) => xrow(
+            Region::Inline,
+            (
+                FlexSpacer::Fixed(Space::Xl.length()),
+                recipes::bubble(
+                    pal,
+                    selectable_text::<Workspace, ()>(text.clone()).color(pal.selected_ink()),
                 )
-                .padding(padding)
-                .background_color(background)
-                .border_color(border)
-                .border_width(if border == Color::TRANSPARENT {
-                    Stroke::None.length()
-                } else {
-                    Stroke::Hairline.length()
-                })
-                .corner_radius(Length::px(if matches!(radius, Radius::None) {
-                    0.0
-                } else {
-                    pal.corner_radius
-                }))
+                .flex(1.0),
+            ),
+        )
+        .boxed(),
+        ChatEntry::Assistant(text) => sized_box(
+            selectable_text::<Workspace, ()>(if text.is_empty() {
+                "…".to_string()
+            } else {
+                text.clone()
+            })
+            .color(pal.text),
+        )
+        .padding(masonry::properties::Padding::horizontal(Space::Sm.length()))
+        .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
+        .boxed(),
+        ChatEntry::Tool { name, ok, note } => sized_box(
+            label(tool_sentence(name, *ok, note))
+                .text_size(TextSize::Caption.px())
+                .color(pal.text_muted)
+                .line_break_mode(masonry::properties::LineBreaking::WordWrap),
+        )
+        .padding(masonry::properties::Padding::horizontal(Space::Sm.length()))
+        .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
+        .boxed(),
+        ChatEntry::Error(text) => {
+            sized_box(selectable_text::<Workspace, ()>(text.clone()).color(pal.role("danger")))
+                .padding(masonry::properties::Padding::horizontal(Space::Sm.length()))
                 .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
                 .boxed()
+        }
+    }
+}
+
+pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    let pal = &app.palette;
+    let busy = app.chat.job.is_some();
+    let external = app.chat.endpoint.is_some();
+    let empty = app.chat.entries.is_empty() && app.chat.streaming_artifacts.is_empty();
+
+    // The conversation, newest at the bottom, or the note on how to start.
+    let conversation: Box<xilem::AnyWidgetView<Workspace>> = if empty {
+        let note = match &app.chat.endpoint {
+            Some(Err(error)) => format!("The local model server is not set up: {error}"),
+            Some(Ok(_)) => "Ask about the open font below. The model can measure \
+                            glyphs, read kerning, and propose edits for you to review."
+                .into(),
+            None if app.chat.installed.is_empty() => {
+                "No local chat model is installed. Add a GGUF model folder under \
+                 the model root, then come back here."
+                    .into()
             }
-        })
-        .collect();
-    transcript.extend(
-        app.chat
-            .streaming_artifacts
+            None => "Ask about the open font below. The model runs on this machine \
+                     and can measure glyphs, read kerning, and propose edits for you \
+                     to review. Try: \"How does the stem of H compare with the other \
+                     capitals?\""
+                .into(),
+        };
+        xcolumn(
+            Region::Panel,
+            (
+                FlexSpacer::Flex(1.0),
+                recipes::prose_muted(pal, note),
+                FlexSpacer::Flex(1.0),
+            ),
+        )
+        .boxed()
+    } else {
+        let clear = (!busy).then(|| {
+            xrow(
+                Region::Inline,
+                (
+                    FlexSpacer::Flex(1.0),
+                    word_button(pal, ControlKind::Quiet, "Clear", |app: &mut Workspace| {
+                        app.chat_clear();
+                    }),
+                ),
+            )
+        });
+        let mut rows: Vec<Box<xilem::AnyWidgetView<Workspace>>> = app
+            .chat
+            .entries
             .iter()
-            .map(|artifact| script_artifact_row(app, artifact)),
-    );
-    let transcript =
-        portal(xcolumn(Region::List, transcript).gap(Space::Sm)).constrain_horizontal(true);
+            .map(|entry| transcript_row(app, entry))
+            .collect();
+        rows.extend(
+            app.chat
+                .streaming_artifacts
+                .iter()
+                .map(|artifact| script_artifact_row(app, artifact)),
+        );
+        // The conversation grows up from the composer: when it is shorter
+        // than the panel, the spacer holds it at the bottom.
+        portal(
+            xcolumn(
+                Region::List,
+                (
+                    FlexSpacer::Flex(1.0),
+                    clear,
+                    xcolumn(Region::List, rows).gap(Space::Md),
+                ),
+            )
+            .gap(Space::Md),
+        )
+        .constrain_horizontal(true)
+        .must_fill(true)
+        .stick_to_end(true)
+        .boxed()
+    };
 
     let status = app
         .chat
         .busy
         .clone()
         .or_else(|| app.chat.last_speed.clone())
-        .map(|text| label(text).color(pal.text_muted));
-    let prompt = recipes::field_bare(
+        .map(|text| {
+            label(text)
+                .text_size(TextSize::Caption.px())
+                .color(pal.text_muted)
+        });
+
+    // The model chips, open while the person is choosing.
+    let selected = app.chat.model.clone();
+    let model_name = app
+        .chat
+        .installed
+        .iter()
+        .find(|(_, path)| selected.as_deref() == Some(path.as_path()))
+        .map_or("No model", |(name, _)| name.as_str())
+        .to_string();
+    let picker = (app.chat.picking && !external).then(|| {
+        let chips: Vec<_> = app
+            .chat
+            .installed
+            .iter()
+            .cloned()
+            .map(|(name, path)| {
+                let active = selected.as_deref() == Some(path.as_path());
+                recipes::chip(pal, name, active, move |app: &mut Workspace| {
+                    if app.chat.job.is_none() {
+                        app.chat.model = Some(path.clone());
+                    }
+                    app.chat.picking = false;
+                })
+            })
+            .collect();
+        xrow(Region::Inline, chips)
+    });
+
+    // The composer: the field, the model chip, and send or stop.
+    let field = recipes::field_flat(
         pal,
         "Ask about the open font",
         app.chat.prompt.clone(),
@@ -214,48 +278,59 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             app.chat_send(value);
         },
     );
-    let busy = app.chat.job.is_some();
-    let send = recipes::toggle(
-        pal,
-        if busy { "Working…" } else { "Send" }.into(),
-        !busy,
-        |app| {
+    let model_chip = (!external).then(|| {
+        let name = model_name.clone();
+        recipes::chip(pal, name, app.chat.picking, |app: &mut Workspace| {
+            app.chat.picking = !app.chat.picking;
+        })
+    });
+    let endpoint_note = external.then(|| {
+        label(match &app.chat.endpoint {
+            Some(Ok(endpoint)) => endpoint.model().to_string(),
+            _ => "Local server".to_string(),
+        })
+        .text_size(TextSize::Caption.px())
+        .color(pal.text_muted)
+    });
+    let send = if busy {
+        word_button(
+            pal,
+            ControlKind::Secondary,
+            "Stop",
+            |app: &mut Workspace| {
+                app.chat_cancel();
+            },
+        )
+        .boxed()
+    } else {
+        word_button(pal, ControlKind::Primary, "Send", |app: &mut Workspace| {
             if app.chat.job.is_none() {
                 let prompt = std::mem::take(&mut app.chat.prompt);
                 app.chat_send(prompt);
             }
-        },
+        })
+        .boxed()
+    };
+    let composer = recipes::field_box(
+        pal,
+        xcolumn(
+            Region::List,
+            (
+                field,
+                xrow(
+                    Region::Inline,
+                    (model_chip, endpoint_note, FlexSpacer::Flex(1.0), send),
+                ),
+            ),
+        )
+        .gap(Space::Sm),
     );
-    let cancel = busy.then(|| {
-        recipes::toggle(pal, "Cancel".into(), false, |app: &mut Workspace| {
-            app.chat_cancel();
-        })
-    });
-    let clear = (!busy && !app.chat.entries.is_empty()).then(|| {
-        recipes::toggle(pal, "Clear".into(), false, |app: &mut Workspace| {
-            app.chat_clear();
-        })
-    });
 
     xcolumn(
         Region::Panel,
-        (
-            label(if app.chat.endpoint.is_some() {
-                "Local model server"
-            } else {
-                "Local chat model"
-            })
-            .color(pal.text_muted),
-            endpoint,
-            xcolumn(Region::List, models),
-            no_model,
-            intro,
-            transcript.flex(1.0),
-            status,
-            prompt,
-            xrow(Region::Inline, (send, cancel, clear)),
-        ),
+        (conversation.flex(1.0), status, picker, composer),
     )
+    .gap(Space::Sm)
 }
 
 #[cfg(test)]
@@ -263,22 +338,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn transcript_roles_do_not_repeat_speaker_labels() {
+    fn tool_calls_read_as_sentences() {
         assert_eq!(
-            transcript_text(&ChatEntry::User("What is the UPM?".into())),
-            ("What is the UPM?".into(), TranscriptKind::User)
+            tool_sentence("font_info", true, "done"),
+            "Read the font info"
         );
         assert_eq!(
-            transcript_text(&ChatEntry::Assistant(String::new())),
-            ("…".into(), TranscriptKind::Assistant)
+            tool_sentence("analyze_glyph", false, "…"),
+            "Measuring a glyph…"
         );
         assert_eq!(
-            transcript_text(&ChatEntry::Tool {
-                name: "project_info".into(),
-                ok: true,
-                note: "done".into(),
-            }),
-            ("[ok] project_info: done".into(), TranscriptKind::Tool)
+            tool_sentence("read_glyph", true, "H: advance 700, 2 contours"),
+            "Read a glyph: H: advance 700, 2 contours"
         );
+        assert_eq!(
+            tool_sentence("analyze_font", false, "no such source"),
+            "Measured the font, which failed: no such source"
+        );
+        assert_eq!(tool_sentence("mystery", true, "done"), "Used a tool");
     }
 }

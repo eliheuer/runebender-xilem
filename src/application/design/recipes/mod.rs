@@ -15,7 +15,8 @@ use crate::application::widgets::icon_paint;
 use crate::application::widgets::input_typography;
 
 use crate::application::design::{
-    ControlKind, ControlSize, ControlStyle, ROW_MARKER_SIZE, Region, Space, Stroke, TextSize,
+    ControlKind, ControlSize, ControlStyle, ROW_MARKER_SIZE, Radius, Region, Space, Stroke,
+    TextSize,
 };
 use crate::application::design::{column, row};
 use crate::application::view::{label, text_input};
@@ -246,6 +247,35 @@ where
     ))
 }
 
+/// A text field with no face of its own, for a field that sits inside a
+/// framed surface such as a composer, where the frame is the face.
+pub(crate) fn field_flat<F, G>(
+    pal: &Palette,
+    placeholder: &'static str,
+    value: String,
+    on_change: F,
+    on_enter: G,
+) -> impl WidgetView<Workspace> + use<F, G>
+where
+    F: Fn(&mut Workspace, String) + Send + Sync + 'static,
+    G: Fn(&mut Workspace, String) + Send + Sync + 'static,
+{
+    sized_box(input_typography::input_typography(
+        text_input(value, move |app: &mut Workspace, v| on_change(app, v))
+            .on_enter(move |app: &mut Workspace, v| on_enter(app, v))
+            .placeholder(placeholder)
+            .text_color(pal.text)
+            .placeholder_color(pal.text_muted)
+            .background_color(Palette::FLAT)
+            .border_width(Length::ZERO),
+        pal.text,
+    ))
+    .dims(Dimensions::new(
+        Dim::Stretch,
+        Dim::from(ControlSize::Control),
+    ))
+}
+
 /// A caption and its control or control row, using the standard field typography and gap.
 /// An empty caption adds no label or extra space.
 pub(crate) fn labeled_control<V>(
@@ -311,6 +341,24 @@ where
         .border_color(pal.field_outline)
         .border_width(Length::px(pal.stroke))
         .corner_radius(Length::px(pal.control_radius))
+}
+
+/// What the person said in a conversation: a card in the selection face,
+/// so it reads as theirs beside the model's plain prose.
+pub(crate) fn bubble<V>(
+    pal: &Palette,
+    body: V,
+) -> impl WidgetView<Workspace, Widget: Sized> + use<V>
+where
+    V: WidgetView<Workspace>,
+{
+    sized_box(body)
+        .padding(masonry::properties::Padding::from_vh(
+            Space::Sm.length(),
+            Space::Md.length(),
+        ))
+        .background_color(pal.selected_bg())
+        .corner_radius(Radius::Lg.length())
 }
 
 /// A one-stroke rule across its container in the outline color.
@@ -617,4 +665,4 @@ where
 }
 
 pub(crate) mod rows;
-pub(crate) use rows::{Group, Row, Tile, click, section_of, section_with_details};
+pub(crate) use rows::{Group, Row, Tile, chip, click, section_of, section_with_details};

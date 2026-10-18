@@ -77,6 +77,8 @@ pub(crate) struct ChatState {
     /// An explicitly configured resident local model, or its configuration error.
     pub(crate) endpoint: Option<Result<LocalChatEndpoint, String>>,
     pub(crate) installed: Vec<(String, PathBuf)>,
+    /// The model chips are open above the composer.
+    pub(crate) picking: bool,
     /// The `llama-server` child serving the selected GGUF, shared with the
     /// turn's worker thread, which starts or replaces it as the model
     /// changes. Dropped with the panel, which kills the server.

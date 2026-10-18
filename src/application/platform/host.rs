@@ -433,6 +433,37 @@ impl Workspace {
             Ok("shapes") => app.rail = Rail::Shapes,
             _ => {}
         }
+        // RUNEBENDER_CHAT_SAMPLE=1 seeds the Chat panel with one exchange, so a
+        // headless screenshot shows the transcript and not only the empty state.
+        if std::env::var_os("RUNEBENDER_CHAT_SAMPLE").is_some() {
+            use crate::application::editor::tools::chat::ChatEntry;
+            app.chat.entries = vec![
+                ChatEntry::User("what is the upm?".into()),
+                ChatEntry::Tool {
+                    name: "font_info".into(),
+                    ok: true,
+                    note: "done".into(),
+                },
+                ChatEntry::Assistant("The units per em of the font is 1024.".into()),
+                ChatEntry::User("How does the stem of H compare with the other capitals?".into()),
+                ChatEntry::Tool {
+                    name: "analyze_glyph".into(),
+                    ok: true,
+                    note: "done".into(),
+                },
+                ChatEntry::Tool {
+                    name: "analyze_font".into(),
+                    ok: true,
+                    note: "done".into(),
+                },
+                ChatEntry::Assistant(
+                    "The H stem is 92 units. The median uppercase stem is 90, so H sits \
+                     within 2 units of the others. The farthest is M at 84."
+                        .into(),
+                ),
+            ];
+            app.chat.last_speed = Some("14 tokens/s".into());
+        }
         if app.tool == Tool::AiShape {
             // The tool was set directly, not picked, so scan for its models here.
             app.shapes_rescan();

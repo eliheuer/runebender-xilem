@@ -424,7 +424,7 @@ fn chips(
 
 /// A pill: a button, so its text is centered by the same code that
 /// centers every other button, inverted when chosen.
-fn chip<F: Fn(&mut Workspace) + Send + Sync + 'static>(
+pub(crate) fn chip<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     pal: &Palette,
     text: String,
     active: bool,

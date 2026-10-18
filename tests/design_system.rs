@@ -132,7 +132,7 @@ const BUDGET: &[(&str, &str, usize)] = &[
     ("view/canvas/editor.rs", "literal opacity", 30),
     ("view/canvas/editor.rs", "literal stroke", 8),
     ("view/chrome.rs", "local face", 1),
-    ("view/panels/chat.rs", "local face", 8),
+    ("view/panels/chat.rs", "local face", 4),
     ("view/panels/graph.rs", "local face", 3),
     ("view/panels/preview.rs", "local face", 3),
     ("view/render.rs", "local face", 4),
