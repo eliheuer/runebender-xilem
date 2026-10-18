@@ -60,6 +60,8 @@ pub(crate) fn with_live<V: xilem::WidgetView<Workspace>>(
                 }
             },
             |app: &mut Workspace, ()| {
+                #[cfg(unix)]
+                crate::application::editor::tools::graph::controls::live_autorun_tick(app);
                 if app.live_graph_need_pump() {
                     app.live_graph_pump();
                     app.sync_live_graph_presentation();
@@ -69,7 +71,7 @@ pub(crate) fn with_live<V: xilem::WidgetView<Workspace>>(
                     request.respond(|call| app.call_live(call));
                 }
                 app.live_graph_pending
-                    .store(app.live_graph_need_pump(), Ordering::Release);
+                    .store(app.live_graph_wants_wake(), Ordering::Release);
             },
         ),
     )

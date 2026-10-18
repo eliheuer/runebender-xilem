@@ -199,8 +199,9 @@ fn capture_with(
     parameters: BTreeMap<String, Value>,
     mut snapshot_for: impl FnMut(&variable::GlyphLayerAddress) -> Result<CanonicalLayerSnapshot, String>,
 ) -> Result<ScriptRecipeInput, String> {
-    if glyphs.is_empty() || glyphs.len() > MAX_LAYERS {
-        return Err(format!("select between one and {MAX_LAYERS} glyphs"));
+    // An empty scope is a proof-only run; the host refuses it for Python.
+    if glyphs.len() > MAX_LAYERS {
+        return Err(format!("select at most {MAX_LAYERS} glyphs"));
     }
     let layer_id = project
         .document_source(source)
@@ -355,12 +356,23 @@ impl ScriptRecipeInput {
             layers,
         };
         input.input_hash = input.computed_hash()?;
-        input.validate()?;
+        input.validate_capture()?;
         Ok(input)
     }
 
-    /// Recompute the content hash and validate the complete bounded capture.
+    /// Validate an input before it reaches Python, which always needs a
+    /// glyph scope.
     pub fn validate(&self) -> Result<(), ScriptRecipeValidationError> {
+        if self.layers.is_empty() {
+            return Err(ScriptRecipeValidationError::new(
+                "recipe input must contain 1..=64 layers",
+            ));
+        }
+        self.validate_capture()
+    }
+
+    /// Recompute the content hash and validate the complete bounded capture.
+    fn validate_capture(&self) -> Result<(), ScriptRecipeValidationError> {
         if !matches!(
             self.schema_version,
             LEGACY_SCRIPT_RECIPE_SCHEMA_VERSION | SCRIPT_RECIPE_SCHEMA_VERSION
@@ -370,9 +382,10 @@ impl ScriptRecipeInput {
             ));
         }
         validate_string("job_id", &self.job_id)?;
-        if self.layers.is_empty() || self.layers.len() > MAX_LAYERS {
+        // An empty scope is a proof-only capture; `validate` refuses it for Python.
+        if self.layers.len() > MAX_LAYERS {
             return Err(ScriptRecipeValidationError::new(
-                "recipe input must contain 1..=64 layers",
+                "recipe input must contain at most 64 layers",
             ));
         }
         let parameter_bytes = serde_json::to_vec(&self.parameters)

@@ -702,36 +702,62 @@ pub struct GraphExecutionPlan {
     pub proofs: Vec<GraphInputNode>,
     /// All nodes, including source, in deterministic topological order.
     pub order: Vec<u32>,
+    /// The Python comparison inside the plan, when it has one.
+    comparison: Option<GraphComparisonPlan>,
 }
 
 impl GraphExecutionPlan {
-    /// Recognize the original one-script, two-proof comparison.
+    /// The Python comparison: one script fed by the source, the proof of
+    /// its result, and the source proof that renders the same recipe.
     pub fn comparison(&self) -> Option<GraphComparisonPlan> {
-        let [script] = self.scripts.as_slice() else {
-            return None;
-        };
-        let [first, second] = self.proofs.as_slice() else {
-            return None;
-        };
-        if script.input != self.source_node {
-            return None;
-        }
-        let (unchanged_proof, changed_proof) = match (first.input, second.input) {
-            (source, derived) if source == self.source_node && derived == script.node => {
-                (first.node, second.node)
-            }
-            (derived, source) if source == self.source_node && derived == script.node => {
-                (second.node, first.node)
-            }
-            _ => return None,
-        };
-        Some(GraphComparisonPlan {
-            source_node: self.source_node,
-            unchanged_proof,
-            python_node: script.node,
-            changed_proof,
-        })
+        self.comparison
     }
+}
+
+/// Find the comparison in a plan's topology.
+///
+/// With exactly two proofs this is the original shape and needs no
+/// recipes. With more, such as a specimen beside the comparison, the
+/// unchanged proof is the one source proof rendering the changed proof's
+/// recipe; anything else is ambiguous and is not a comparison.
+fn find_comparison(
+    graph: &NodeGraph,
+    source_node: u32,
+    scripts: &[GraphInputNode],
+    proofs: &[GraphInputNode],
+) -> Option<GraphComparisonPlan> {
+    let [script] = scripts else {
+        return None;
+    };
+    if script.input != source_node {
+        return None;
+    }
+    let [changed] = proofs
+        .iter()
+        .filter(|proof| proof.input == script.node)
+        .collect::<Vec<_>>()[..]
+    else {
+        return None;
+    };
+    let sources = proofs.iter().filter(|proof| proof.input == source_node);
+    let unchanged = if proofs.len() == 2 {
+        sources.collect::<Vec<_>>()
+    } else {
+        let recipe = |node: u32| graph.node(node).and_then(|n| n.values.get("recipe"));
+        let wanted = recipe(changed.node)?;
+        sources
+            .filter(|proof| recipe(proof.node) == Some(wanted))
+            .collect()
+    };
+    let [unchanged] = unchanged[..] else {
+        return None;
+    };
+    Some(GraphComparisonPlan {
+        source_node,
+        unchanged_proof: unchanged.node,
+        python_node: script.node,
+        changed_proof: changed.node,
+    })
 }
 
 /// Complete immutable identity a worker must echo on completion.
@@ -1998,7 +2024,8 @@ fn execution_plan(
     let scripts = nodes_of_type("live.python");
     let proofs = nodes_of_type("live.proof");
     if sources.len() != 1
-        || (version == 1 && (scripts.len() != 1 || proofs.len() != 2))
+        || (version == 1
+            && (scripts.len() != 1 || proofs.len() < 2 || proofs.len() > MAX_DAG_PROOFS))
         || (version == 2
             && (scripts.len() > MAX_DAG_SCRIPTS
                 || proofs.is_empty()
@@ -2009,7 +2036,7 @@ fn execution_plan(
             "execution contract requires one live.font and a bounded set of live.python/live.proof nodes",
         ));
     }
-    if version == 1 && (graph.nodes.len() != 4 || graph.links.len() != 3) {
+    if version == 1 && graph.nodes.len() != 1 + scripts.len() + proofs.len() {
         return Err(GraphSessionError::new(
             GraphSessionErrorCode::UnsupportedTopology,
             "schema version 1 runs only the four-node comparison graph",
@@ -2092,17 +2119,31 @@ fn execution_plan(
         order.push(node);
         remaining.remove(&node);
     }
-    let plan = GraphExecutionPlan {
+    let comparison = find_comparison(graph, source_node, &script_steps, &proof_steps);
+    let mut plan = GraphExecutionPlan {
         source_node,
         scripts: script_steps,
         proofs: proof_steps,
         order,
+        comparison,
     };
-    if version == 1 && plan.comparison().is_none() {
-        return Err(GraphSessionError::new(
-            GraphSessionErrorCode::UnsupportedTopology,
-            "proofs must compare the shared base with the Python-derived version",
-        ));
+    if version == 1 {
+        let Some(comparison) = plan.comparison() else {
+            return Err(GraphSessionError::new(
+                GraphSessionErrorCode::UnsupportedTopology,
+                "proofs must compare the shared base with the Python-derived version",
+            ));
+        };
+        // Version 1 runs the four comparison nodes alone; other proofs in the
+        // graph, such as the specimen, are left to version 2 runs.
+        let kept = [
+            comparison.source_node,
+            comparison.python_node,
+            comparison.unchanged_proof,
+            comparison.changed_proof,
+        ];
+        plan.proofs.retain(|proof| kept.contains(&proof.node));
+        plan.order.retain(|node| kept.contains(node));
     }
     Ok(plan)
 }
@@ -3355,6 +3396,32 @@ mod tests {
                 scope: GraphProofScope::CompiledFamily,
             },
         }
+    }
+
+    #[test]
+    fn a_specimen_beside_the_comparison_pairs_proofs_by_recipe() {
+        use crate::workflows::graph_live;
+        let recipes = graph_live::SPECIMEN
+            .iter()
+            .map(|line| graph_live::specimen_recipe(*line, 10.0, &[]))
+            .collect();
+        let mut graph = graph_live::specimen_starter(variable::SourceId(0), recipes);
+        let specimen_proofs: Vec<u32> = graph.nodes.iter().skip(1).map(|node| node.id).collect();
+        let python =
+            graph_live::add_comparison(&mut graph, &graph_live::default_proof_recipe()).unwrap();
+        let session = GraphSession::new("graph", "document", graph, Registry::core()).unwrap();
+
+        let all = session.execution_plan(2).unwrap();
+        assert_eq!(all.proofs.len(), specimen_proofs.len() + 2);
+        let comparison = all.comparison().unwrap();
+        assert_eq!(comparison.python_node, python);
+        assert!(!specimen_proofs.contains(&comparison.unchanged_proof));
+
+        // Version 1 runs the comparison's four nodes and leaves the specimen.
+        let legacy = session.execution_plan(1).unwrap();
+        assert_eq!(legacy.order.len(), 4);
+        assert_eq!(legacy.proofs.len(), 2);
+        assert_eq!(legacy.comparison(), Some(comparison));
     }
 
     #[test]

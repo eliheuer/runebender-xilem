@@ -383,8 +383,10 @@ impl GraphRunRequest {
         {
             return Err("semantic_hash must be a lowercase SHA-256 digest".into());
         }
-        if self.glyphs.is_empty() || self.glyphs.len() > 64 {
-            return Err("glyphs must contain 1..=64 explicit names".into());
+        // A graph with a Python recipe also needs at least one glyph; the
+        // host checks that, since only it knows the graph.
+        if self.glyphs.len() > 64 {
+            return Err("glyphs must contain at most 64 explicit names".into());
         }
         let mut unique = BTreeSet::new();
         for glyph in &self.glyphs {
@@ -654,7 +656,7 @@ pub fn tools() -> Vec<Tool> {
         },
         Tool {
             name: "graph_run".into(),
-            description: "Run native nodes for one explicit source and 1 to 64 glyphs. Omitted execution_version or 1 keeps the four-node comparison; version 2 enables bounded chained and branching Python transforms with independent proofs and partial failures. The host captures current font, code, parameters and proof identities; callers never supply hashes. Poll graph_status.".into(),
+            description: "Run native nodes for one explicit source and up to 64 glyphs; a graph with a Python node needs at least one. Omitted execution_version or 1 runs only the four-node comparison, leaving other proofs such as the specimen; version 2 enables bounded chained and branching Python transforms with independent proofs and partial failures. The host captures current font, code, parameters and proof identities; callers never supply hashes. Poll graph_status.".into(),
             parameters: object(
                 json!({
                     "expected_document_epoch":epoch.clone(),

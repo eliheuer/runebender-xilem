@@ -108,6 +108,10 @@ pub(crate) struct GraphState {
     pub(crate) live_selected: bool,
     /// User-visible comma- or whitespace-separated glyph names captured by the next comparison.
     pub(crate) live_scope: String,
+    /// The document revision the live graph last rendered, so it renders again after edits.
+    pub(crate) rendered_revision: Option<u64>,
+    /// A newer revision seen while waiting for edits to settle, and when it was first seen.
+    pub(crate) render_after: Option<(u64, std::time::Instant)>,
     /// Runs started by this native surface; agent-owned handles remain untouched by Clear.
     pub(crate) live_ui_handles: std::collections::BTreeSet<u64>,
     /// Exact proof bytes retained once per immutable artifact identity for presentation.
@@ -383,14 +387,21 @@ impl Workspace {
         self.mode = Mode::Graph;
     }
 
-    /// Opens the canvas. With no file open, the first one beside the
-    /// font opens, or a new empty one waits to be saved.
+    /// Opens the canvas. With no graph file chosen, the font's live type
+    /// specimen shows.
     pub(crate) fn enter_graph_mode(&mut self) {
         if matches!(self.mode, Mode::Editor(_)) {
             self.refresh_open_glyph();
         }
+        self.scan_graph_files();
+        // The type specimen is the default graph: it shows the open font and
+        // renders on its own. A graph file the person chose stays chosen.
+        #[cfg(unix)]
+        if self.graph.open.is_none() && !self.graph.live_selected {
+            controls::select_live_specimen(self);
+        }
+        #[cfg(not(unix))]
         if self.graph.open.is_none() {
-            self.scan_graph_files();
             match self.graph.files.first().cloned() {
                 Some(file) => self.open_graph_file(&file),
                 None => {

@@ -188,6 +188,183 @@ pub fn comparison_starter(source_id: SourceId) -> NodeGraph {
     graph
 }
 
+/// One line of the default type specimen.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SpecimenLine {
+    /// The text to shape.
+    pub text: &'static str,
+    /// Rendered pixels per em. The canvas shows proofs at half their
+    /// pixel size, so these read as 64, 32, and 20 point text.
+    pub pixels_per_em: f64,
+}
+
+/// The default specimen: a display line, a sentence, and the character set.
+pub const SPECIMEN: [SpecimenLine; 3] = [
+    SpecimenLine {
+        text: "Hamburgefontsiv",
+        pixels_per_em: 128.0,
+    },
+    SpecimenLine {
+        text: "The quick brown fox jumps over the lazy dog",
+        pixels_per_em: 64.0,
+    },
+    SpecimenLine {
+        text: "ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789",
+        pixels_per_em: 40.0,
+    },
+];
+
+/// A proof recipe that fits one specimen line in a raster sized to it.
+///
+/// `advance_em` is the line's advance width in ems, measured from the
+/// font's glyph advances. The raster holds one line with the same space
+/// above and below it, and leaves 15% spare width so an edit that widens
+/// the line still fits. A line wider than the largest raster is drawn
+/// smaller.
+pub fn specimen_recipe(line: SpecimenLine, advance_em: f64, normalized_location: &[f64]) -> Value {
+    const MAX_WIDTH: f64 = 2048.0;
+    const MAX_PIXELS: f64 = 2_097_152.0;
+    let slack = 1.15;
+    let mut ppem = line.pixels_per_em;
+    let margin = |ppem: f64| (ppem * 0.25).max(16.0).round();
+    let width = |ppem: f64| advance_em.max(0.5) * ppem * slack + 2.0 * margin(ppem);
+    if width(ppem) > MAX_WIDTH {
+        ppem = ((MAX_WIDTH - 2.0 * margin(ppem)) / (advance_em.max(0.5) * slack)).floor();
+    }
+    let ppem = ppem.clamp(4.0, 512.0);
+    let margin = margin(ppem);
+    // The baseline clears descenders, and the line above it clears
+    // ascenders, each with the side margin.
+    let first_baseline = (ppem * 0.25).round() + margin;
+    let line_height = ppem + margin;
+    let width = width(ppem).ceil().clamp(128.0, MAX_WIDTH);
+    let height = (first_baseline + line_height)
+        .ceil()
+        .clamp(128.0, (MAX_PIXELS / width).floor().min(MAX_WIDTH));
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "both sizes are clamped to 128..=2048 above"
+    )]
+    let (width, height) = (width as u32, height as u32);
+    json!({
+        "text": line.text,
+        "normalized_location": normalized_location,
+        "right_to_left": false,
+        "features": [],
+        "script": null,
+        "language": null,
+        "rendering": {
+            "width_px": width,
+            "height_px": height,
+            "pixels_per_em": ppem,
+            "margin_px": margin,
+            "first_baseline_px": first_baseline,
+            "line_height_px": line_height,
+            "background_rgb": [255, 255, 255],
+            "ink_rgb": [0, 0, 0],
+        },
+    })
+}
+
+/// The proof's raster size in pixels, when its recipe sets one.
+pub fn recipe_raster(recipe: &Value) -> Option<[f64; 2]> {
+    let rendering = recipe.get("rendering")?;
+    Some([
+        rendering.get("width_px")?.as_f64()?,
+        rendering.get("height_px")?.as_f64()?,
+    ])
+}
+
+/// The default live graph: the current font feeding one proof per specimen line.
+///
+/// `recipes` come from [`specimen_recipe`], one per line, top to bottom.
+pub fn specimen_starter(source_id: SourceId, recipes: Vec<Value>) -> NodeGraph {
+    // A proof node is its image plus header, two port rows, padding, and the
+    // resize handle (see `ui::graph::node_box_with_content`), then a gap.
+    const NODE_CHROME: f32 = 92.0;
+    const GAP: f32 = 32.0;
+    let mut graph = NodeGraph::default();
+    let source = graph.add("live.font", [32.0, 32.0]);
+    graph
+        .node_mut(source)
+        .unwrap()
+        .values
+        .insert("source".into(), json!(source_id.0));
+    let mut y = 32.0_f32;
+    for recipe in recipes {
+        let height = recipe_raster(&recipe).map_or(144.0, |[_, h]| h / 2.0);
+        let proof = graph.add("live.proof", [336.0, y]);
+        graph
+            .node_mut(proof)
+            .unwrap()
+            .values
+            .insert("recipe".into(), recipe);
+        graph.connect(source, "font", proof, "font");
+        #[allow(
+            clippy::cast_possible_truncation,
+            reason = "canvas positions are small finite numbers"
+        )]
+        {
+            y += (height as f32) + NODE_CHROME + GAP;
+        }
+    }
+    graph
+}
+
+/// Whether the graph holds a Python comparison: a recipe fed by the
+/// font, with a proof of its result.
+pub fn has_comparison(graph: &NodeGraph) -> bool {
+    let Some(source) = graph.nodes.iter().find(|n| n.type_name == "live.font") else {
+        return false;
+    };
+    graph.nodes.iter().any(|python| {
+        python.type_name == "live.python"
+            && graph
+                .link_into(python.id, "font")
+                .is_some_and(|link| link.from() == source.id)
+            && graph.links.iter().any(|link| {
+                link.from() == python.id
+                    && graph
+                        .node(link.to())
+                        .is_some_and(|n| n.type_name == "live.proof")
+            })
+    })
+}
+
+/// Add the Python comparison beside whatever the graph already shows:
+/// an unchanged proof of the font, an empty Python recipe, and a proof
+/// of its result, both proofs rendering `recipe`. Returns the Python node.
+///
+/// The pair is placed below the lowest node, so a specimen keeps its place.
+pub fn add_comparison(graph: &mut NodeGraph, recipe: &Value) -> Option<u32> {
+    let source = graph.nodes.iter().find(|n| n.type_name == "live.font")?.id;
+    let below = graph
+        .nodes
+        .iter()
+        .map(|node| node.pos[1])
+        .fold(32.0_f32, f32::max);
+    let y = below + 320.0;
+    let unchanged = graph.add("live.proof", [640.0, y]);
+    graph
+        .node_mut(unchanged)?
+        .values
+        .insert("recipe".into(), recipe.clone());
+    graph.connect(source, "font", unchanged, "font");
+    let python = graph.add("live.python", [336.0, y]);
+    let node = graph.node_mut(python)?;
+    node.values.insert("code".into(), json!(""));
+    node.values.insert("parameters".into(), json!({}));
+    graph.connect(source, "font", python, "font");
+    let changed = graph.add("live.proof", [928.0, y]);
+    graph
+        .node_mut(changed)?
+        .values
+        .insert("recipe".into(), recipe.clone());
+    graph.connect(python, "font", changed, "font");
+    Some(python)
+}
+
 /// Add a fork and proof connected to an existing font output. Returns the fork id.
 pub fn add_direction(graph: &mut NodeGraph, source: u32, pos: [f32; 2]) -> u32 {
     let fork = graph.add("live.fork", pos);
@@ -676,6 +853,68 @@ mod tests {
             resolve(&unbound, &project, live)
                 .unwrap_err()
                 .contains("stable source")
+        );
+    }
+
+    #[test]
+    fn specimen_recipes_are_valid_proofs_sized_to_their_lines() {
+        for line in SPECIMEN {
+            let advance = line.text.chars().count() as f64 * 0.55;
+            let recipe = specimen_recipe(line, advance, &[]);
+            let parsed: crate::font::compiler::proof::CompiledProofRecipe =
+                serde_json::from_value(recipe.clone()).unwrap();
+            parsed.rendering.validate().unwrap();
+            let [width, _] = recipe_raster(&recipe).unwrap();
+            assert!(
+                advance * parsed.rendering.pixels_per_em + 2.0 * parsed.rendering.margin_px
+                    <= width,
+                "{} fits its raster",
+                line.text
+            );
+        }
+    }
+
+    #[test]
+    fn a_line_too_wide_for_the_largest_raster_is_drawn_smaller() {
+        let line = SpecimenLine {
+            text: "wide",
+            pixels_per_em: 128.0,
+        };
+        let recipe = specimen_recipe(line, 40.0, &[]);
+        let parsed: crate::font::compiler::proof::CompiledProofRecipe =
+            serde_json::from_value(recipe).unwrap();
+        parsed.rendering.validate().unwrap();
+        assert!(parsed.rendering.pixels_per_em < 128.0);
+        assert!(parsed.rendering.width_px <= 2048);
+    }
+
+    #[test]
+    fn the_specimen_is_the_font_feeding_one_proof_per_line_and_grows_a_comparison() {
+        let recipes = SPECIMEN
+            .iter()
+            .map(|line| specimen_recipe(*line, 10.0, &[]))
+            .collect();
+        let mut graph = specimen_starter(SourceId(0), recipes);
+        let proofs: Vec<_> = graph
+            .nodes
+            .iter()
+            .filter(|node| node.type_name == "live.proof")
+            .collect();
+        assert_eq!(proofs.len(), SPECIMEN.len());
+        assert!(
+            proofs
+                .iter()
+                .all(|proof| graph.link_into(proof.id, "font").is_some())
+        );
+        assert!(!has_comparison(&graph));
+        let before = graph.nodes.len();
+        add_comparison(&mut graph, &default_proof_recipe()).unwrap();
+        assert!(has_comparison(&graph));
+        assert_eq!(graph.nodes.len(), before + 3);
+        assert!(
+            graph
+                .validate(&super::super::graph::Registry::core())
+                .is_empty()
         );
     }
 }

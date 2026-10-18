@@ -16,7 +16,10 @@ use runebender::font::compiler::proof::CompiledProofRecipe;
 use runebender::font::variable::SourceId;
 use runebender::workflows::graph::Registry;
 use runebender::workflows::graph_live;
-use runebender::workflows::graph_session::{GraphDocumentState, GraphRunHandle, GraphSession};
+use runebender::workflows::graph_session::{
+    GraphDocumentState, GraphGuard, GraphInteractiveMutationRequest, GraphMutation, GraphRunHandle,
+    GraphSession,
+};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
@@ -51,6 +54,12 @@ pub(crate) enum RetainedGraphResponse {
 }
 
 impl Workspace {
+    /// Whether the live loop must keep waking: jobs to observe, or a render
+    /// waiting for edits to settle.
+    pub(crate) fn live_graph_wants_wake(&self) -> bool {
+        self.live_graph_need_pump() || super::controls::live_autorun_waiting(self)
+    }
+
     /// Whether a retained live comparison still needs its owned jobs observed.
     pub(crate) fn live_graph_need_pump(&self) -> bool {
         self.live_graph.as_ref().is_some_and(|state| {
@@ -81,8 +90,10 @@ impl Workspace {
     }
 
     /// Create the unsaved comparison starter lazily for this document lifetime.
+    /// The font's live graph with its Python comparison, grown from the
+    /// specimen when the comparison is missing.
     pub(crate) fn ensure_live_graph(&mut self) -> Result<(), String> {
-        if self.live_graph.is_some() {
+        if self.live_graph_has_comparison() {
             return Ok(());
         }
         let source = self
@@ -139,7 +150,7 @@ impl Workspace {
         } else {
             None
         };
-        self.create_live_graph(source, selected_recipe)
+        self.ensure_live_comparison(source, selected_recipe)
     }
 
     /// Seed a Brush comparison from the validated selected occurrence.
@@ -150,6 +161,22 @@ impl Workspace {
         &mut self,
         recipe: CompiledProofRecipe,
     ) -> Result<(), String> {
+        if self.live_graph_has_comparison() {
+            return Ok(());
+        }
+        let source = self
+            .font
+            .project
+            .source_id(self.font.active())
+            .ok_or("active source is unavailable")?;
+        self.ensure_live_comparison(source, Some(recipe))
+    }
+
+    /// The font's live graph, created as the type specimen when there is none.
+    ///
+    /// This is what the Graph tab shows first. It runs no Python, so it needs
+    /// no glyph scope and no text selection.
+    pub(crate) fn ensure_live_specimen(&mut self) -> Result<(), String> {
         if self.live_graph.is_some() {
             return Ok(());
         }
@@ -158,49 +185,107 @@ impl Workspace {
             .project
             .source_id(self.font.active())
             .ok_or("active source is unavailable")?;
-        self.create_live_graph(source, Some(recipe))
+        self.create_live_graph(source)
     }
 
-    fn create_live_graph(
+    fn live_graph_has_comparison(&self) -> bool {
+        self.live_graph
+            .as_ref()
+            .is_some_and(|state| graph_live::has_comparison(&state.session.snapshot().graph))
+    }
+
+    /// Add the Python comparison to the live graph, creating the specimen first
+    /// when there is no graph. Both comparison proofs render `selected_recipe`,
+    /// or the default line at the source's location.
+    fn ensure_live_comparison(
         &mut self,
         source: SourceId,
         selected_recipe: Option<CompiledProofRecipe>,
     ) -> Result<(), String> {
+        if self.live_graph.is_none() {
+            self.create_live_graph(source)?;
+        }
+        let recipe = match selected_recipe {
+            Some(recipe) => serde_json::to_value(recipe).map_err(|error| error.to_string())?,
+            None => {
+                let mut recipe = graph_live::default_proof_recipe();
+                recipe["normalized_location"] =
+                    serde_json::json!(self.source_normalized_location(source)?);
+                recipe
+            }
+        };
+        let state = self
+            .live_graph
+            .as_mut()
+            .expect("live graph was initialized");
+        let snapshot = state.session.snapshot();
+        if graph_live::has_comparison(&snapshot.graph) {
+            return Ok(());
+        }
+        let mut grown = snapshot.graph.clone();
+        graph_live::add_comparison(&mut grown, &recipe)
+            .ok_or("the live graph has no live.font node to compare")?;
+        let edits = super::controls::graph_edits(&snapshot.graph, &grown)?;
+        state
+            .session
+            .mutate_interactive(GraphInteractiveMutationRequest {
+                guard: GraphGuard {
+                    identity: snapshot.identity.clone(),
+                    revision: snapshot.revision,
+                },
+                mutation: GraphMutation::Patch { edits },
+            })
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    /// The source's axis location, one value per document axis.
+    fn source_normalized_location(&self, source: SourceId) -> Result<Vec<f64>, String> {
+        let location = self
+            .font
+            .project
+            .document_source(source)
+            .ok_or("selected source is unavailable")?
+            .location();
+        Ok(self
+            .font
+            .project
+            .axes
+            .iter()
+            .map(|axis| location.get(&axis.name).copied().unwrap_or(0.0))
+            .collect())
+    }
+
+    /// A line's advance in ems from the active master's glyph advances.
+    /// A character the font lacks counts as half an em.
+    fn line_advance_em(&self, text: &str) -> f64 {
+        let upm = self.font.units_per_em().max(1.0);
+        text.chars()
+            .map(|character| {
+                self.font
+                    .glyphs
+                    .iter()
+                    .find(|glyph| glyph.codepoint == Some(character))
+                    .map_or(0.5, |glyph| glyph.advance / upm)
+            })
+            .sum()
+    }
+
+    fn create_live_graph(&mut self, source: SourceId) -> Result<(), String> {
         let epoch = self
             .live
             .as_ref()
             .ok_or("native live endpoint is unavailable")?
             .document_epoch()
             .to_owned();
-        let source_location = self
-            .font
-            .project
-            .document_source(source)
-            .ok_or("selected source is unavailable")?
-            .location();
-        let normalized_location: Vec<f64> = self
-            .font
-            .project
-            .axes
+        let location = self.source_normalized_location(source)?;
+        let recipes = graph_live::SPECIMEN
             .iter()
-            .map(|axis| source_location.get(&axis.name).copied().unwrap_or(0.0))
+            .map(|line| {
+                graph_live::specimen_recipe(*line, self.line_advance_em(line.text), &location)
+            })
             .collect();
-        let mut graph = graph_live::comparison_starter(source);
-        let selected_recipe = selected_recipe
-            .map(|recipe| serde_json::to_value(recipe).map_err(|error| error.to_string()))
-            .transpose()?;
-        for node in &mut graph.nodes {
-            if node.type_name == "live.proof" {
-                if let Some(recipe) = &selected_recipe {
-                    node.values.insert("recipe".into(), recipe.clone());
-                } else {
-                    node.values
-                        .get_mut("recipe")
-                        .expect("starter proof has recipe")["normalized_location"] =
-                        serde_json::json!(normalized_location);
-                }
-            }
-        }
+        let graph = graph_live::specimen_starter(source, recipes);
         self.live_graph = Some(fresh_live_graph(self.document_id, epoch, graph, None)?);
         Ok(())
     }
@@ -213,7 +298,7 @@ impl Workspace {
         &mut self,
         path: &Path,
     ) -> Result<LiveGraphFileMetadata, String> {
-        self.ensure_live_graph()?;
+        self.ensure_live_specimen()?;
         let state = self
             .live_graph
             .as_mut()
@@ -518,7 +603,11 @@ impl Workspace {
         if call.name == "graph_run" {
             self.ensure_script_job_queue()?;
         }
-        self.ensure_live_graph()?;
+        // Tools work on the graph the person sees. With none yet, they get the
+        // specimen with a comparison, the shape agents start from.
+        if self.live_graph.is_none() {
+            self.ensure_live_graph()?;
+        }
         if call.name != "graph_trace_cancel" {
             self.live_graph_pump();
         }
@@ -595,6 +684,15 @@ impl Workspace {
                     return Err("graph retry retention is full; open a new graph session".into());
                 }
                 let snapshot = state.session.snapshot();
+                if request.glyphs.is_empty()
+                    && snapshot
+                        .graph
+                        .nodes
+                        .iter()
+                        .any(|node| node.type_name == "live.python")
+                {
+                    return Err("enter at least one glyph for the Python recipe to change".into());
+                }
                 let parameters = if request.execution_version == 1 {
                     snapshot
                         .graph
@@ -933,6 +1031,125 @@ mod tests {
     }
 
     #[test]
+    fn the_specimen_renders_on_open_and_again_after_edits_settle() {
+        use crate::application::editor::tools::graph::controls::{
+            live_autorun_tick, live_autorun_waiting, select_live_specimen,
+        };
+        let mut project = Project::new_font(std::env::temp_dir().join("graph-specimen.ufo"));
+        let layer = project
+            .document_source(project.source_id(0).unwrap())
+            .unwrap()
+            .default_layer();
+        for name in ["H", "a", "m"] {
+            project
+                .add_document_glyph(name, 500.0, Some(u32::from(name.chars().next().unwrap())))
+                .unwrap();
+            project
+                .edit_document_layer(name, &layer, |draft| {
+                    draft.add_shape_contour(kurbo::Rect::new(40.0, 0.0, 460.0, 700.0), false)?;
+                    Ok(())
+                })
+                .unwrap();
+        }
+        let mut app = Workspace::from_model(FontModel::from_project(project)).unwrap();
+        app.mode = crate::application::workspace::Mode::Graph;
+        select_live_specimen(&mut app);
+        let graph = app.live_graph_session().unwrap().snapshot().graph;
+        assert!(
+            graph
+                .nodes
+                .iter()
+                .all(|node| node.type_name != "live.python")
+        );
+        assert_eq!(
+            graph
+                .nodes
+                .iter()
+                .filter(|node| node.type_name == "live.proof")
+                .count(),
+            graph_live::SPECIMEN.len()
+        );
+        assert!(live_autorun_waiting(&app), "the first render does not wait");
+        live_autorun_tick(&mut app);
+        assert!(!app.graph.live_ui_handles.is_empty(), "{}", app.note);
+        let deadline = Instant::now() + Duration::from_secs(60);
+        while app.graph.proof_images.len() < graph_live::SPECIMEN.len() {
+            assert!(
+                Instant::now() < deadline,
+                "specimen did not render: {}",
+                app.note
+            );
+            app.live_graph_pump();
+            app.sync_live_graph_presentation();
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        while app.live_graph_need_pump() {
+            assert!(Instant::now() < deadline, "specimen run did not finish");
+            app.live_graph_pump();
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(!live_autorun_waiting(&app));
+
+        // An edit waits for the font to settle, then renders again.
+        app.font
+            .project
+            .edit_document_layer("H", &layer, |draft| {
+                draft.set_width(520.0)?;
+                Ok(())
+            })
+            .unwrap();
+        assert!(live_autorun_waiting(&app));
+        let handles = app.graph.live_ui_handles.len();
+        live_autorun_tick(&mut app);
+        assert!(app.graph.render_after.is_some());
+        assert_eq!(app.graph.live_ui_handles.len(), handles, "not yet");
+        let (revision, _) = app.graph.render_after.unwrap();
+        app.graph.render_after = Some((revision, Instant::now() - Duration::from_secs(2)));
+        live_autorun_tick(&mut app);
+        assert_eq!(app.graph.rendered_revision, Some(revision));
+        assert!(
+            app.graph.live_ui_handles.len() <= 2,
+            "older results are released"
+        );
+    }
+
+    #[test]
+    fn python_needs_a_glyph_scope_but_a_proof_only_run_does_not() {
+        let mut project = Project::new_font(std::env::temp_dir().join("graph-scope.ufo"));
+        project
+            .add_document_glyph("A", 400.0, Some(u32::from('A')))
+            .unwrap();
+        let mut app = Workspace::from_model(FontModel::from_project(project)).unwrap();
+        let epoch = app.live.as_ref().unwrap().document_epoch().to_owned();
+        let run = |app: &mut Workspace, key: &str| {
+            let snapshot = app.live_graph_session().unwrap().snapshot();
+            call(
+                app,
+                "graph_run",
+                json!({
+                    "execution_version":2,"expected_document_epoch":epoch,
+                    "guard":{"identity":snapshot.identity,"semantic_revision":snapshot.semantic_revision,
+                        "semantic_hash":snapshot.semantic_hash},
+                    "actor":"scope-test","operation_key":key,"source":0,"glyphs":[]
+                }),
+            )
+        };
+        app.ensure_live_specimen().unwrap();
+        let proofs_only = run(&mut app, "specimen");
+        assert_eq!(proofs_only["ok"], true, "{proofs_only}");
+        app.ensure_live_graph().unwrap();
+        let with_python = run(&mut app, "comparison");
+        assert_eq!(with_python["ok"], false);
+        assert!(
+            with_python["error"]
+                .as_str()
+                .unwrap()
+                .contains("at least one glyph"),
+            "{with_python}"
+        );
+    }
+
+    #[test]
     fn starter_uses_one_captured_text_recipe_for_both_proofs() {
         let project = Project::new_font(std::env::temp_dir().join("live-text-proof.ufo"));
         let source = project.source_id(0).unwrap();
@@ -981,17 +1198,13 @@ mod tests {
         );
         app.text_proof_selection.as_mut().unwrap().document_revision -= 1;
         app.ensure_live_graph().unwrap();
-        let recipes: Vec<_> = app
-            .live_graph_session()
-            .unwrap()
-            .snapshot()
-            .graph
-            .nodes
-            .iter()
-            .filter(|node| node.type_name == "live.proof")
-            .map(|node| node.values["recipe"].clone())
+        let session = app.live_graph_session().unwrap();
+        let comparison = session.execution_plan(1).unwrap().comparison().unwrap();
+        let graph = session.snapshot().graph;
+        let recipes: Vec<_> = [comparison.unchanged_proof, comparison.changed_proof]
+            .into_iter()
+            .map(|node| graph.node(node).unwrap().values["recipe"].clone())
             .collect();
-        assert_eq!(recipes.len(), 2);
         assert_eq!(recipes[0], recipes[1]);
         assert_eq!(recipes[0]["text"], "AA");
         assert_eq!(recipes[0]["target"]["cluster"], 1);

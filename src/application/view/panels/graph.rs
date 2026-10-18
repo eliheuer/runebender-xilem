@@ -15,7 +15,7 @@ use crate::application::design::{Region, Space, TextSize, row as xrow};
 use crate::application::editor::tools::graph::controls::{
     apply_live_comparison, cancel_live_comparison, change_live_graph, clear_live_results,
     edit_live_code, edit_live_scope, move_live_node, open_live_comparison_file,
-    run_live_comparison, save_live_comparison_file, select_live_comparison,
+    run_live_comparison, save_live_comparison_file, select_live_comparison, select_live_specimen,
 };
 use crate::application::editor::tools::graph::file_label;
 use crate::application::view::canvas::graph::{GraphEvent, graph_canvas};
@@ -153,6 +153,22 @@ fn legacy_projection(app: &Workspace) -> Option<CanvasProjection> {
     })
 }
 
+/// A live proof's image size: what the person resized it to, or else half
+/// its raster when the recipe sets one, so a 2x proof shows at its true size.
+fn proof_size(app: &Workspace, node: &runebender::workflows::graph::Node) -> [f32; 2] {
+    if let Some(size) = app.graph.content_sizes.get(&node.id) {
+        return *size;
+    }
+    match node
+        .values
+        .get("recipe")
+        .and_then(runebender::workflows::graph_live::recipe_raster)
+    {
+        Some([width, height]) => [px32(width / 2.0), px32(height / 2.0)],
+        None => content_size(app, node.id, runebender::ui::graph::IMAGE_H),
+    }
+}
+
 fn content_size(app: &Workspace, node: u32, height: f64) -> [f32; 2] {
     app.graph.content_sizes.get(&node).copied().unwrap_or([
         px32(runebender::ui::graph::LIVE_W - runebender::ui::graph::PAD * 2.0),
@@ -278,7 +294,7 @@ fn live_projection(app: &Workspace) -> Option<CanvasProjection> {
                             .and_then(|images| images.get(&node.id))
                             .cloned(),
                         state: node_state.clone(),
-                        size: content_size(app, node.id, runebender::ui::graph::IMAGE_H),
+                        size: proof_size(app, node),
                     }),
                 );
             }
@@ -391,10 +407,10 @@ pub(crate) fn graph_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
     let Some(view) = projection(app) else {
         return Either::A(
             flex_col((
-                label("No nodes file open")
+                label("No graph open")
                     .text_size(TextSize::Body.px())
                     .color(pal.text_muted),
-                recipes::action(pal, "New live comparison".into(), select_live_comparison),
+                recipes::action(pal, "Open Specimen".into(), select_live_specimen),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Start)
             .gap(Space::Md)
@@ -430,6 +446,12 @@ pub(crate) fn graph_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         })
     });
     let live = view.live;
+    // A Python recipe brings the glyph scope and Apply with it.
+    let has_python = view
+        .graph
+        .nodes
+        .iter()
+        .any(|node| node.type_name == "live.python");
     let running = view.running;
     let can_cancel = view.can_cancel;
     let can_clear = view.can_clear;
@@ -451,15 +473,18 @@ pub(crate) fn graph_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             xrow(
                 Region::Inline,
                 (
+                    recipes::toggle(pal, "Specimen".into(), live, select_live_specimen),
                     xrow(Region::Inline, files),
                     unlisted,
-                    recipes::toggle(
-                        pal,
-                        "Comparison".into(),
-                        live,
-                        select_live_comparison,
-                    ),
                     FlexSpacer::Flex(1.0),
+                    (live && !has_python).then(|| {
+                        recipes::toggle(
+                            pal,
+                            "Add Comparison".into(),
+                            false,
+                            select_live_comparison,
+                        )
+                    }),
                     (!live).then(|| {
                         recipes::toggle(pal, "New".into(), false, |app: &mut Workspace| {
                             app.graph.live_selected = false;
@@ -480,21 +505,21 @@ pub(crate) fn graph_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                     live.then(|| {
                         recipes::toggle(
                             pal,
-                            "Save comparison as\u{2026}".into(),
+                            "Save As\u{2026}".into(),
                             false,
                             save_live_comparison_file,
                         )
                     }),
                     (live && source.is_some()).then(|| {
                         let source = source.expect("checked above");
-                        let label = source_name
-                            .clone()
-                            .map_or_else(|| format!("Open for source {source}"), |name| {
-                                format!("Open for {name}")
-                            });
-                        recipes::toggle(pal, label, false, move |app: &mut Workspace| {
-                            open_live_comparison_file(app, SourceId(source));
-                        })
+                        recipes::toggle(
+                            pal,
+                            "Open\u{2026}".into(),
+                            false,
+                            move |app: &mut Workspace| {
+                                open_live_comparison_file(app, SourceId(source));
+                            },
+                        )
                     }),
                     recipes::toggle(
                         pal,
@@ -523,21 +548,12 @@ pub(crate) fn graph_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                             cancel_live_comparison,
                         )
                     }),
-                    live.then(|| {
-                        recipes::toggle(
-                            pal,
-                            if can_clear { "Clear results" } else { "Nothing to clear" }.into(),
-                            can_clear,
-                            move |app: &mut Workspace| {
-                                if can_clear {
-                                    clear_live_results(app);
-                                } else {
-                                    app.note = "No terminal native Graph results to clear".into();
-                                }
-                            },
-                        )
+                    // Results clear themselves as the specimen renders again; only a
+                    // comparison's results wait for an explicit Clear.
+                    (live && has_python && can_clear).then(|| {
+                        recipes::toggle(pal, "Clear".into(), false, clear_live_results)
                     }),
-                    live.then(|| {
+                    (live && has_python).then(|| {
                         recipes::toggle(
                             pal,
                             if can_apply { "Apply" } else { "Apply unavailable" }.into(),
@@ -564,7 +580,7 @@ pub(crate) fn graph_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         pal.outline,
     );
     let choices = (!live).then(|| graph_choices(app)).flatten();
-    let scope = live.then(|| {
+    let scope = (live && has_python).then(|| {
         xrow(
             Region::List,
             (

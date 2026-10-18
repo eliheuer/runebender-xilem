@@ -251,15 +251,27 @@ pub fn node_box_with_content(
     let fallback_title = ty
         .map(|t| t.title.clone())
         .unwrap_or_else(|| node.type_name.clone());
+    // A specimen line sets its own raster; it is named by the size it shows at,
+    // half its pixels per em. The comparison's proofs are named by their input.
+    let specimen_px = node
+        .values
+        .get("recipe")
+        .filter(|recipe| recipe.get("rendering").is_some())
+        .and_then(|recipe| recipe["rendering"]["pixels_per_em"].as_f64());
     let title = if node.type_name == "live.proof" {
         graph
             .link_into(node.id, "font")
             .and_then(|link| graph.node(link.from()))
-            .and_then(|upstream| match upstream.type_name.as_str() {
-                "live.font" => Some("Original specimen".into()),
-                "live.python" => Some("Scripted specimen".into()),
-                _ => None,
-            })
+            .and_then(
+                |upstream| match (upstream.type_name.as_str(), specimen_px) {
+                    ("live.font", Some(px)) => {
+                        Some(format!("Specimen \u{00b7} {:.0} px", px / 2.0))
+                    }
+                    ("live.font", None) => Some("Original specimen".into()),
+                    ("live.python", _) => Some("Scripted specimen".into()),
+                    _ => None,
+                },
+            )
             .unwrap_or(fallback_title)
     } else {
         fallback_title

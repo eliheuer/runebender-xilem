@@ -1287,13 +1287,16 @@ fn validate_submit_capture(
     project: &Project,
     request: &LiveGraphSubmitRequest,
 ) -> Result<(), LiveGraphExecutionError> {
-    request
-        .recipe_input
-        .validate()
-        .map_err(|error| err(LiveGraphExecutionErrorCode::Capture, error.to_string()))?;
     let plan = session
         .execution_plan(request.execution_version)
         .map_err(graph_error)?;
+    // A proof-only run captures no glyphs; Python always gets a validated scope.
+    if !plan.scripts.is_empty() || !request.recipe_input.layers.is_empty() {
+        request
+            .recipe_input
+            .validate()
+            .map_err(|error| err(LiveGraphExecutionErrorCode::Capture, error.to_string()))?;
+    }
     if request.execution_version == 1 {
         let node = plan
             .scripts
@@ -1323,7 +1326,15 @@ fn validate_submit_capture(
         }
         recipes.push(recipe);
     }
-    if plan.comparison().is_some() && recipes[0] != recipes[1] {
+    let recipe_of = |node: u32| {
+        plan.proofs
+            .iter()
+            .position(|proof| proof.node == node)
+            .map(|index| &recipes[index])
+    };
+    if plan.comparison().is_some_and(|comparison| {
+        recipe_of(comparison.unchanged_proof) != recipe_of(comparison.changed_proof)
+    }) {
         return Err(err(
             LiveGraphExecutionErrorCode::Proof,
             "comparison proofs must use the same recipe",

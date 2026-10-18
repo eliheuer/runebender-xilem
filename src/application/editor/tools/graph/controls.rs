@@ -223,7 +223,7 @@ fn live_interactive_mutation(app: &mut Workspace, guard: GraphGuard, edits: Vec<
 }
 
 #[cfg(unix)]
-fn graph_edits(before: &NodeGraph, after: &NodeGraph) -> Result<Vec<GraphEdit>, String> {
+pub(crate) fn graph_edits(before: &NodeGraph, after: &NodeGraph) -> Result<Vec<GraphEdit>, String> {
     if before.version != after.version {
         return Err("The live canvas cannot change the graph file version".into());
     }
@@ -308,7 +308,7 @@ pub(crate) fn run_live_comparison(app: &mut Workspace) {
     #[cfg(unix)]
     {
         let Some(session) = app.live_graph_session() else {
-            app.note = "Open the live comparison before running it".into();
+            app.note = "Open the live graph before running it".into();
             return;
         };
         let snapshot = session.snapshot();
@@ -356,7 +356,7 @@ pub(crate) fn run_live_comparison(app: &mut Workspace) {
             if let Some(handle) = response["run"]["receipt"]["handle"].as_u64() {
                 app.graph.live_ui_handles.insert(handle);
             }
-            app.note = "Live comparison running".into();
+            app.note = "Rendering the live graph".into();
         } else {
             app.note = response["error"]
                 .as_str()
@@ -415,73 +415,161 @@ pub(crate) fn cancel_live_comparison(app: &mut Workspace) {
     }
 }
 
-/// Release terminal runs started from this surface and their cached proof bytes.
+/// Release this surface's finished live results and drop their images.
 pub(crate) fn clear_live_results(app: &mut Workspace) {
     #[cfg(unix)]
     {
-        let Some(state) = app.live_graph.as_ref() else {
-            app.note = "No live comparison is open".into();
+        if app.live_graph.is_none() {
+            app.note = "No live graph is open".into();
             return;
-        };
-        let identity = state.session.snapshot().identity;
-        let handles: Vec<_> = state
-            .handles
-            .iter()
-            .copied()
-            .filter(|handle| app.graph.live_ui_handles.contains(&handle.get()))
-            .filter(|handle| {
-                state.session.inspect_run(*handle).is_some_and(|run| {
-                    matches!(
-                        run.status,
-                        GraphRunStatus::Completed
-                            | GraphRunStatus::PartiallyFailed
-                            | GraphRunStatus::Failed
-                            | GraphRunStatus::Cancelled
-                            | GraphRunStatus::Stale
-                            | GraphRunStatus::Released
-                    )
-                })
-            })
-            .collect();
-        let artifact_ids: Vec<String> = handles
-            .iter()
-            .flat_map(|handle| {
-                state
-                    .proofs
-                    .completed(handle.get())
-                    .into_iter()
-                    .map(|(_, artifact, _)| artifact)
-            })
-            .collect();
-        let mut released = 0;
-        for handle in handles {
-            let response = app.call_live(&ToolCall {
-                name: "graph_release".into(),
-                arguments: serde_json::json!({
-                    "expected_document_epoch": identity.document_epoch,
-                    "identity": identity,
-                    "handle": handle,
-                }),
-            });
-            if response["ok"] == serde_json::Value::Bool(true)
-                && response["released"] == serde_json::Value::Bool(true)
-            {
-                released += 1;
-                app.graph.live_ui_handles.remove(&handle.get());
-            }
         }
-        for artifact in artifact_ids {
-            app.graph.proof_images.remove(&artifact);
-        }
+        let released = release_live_results(app, false);
         app.note = if released == 0 {
-            "No terminal native Graph results to clear".into()
+            "No finished Graph results to clear".into()
         } else {
-            format!("Cleared {released} native Graph result(s)")
+            format!("Cleared {released} Graph result(s)")
         };
     }
     #[cfg(not(unix))]
     {
-        app.note = "Live comparison execution is available in the native editor".into();
+        app.note = "Live graph execution is available in the native editor".into();
+    }
+}
+
+/// Release finished runs this surface started, and their images. With
+/// `keep_newest`, the newest finished run stays, so its proofs remain on the
+/// canvas until a newer run replaces them. Returns how many were released.
+#[cfg(unix)]
+fn release_live_results(app: &mut Workspace, keep_newest: bool) -> usize {
+    let Some(state) = app.live_graph.as_ref() else {
+        return 0;
+    };
+    let identity = state.session.snapshot().identity;
+    let mut handles: Vec<_> = state
+        .handles
+        .iter()
+        .copied()
+        .filter(|handle| app.graph.live_ui_handles.contains(&handle.get()))
+        .filter(|handle| {
+            state.session.inspect_run(*handle).is_some_and(|run| {
+                matches!(
+                    run.status,
+                    GraphRunStatus::Completed
+                        | GraphRunStatus::PartiallyFailed
+                        | GraphRunStatus::Failed
+                        | GraphRunStatus::Cancelled
+                        | GraphRunStatus::Stale
+                        | GraphRunStatus::Released
+                )
+            })
+        })
+        .collect();
+    if keep_newest {
+        handles.sort();
+        handles.pop();
+    }
+    let artifact_ids: Vec<String> = handles
+        .iter()
+        .flat_map(|handle| {
+            state
+                .proofs
+                .completed(handle.get())
+                .into_iter()
+                .map(|(_, artifact, _)| artifact)
+        })
+        .collect();
+    let mut released = 0;
+    for handle in handles {
+        let response = app.call_live(&ToolCall {
+            name: "graph_release".into(),
+            arguments: serde_json::json!({
+                "expected_document_epoch": identity.document_epoch,
+                "identity": identity,
+                "handle": handle,
+            }),
+        });
+        if response["ok"] == serde_json::Value::Bool(true)
+            && response["released"] == serde_json::Value::Bool(true)
+        {
+            released += 1;
+            app.graph.live_ui_handles.remove(&handle.get());
+        }
+    }
+    for artifact in artifact_ids {
+        app.graph.proof_images.remove(&artifact);
+    }
+    released
+}
+
+/// Show the font's live graph, created as the type specimen when there is
+/// none. It renders on its own; see [`live_autorun_tick`].
+pub(crate) fn select_live_specimen(app: &mut Workspace) {
+    #[cfg(unix)]
+    match app.ensure_live_specimen() {
+        Ok(()) => {
+            if !app.graph.live_selected {
+                app.graph.live_selected = true;
+                app.graph.fit_request = app.graph.fit_request.wrapping_add(1);
+            }
+        }
+        Err(error) => app.note = error,
+    }
+    #[cfg(not(unix))]
+    {
+        app.note = "The live specimen is available in the native editor".into();
+    }
+}
+
+/// How long the font must stay unedited before the live graph renders again.
+#[cfg(unix)]
+const RENDER_SETTLE: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// Whether the shown live graph is waiting to render the current font.
+///
+/// Only a graph without Python renders on its own: a Python recipe runs code
+/// and needs a glyph scope, so it waits for Run.
+#[cfg(unix)]
+pub(crate) fn live_autorun_waiting(app: &Workspace) -> bool {
+    matches!(app.mode, crate::application::workspace::Mode::Graph)
+        && app.graph.live_selected
+        && !app.live_graph_need_pump()
+        && app
+            .graph
+            .rendered_revision
+            .is_none_or(|revision| revision != app.font.project.document_revision())
+        && app.live_graph.as_ref().is_some_and(|state| {
+            !state
+                .session
+                .snapshot()
+                .graph
+                .nodes
+                .iter()
+                .any(|node| node.type_name == "live.python")
+        })
+}
+
+/// Render the live graph when it first shows, and again once edits settle.
+#[cfg(unix)]
+pub(crate) fn live_autorun_tick(app: &mut Workspace) {
+    if !live_autorun_waiting(app) {
+        app.graph.render_after = None;
+        return;
+    }
+    let revision = app.font.project.document_revision();
+    let due = match (app.graph.rendered_revision, app.graph.render_after) {
+        // The first render does not wait.
+        (None, _) => true,
+        (Some(_), Some((seen, since))) if seen == revision => since.elapsed() >= RENDER_SETTLE,
+        (Some(_), _) => {
+            app.graph.render_after = Some((revision, std::time::Instant::now()));
+            false
+        }
+    };
+    if due {
+        app.graph.render_after = None;
+        app.graph.rendered_revision = Some(revision);
+        release_live_results(app, true);
+        run_live_comparison(app);
     }
 }
 
@@ -620,7 +708,15 @@ fn parse_scope(app: &Workspace) -> Result<Vec<String>, String> {
             glyphs.push(name.to_string());
         }
     }
-    if glyphs.is_empty() {
+    let has_python = app.live_graph_session().is_some_and(|session| {
+        session
+            .snapshot()
+            .graph
+            .nodes
+            .iter()
+            .any(|node| node.type_name == "live.python")
+    });
+    if glyphs.is_empty() && has_python {
         return Err("Enter at least one glyph in the comparison scope".into());
     }
     Ok(glyphs)

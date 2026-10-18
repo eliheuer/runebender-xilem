@@ -412,7 +412,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     let content = content.boxed();
     #[cfg(unix)]
     app.live_graph_pending.store(
-        app.live_graph_need_pump(),
+        app.live_graph_wants_wake(),
         std::sync::atomic::Ordering::Release,
     );
     let content = live::with_live(

@@ -1011,13 +1011,17 @@ mod tests {
         assert_eq!(recipe.target.as_ref().unwrap().glyph_name, "kaf-ar.medi");
         assert!(app.selected_arabic_recipe("beh-ar.medi", source).is_err());
         app.ensure_live_graph_for_sketch(recipe.clone()).unwrap();
-        let graph = app.live_graph_session().unwrap().snapshot().graph;
-        let proof_recipes: Vec<CompiledProofRecipe> = graph
-            .nodes
-            .iter()
-            .filter(|node| node.type_name == "live.proof")
-            .map(|node| serde_json::from_value(node.values["recipe"].clone()).unwrap())
-            .collect();
+        let session = app.live_graph_session().unwrap();
+        let comparison = session.execution_plan(1).unwrap().comparison().unwrap();
+        let graph = session.snapshot().graph;
+        let proof_recipes: Vec<CompiledProofRecipe> =
+            [comparison.unchanged_proof, comparison.changed_proof]
+                .into_iter()
+                .map(|node| {
+                    serde_json::from_value(graph.node(node).unwrap().values["recipe"].clone())
+                        .unwrap()
+                })
+                .collect();
         assert_eq!(proof_recipes, vec![recipe.clone(), recipe]);
     }
 
