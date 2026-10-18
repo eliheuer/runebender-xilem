@@ -134,6 +134,52 @@ fn body(file: &str) -> &str {
     }
 }
 
+/// A chat line that names a workflow, `/review-glyph H` or
+/// `/draft-weight n o from=0 into=1`, rendered to the workflow text, so the
+/// in-editor chat sends the same words a Claude client gets. Positional
+/// words fill the arguments in declared order; the last positional takes
+/// the rest of the line, so `/spacing-pass n o p` spaces three glyphs.
+/// `name=value` sets one by name. `None` means the line is not a command.
+pub fn from_slash(line: &str) -> Option<Result<String, String>> {
+    let line = line.trim();
+    let rest = line.strip_prefix('/')?;
+    let (name, args) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+    let prompt = PROMPTS.iter().find(|prompt| prompt.name == name)?;
+    let mut named = serde_json::Map::new();
+    let mut positional: Vec<&str> = Vec::new();
+    for word in args.split_whitespace() {
+        match word.split_once('=') {
+            Some((key, value)) if prompt.arguments.iter().any(|(n, _, _)| *n == key) => {
+                named.insert(key.into(), Value::String(value.into()));
+            }
+            _ => positional.push(word),
+        }
+    }
+    let open: Vec<&str> = prompt
+        .arguments
+        .iter()
+        .map(|(n, _, _)| *n)
+        .filter(|n| !named.contains_key(*n))
+        .collect();
+    for (index, slot) in open.iter().enumerate() {
+        if index >= positional.len() {
+            break;
+        }
+        let value = if index + 1 == open.len() {
+            positional[index..].join(" ")
+        } else {
+            positional[index].to_owned()
+        };
+        named.insert((*slot).into(), Value::String(value));
+    }
+    Some(get(name, &Value::Object(named)).map(|value| {
+        value["messages"][0]["content"]["text"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned()
+    }))
+}
+
 /// The `prompts/list` result.
 pub fn list() -> Value {
     json!({
@@ -224,6 +270,33 @@ mod tests {
                 rest = &after[end + 2..];
             }
         }
+    }
+
+    #[test]
+    fn slash_lines_render_workflows_and_other_lines_pass_through() {
+        assert!(from_slash("hello").is_none());
+        assert!(from_slash("/nothing H").is_none());
+        let text = from_slash("/review-glyph H").unwrap().unwrap();
+        assert!(text.contains("Glyph: H. Source id: not given."));
+        let text = from_slash("  /review-glyph H 1 ").unwrap().unwrap();
+        assert!(text.contains("Glyph: H. Source id: 1."));
+        let text = from_slash("/spacing-pass n o p source=0").unwrap().unwrap();
+        assert!(text.contains("Glyphs: n o p."), "{text}");
+        assert!(text.contains("Source id: 0."), "{text}");
+        let text = from_slash("/draft-weight n o from=0 into=1")
+            .unwrap()
+            .unwrap();
+        assert!(
+            text.contains("Glyphs: n o. From source id: 0. Into source id: 1."),
+            "{text}"
+        );
+        assert!(from_slash("/draft-weight n").unwrap().is_err());
+        assert!(
+            from_slash("/runebender")
+                .unwrap()
+                .unwrap()
+                .starts_with("# Runebender")
+        );
     }
 
     #[test]

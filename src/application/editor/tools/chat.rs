@@ -199,6 +199,16 @@ impl Workspace {
         if text.is_empty() {
             return;
         }
+        // `/review-glyph H` and the other workflows send the same text a
+        // Claude client gets from the MCP prompt of that name.
+        let text = match runebender::automation::prompts::from_slash(&text) {
+            None => text,
+            Some(Ok(rendered)) => rendered,
+            Some(Err(error)) => {
+                self.note = error;
+                return;
+            }
+        };
         if self.chat.job.is_some() {
             self.note = "The model is still answering".into();
             return;

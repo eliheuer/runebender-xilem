@@ -24,8 +24,14 @@ const MAX_CONTEXT_BYTES: usize = 1024 * 1024;
 const ALLOWED_TOOLS: &[&str] = &[
     "project_info",
     "font_info",
+    "editor_context",
+    "glyph_inventory",
+    "analyze_glyph",
+    "analyze_font",
     "read_glyph",
+    "read_kerning",
     "proof",
+    "specimen",
     "proposal_list",
     "propose_edits",
 ];
@@ -56,9 +62,12 @@ fn system_prompt() -> String {
     String::from(
         "You are a font engineering assistant in Runebender. Work only on the currently open \
          editor document through the supplied tools. Read project_info before choosing a source, \
-         and read a glyph before stating its measurements or proposing edits. The source is a \
-         stable ID from project_info; never guess a source or a glyph revision. You may read, \
-         proof, and propose. A proposal is separate from installation; the person installs it. \
+         and measure before judging: analyze_glyph returns a glyph's stem, bar, kinks, grid fit, \
+         mark label and compatibility with the other sources, analyze_font does that for a whole \
+         source, and read_glyph gives the raw points only when a finding needs them. Quote the \
+         numbers the tools return; never compute a stem or a width from points yourself. The \
+         source is a stable ID from project_info; never guess a source or a glyph revision. You \
+         may read, measure, proof, and propose. A proposal is separate from installation; the person installs it. \
          You cannot install, apply, discard, save, run a program, or call another tool. \
          Give short, factual answers. If a tool reports an error, say what failed. \
          Use the supplied function tools when needed; never write tool-call markup in prose.",
