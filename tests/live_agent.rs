@@ -228,6 +228,117 @@ fn mcp_negotiates_known_versions_and_bounds_input() {
 }
 
 #[test]
+fn live_mcp_serves_workflows_as_prompts_before_any_connection() {
+    use std::io::BufRead as _;
+    let mut mcp = Command::new(env!("CARGO_BIN_EXE_runebender"))
+        .args(["mcp", "--live"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut input = mcp.stdin.take().unwrap();
+    let mut output = std::io::BufReader::new(mcp.stdout.take().unwrap());
+    let mut read = || {
+        let mut line = String::new();
+        assert_ne!(output.read_line(&mut line).unwrap(), 0, "MCP stdout closed");
+        serde_json::from_str::<Value>(&line).unwrap()
+    };
+    writeln!(
+        input,
+        "{}",
+        json!({"jsonrpc":"2.0","id":1,"method":"initialize",
+        "params":{"protocolVersion":"2025-11-25","capabilities":{},
+            "clientInfo":{"name":"prompt-test","version":"1"}}})
+    )
+    .unwrap();
+    writeln!(
+        input,
+        "{}",
+        json!({"jsonrpc":"2.0","id":2,"method":"prompts/list"})
+    )
+    .unwrap();
+    writeln!(
+        input,
+        "{}",
+        json!({"jsonrpc":"2.0","id":3,"method":"prompts/get",
+        "params":{"name":"review-glyph","arguments":{"glyph":"H","source":"1"}}})
+    )
+    .unwrap();
+    writeln!(
+        input,
+        "{}",
+        json!({"jsonrpc":"2.0","id":4,"method":"prompts/get",
+        "params":{"name":"draft-weight","arguments":{}}})
+    )
+    .unwrap();
+    writeln!(
+        input,
+        "{}",
+        json!({"jsonrpc":"2.0","id":5,"method":"tools/list"})
+    )
+    .unwrap();
+    input.flush().unwrap();
+    drop(input);
+
+    let init = read();
+    assert!(init["result"]["capabilities"]["prompts"].is_object());
+    let listed = read();
+    let prompts = listed["result"]["prompts"].as_array().unwrap();
+    let names: Vec<_> = prompts
+        .iter()
+        .map(|p| p["name"].as_str().unwrap())
+        .collect();
+    for expected in [
+        "review-glyph",
+        "compatibility-check",
+        "spacing-pass",
+        "kerning-pass",
+        "draft-weight",
+    ] {
+        assert!(names.contains(&expected), "{names:?}");
+    }
+    let got = read();
+    let text = got["result"]["messages"][0]["content"]["text"]
+        .as_str()
+        .unwrap();
+    assert!(text.contains("Glyph: H. Source id: 1."));
+    assert!(text.contains("analyze_glyph"));
+    let missing = read();
+    assert_eq!(missing["error"]["code"], -32602);
+    let tools = read();
+    let tool_names: Vec<_> = tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap().to_owned())
+        .collect();
+    // Every tool a workflow names is one the live host publishes.
+    for prompt in runebender::automation::prompts::prompts() {
+        for word in prompt
+            .body()
+            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+            .filter(|w| w.contains('_') && w.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
+        {
+            if matches!(
+                word,
+                "set_width" | "user_approved" | "document_epoch" | "lsb" | "rsb"
+            ) || word.ends_with("_date")
+                || !word.contains('_')
+            {
+                continue;
+            }
+            assert!(
+                tool_names.iter().any(|t| t == word),
+                "prompt {} names unknown tool {word}",
+                prompt.name
+            );
+        }
+    }
+    assert!(tool_names.iter().any(|t| t == "analyze_glyph"));
+    assert!(mcp.wait().unwrap().success());
+}
+
+#[test]
 fn live_proof_image_keeps_cli_metadata_and_mcp_structured_content_in_step() {
     use base64::Engine as _;
 

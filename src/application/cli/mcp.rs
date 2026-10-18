@@ -311,9 +311,14 @@ fn mcp_response(
                 .protocol
                 .lock()
                 .expect("MCP protocol mutex poisoned") = protocol;
+            let capabilities = if live_mode {
+                json!({ "tools": {}, "prompts": {} })
+            } else {
+                json!({ "tools": {} })
+            };
             Ok(json!({
                 "protocolVersion": protocol.version(),
-                "capabilities": { "tools": {} },
+                "capabilities": capabilities,
                 "serverInfo": {
                     "name": "runebender",
                     "version": env!("CARGO_PKG_VERSION"),
@@ -373,7 +378,15 @@ fn mcp_response(
             Ok(result)
         }
         "resources/list" => Ok(json!({ "resources": [] })),
+        // Workflows are written against the live tool list; the saved-file host has none.
+        "prompts/list" if live_mode => Ok(runebender::automation::prompts::list()),
         "prompts/list" => Ok(json!({ "prompts": [] })),
+        "prompts/get" if live_mode => {
+            let name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
+            let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
+            runebender::automation::prompts::get(name, &arguments)
+                .map_err(|message| json!({ "code": -32602, "message": message }))
+        }
         other => Err(json!({
             "code": -32601,
             "message": format!("method not found: {other}")

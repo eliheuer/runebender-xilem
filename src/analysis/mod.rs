@@ -12,5 +12,6 @@ pub mod curve;
 pub mod dimensions;
 pub mod glyph;
 pub mod measure;
+pub mod report;
 pub mod search;
 pub mod weight_debt;

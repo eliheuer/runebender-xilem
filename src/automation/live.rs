@@ -109,6 +109,14 @@ pub fn tools() -> Vec<agent::Tool> {
         parameters: json!({"type":"object", "properties":{},"additionalProperties":false}),
     });
     result.push(agent::Tool {
+        name: "analyze_glyph".into(),
+        description: "Measure one live glyph without changing it: narrowest stem and bar, ink spans, node continuity with kinks and G1 curve joins listed, how many contour points sit on the 8, 4 and 2 unit grids, the mark label, and point-structure compatibility with the same glyph in every other source with a reason. Use layer to measure a proposal layer. Call it before judging weight, smoothness or interpolation; read_glyph gives the raw points.".into(),
+        parameters: json!({"type":"object", "properties":{
+            "glyph":{"type":"string","minLength":1},
+            "layer":{"type":"string"}
+        }, "required":["glyph"], "additionalProperties":false}),
+    });
+    result.push(agent::Tool {
         name: "proposal_install".into(),
         description: "Install a reviewed proposal into the unsaved foreground, with one undo step per glyph. Only set authorization=user-approved after the user asks to apply it. Set keep_structure=false explicitly for a redraw; this can break interpolation with other sources. New glyph names must first exist in the editor. Re-proof after installation.".into(),
         parameters: json!({"type":"object", "properties":{
@@ -630,6 +638,28 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
                 .collect();
             json!({"ok":true,"total":matches.len(),"offset":offset,"glyphs":rows?,
                 "next_offset": (offset.saturating_add(limit) < matches.len()).then_some(offset.saturating_add(limit))})
+        }
+        "analyze_glyph" => {
+            let glyph = object
+                .get("glyph")
+                .and_then(Value::as_str)
+                .ok_or("glyph is required")?;
+            match branch {
+                Some(branch) => crate::analysis::report::analyze_experiment_glyph(
+                    project,
+                    project
+                        .experiments
+                        .versions
+                        .get(branch)
+                        .ok_or("unknown experiment")?,
+                    branch,
+                    glyph,
+                    layer,
+                )?,
+                None => {
+                    crate::analysis::report::analyze_project_glyph(project, source, glyph, layer)?
+                }
+            }
         }
         "read_glyph" => {
             let glyph = object

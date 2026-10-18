@@ -194,10 +194,10 @@ fn effects_for(name: &str, surface: ToolSurface) -> Option<ToolEffects> {
         },
         ToolSurface::Live => match name {
             "project_info" | "font_info" | "read_glyph" | "proof" | "proposal_list"
-            | "editor_context" | "glyph_inventory" | "design_context" | "experiment_list"
-            | "read_kerning" | "specimen" | "agent_receipt" | "proof_status" | "graph_discover"
-            | "graph_snapshot" | "graph_status" | "graph_trace_status" | "graph_image"
-            | "editor_sessions" => ToolEffects::read(),
+            | "editor_context" | "glyph_inventory" | "design_context" | "analyze_glyph"
+            | "experiment_list" | "read_kerning" | "specimen" | "agent_receipt"
+            | "proof_status" | "graph_discover" | "graph_snapshot" | "graph_status"
+            | "graph_trace_status" | "graph_image" | "editor_sessions" => ToolEffects::read(),
             "editor_connect" | "editor_open_glyph" | "editor_set_text" | "experiment_fork"
             | "proof_cancel" | "agent_cancel" | "graph_cancel" | "graph_trace_cancel" => {
                 ToolEffects::session()
