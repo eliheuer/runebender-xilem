@@ -11,11 +11,13 @@
 
 use crate::application::design;
 use crate::application::design::recipes;
+use crate::application::design::theme::Palette;
 use crate::application::design::{Region, Space, TextSize, row as xrow};
 use crate::application::editor::tools::graph::controls::{
     apply_live_comparison, cancel_live_comparison, change_live_graph, clear_live_results,
     edit_live_code, edit_live_scope, move_live_node, open_live_comparison_file,
-    run_live_comparison, save_live_comparison_file, select_live_comparison, select_live_specimen,
+    run_live_comparison, save_live_comparison_file, save_proof_image, select_live_comparison,
+    select_live_specimen,
 };
 use crate::application::editor::tools::graph::file_label;
 use crate::application::view::canvas::graph::{GraphEvent, graph_canvas};
@@ -29,12 +31,14 @@ use masonry::properties::LineBreaking;
 use masonry::properties::types::CrossAxisAlignment;
 use runebender::font::variable::SourceId;
 use runebender::ui::graph::{
-    ContentState, ImageContent, ImmutablePng, NodeContent, NodeContentMap, ScriptContent,
+    ContentState, ImageAction, ImageContent, ImmutablePng, NodeContent, NodeContentMap,
+    ScriptContent,
 };
 use runebender::workflows::graph::{NodeGraph, Registry};
 use runebender::workflows::graph_session::GraphGuard;
 use std::sync::Arc;
 use xilem::WidgetView;
+use xilem::core::one_of::Either;
 use xilem::style::Style;
 use xilem::view::FlexExt as _;
 use xilem::view::{FlexSpacer, flex_col, portal, sized_box};
@@ -392,10 +396,7 @@ fn projection(app: &Workspace) -> Option<CanvasProjection> {
     legacy_projection(app)
 }
 
-fn bounded_message(
-    pal: &design::theme::Palette,
-    text: String,
-) -> impl WidgetView<Workspace> + use<> {
+fn bounded_message(pal: &Palette, text: String) -> impl WidgetView<Workspace> + use<> {
     sized_box(portal(
         label(text)
             .text_size(TextSize::Caption.px())
@@ -407,7 +408,6 @@ fn bounded_message(
 }
 
 pub(crate) fn graph_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
-    use xilem::core::one_of::Either;
     let pal = &app.palette;
     let Some(view) = projection(app) else {
         return Either::A(
@@ -624,6 +624,14 @@ pub(crate) fn graph_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
     let report = view.report.map(|report| bounded_message(pal, report));
     let problems =
         (!view.problems.is_empty()).then(|| bounded_message(pal, view.problems.join("\n")));
+    let shown = view.content.clone();
+    let shown_graph = view.graph.clone();
+    let shown_registry = view.registry.clone();
+    // An expanded image covers the canvas until it is contracted.
+    let expanded = app
+        .graph
+        .expanded
+        .filter(|&node| proof_image(&view.content, &view.graph, &view.registry, node).is_some());
     let canvas = graph_canvas(
         view.graph,
         view.registry,
@@ -631,6 +639,7 @@ pub(crate) fn graph_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         view.rows,
         view.content,
         app.graph.selected,
+        expanded,
         app.graph.fit_request,
         app.graph.zoom.unwrap_or(1.0),
         move |app: &mut Workspace, ev| match ev {
@@ -680,8 +689,20 @@ pub(crate) fn graph_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             }
             GraphEvent::Note(note) => app.note = note,
             GraphEvent::Zoom(zoom) => app.graph.zoom = Some(zoom),
+            GraphEvent::Image { node, action } => match action {
+                ImageAction::Expand => app.graph.expanded = Some(node),
+                ImageAction::Contract => app.graph.expanded = None,
+                ImageAction::Save => {
+                    if let Some((png, title)) =
+                        proof_image(&shown, &shown_graph, &shown_registry, node)
+                    {
+                        save_proof_image(app, &png, &title);
+                    }
+                }
+            },
         },
     );
+
     Either::B(
         flex_col((
             strip,
@@ -696,6 +717,24 @@ pub(crate) fn graph_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(Space::None),
     )
+}
+
+/// The image a node shows and the node's title, when it shows one.
+fn proof_image(
+    content: &NodeContentMap,
+    graph: &NodeGraph,
+    registry: &Registry,
+    node: u32,
+) -> Option<(ImmutablePng, String)> {
+    let Some(NodeContent::Image(image)) = content.get(node) else {
+        return None;
+    };
+    let png = image
+        .image
+        .clone()
+        .or_else(|| image.previous_image.clone())?;
+    let title = runebender::ui::graph::node_box(graph, registry, graph.node(node)?).title;
+    Some((png, title))
 }
 
 /// One toggle per choice for the selected Master, Model or Adapter

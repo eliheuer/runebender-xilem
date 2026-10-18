@@ -129,6 +129,28 @@ impl ControlStyle {
         Self::resolve(pal, self.kind, ground, self.selected, self.disabled)
     }
 
+    /// A bare control painted by hand on a surface the theme does not name,
+    /// such as a graph node's colored title bar. It rests as `ink` on
+    /// `fill`, and hover and press shade `fill` by the theme's button steps.
+    pub(crate) fn on_surface(pal: &Palette, fill: Color, ink: Color) -> Self {
+        let mut style = Self::resolve(pal, ControlKind::Bare, Ground::Panel, false, false);
+        let face = |fill| Face {
+            fill,
+            outline: Color::TRANSPARENT,
+            ink,
+        };
+        style.rest = face(Color::TRANSPARENT);
+        style.hover = face(shift(
+            fill,
+            lightness(pal.button_hover) - lightness(pal.button),
+        ));
+        style.pressed = face(shift(
+            fill,
+            lightness(pal.button_pressed) - lightness(pal.button),
+        ));
+        style
+    }
+
     fn resolve(
         pal: &Palette,
         kind: ControlKind,
@@ -399,6 +421,21 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn a_control_on_a_colored_surface_shades_that_surface() {
+        for id in crate::application::platform::themes::catalog().ids() {
+            let pal = Palette::load(id);
+            let fill = pal.selected_bg();
+            let style = ControlStyle::on_surface(&pal, fill, pal.text);
+            assert_eq!(style.face(false, false).fill, Color::TRANSPARENT);
+            let hover = style.face(true, false).fill;
+            let pressed = style.face(true, true).fill;
+            assert_ne!(hover, fill);
+            assert_ne!(pressed, hover);
+            assert_eq!(style.face(true, false).ink, pal.text);
         }
     }
 

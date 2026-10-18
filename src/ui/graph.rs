@@ -207,6 +207,29 @@ impl NodeBox {
         })
     }
 
+    /// The title-bar buttons of a node that shows an image, right to left:
+    /// Expand at the corner, then Save. Other nodes have none.
+    pub fn image_actions(&self) -> Vec<(ImageAction, Rect)> {
+        let shows_image = matches!(
+            &self.content,
+            Some(NodeContent::Image(content))
+                if content.image.is_some() || content.previous_image.is_some()
+        );
+        if !shows_image {
+            return Vec::new();
+        }
+        let size = HEADER_H - 4.0;
+        let top = self.rect.y0 + 2.0;
+        [ImageAction::Expand, ImageAction::Save]
+            .into_iter()
+            .enumerate()
+            .map(|(index, action)| {
+                let right = self.rect.x1 - 4.0 - (size + 2.0) * index as f64;
+                (action, Rect::new(right - size, top, right, top + size))
+            })
+            .collect()
+    }
+
     /// The bottom-right corner that resizes an embedded node. It is not
     /// drawn: the pointer shows a resize cursor over it, as a window corner does.
     pub fn resize_rect(&self) -> Option<Rect> {
@@ -252,27 +275,27 @@ pub fn node_box_with_content(
     let fallback_title = ty
         .map(|t| t.title.clone())
         .unwrap_or_else(|| node.type_name.clone());
-    // A specimen line sets its own raster; it is named by the size it shows at,
-    // half its pixels per em. The comparison's proofs are named by their input.
-    let specimen_px = node
+    // A specimen page is named by its layout; the comparison's proofs are
+    // named by their input.
+    let page = node
         .values
         .get("recipe")
-        .filter(|recipe| recipe.get("rendering").is_some())
-        .and_then(|recipe| recipe["rendering"]["pixels_per_em"].as_f64());
+        .filter(|recipe| recipe["rendering"]["lines"].is_array());
     let title = if node.type_name == "live.proof" {
         graph
             .link_into(node.id, "font")
             .and_then(|link| graph.node(link.from()))
-            .and_then(
-                |upstream| match (upstream.type_name.as_str(), specimen_px) {
-                    ("live.font", Some(px)) => {
-                        Some(format!("Specimen \u{00b7} {:.0} px", px / 2.0))
-                    }
-                    ("live.font", None) => Some("Original specimen".into()),
-                    ("live.python", _) => Some("Scripted specimen".into()),
-                    _ => None,
-                },
-            )
+            .and_then(|upstream| match (upstream.type_name.as_str(), page) {
+                ("live.font", Some(recipe))
+                    if crate::workflows::graph_live::is_waterfall(recipe) =>
+                {
+                    Some("Waterfall".into())
+                }
+                ("live.font", Some(_)) => Some("Specimen".into()),
+                ("live.font", None) => Some("Original specimen".into()),
+                ("live.python", _) => Some("Scripted specimen".into()),
+                _ => None,
+            })
             .unwrap_or(fallback_title)
     } else {
         fallback_title
@@ -480,6 +503,17 @@ pub enum Hit {
     Empty,
 }
 
+/// A button in an image node's title bar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImageAction {
+    /// Show the image over the whole graph area.
+    Expand,
+    /// Write the image to a PNG file.
+    Save,
+    /// Return from the expanded image to the graph.
+    Contract,
+}
+
 /// The non-port region under a pointer within a node.
 ///
 /// Headers are the only regions that begin a graph move.
@@ -495,6 +529,8 @@ pub enum NodeRegion {
     Content,
     /// The resize affordance of an embedded-content node.
     Resize,
+    /// A title-bar button of an image node.
+    Action(ImageAction),
 }
 
 /// A node and its non-port region under a point.
@@ -532,6 +568,16 @@ pub fn hit(boxes: &[NodeBox], at: Point) -> Hit {
 /// priority in [`hit`].
 pub fn node_region_hit(boxes: &[NodeBox], at: Point) -> Option<NodeRegionHit> {
     for node in boxes.iter().rev() {
+        if let Some((action, _)) = node
+            .image_actions()
+            .into_iter()
+            .find(|(_, rect)| rect.contains(at))
+        {
+            return Some(NodeRegionHit {
+                node: node.id,
+                region: NodeRegion::Action(action),
+            });
+        }
         if node.resize_rect().is_some_and(|rect| rect.contains(at)) {
             return Some(NodeRegionHit {
                 node: node.id,
@@ -820,5 +866,47 @@ mod tests {
         };
         assert_eq!(content.previous_image, Some(image));
         assert_eq!(content.state, ContentState::Running);
+    }
+
+    #[test]
+    fn a_node_with_an_image_has_expand_and_save_in_its_title_bar() {
+        let registry = Registry::core();
+        let mut graph = NodeGraph::default();
+        let proof = graph.add("live.proof", [0.0, 0.0]);
+        let node = graph.node(proof).unwrap();
+        let mut content = ImageContent {
+            image: None,
+            previous_image: None,
+            state: ContentState::Running,
+            size: [240.0, 240.0],
+        };
+        let empty = node_box_with_content(
+            &graph,
+            &registry,
+            node,
+            Some(NodeContent::Image(content.clone())),
+        );
+        assert!(
+            empty.image_actions().is_empty(),
+            "nothing to save before a render"
+        );
+        content.image = Some(ImmutablePng {
+            bytes: Arc::from([137, 80, 78, 71]),
+            width: 4,
+            height: 4,
+            output_hash: "proof-1".into(),
+        });
+        let shown =
+            node_box_with_content(&graph, &registry, node, Some(NodeContent::Image(content)));
+        let actions = shown.image_actions();
+        assert_eq!(actions[0].0, ImageAction::Expand);
+        assert_eq!(actions[1].0, ImageAction::Save);
+        for (action, rect) in actions {
+            assert!(shown.header().contains(rect.center()));
+            assert_eq!(
+                node_region_hit(std::slice::from_ref(&shown), rect.center()).map(|hit| hit.region),
+                Some(NodeRegion::Action(action))
+            );
+        }
     }
 }

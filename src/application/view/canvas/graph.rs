@@ -24,7 +24,8 @@ use masonry::core::{
 };
 use masonry::imaging::Painter;
 use masonry::kurbo::{
-    Axis, BezPath, Line, Point, Rect, RoundedRect, RoundedRectRadii, Shape as _, Size, Stroke, Vec2,
+    Affine, Axis, BezPath, Line, Point, Rect, RoundedRect, RoundedRectRadii, Shape as _, Size,
+    Stroke, Vec2,
 };
 use masonry::layout::{LenReq, Length};
 use masonry::peniko::{Blob, ImageAlphaType, ImageData, ImageFormat};
@@ -38,10 +39,11 @@ use xilem::Color;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewId, ViewMarker, ViewPathTracker};
 use xilem::{Pod, ViewCtx};
 
-use crate::application::design::areas;
 use crate::application::design::theme::Palette;
+use crate::application::design::{ControlSize, ControlStyle, Space, TextSize, areas};
 use crate::application::editor::tools::graph::RowState;
 use crate::application::widgets::context_menu::{ContextMenu, MenuAction, MenuRow, MenuTarget};
+use crate::application::widgets::icon_paint;
 use crate::application::widgets::source_text_area::SourceTextArea;
 use crate::application::widgets::text_label::{self, Anchor};
 use crate::application::workspace::Workspace;
@@ -69,6 +71,8 @@ pub(crate) enum GraphEvent {
     Note(String),
     /// The zoom changed, from a scroll or a fit, so the footer slider follows.
     Zoom(f64),
+    /// A title-bar button of an image node was clicked.
+    Image { node: u32, action: nl::ImageAction },
 }
 
 /// What a drag on the canvas is doing.
@@ -97,6 +101,8 @@ enum Drag {
         kind: Kind,
         to: Point,
     },
+    /// Pressing a title-bar button; it fires on release over the same button.
+    Action { id: u32, action: nl::ImageAction },
     /// A child widget or inert node body owns the press.
     Idle,
 }
@@ -131,6 +137,10 @@ pub(crate) struct GraphWidget {
     selected: Option<u32>,
     /// What the pointer is over while nothing is being dragged.
     hover: Hit,
+    /// The title-bar button under the pointer, if any.
+    hover_action: Option<(u32, nl::ImageAction)>,
+    /// The image node shown over the whole canvas, if one is expanded.
+    expanded: Option<u32>,
     drag: Option<Drag>,
     /// The right-click menu's layer, while it is up.
     menu: Option<WidgetId>,
@@ -138,15 +148,12 @@ pub(crate) struct GraphWidget {
 }
 
 fn code_editor(text: &str, text_color: Color) -> (WidgetPod<Portal<SourceTextArea>>, WidgetId) {
-    let source = NewWidget::new(
-        SourceTextArea::new(text)
-            .with_text_size(crate::application::design::TextSize::Caption.px()),
-    )
-    .with_props({
-        let mut props = PropertySet::new();
-        props.insert(ContentColor { color: text_color });
-        props
-    });
+    let source = NewWidget::new(SourceTextArea::new(text).with_text_size(TextSize::Caption.px()))
+        .with_props({
+            let mut props = PropertySet::new();
+            props.insert(ContentColor { color: text_color });
+            props
+        });
     let area_id = source.id();
     let portal = Portal::new(source).content_must_fill(true);
     (NewWidget::new(portal).to_pod(), area_id)
@@ -161,6 +168,24 @@ fn png_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
         u32::from_be_bytes(bytes[16..20].try_into().ok()?),
         u32::from_be_bytes(bytes[20..24].try_into().ok()?),
     ))
+}
+
+/// A proof decoded for display, kept while its identity holds, so the
+/// expanded view does not decode a 2048-pixel image on every rebuild.
+pub(crate) fn decoded_png(png: &nl::ImmutablePng) -> Option<ImageData> {
+    static LAST: std::sync::Mutex<Option<(String, usize, ImageData)>> = std::sync::Mutex::new(None);
+    let mut last = LAST
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some((hash, len, data)) = last.as_ref()
+        && *hash == png.output_hash
+        && *len == png.bytes.len()
+    {
+        return Some(data.clone());
+    }
+    let data = decode_png(png)?;
+    *last = Some((png.output_hash.clone(), png.bytes.len(), data.clone()));
+    Some(data)
 }
 
 fn decode_png(png: &nl::ImmutablePng) -> Option<ImageData> {
@@ -422,6 +447,175 @@ impl GraphWidget {
         nl::to_canvas(&self.viewport, local)
     }
 
+    /// The expanded image and its title, when one is expanded and rendered.
+    fn expanded_image(&self) -> Option<(u32, &nl::ImmutablePng, &str)> {
+        let node = self.expanded?;
+        let Some(nl::NodeContent::Image(content)) = self.content.get(node) else {
+            return None;
+        };
+        let png = content.image.as_ref().or(content.previous_image.as_ref())?;
+        let title = self.boxes.iter().find(|nb| nb.id == node)?.title.as_str();
+        Some((node, png, title))
+    }
+
+    /// The expanded view's parts in local pixels: the bar along the top,
+    /// the area the image fits in, and the bar's buttons, Contract at the
+    /// right end and Save before it.
+    fn expanded_layout(&self) -> (Rect, Rect, [(nl::ImageAction, Rect); 2]) {
+        let bar = ControlSize::Large.px();
+        let margin = Space::Lg.px();
+        let button = ControlSize::Control.px();
+        let top = (bar - button) / 2.0;
+        let right = self.size.width - margin;
+        let place = |index: f64| {
+            let x1 = right - (button + Space::Sm.px()) * index;
+            Rect::new(x1 - button, top, x1, top + button)
+        };
+        (
+            Rect::new(0.0, 0.0, self.size.width, bar),
+            Rect::new(
+                margin,
+                bar,
+                self.size.width - margin,
+                self.size.height - margin,
+            ),
+            [
+                (nl::ImageAction::Contract, place(0.0)),
+                (nl::ImageAction::Save, place(1.0)),
+            ],
+        )
+    }
+
+    /// The expanded view's button under a local point.
+    fn expanded_action_at(&self, local: Point) -> Option<(u32, nl::ImageAction)> {
+        let node = self.expanded?;
+        let (_, _, buttons) = self.expanded_layout();
+        buttons
+            .into_iter()
+            .find(|(_, rect)| rect.contains(local))
+            .map(|(action, _)| (node, action))
+    }
+
+    /// Paint the expanded image over the whole canvas. Returns false when
+    /// there is no image to show, so the graph paints instead.
+    fn paint_expanded(&self, painter: &mut Painter<'_>) -> bool {
+        let Some((node, png, title)) = self.expanded_image() else {
+            return false;
+        };
+        let pal = &self.palette;
+        let (bar, area, buttons) = self.expanded_layout();
+        painter.fill_rect(self.size.to_rect(), pal.canvas);
+        let text = TextSize::Body.px();
+        text_label::draw(
+            painter,
+            Point::new(area.x0, bar.center().y),
+            title,
+            text,
+            pal.text,
+            Anchor::Start,
+        );
+        let first_button = buttons
+            .iter()
+            .map(|(_, rect)| rect.x0)
+            .fold(area.x1, f64::min);
+        text_label::draw(
+            painter,
+            Point::new(first_button - Space::Md.px(), bar.center().y),
+            &format!("{} \u{00d7} {} px", png.width, png.height),
+            TextSize::Caption.px(),
+            pal.text_muted,
+            Anchor::End,
+        );
+        let surface = ControlStyle::on_surface(pal, pal.canvas, pal.text);
+        for (action, rect) in buttons {
+            let hovered = self.hover_action == Some((node, action));
+            let pressed = hovered
+                && matches!(self.drag, Some(Drag::Action { id, action: held }) if id == node && held == action);
+            let face = surface.face(hovered, pressed);
+            painter
+                .fill(rounded_path(rect, surface.radius()), face.fill)
+                .draw();
+            icon_paint::paint(
+                painter,
+                if action == nl::ImageAction::Save {
+                    "download"
+                } else {
+                    "contract"
+                },
+                rect.inflate(-Space::Md.px() + 2.0, -Space::Md.px() + 2.0),
+                face.ink,
+            );
+        }
+        if let Some(data) = decoded_png(png) {
+            let (width, height) = (f64::from(data.width), f64::from(data.height));
+            let scale = (area.width() / width).min(area.height() / height);
+            let at = Point::new(
+                area.center().x - width * scale / 2.0,
+                area.center().y - height * scale / 2.0,
+            );
+            painter.draw_image(
+                &data,
+                Affine::translate(at.to_vec2()) * Affine::scale(scale),
+            );
+        }
+        true
+    }
+
+    /// Pointer input while an image is expanded: only its buttons answer.
+    fn expanded_pointer(&mut self, ctx: &mut EventCtx<'_>, event: &PointerEvent) {
+        match event {
+            PointerEvent::Down(PointerButtonEvent {
+                button: Some(PointerButton::Primary),
+                state,
+                ..
+            }) => {
+                ctx.request_focus();
+                ctx.capture_pointer();
+                let local = ctx.local_position(state.position);
+                self.drag = self
+                    .expanded_action_at(local)
+                    .map(|(id, action)| Drag::Action { id, action });
+                self.hover_action = self.expanded_action_at(local);
+                ctx.request_render();
+                ctx.set_handled();
+            }
+            PointerEvent::Move(PointerUpdate { current, .. }) => {
+                let hover = self.expanded_action_at(ctx.local_position(current.position));
+                if hover != self.hover_action {
+                    self.hover_action = hover;
+                    ctx.request_render();
+                }
+            }
+            PointerEvent::Leave(_) => {
+                if self.hover_action.take().is_some() {
+                    ctx.request_render();
+                }
+            }
+            PointerEvent::Up(PointerButtonEvent { state, .. }) => {
+                if let Some(Drag::Action { id, action }) = self.drag.take()
+                    && self.expanded_action_at(ctx.local_position(state.position))
+                        == Some((id, action))
+                {
+                    ctx.submit_action::<GraphEvent>(GraphEvent::Image { node: id, action });
+                }
+                ctx.request_render();
+                ctx.set_handled();
+            }
+            _ => {}
+        }
+    }
+
+    /// The title-bar button under a canvas point.
+    fn action_at(&self, at: Point) -> Option<(u32, nl::ImageAction)> {
+        match nl::node_region_hit(&self.boxes, at)? {
+            nl::NodeRegionHit {
+                node,
+                region: NodeRegion::Action(action),
+            } => Some((node, action)),
+            _ => None,
+        }
+    }
+
     fn editor_target(&self, target: WidgetId) -> bool {
         self.code_area_ids.values().any(|&id| id == target)
             || self
@@ -478,6 +672,15 @@ impl Widget for GraphWidget {
 
     fn layout(&mut self, ctx: &mut LayoutCtx<'_>, _props: &PropertiesRef<'_>, size: Size) {
         self.size = size;
+        // An expanded image covers the graph, so the nodes' editors and
+        // previews are hidden under it.
+        let stashed = self.expanded_image().is_some();
+        for editor in self.code_editors.values_mut() {
+            ctx.set_stashed(editor, stashed);
+        }
+        for image in self.preview_images.values_mut() {
+            ctx.set_stashed(image, stashed);
+        }
         if !self.fitted {
             // Fit the initial graph without rewriting its authored positions.
             const FIT_MARGIN: f64 = 24.0;
@@ -503,8 +706,7 @@ impl Widget for GraphWidget {
             ctx.submit_action::<GraphEvent>(GraphEvent::Zoom(self.viewport.zoom));
         }
         let zoom = crate::application::view::render::px32(self.viewport.zoom);
-        let code_font_size =
-            (crate::application::design::TextSize::Caption.px() * zoom).clamp(6.0, 40.0);
+        let code_font_size = (TextSize::Caption.px() * zoom).clamp(6.0, 40.0);
         if (self.code_font_size - code_font_size).abs() > f32::EPSILON {
             self.code_font_size = code_font_size;
             for editor in self.code_editors.values_mut() {
@@ -542,6 +744,9 @@ impl Widget for GraphWidget {
         _props: &PropertiesRef<'_>,
         painter: &mut Painter<'_>,
     ) {
+        if self.paint_expanded(painter) {
+            return;
+        }
         let pal = self.palette.clone();
         let tf = nl::canvas_affine(&self.viewport);
         let zoom = self.viewport.zoom;
@@ -664,7 +869,40 @@ impl Widget for GraphWidget {
                 (Some(RowState::Done(Status::Blocked, _)), None) => "\u{2013}",
                 (Some(RowState::Waiting) | None, None) => "",
             };
-            let header_right = tf * Point::new(nb.rect.x1, nb.rect.y0 + nl::HEADER_H / 2.0);
+            // Image nodes end the title bar with Save and Expand.
+            let actions = nb.image_actions();
+            let surface = ControlStyle::on_surface(&pal, header_bg, title_ink);
+            for &(action, rect) in &actions {
+                let hovered = self.hover_action == Some((nb.id, action));
+                let pressed = hovered
+                    && matches!(self.drag, Some(Drag::Action { id, action: held }) if id == nb.id && held == action);
+                let face = surface.face(hovered, pressed);
+                painter
+                    .fill(&(tf * rounded_path(rect, surface.radius())), face.fill)
+                    .draw();
+                let inset = rect.inflate(-4.0, -4.0);
+                icon_paint::paint(
+                    painter,
+                    match action {
+                        nl::ImageAction::Expand => "expand",
+                        nl::ImageAction::Save => "download",
+                        nl::ImageAction::Contract => "contract",
+                    },
+                    Rect::from_points(
+                        tf * Point::new(inset.x0, inset.y0),
+                        tf * Point::new(inset.x1, inset.y1),
+                    ),
+                    face.ink,
+                );
+            }
+            let header_right = tf
+                * Point::new(
+                    actions
+                        .iter()
+                        .map(|(_, rect)| rect.x0)
+                        .fold(nb.rect.x1, f64::min),
+                    nb.rect.y0 + nl::HEADER_H / 2.0,
+                );
             text_label::draw(
                 painter,
                 Point::new(header_right.x - pad, header_mid.y),
@@ -786,6 +1024,10 @@ impl Widget for GraphWidget {
         _props: &mut PropertiesMut<'_>,
         event: &PointerEvent,
     ) {
+        if self.expanded_image().is_some() {
+            self.expanded_pointer(ctx, event);
+            return;
+        }
         match event {
             PointerEvent::Down(PointerButtonEvent {
                 button: Some(PointerButton::Secondary),
@@ -843,6 +1085,10 @@ impl Widget for GraphWidget {
                                     start: at,
                                     origin,
                                 }
+                            }
+                            Some(NodeRegion::Action(action)) => {
+                                self.hover_action = Some((id, action));
+                                Drag::Action { id, action }
                             }
                             Some(NodeRegion::Resize) => {
                                 let origin = match self.content.get(id) {
@@ -954,19 +1200,30 @@ impl Widget for GraphWidget {
                         *to = at;
                         ctx.request_render();
                     }
+                    Some(Drag::Action { id, action }) => {
+                        let held = (*id, *action);
+                        let hover = (self.action_at(at) == Some(held)).then_some(held);
+                        if hover != self.hover_action {
+                            self.hover_action = hover;
+                            ctx.request_render();
+                        }
+                    }
                     Some(Drag::Idle) => {}
                     None => {
                         let hover = nl::hit(&self.boxes, at);
-                        if hover != self.hover {
+                        let hover_action = self.action_at(at);
+                        if hover != self.hover || hover_action != self.hover_action {
                             self.hover = hover;
+                            self.hover_action = hover_action;
                             ctx.request_render();
                         }
                     }
                 }
             }
             PointerEvent::Leave(_) => {
-                if self.hover != Hit::Empty {
+                if self.hover != Hit::Empty || self.hover_action.is_some() {
                     self.hover = Hit::Empty;
+                    self.hover_action = None;
                     ctx.request_render();
                 }
             }
@@ -1005,6 +1262,11 @@ impl Widget for GraphWidget {
                         };
                         ctx.submit_action::<GraphEvent>(GraphEvent::Resize { node: id, size });
                     }
+                    Some(Drag::Action { id, action })
+                        if self.action_at(at) == Some((id, action)) =>
+                    {
+                        ctx.submit_action::<GraphEvent>(GraphEvent::Image { node: id, action });
+                    }
                     _ => {}
                 }
                 ctx.request_render();
@@ -1038,6 +1300,17 @@ impl Widget for GraphWidget {
             return;
         };
         if key.state != KeyState::Down {
+            return;
+        }
+        // Escape returns from an expanded image; nothing else edits under it.
+        if let Some((node, ..)) = self.expanded_image() {
+            if key.key == Key::Named(NamedKey::Escape) {
+                ctx.submit_action::<GraphEvent>(GraphEvent::Image {
+                    node,
+                    action: nl::ImageAction::Contract,
+                });
+                ctx.set_handled();
+            }
             return;
         }
         if self.editor_target(ctx.target()) {
@@ -1114,6 +1387,7 @@ pub(crate) struct GraphView<F> {
     rows: Arc<BTreeMap<u32, RowState>>,
     content: Arc<NodeContentMap>,
     selected: Option<u32>,
+    expanded: Option<u32>,
     on_event: F,
 }
 
@@ -1124,11 +1398,13 @@ pub(crate) fn graph_canvas<F: Fn(&mut Workspace, GraphEvent) + 'static>(
     rows: Arc<BTreeMap<u32, RowState>>,
     content: Arc<NodeContentMap>,
     selected: Option<u32>,
+    expanded: Option<u32>,
     fit_request: u64,
     zoom: f64,
     on_event: F,
 ) -> GraphView<F> {
     GraphView {
+        expanded,
         fit_request,
         zoom,
         graph,
@@ -1169,6 +1445,8 @@ impl<F: Fn(&mut Workspace, GraphEvent) + 'static> View<Workspace, (), ViewCtx> f
             size: Size::ZERO,
             selected: self.selected,
             hover: Hit::Empty,
+            hover_action: None,
+            expanded: self.expanded,
             drag: None,
             menu: None,
             code_font_size: 0.0,
@@ -1186,6 +1464,12 @@ impl<F: Fn(&mut Workspace, GraphEvent) + 'static> View<Workspace, (), ViewCtx> f
         _: &mut Workspace,
     ) {
         let mut dirty = false;
+        if self.expanded != element.widget.expanded {
+            element.widget.expanded = self.expanded;
+            element.widget.hover_action = None;
+            element.ctx.request_layout();
+            dirty = true;
+        }
         if self.fit_request != prev.fit_request {
             element.widget.fitted = false;
             element.ctx.request_layout();
@@ -1415,6 +1699,8 @@ mod tests {
             size: Size::ZERO,
             selected: None,
             hover: Hit::Empty,
+            hover_action: None,
+            expanded: None,
             drag: None,
             menu: None,
             code_font_size: 0.0,

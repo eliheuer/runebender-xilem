@@ -97,6 +97,46 @@ pub(crate) fn run(
         {
             workspace.collapsed.remove(section.as_str());
         }
+        // In the Graph view, wait for the specimen's first render.
+        // RUNEBENDER_GRAPH_EXPANDED=1 then shows its first image expanded.
+        #[cfg(unix)]
+        if let Some(workspace) = app.workspace.as_mut()
+            && matches!(workspace.mode, crate::application::workspace::Mode::Graph)
+            && workspace.live_graph.is_some()
+        {
+            crate::application::editor::tools::graph::controls::live_autorun_tick(workspace);
+            for _ in 0..1200 {
+                workspace.live_graph_pump();
+                workspace.sync_live_graph_presentation();
+                if workspace.graph.proof_images.len()
+                    >= runebender::workflows::graph_live::SPECIMEN_PAGES
+                {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            // Let the finished run settle so the nodes show it as current.
+            for _ in 0..20 {
+                workspace.live_graph_pump();
+                workspace.sync_live_graph_presentation();
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            eprintln!(
+                "DEBUG graph wait: images={} note={}",
+                workspace.graph.proof_images.len(),
+                workspace.note
+            );
+            if std::env::var_os("RUNEBENDER_GRAPH_EXPANDED").is_some() {
+                workspace.graph.expanded = workspace.live_graph.as_ref().and_then(|state| {
+                    let graph = state.session.snapshot().graph;
+                    graph
+                        .nodes
+                        .iter()
+                        .find(|node| node.type_name == "live.proof")
+                        .map(|node| node.id)
+                });
+            }
+        }
 
         // The harness needs a root widget with a concrete type, so wrap
         // the app's root view in a sized box.

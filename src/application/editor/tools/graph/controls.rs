@@ -10,11 +10,9 @@ use crate::application::workspace::Workspace;
 use runebender::font::variable::SourceId;
 use runebender::workflows::graph_session::GraphGuard;
 
-#[cfg(unix)]
 use crate::application::platform::dialogs;
 #[cfg(unix)]
 use runebender::automation::agent::ToolCall;
-#[cfg(unix)]
 use runebender::ui::graph::ImmutablePng;
 #[cfg(unix)]
 use runebender::workflows::graph::NodeGraph;
@@ -135,6 +133,37 @@ pub(crate) fn save_live_comparison_file(app: &mut Workspace) {
     {
         app.note = "Live graph files are available in the native editor".into();
     }
+}
+
+/// Write a rendered proof to a PNG file the person picks, named after the
+/// family and the node, beside the font by default.
+pub(crate) fn save_proof_image(app: &mut Workspace, png: &ImmutablePng, title: &str) {
+    let start = app
+        .font
+        .document_source()
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .to_path_buf();
+    let family = app
+        .font
+        .font_info()
+        .names
+        .family_name
+        .clone()
+        .unwrap_or_else(|| "Font".into());
+    let suggested = format!("{family} {title}.png");
+    let Some(path) = dialogs::save_png(&start, &suggested) else {
+        return;
+    };
+    app.note = match std::fs::write(&path, &png.bytes) {
+        Ok(()) => format!(
+            "Saved {}",
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("image")
+        ),
+        Err(error) => format!("Could not save the image: {error}"),
+    };
 }
 
 /// Keep the explicit comparison scope as visible presentation input until Run.
@@ -569,7 +598,13 @@ pub(crate) fn live_autorun_tick(app: &mut Workspace) {
         app.graph.render_after = None;
         app.graph.rendered_revision = Some(revision);
         release_live_results(app, true);
+        // The nodes' title bars show the run; only a failure to start
+        // reaches the footer.
+        let note = std::mem::take(&mut app.note);
         run_live_comparison(app);
+        if app.note == "Rendering the live graph" {
+            app.note = note;
+        }
     }
 }
 

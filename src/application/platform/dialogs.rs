@@ -50,6 +50,14 @@ pub(crate) fn save_graph(directory: &Path, suggested_name: &str) -> Option<PathB
         .save_file()
 }
 
+/// Pick where to write one PNG image.
+pub(crate) fn save_png(directory: &Path, suggested_name: &str) -> Option<PathBuf> {
+    at(directory)
+        .add_filter("PNG image", &["png"])
+        .set_file_name(suggested_name)
+        .save_file()
+}
+
 /// Pick one raster image.
 pub(crate) fn image(directory: &Path) -> Option<PathBuf> {
     at(directory)

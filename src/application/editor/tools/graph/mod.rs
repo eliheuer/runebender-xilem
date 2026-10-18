@@ -84,6 +84,8 @@ pub(crate) struct GraphState {
     /// The canvas zoom: reported by the canvas, set by the footer slider.
     /// `None` until the canvas first fits, which reads as 1.
     pub(crate) zoom: Option<f64>,
+    /// The image node shown over the whole graph area, if one is expanded.
+    pub(crate) expanded: Option<u32>,
     /// The open file.
     pub(crate) open: Option<OpenGraph>,
     /// The `.graph.json` files found beside the font.

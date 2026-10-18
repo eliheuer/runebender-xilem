@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="contract" format="2">
+	<unicode hex="E035"/>
+	<advance height="768" width="768"/>
+	<outline>
+		<contour>
+			<point x="448" y="704" type="move"/>
+			<point x="448" y="448" type="line"/>
+			<point x="704" y="448" type="line"/>
+		</contour>
+		<contour>
+			<point x="704" y="704" type="move"/>
+			<point x="448" y="448" type="line"/>
+		</contour>
+		<contour>
+			<point x="64" y="320" type="move"/>
+			<point x="320" y="320" type="line"/>
+			<point x="320" y="64" type="line"/>
+		</contour>
+		<contour>
+			<point x="64" y="64" type="move"/>
+			<point x="320" y="320" type="line"/>
+		</contour>
+	</outline>
+</glyph>

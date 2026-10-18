@@ -29,6 +29,7 @@ const PROOF_WIDTH: u32 = 1024;
 const PROOF_HEIGHT: u32 = 1024;
 const PROOF_MARGIN: f64 = 32.0;
 const PROOF_LINE_HEIGHT: f64 = 180.0;
+const MAX_PAGE_LINES: usize = 64;
 
 /// Pixel dimensions and colors used to paint one compiled proof.
 ///
@@ -55,6 +56,37 @@ pub struct CompiledProofRendering {
     pub background_rgb: [u8; 3],
     /// RGB glyph color.
     pub ink_rgb: [u8; 3],
+    /// A page layout: one entry per line of the recipe text, split at
+    /// `\n`, each set at its own size and baseline. Lines that run past
+    /// the page are clipped by it. Empty means the single wrapped run above.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub lines: Vec<CompiledProofLine>,
+}
+
+/// How one line of a page is set.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CompiledProofLine {
+    /// Rendered pixels per font em for this line.
+    pub pixels_per_em: f64,
+    /// The line's baseline in pixels from the bottom edge.
+    pub baseline_px: f64,
+    /// Where the line sits across the page.
+    #[serde(default)]
+    pub align: CompiledProofAlign,
+}
+
+/// Horizontal placement of a page line.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum CompiledProofAlign {
+    /// Start at the left margin.
+    #[default]
+    Start,
+    /// Center on the page.
+    Center,
 }
 
 impl Default for CompiledProofRendering {
@@ -68,6 +100,7 @@ impl Default for CompiledProofRendering {
             line_height_px: PROOF_LINE_HEIGHT,
             background_rgb: [255; 3],
             ink_rgb: [0; 3],
+            lines: Vec::new(),
         }
     }
 }
@@ -79,13 +112,8 @@ impl CompiledProofRendering {
 
     /// Reject settings that could overflow the scene or make the layout unusable.
     pub fn validate(&self) -> Result<(), String> {
-        if !(128..=2048).contains(&self.width_px)
-            || !(128..=2048).contains(&self.height_px)
-            || u64::from(self.width_px) * u64::from(self.height_px) > 2_097_152
-        {
-            return Err(
-                "proof dimensions must be 128 to 2048 pixels with at most 2097152 pixels".into(),
-            );
+        if !(128..=2048).contains(&self.width_px) || !(128..=2048).contains(&self.height_px) {
+            return Err("proof dimensions must be 128 to 2048 pixels".into());
         }
         if !self.pixels_per_em.is_finite() || !(4.0..=512.0).contains(&self.pixels_per_em) {
             return Err("proof pixels per em must be finite and between 4 and 512".into());
@@ -105,6 +133,20 @@ impl CompiledProofRendering {
         }
         if !self.line_height_px.is_finite() || !(4.0..=1024.0).contains(&self.line_height_px) {
             return Err("proof line height must be finite and between 4 and 1024 pixels".into());
+        }
+        if self.lines.len() > MAX_PAGE_LINES {
+            return Err(format!("a proof page has at most {MAX_PAGE_LINES} lines"));
+        }
+        for line in &self.lines {
+            if !line.pixels_per_em.is_finite() || !(4.0..=512.0).contains(&line.pixels_per_em) {
+                return Err("page line pixels per em must be finite and between 4 and 512".into());
+            }
+            if !line.baseline_px.is_finite()
+                || line.baseline_px < 0.0
+                || line.baseline_px > f64::from(self.height_px)
+            {
+                return Err("page line baseline must be finite and inside the image".into());
+            }
         }
         Ok(())
     }
@@ -413,6 +455,14 @@ impl CompiledProofRecipe {
         }) {
             return Err("proof target has an invalid glyph name, cluster or occurrence".into());
         }
+        if !self.rendering.lines.is_empty() {
+            if self.text.split('\n').count() != self.rendering.lines.len() {
+                return Err("a proof page needs one line setting per line of text".into());
+            }
+            if self.right_to_left || self.target.is_some() {
+                return Err("a proof page sets left-to-right text without a target".into());
+            }
+        }
         Ok(())
     }
 }
@@ -563,31 +613,45 @@ pub fn prove(
     }
     let shaper = ShapingFont::from_bytes((*snapshot.font.bytes).clone())
         .map(|font| font.at_normalized(recipe.normalized_location.clone()))?;
-    let shaped = shaper.shape_with_options(
-        &recipe.text,
-        recipe.right_to_left,
-        &recipe.features,
-        recipe.script.as_deref(),
-        recipe.language.as_deref(),
-    )?;
-    if shaped.len() > MAX_SHAPED_GLYPHS {
-        return Err(format!("proof shapes at most {MAX_SHAPED_GLYPHS} glyphs"));
+    // A page shapes each line on its own; clusters stay offsets into the
+    // whole recipe text. `line_ends` holds where each line's glyphs end.
+    let runs: Vec<&str> = if recipe.rendering.lines.is_empty() {
+        vec![recipe.text.as_str()]
+    } else {
+        recipe.text.split('\n').collect()
+    };
+    let mut glyphs = Vec::new();
+    let mut line_ends = Vec::with_capacity(runs.len());
+    let mut offset = 0_u32;
+    for run in runs {
+        let shaped = shaper.shape_with_options(
+            run,
+            recipe.right_to_left,
+            &recipe.features,
+            recipe.script.as_deref(),
+            recipe.language.as_deref(),
+        )?;
+        if glyphs.len() + shaped.len() > MAX_SHAPED_GLYPHS {
+            return Err(format!("proof shapes at most {MAX_SHAPED_GLYPHS} glyphs"));
+        }
+        glyphs.extend(shaped.iter().map(|glyph| {
+            CompiledProofGlyph {
+                glyph_id: glyph.glyph_id,
+                glyph_name: snapshot
+                    .font
+                    .glyph_order
+                    .get(usize::from(glyph.glyph_id))
+                    .cloned(),
+                cluster: glyph.cluster + offset,
+                x_advance: glyph.x_advance,
+                x_offset: glyph.x_offset,
+                y_offset: glyph.y_offset,
+            }
+        }));
+        line_ends.push(glyphs.len());
+        // The text is at most MAX_TEXT_BYTES, so this cannot overflow.
+        offset += u32::try_from(run.len() + 1).unwrap_or(u32::MAX);
     }
-    let glyphs = shaped
-        .iter()
-        .map(|glyph| CompiledProofGlyph {
-            glyph_id: glyph.glyph_id,
-            glyph_name: snapshot
-                .font
-                .glyph_order
-                .get(usize::from(glyph.glyph_id))
-                .cloned(),
-            cluster: glyph.cluster,
-            x_advance: glyph.x_advance,
-            x_offset: glyph.x_offset,
-            y_offset: glyph.y_offset,
-        })
-        .collect::<Vec<_>>();
     let mut target_glyph_index = None;
     if let Some(target) = &recipe.target {
         let mut occurrence = 0_u32;
@@ -613,13 +677,23 @@ pub fn prove(
         .map(|(_, outline)| outline)
         .collect::<Vec<_>>();
     let units_per_em = units_per_em(&snapshot.font.bytes)?;
-    let scene = scene(
-        &glyphs,
-        &outlines,
-        units_per_em,
-        recipe.right_to_left,
-        &recipe.rendering,
-    )?;
+    let scene = if recipe.rendering.lines.is_empty() {
+        scene(
+            &glyphs,
+            &outlines,
+            units_per_em,
+            recipe.right_to_left,
+            &recipe.rendering,
+        )?
+    } else {
+        page_scene(
+            &glyphs,
+            &line_ends,
+            &outlines,
+            units_per_em,
+            &recipe.rendering,
+        )?
+    };
     let rendered = crate::formats::designbot::render_with_identity(&scene, false)?;
     let png = rendered.bytes;
     if !png.starts_with(b"\x89PNG\r\n\x1a\n") {
@@ -643,6 +717,7 @@ pub fn prove(
                     line_height_px: 320.0,
                     background_rgb: recipe.rendering.background_rgb,
                     ink_rgb: recipe.rendering.ink_rgb,
+                    lines: Vec::new(),
                 };
                 let (detail_scene, crop) = detail_scene(
                     &glyphs,
@@ -859,6 +934,73 @@ fn scene(
     }))
 }
 
+/// Set each line of a page at its own size and baseline.
+///
+/// `line_ends` gives where each line's glyphs end in `glyphs`. Ink past the
+/// page edge is clipped by the renderer, so an edit that widens a line
+/// never fails the proof.
+fn page_scene(
+    glyphs: &[CompiledProofGlyph],
+    line_ends: &[usize],
+    outlines: &[Arc<kurbo::BezPath>],
+    units_per_em: f64,
+    rendering: &CompiledProofRendering,
+) -> Result<serde_json::Value, String> {
+    use kurbo::Affine;
+    use serde_json::json;
+
+    if !units_per_em.is_finite() || units_per_em <= 0.0 {
+        return Err("compiled font has an invalid units-per-em value".into());
+    }
+    rendering.validate()?;
+    let mut paths = vec![json!({
+        "d": format!("M0 0H{}V{}H0Z", rendering.width_px, rendering.height_px),
+        "color": rendering.background_rgb,
+    })];
+    let mut start = 0;
+    for (line, &end) in rendering.lines.iter().zip(line_ends) {
+        let run = &glyphs[start..end];
+        start = end;
+        let scale = line.pixels_per_em / units_per_em;
+        let mut advance = 0.0;
+        for glyph in run {
+            if !glyph.x_advance.is_finite()
+                || !glyph.x_offset.is_finite()
+                || !glyph.y_offset.is_finite()
+            {
+                return Err("compiled glyph positioning contains a non-finite value".into());
+            }
+            advance += glyph.x_advance.max(0.0) * scale;
+        }
+        let mut x = match line.align {
+            CompiledProofAlign::Start => rendering.margin_px,
+            CompiledProofAlign::Center => (f64::from(rendering.width_px) - advance) / 2.0,
+        };
+        for glyph in run {
+            let path = outlines
+                .get(usize::from(glyph.glyph_id))
+                .ok_or_else(|| format!("compiled outline missing for glyph {}", glyph.glyph_id))?;
+            let translated = Affine::translate((
+                x + glyph.x_offset * scale,
+                line.baseline_px + glyph.y_offset * scale,
+            )) * Affine::scale(scale)
+                * path.as_ref();
+            x += glyph.x_advance.max(0.0) * scale;
+            if translated.is_empty() {
+                continue;
+            }
+            paths.push(json!({"d": translated.to_svg(), "color": rendering.ink_rgb}));
+        }
+    }
+    Ok(json!({
+        "version": 1,
+        "width": rendering.width_px,
+        "height": rendering.height_px,
+        "paths": paths,
+        "labels": [],
+    }))
+}
+
 /// Crop the unchanged shaped run around a frozen selected pen at a larger scale.
 /// Neighboring glyphs may cross the crop edge; selected ink, when present, must fit completely.
 fn detail_scene(
@@ -1060,6 +1202,11 @@ mod tests {
         assert!(recipe.validate().is_err());
         recipe.rendering.width_px = 2048;
         recipe.rendering.height_px = 2048;
+        assert!(
+            recipe.validate().is_ok(),
+            "a square 2048-pixel page is allowed"
+        );
+        recipe.rendering.height_px = 2049;
         assert!(recipe.validate().is_err());
         recipe.rendering.width_px = 128;
         recipe.rendering.height_px = 512;
@@ -1092,6 +1239,7 @@ mod tests {
             line_height_px: 120.0,
             background_rgb: [240, 240, 240],
             ink_rgb: [20, 20, 20],
+            lines: Vec::new(),
         };
         let fit = scene(
             &[glyph.clone(), glyph.clone()],
@@ -1126,6 +1274,72 @@ mod tests {
         assert_eq!(wrapped_second.x0, 8.0);
         assert_eq!(wrapped_second.y0, 220.0);
         assert_eq!(wrapped_second.width(), 20.0);
+    }
+
+    #[test]
+    fn a_page_sets_each_line_at_its_own_size_and_clips_overflow() {
+        use kurbo::{BezPath, Rect, Shape as _};
+
+        let glyph = CompiledProofGlyph {
+            glyph_id: 0,
+            glyph_name: None,
+            cluster: 0,
+            x_advance: 500.0,
+            x_offset: 0.0,
+            y_offset: 0.0,
+        };
+        let outlines = [Arc::new(Rect::new(0.0, 0.0, 500.0, 700.0).to_path(0.1))];
+        let rendering = CompiledProofRendering {
+            width_px: 256,
+            height_px: 256,
+            margin_px: 16.0,
+            background_rgb: [15, 15, 15],
+            ink_rgb: [235, 235, 235],
+            lines: vec![
+                CompiledProofLine {
+                    pixels_per_em: 100.0,
+                    baseline_px: 150.0,
+                    align: CompiledProofAlign::Center,
+                },
+                CompiledProofLine {
+                    pixels_per_em: 50.0,
+                    baseline_px: 40.0,
+                    align: CompiledProofAlign::Start,
+                },
+            ],
+            ..CompiledProofRendering::default()
+        };
+        // Two glyphs on the first line, twelve on the second: wider than the page.
+        let glyphs = vec![glyph; 14];
+        let page = page_scene(&glyphs, &[2, 14], &outlines, 1000.0, &rendering).unwrap();
+        let paths = page["paths"].as_array().unwrap();
+        assert_eq!(paths.len(), 15, "paper and fourteen glyphs, none rejected");
+        assert_eq!(paths[0]["color"], serde_json::json!([15, 15, 15]));
+        let bounds = |index: usize| {
+            BezPath::from_svg(paths[index]["d"].as_str().unwrap())
+                .unwrap()
+                .bounding_box()
+        };
+        // The first line is 100 px wide in all, centered on 256.
+        assert_eq!(bounds(1).x0, 78.0);
+        assert_eq!(bounds(1).y0, 150.0);
+        assert_eq!(bounds(1).height(), 70.0);
+        assert_eq!(bounds(3).x0, 16.0);
+        assert_eq!(bounds(3).y0, 40.0);
+        assert!(bounds(14).x1 > 256.0, "the last glyph runs off the page");
+    }
+
+    #[test]
+    fn a_page_needs_one_setting_per_line_and_no_target() {
+        let mut recipe = recipe("one\ntwo", 0.0, false, None);
+        recipe.rendering.lines = vec![CompiledProofLine {
+            pixels_per_em: 40.0,
+            baseline_px: 100.0,
+            align: CompiledProofAlign::Start,
+        }];
+        assert!(recipe.validate().unwrap_err().contains("one line setting"));
+        recipe.text = "one".into();
+        recipe.validate().unwrap();
     }
 
     #[test]

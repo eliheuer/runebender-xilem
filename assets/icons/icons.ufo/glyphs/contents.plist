@@ -6,6 +6,8 @@
 	<string>brush.glif</string>
 	<key>close</key>
 	<string>close.glif</string>
+	<key>contract</key>
+	<string>contract.glif</string>
 	<key>coordinate-dot</key>
 	<string>coordinate-dot.glif</string>
 	<key>coordinate-dot-selected</key>
@@ -18,12 +20,16 @@
 	<string>disclosure-closed.glif</string>
 	<key>disclosure-open</key>
 	<string>disclosure-open.glif</string>
+	<key>download</key>
+	<string>download.glif</string>
 	<key>duplicate</key>
 	<string>duplicate.glif</string>
 	<key>duplicate-repeat</key>
 	<string>duplicate-repeat.glif</string>
 	<key>exclude</key>
 	<string>exclude.glif</string>
+	<key>expand</key>
+	<string>expand.glif</string>
 	<key>eye-closed</key>
 	<string>eye-closed.glif</string>
 	<key>eye-open</key>

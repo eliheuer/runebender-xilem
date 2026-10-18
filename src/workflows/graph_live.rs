@@ -188,82 +188,154 @@ pub fn comparison_starter(source_id: SourceId) -> NodeGraph {
     graph
 }
 
-/// One line of the default type specimen.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct SpecimenLine {
-    /// The text to shape.
-    pub text: &'static str,
-    /// Rendered pixels per em. The canvas shows proofs at half their
-    /// pixel size, so these read as 64, 32, and 20 point text.
-    pub pixels_per_em: f64,
+/// Specimen paper: near black, so light type reads as it would on a dark
+/// screen and the image stands out on the canvas.
+pub const SPECIMEN_PAPER: [u8; 3] = [15, 15, 15];
+/// Specimen ink: an off-white that does not glare on the dark paper.
+pub const SPECIMEN_INK: [u8; 3] = [235, 235, 235];
+/// How many pages [`specimen_recipes`] makes.
+pub const SPECIMEN_PAGES: usize = 2;
+
+const PAGE_SIZE: f64 = 2048.0;
+const PAGE_MARGIN: f64 = 144.0;
+/// Room left on each line for edits that widen it. A line that grows past
+/// the page is clipped, not failed.
+const PAGE_SLACK: f64 = 1.06;
+
+/// The default specimen pages, top to bottom: a poster of the character set
+/// and a waterfall of one sentence. Both are 2048 pixels wide, light type
+/// on dark paper, sized from `advance_em`, which measures a line's advance
+/// in ems.
+pub fn specimen_recipes(
+    advance_em: impl Fn(&str) -> f64,
+    normalized_location: &[f64],
+) -> Vec<Value> {
+    vec![
+        poster_recipe(&advance_em, normalized_location),
+        waterfall_recipe(&advance_em, normalized_location),
+    ]
 }
 
-/// The default specimen: a display line, a sentence, and the character set.
-pub const SPECIMEN: [SpecimenLine; 3] = [
-    SpecimenLine {
-        text: "Hamburgefontsiv",
-        pixels_per_em: 128.0,
-    },
-    SpecimenLine {
-        text: "The quick brown fox jumps over the lazy dog",
-        pixels_per_em: 64.0,
-    },
-    SpecimenLine {
-        text: "ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789",
-        pixels_per_em: 40.0,
-    },
-];
+/// The largest size at which every line fits the page width.
+fn fit_size(advance_em: &dyn Fn(&str) -> f64, lines: &[&str], width: f64) -> f64 {
+    let widest = lines
+        .iter()
+        .map(|line| advance_em(line))
+        .fold(0.5, f64::max);
+    width / (widest * PAGE_SLACK)
+}
 
-/// A proof recipe that fits one specimen line in a raster sized to it.
-///
-/// `advance_em` is the line's advance width in ems, measured from the
-/// font's glyph advances. The raster holds one line with the same space
-/// above and below it, and leaves 15% spare width so an edit that widens
-/// the line still fits. A line wider than the largest raster is drawn
-/// smaller.
-pub fn specimen_recipe(line: SpecimenLine, advance_em: f64, normalized_location: &[f64]) -> Value {
-    const MAX_WIDTH: f64 = 2048.0;
-    const MAX_PIXELS: f64 = 2_097_152.0;
-    let slack = 1.15;
-    let mut ppem = line.pixels_per_em;
-    let margin = |ppem: f64| (ppem * 0.25).max(16.0).round();
-    let width = |ppem: f64| advance_em.max(0.5) * ppem * slack + 2.0 * margin(ppem);
-    if width(ppem) > MAX_WIDTH {
-        ppem = ((MAX_WIDTH - 2.0 * margin(ppem)) / (advance_em.max(0.5) * slack)).floor();
+/// One display word over the alphabet and figures, centered on a square page.
+fn poster_recipe(advance_em: &dyn Fn(&str) -> f64, normalized_location: &[f64]) -> Value {
+    const HEADLINE: &str = "Hamburgefontsiv";
+    const BODY: [&str; 5] = [
+        "ABCDEFGHIJKLM",
+        "NOPQRSTUVWXYZ",
+        "abcdefghijklm",
+        "nopqrstuvwxyz",
+        "0123456789",
+    ];
+    // Lines sit 1.2 em apart; a baseline is 0.95 em below its line's top,
+    // which clears accents above and descenders below.
+    const LEADING: f64 = 1.2;
+    const DROP: f64 = 0.95;
+    let width = PAGE_SIZE - 2.0 * PAGE_MARGIN;
+    let mut headline = fit_size(advance_em, &[HEADLINE], width).min(400.0);
+    let mut body = fit_size(advance_em, &BODY, width).min(headline * 0.6);
+    let gap = |body: f64| body * 0.8;
+    let total = |headline: f64, body: f64| {
+        headline * LEADING + gap(body) + BODY.len() as f64 * body * LEADING
+    };
+    let room = PAGE_SIZE - 2.0 * PAGE_MARGIN;
+    if total(headline, body) > room {
+        let shrink = room / total(headline, body);
+        headline *= shrink;
+        body *= shrink;
     }
-    let ppem = ppem.clamp(4.0, 512.0);
-    let margin = margin(ppem);
-    // The baseline clears descenders, and the line above it clears
-    // ascenders, each with the side margin.
-    let first_baseline = (ppem * 0.25).round() + margin;
-    let line_height = ppem + margin;
-    let width = width(ppem).ceil().clamp(128.0, MAX_WIDTH);
-    let height = (first_baseline + line_height)
-        .ceil()
-        .clamp(128.0, (MAX_PIXELS / width).floor().min(MAX_WIDTH));
+    let mut top = (PAGE_SIZE - total(headline, body)) / 2.0;
+    let mut lines = vec![(HEADLINE, headline, top + headline * DROP)];
+    top += headline * LEADING + gap(body);
+    for (index, text) in BODY.iter().enumerate() {
+        lines.push((text, body, top + body * (DROP + LEADING * index as f64)));
+    }
+    page_recipe(&lines, PAGE_SIZE, "center", normalized_location)
+}
+
+/// One sentence from the largest size that fits down to text sizes.
+fn waterfall_recipe(advance_em: &dyn Fn(&str) -> f64, normalized_location: &[f64]) -> Value {
+    const TEXT: &str = "The quick brown fox jumps over the lazy dog";
+    const LEADING: f64 = 1.3;
+    let mut size = fit_size(advance_em, &[TEXT], PAGE_SIZE - 2.0 * PAGE_MARGIN).min(200.0);
+    let mut top = PAGE_MARGIN;
+    let mut lines = Vec::new();
+    // The first line always shows, however wide the font. A baseline sits
+    // 0.8 em below its line's top, about where the cap height lands.
+    while lines.is_empty() || (size >= 16.0 && lines.len() < 12) {
+        lines.push((TEXT, size, top + size * 0.8));
+        top += size * LEADING;
+        size *= 0.8;
+    }
+    let height = (top + PAGE_MARGIN).min(PAGE_SIZE);
+    page_recipe(&lines, height, "start", normalized_location)
+}
+
+/// A page recipe from `(text, pixels per em, baseline from the top)` lines.
+fn page_recipe(
+    lines: &[(&str, f64, f64)],
+    height: f64,
+    align: &str,
+    normalized_location: &[f64],
+) -> Value {
+    let height = height.round().clamp(128.0, PAGE_SIZE);
     #[allow(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
-        reason = "both sizes are clamped to 128..=2048 above"
+        reason = "both sizes are whole numbers clamped to 128..=2048"
     )]
-    let (width, height) = (width as u32, height as u32);
+    let (width_px, height_px) = (PAGE_SIZE as u32, height as u32);
+    let text = lines
+        .iter()
+        .map(|(text, ..)| *text)
+        .collect::<Vec<_>>()
+        .join("\n");
+    let settings = lines
+        .iter()
+        .map(|&(_, size, baseline)| {
+            json!({
+                "pixels_per_em": size.clamp(4.0, 512.0).round(),
+                "baseline_px": (height - baseline).clamp(0.0, height).round(),
+                "align": align,
+            })
+        })
+        .collect::<Vec<_>>();
     json!({
-        "text": line.text,
+        "text": text,
         "normalized_location": normalized_location,
         "right_to_left": false,
         "features": [],
         "script": null,
         "language": null,
         "rendering": {
-            "width_px": width,
-            "height_px": height,
-            "pixels_per_em": ppem,
-            "margin_px": margin,
-            "first_baseline_px": first_baseline,
-            "line_height_px": line_height,
-            "background_rgb": [255, 255, 255],
-            "ink_rgb": [0, 0, 0],
+            "width_px": width_px,
+            "height_px": height_px,
+            "pixels_per_em": 160.0,
+            "margin_px": PAGE_MARGIN,
+            "first_baseline_px": 180.0,
+            "line_height_px": 180.0,
+            "background_rgb": SPECIMEN_PAPER,
+            "ink_rgb": SPECIMEN_INK,
+            "lines": settings,
         },
+    })
+}
+
+/// Whether a proof recipe is a waterfall: one text repeated down a page.
+pub fn is_waterfall(recipe: &Value) -> bool {
+    let lines = recipe["text"].as_str().map(|text| text.split('\n'));
+    lines.is_some_and(|mut lines| {
+        let first = lines.next();
+        let mut rest = lines.peekable();
+        rest.peek().is_some() && rest.all(|line| Some(line) == first)
     })
 }
 
@@ -276,9 +348,9 @@ pub fn recipe_raster(recipe: &Value) -> Option<[f64; 2]> {
     ])
 }
 
-/// The default live graph: the current font feeding one proof per specimen line.
+/// The default live graph: the current font feeding one proof per specimen page.
 ///
-/// `recipes` come from [`specimen_recipe`], one per line, top to bottom.
+/// `recipes` come from [`specimen_recipes`], top to bottom.
 pub fn specimen_starter(source_id: SourceId, recipes: Vec<Value>) -> NodeGraph {
     // A proof node shows its image at the standard content width, 240 px,
     // inside a header, two port rows, and padding: 80 px in all
@@ -859,50 +931,47 @@ mod tests {
     }
 
     #[test]
-    fn specimen_recipes_are_valid_proofs_sized_to_their_lines() {
-        for line in SPECIMEN {
-            let advance = line.text.chars().count() as f64 * 0.55;
-            let recipe = specimen_recipe(line, advance, &[]);
+    fn specimen_pages_are_valid_dark_proofs_whose_lines_fit() {
+        let advance = |text: &str| text.chars().count() as f64 * 0.55;
+        let recipes = specimen_recipes(advance, &[]);
+        assert_eq!(recipes.len(), SPECIMEN_PAGES);
+        for recipe in &recipes {
             let parsed: crate::font::compiler::proof::CompiledProofRecipe =
                 serde_json::from_value(recipe.clone()).unwrap();
-            parsed.rendering.validate().unwrap();
-            let [width, _] = recipe_raster(&recipe).unwrap();
-            assert!(
-                advance * parsed.rendering.pixels_per_em + 2.0 * parsed.rendering.margin_px
-                    <= width,
-                "{} fits its raster",
-                line.text
-            );
+            parsed.validate().unwrap();
+            let rendering = &parsed.rendering;
+            assert_eq!(rendering.background_rgb, SPECIMEN_PAPER);
+            assert_eq!(rendering.width_px, 2048);
+            for (text, line) in parsed.text.split('\n').zip(&rendering.lines) {
+                assert!(
+                    advance(text) * line.pixels_per_em <= 2048.0 - 2.0 * PAGE_MARGIN,
+                    "{text} fits the page"
+                );
+            }
+        }
+        assert!(!is_waterfall(&recipes[0]));
+        assert!(is_waterfall(&recipes[1]));
+    }
+
+    #[test]
+    fn a_very_wide_font_still_gets_a_valid_page() {
+        for recipe in specimen_recipes(|text| text.chars().count() as f64 * 3.0, &[]) {
+            let parsed: crate::font::compiler::proof::CompiledProofRecipe =
+                serde_json::from_value(recipe).unwrap();
+            parsed.validate().unwrap();
         }
     }
 
     #[test]
-    fn a_line_too_wide_for_the_largest_raster_is_drawn_smaller() {
-        let line = SpecimenLine {
-            text: "wide",
-            pixels_per_em: 128.0,
-        };
-        let recipe = specimen_recipe(line, 40.0, &[]);
-        let parsed: crate::font::compiler::proof::CompiledProofRecipe =
-            serde_json::from_value(recipe).unwrap();
-        parsed.rendering.validate().unwrap();
-        assert!(parsed.rendering.pixels_per_em < 128.0);
-        assert!(parsed.rendering.width_px <= 2048);
-    }
-
-    #[test]
-    fn the_specimen_is_the_font_feeding_one_proof_per_line_and_grows_a_comparison() {
-        let recipes = SPECIMEN
-            .iter()
-            .map(|line| specimen_recipe(*line, 10.0, &[]))
-            .collect();
+    fn the_specimen_is_the_font_feeding_one_proof_per_page_and_grows_a_comparison() {
+        let recipes = specimen_recipes(|_| 10.0, &[]);
         let mut graph = specimen_starter(SourceId(0), recipes);
         let proofs: Vec<_> = graph
             .nodes
             .iter()
             .filter(|node| node.type_name == "live.proof")
             .collect();
-        assert_eq!(proofs.len(), SPECIMEN.len());
+        assert_eq!(proofs.len(), SPECIMEN_PAGES);
         assert!(
             proofs
                 .iter()

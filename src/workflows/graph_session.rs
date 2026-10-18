@@ -3401,10 +3401,7 @@ mod tests {
     #[test]
     fn a_specimen_beside_the_comparison_pairs_proofs_by_recipe() {
         use crate::workflows::graph_live;
-        let recipes = graph_live::SPECIMEN
-            .iter()
-            .map(|line| graph_live::specimen_recipe(*line, 10.0, &[]))
-            .collect();
+        let recipes = graph_live::specimen_recipes(|_| 10.0, &[]);
         let mut graph = graph_live::specimen_starter(variable::SourceId(0), recipes);
         let specimen_proofs: Vec<u32> = graph.nodes.iter().skip(1).map(|node| node.id).collect();
         let python =

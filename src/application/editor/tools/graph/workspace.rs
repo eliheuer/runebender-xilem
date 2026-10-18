@@ -279,12 +279,7 @@ impl Workspace {
             .document_epoch()
             .to_owned();
         let location = self.source_normalized_location(source)?;
-        let recipes = graph_live::SPECIMEN
-            .iter()
-            .map(|line| {
-                graph_live::specimen_recipe(*line, self.line_advance_em(line.text), &location)
-            })
-            .collect();
+        let recipes = graph_live::specimen_recipes(|text| self.line_advance_em(text), &location);
         let graph = graph_live::specimen_starter(source, recipes);
         self.live_graph = Some(fresh_live_graph(self.document_id, epoch, graph, None)?);
         Ok(())
@@ -1067,13 +1062,13 @@ mod tests {
                 .iter()
                 .filter(|node| node.type_name == "live.proof")
                 .count(),
-            graph_live::SPECIMEN.len()
+            graph_live::SPECIMEN_PAGES
         );
         assert!(live_autorun_waiting(&app), "the first render does not wait");
         live_autorun_tick(&mut app);
         assert!(!app.graph.live_ui_handles.is_empty(), "{}", app.note);
         let deadline = Instant::now() + Duration::from_secs(60);
-        while app.graph.proof_images.len() < graph_live::SPECIMEN.len() {
+        while app.graph.proof_images.len() < graph_live::SPECIMEN_PAGES {
             assert!(
                 Instant::now() < deadline,
                 "specimen did not render: {}",
