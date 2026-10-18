@@ -2152,6 +2152,15 @@ mod rail_width_tests {
     use xilem::core::View;
     use xilem::view::sized_box;
 
+    /// The dock width in whole window pixels.
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "the dock width is a small whole number of pixels"
+    )]
+    fn dock_pixels(width: f64) -> u32 {
+        width.round() as u32
+    }
+
     fn widest(widget: WidgetRef<'_, dyn Widget>, out: &mut Vec<(String, f64)>) {
         // A stashed widget, such as a portal's hidden scrollbar, keeps no layout.
         if widget.ctx().is_stashed() {
@@ -2211,7 +2220,7 @@ mod rail_width_tests {
             let harness = TestHarness::create_with_size(
                 crate::application::view::default_property_set(),
                 pod.new_widget,
-                (width as u32, 1200),
+                (dock_pixels(width), 1200),
             );
             failures.extend(overflow(
                 crate::application::view::panels::tabs::rail_name(rail, true),
@@ -2226,7 +2235,7 @@ mod rail_width_tests {
         let harness = TestHarness::create_with_size(
             crate::application::view::default_property_set(),
             pod.new_widget,
-            (width as u32, 1200),
+            (dock_pixels(width), 1200),
         );
         failures.extend(overflow("sidebar", &harness, width));
         assert!(failures.is_empty(), "{}", failures.join("\n"));
