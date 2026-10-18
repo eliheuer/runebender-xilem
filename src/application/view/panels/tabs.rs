@@ -379,8 +379,9 @@ fn editor_glyph_rail(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     .gap(Space::None)
 }
 
-/// What a rail panel is called, written under its tab so the icon is
-/// not the only clue, and so the panels have names to talk about.
+/// What a rail panel is called, so the panels have names to talk about
+/// in tests and docs. The name is not drawn; the tab icon is the label.
+#[cfg(test)]
 pub(crate) fn rail_name(rail: Rail, editing: bool) -> &'static str {
     match rail {
         Rail::Glyphs if editing => "Glyph grid",
@@ -393,24 +394,13 @@ pub(crate) fn rail_name(rail: Rail, editing: bool) -> &'static str {
     }
 }
 
-/// The one rail frame both workspaces use: the tabs, the panel's name,
-/// and the panel. Anything that belongs to every rail panel goes here
-/// and nowhere else.
+/// The one rail frame both workspaces use: the tabs and the panel.
+/// Anything that belongs to every rail panel goes here and nowhere else.
 fn rail_frame<V>(app: &Workspace, editing: bool, content: V) -> impl WidgetView<Workspace> + use<V>
 where
     V: WidgetView<Workspace> + 'static,
 {
-    let pal = &app.palette;
-    let title = sized_box(
-        label(rail_name(app.rail, editing))
-            .text_size(TextSize::Caption.px())
-            .color(pal.text_muted),
-    )
-    .padding(masonry::properties::Padding::from_vh(
-        Space::Sm.length(),
-        Space::Md.length(),
-    ));
-    flex_col((rail_tabs(app, editing), title, content.flex(1.0)))
+    flex_col((rail_tabs(app, editing), content.flex(1.0)))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
         .gap(Space::None)
 }

@@ -106,6 +106,18 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         label(text).color(pal.text_muted)
     });
 
+    let intro =
+        (app.chat.entries.is_empty() && app.chat.streaming_artifacts.is_empty()).then(|| {
+            recipes::prose_muted(
+                pal,
+                "Pick a model, then ask about the open font in the field below. \
+             The model runs on this machine and can measure glyphs, read \
+             kerning, and propose edits for you to review. Try: \
+             \"How does the stem of H compare with the other capitals?\""
+                    .into(),
+            )
+        });
+
     let mut transcript: Vec<Box<xilem::AnyWidgetView<Workspace>>> = app
         .chat
         .entries
@@ -237,6 +249,7 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             endpoint,
             xcolumn(Region::List, models),
             no_model,
+            intro,
             transcript.flex(1.0),
             status,
             prompt,

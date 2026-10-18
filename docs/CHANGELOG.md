@@ -22,6 +22,7 @@ Entries under Unreleased describe work being prepared, not an available public r
 
 ### Changed
 
+- Rail panels no longer print their name under the tab strip; the tab icon is the label. The Chat panel opens with a short note on what to do.
 - The Local AI panel's weight debt block is built from the panel row vocabulary, so its lines wrap at the dock; it had used bare labels that pushed the whole left column wider than the dock, which cut off the buttons and stretched the marks bar. The last legacy row kind is gone from the vocabulary, and a layout test now renders every rail with the marks bar at the dock width and fails on the first widget that leaves it.
 
 - The canonical source repository is now [fontgarden/runebender](https://github.com/fontgarden/runebender).
