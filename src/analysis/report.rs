@@ -119,6 +119,180 @@ fn compare_with_other_sources(
         .collect()
 }
 
+/// Audit one whole source: every glyph through [`analyze_layer`], reduced
+/// to counts and the worst offenders, at most `limit` names per list.
+///
+/// Stems are compared within three groups, uppercase, lowercase and other,
+/// because a face sets its capitals heavier by design. The lists are sorted
+/// worst first and each entry says which glyph, so a reader can follow up
+/// with `analyze_glyph`.
+pub fn analyze_project_font(
+    project: &Project,
+    source: SourceId,
+    limit: usize,
+) -> Result<Value, String> {
+    let selected = project.document_source(source).ok_or("unknown source")?;
+    let default = selected.default_layer();
+    let theme = crate::ui::theme::load_theme("dark").ok_or("missing built-in theme")?;
+    let limit = limit.clamp(1, 100);
+
+    let mut total = 0_usize;
+    let mut empty = 0_usize;
+    let mut marks = std::collections::BTreeMap::<String, usize>::new();
+    let mut points = 0_usize;
+    let mut off_8_points = 0_usize;
+    let mut off_grid = Vec::<(usize, usize, String)>::new();
+    let mut width_off_8 = Vec::<String>::new();
+    let mut joins = Vec::<(usize, usize, String)>::new();
+    let mut stems = [Vec::<(i64, String)>::new(), Vec::new(), Vec::new()];
+    let others: Vec<_> = project
+        .document_sources()
+        .filter(|other| other.id() != source)
+        .map(|other| (other.id(), other.name().to_owned(), other.default_layer()))
+        .collect();
+    let mut missing = vec![Vec::<String>::new(); others.len()];
+    let mut incompatible = vec![Vec::<(String, String)>::new(); others.len()];
+
+    for name in project.glyph_names() {
+        let Some(layer) = project.document_layer(name, &default) else {
+            continue;
+        };
+        total += 1;
+        if let Some(label) = crate::ui::theme::mark_label_for_layer(layer, &theme) {
+            *marks.entry(label).or_default() += 1;
+        }
+        if layer.contours().next().is_none() && layer.components().next().is_none() {
+            empty += 1;
+            continue;
+        }
+        let report = analyze_layer(layer);
+        let count = |path: &[&str]| -> usize {
+            let mut value = &report;
+            for key in path {
+                value = &value[*key];
+            }
+            usize::try_from(value.as_u64().unwrap_or_default()).unwrap_or(usize::MAX)
+        };
+        let glyph_points = count(&["grid", "points"]);
+        let off = glyph_points.saturating_sub(count(&["grid", "on_8"]));
+        points += glyph_points;
+        off_8_points += off;
+        if off > 0 {
+            off_grid.push((off, glyph_points, name.to_owned()));
+        }
+        if report["width_on_8"] == false {
+            width_off_8.push(name.to_owned());
+        }
+        let (kink, g1) = (count(&["nodes", "kink"]), count(&["nodes", "g1"]));
+        if kink + g1 > 0 {
+            joins.push((kink, g1, name.to_owned()));
+        }
+        if let Some(stem) = report["stem"].as_i64().filter(|stem| *stem > 0) {
+            let group = match layer.codepoints().next() {
+                Some(c) if c.is_uppercase() => 0,
+                Some(c) if c.is_lowercase() => 1,
+                _ => 2,
+            };
+            stems[group].push((stem, name.to_owned()));
+        }
+        for (index, (_, _, other_default)) in others.iter().enumerate() {
+            match project.document_layer(name, other_default) {
+                None => missing[index].push(name.to_owned()),
+                Some(other) => {
+                    if let Err(reason) = compatibility(layer, other) {
+                        incompatible[index].push((name.to_owned(), reason));
+                    }
+                }
+            }
+        }
+    }
+
+    off_grid.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.2.cmp(&b.2)));
+    joins.sort_by(|a, b| (b.0 + b.1).cmp(&(a.0 + a.1)).then_with(|| a.2.cmp(&b.2)));
+    let stem_groups: Vec<Value> = ["uppercase", "lowercase", "other"]
+        .iter()
+        .zip(stems.iter_mut())
+        .filter(|(_, group)| !group.is_empty())
+        .map(|(label, group)| {
+            group.sort_by_key(|(stem, _)| *stem);
+            let median = group[group.len() / 2].0;
+            // The stem is the narrowest vertical ink span. A glyph with no
+            // vertical stem, such as W, Z or S, reports a span many times
+            // wider than its neighbours; those are listed apart so the
+            // farthest list shows real weight differences.
+            let ceiling = median.saturating_mul(5) / 2;
+            let no_vertical_stem: Vec<_> = group
+                .iter()
+                .filter(|(stem, _)| *stem > ceiling)
+                .map(|(_, name)| name)
+                .collect();
+            let mut outliers: Vec<_> = group
+                .iter()
+                .filter(|(stem, _)| *stem <= ceiling)
+                .map(|(stem, name)| ((stem - median).abs(), *stem, name))
+                .filter(|(away, _, _)| *away > 0)
+                .collect();
+            outliers.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.2.cmp(b.2)));
+            json!({
+                "group": label,
+                "glyphs": group.len(),
+                "median": median,
+                "min": group.first().map(|(stem, _)| *stem),
+                "max": group.last().map(|(stem, _)| *stem),
+                "farthest": outliers.iter().take(limit).map(|(away, stem, name)| {
+                    json!({"glyph": name, "stem": stem, "from_median": away})
+                }).collect::<Vec<_>>(),
+                "no_vertical_stem": no_vertical_stem.iter().take(limit).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+
+    Ok(json!({
+        "ok": true,
+        "source_id": source.0,
+        "source": selected.name(),
+        "layer": default.name,
+        "limit": limit,
+        "glyphs": {"total": total, "drawn": total - empty, "empty": empty},
+        "marks": marks,
+        "grid": {
+            "points": points,
+            "off_8": off_8_points,
+            "glyphs_off_8": off_grid.len(),
+            "worst": off_grid.iter().take(limit).map(|(off, all, name)| {
+                json!({"glyph": name, "off_8": off, "points": all})
+            }).collect::<Vec<_>>(),
+        },
+        "width_off_8": {
+            "count": width_off_8.len(),
+            "glyphs": width_off_8.iter().take(limit).collect::<Vec<_>>(),
+        },
+        "joins": {
+            "glyphs_with_issues": joins.len(),
+            "worst": joins.iter().take(limit).map(|(kink, g1, name)| {
+                json!({"glyph": name, "kink": kink, "g1": g1})
+            }).collect::<Vec<_>>(),
+        },
+        "stems": stem_groups,
+        "sources": others.iter().enumerate().map(|(index, (id, other_name, _))| {
+            json!({
+                "source_id": id.0,
+                "name": other_name,
+                "missing": {
+                    "count": missing[index].len(),
+                    "glyphs": missing[index].iter().take(limit).collect::<Vec<_>>(),
+                },
+                "incompatible": {
+                    "count": incompatible[index].len(),
+                    "glyphs": incompatible[index].iter().take(limit).map(|(name, reason)| {
+                        json!({"glyph": name, "reason": reason})
+                    }).collect::<Vec<_>>(),
+                },
+            })
+        }).collect::<Vec<_>>(),
+    }))
+}
+
 /// The numbers of one layer on its own.
 pub fn analyze_layer(layer: LayerView<'_>) -> Value {
     let (stem, bar) = dimensions::stem_and_bar_from_layer(layer);
@@ -317,6 +491,51 @@ mod tests {
         assert_eq!(sources[0]["present"], true);
         assert_eq!(sources[0]["compatible"], true, "{}", sources[0]);
         assert!(report["nodes"]["total"].as_u64().unwrap() >= 12);
+    }
+
+    #[test]
+    fn virtua_font_audit_counts_every_glyph_and_names_the_worst() {
+        let project = Project::load(&fonts::designspace()).expect("the designspace loads");
+        let id = project.document_sources().next().unwrap().id();
+        let started = std::time::Instant::now();
+        let audit = analyze_project_font(&project, id, 5).unwrap();
+        assert!(started.elapsed().as_secs() < 20, "{:?}", started.elapsed());
+        assert_eq!(audit["ok"], true);
+        let total = audit["glyphs"]["total"].as_u64().unwrap();
+        assert_eq!(total, project.glyph_names().count() as u64);
+        assert_eq!(
+            audit["glyphs"]["drawn"].as_u64().unwrap() + audit["glyphs"]["empty"].as_u64().unwrap(),
+            total
+        );
+        assert!(audit["grid"]["points"].as_u64().unwrap() > 1000);
+        assert!(audit["grid"]["worst"].as_array().unwrap().len() <= 5);
+        let stems = audit["stems"].as_array().unwrap();
+        let upper = stems.iter().find(|g| g["group"] == "uppercase").unwrap();
+        assert!(upper["median"].as_i64().unwrap() > 0, "{upper}");
+        assert!(upper["farthest"].as_array().unwrap().len() <= 5);
+        let farthest = upper["farthest"].as_array().unwrap();
+        assert!(
+            farthest.iter().all(|f| f["stem"].as_i64().unwrap() < 300),
+            "{upper}"
+        );
+        assert!(
+            upper["no_vertical_stem"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|g| g == "W"),
+            "{upper}"
+        );
+        let sources = audit["sources"].as_array().unwrap();
+        assert_eq!(sources.len(), 1);
+        assert!(
+            sources[0]["incompatible"]["glyphs"]
+                .as_array()
+                .unwrap()
+                .len()
+                <= 5
+        );
+        assert!(analyze_project_font(&project, SourceId(99), 5).is_err());
     }
 
     #[test]

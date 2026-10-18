@@ -117,6 +117,14 @@ pub fn tools() -> Vec<agent::Tool> {
         }, "required":["glyph"], "additionalProperties":false}),
     });
     result.push(agent::Tool {
+        name: "analyze_font".into(),
+        description: "Audit one whole live source without changing it: glyph counts by mark label, points off the 8 unit grid with the worst glyphs named, widths off the 8 grid, glyphs with kinks or G1 curve joins, stem medians for uppercase, lowercase and other with the farthest glyphs and the glyphs that have no vertical stem listed apart, and for every other source which glyphs are missing or not point compatible with a reason. Each list holds at most limit names, default 20. Call it to triage a font, then analyze_glyph on the names it returns.".into(),
+        parameters: json!({"type":"object", "properties":{
+            "source":{"type":"integer","minimum":0},
+            "limit":{"type":"integer","minimum":1,"maximum":100}
+        }, "additionalProperties":false}),
+    });
+    result.push(agent::Tool {
         name: "proposal_install".into(),
         description: "Install a reviewed proposal into the unsaved foreground, with one undo step per glyph. Only set authorization=user-approved after the user asks to apply it. Set keep_structure=false explicitly for a redraw; this can break interpolation with other sources. New glyph names must first exist in the editor. Re-proof after installation.".into(),
         parameters: json!({"type":"object", "properties":{
@@ -660,6 +668,18 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
                     crate::analysis::report::analyze_project_glyph(project, source, glyph, layer)?
                 }
             }
+        }
+        "analyze_font" => {
+            let limit = object.get("limit").map_or(Ok(20), |v| {
+                v.as_u64()
+                    .and_then(|n| usize::try_from(n).ok())
+                    .filter(|n| (1..=100).contains(n))
+                    .ok_or("limit must be between 1 and 100")
+            })?;
+            if branch.is_some() {
+                return Err("analyze_font audits a source, not an experiment branch".into());
+            }
+            crate::analysis::report::analyze_project_font(project, source, limit)?
         }
         "read_glyph" => {
             let glyph = object
