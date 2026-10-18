@@ -9,6 +9,7 @@ Entries under Unreleased describe work being prepared, not an available public r
 
 - Local macOS application and drag-to-Applications DMG packaging for maintainer testing, with a temporary application icon.
 - Live MCP tool `analyze_glyph`: stem and bar, ink spans, node continuity, grid fit, mark label, and point-structure compatibility with every other source, with a reason.
+- `runebender mcp --install` writes the live server, by the binary's absolute path, into Claude Code, Codex, Claude Desktop and Cursor settings; `--dry-run` reports without writing.
 - Live MCP workflows served as prompts (`review-glyph`, `compatibility-check`, `spacing-pass`, `kerning-pass`, `draft-weight`); the same files under `skills/` can be linked into a client's skills folder.
 
 ### Changed

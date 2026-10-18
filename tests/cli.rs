@@ -1225,3 +1225,51 @@ fn babelfont_info_and_proof_use_the_importer_without_writing_a_ufo() {
     assert!(std::fs::read_to_string(&output).unwrap().contains("<svg"));
     std::fs::remove_file(output).unwrap();
 }
+
+#[test]
+fn mcp_install_writes_every_client_config_with_the_binary_path() {
+    let home = std::env::temp_dir().join(format!("runebender-mcp-install-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(home.join(".codex")).expect("home");
+    std::fs::write(
+        home.join(".codex/config.toml"),
+        "# keep me\nmodel = \"x\"\n",
+    )
+    .expect("seed");
+    let run_home = |args: &[&str]| {
+        let output = Command::new(env!("CARGO_BIN_EXE_runebender"))
+            .env("HOME", &home)
+            .arg("--json")
+            .args(args)
+            .output()
+            .expect("the binary runs");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let value: serde_json::Value =
+            serde_json::from_str(stdout.lines().last().unwrap_or("null")).expect("json");
+        (output.status.code().expect("code"), value)
+    };
+    let (code, dry) = run_home(&["mcp", "--install", "--dry-run"]);
+    assert_eq!(code, 0, "{dry}");
+    assert_eq!(dry["clients"].as_array().expect("list").len(), 4);
+    assert!(!home.join(".cursor/mcp.json").exists());
+
+    let (code, out) = run_home(&["mcp", "--install"]);
+    assert_eq!(code, 0, "{out}");
+    let binary = out["command"].as_str().expect("binary");
+    assert!(Path::new(binary).is_absolute());
+    let cursor: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(home.join(".cursor/mcp.json")).expect("cursor"),
+    )
+    .expect("json");
+    assert_eq!(cursor["mcpServers"]["runebender"]["command"], binary);
+    assert_eq!(cursor["mcpServers"]["runebender"]["args"][1], "--live");
+    let codex = std::fs::read_to_string(home.join(".codex/config.toml")).expect("codex");
+    assert!(codex.starts_with("# keep me\nmodel = \"x\"\n"));
+    assert!(codex.contains("[mcp_servers.runebender]"));
+    assert!(home.join(".claude.json").is_file());
+
+    let (code, again) = run_home(&["mcp", "--install", "codex"]);
+    assert_eq!(code, 0);
+    assert_eq!(again["clients"][0]["changed"], false);
+    let _ = std::fs::remove_dir_all(&home);
+}

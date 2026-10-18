@@ -8,7 +8,7 @@ Sibling repositories are not workspace members; do not modify them unless a task
 
 This file is the entry point for any coding agent working in the repository.
 The root `.mcp.json` declares `runebender mcp --live`, the editor's local MCP command.
-Clients that read `.mcp.json` can use it directly; other clients can register the same command in their own settings.
+Clients that read `.mcp.json` can use it directly; `runebender mcp --install` registers the built binary by absolute path in Claude Code, Codex, Claude Desktop and Cursor.
 The live host also serves the workflows in `skills/` as MCP prompts; link a `skills/runebender-*` directory into a client's skills folder to use one as a skill.
 The tiny `.codex/config.toml` repeats that command so Codex can discover it automatically in a trusted checkout.
 See [MCP and the live editor](https://runebender.org/docs/mcp.html) for setup and document-selection guidance.

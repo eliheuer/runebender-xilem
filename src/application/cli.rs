@@ -15,6 +15,7 @@ mod agent_commands;
 mod font_commands;
 mod graph_commands;
 mod mcp;
+mod mcp_install;
 mod theme;
 
 use agent_commands::agent_call;
@@ -24,6 +25,7 @@ use font_commands::{
 };
 use graph_commands::{graph_check, graph_run, graph_types};
 use mcp::mcp_serve;
+use mcp_install::McpClient;
 use theme::theme_command;
 
 use clap::{Parser, Subcommand};
@@ -38,6 +40,43 @@ use runebender::workflows::graph_run;
 use serde_json::json;
 
 /// Exit codes, matching font-ml so a caller can branch on them.
+/// `mcp --install`: one line per client, or the reports as JSON.
+fn mcp_install_cmd(clients: &[McpClient], dry_run: bool, json: bool) -> i32 {
+    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+        return fail(json, exit::FAILED, "HOME is not set");
+    };
+    let binary = match std::env::current_exe().and_then(std::fs::canonicalize) {
+        Ok(binary) => binary,
+        Err(error) => return fail(json, exit::FAILED, &format!("this binary's path: {error}")),
+    };
+    match mcp_install::install(clients, dry_run, &home, &binary) {
+        Ok(reports) => {
+            if json {
+                println!(
+                    "{}",
+                    json!({"ok": true, "command": binary, "clients": reports})
+                );
+            } else {
+                for report in &reports {
+                    let verb = match (report["written"] == true, report["changed"] == true) {
+                        (true, _) => "wrote",
+                        (false, true) => "would write",
+                        (false, false) => "already set in",
+                    };
+                    println!(
+                        "{}: {verb} {}",
+                        report["client"].as_str().unwrap_or_default(),
+                        report["path"].as_str().unwrap_or_default()
+                    );
+                }
+                println!("server: {} mcp --live", binary.display());
+            }
+            exit::OK
+        }
+        Err(message) => fail(json, exit::FAILED, &message),
+    }
+}
+
 mod exit {
     /// Ran, and the answer is yes or the work is done.
     pub(crate) const OK: i32 = 0;
@@ -157,7 +196,7 @@ enum Command {
     /// remain proposals; live tools can apply explicitly authorized edits.
     Mcp {
         /// The designspace or UFO the client works on.
-        #[arg(long, required_unless_present_any = ["session", "live"], conflicts_with_all = ["session", "live"])]
+        #[arg(long, required_unless_present_any = ["session", "live", "install"], conflicts_with_all = ["session", "live", "install"])]
         font: Option<PathBuf>,
         /// The live editor socket. Never reads or writes source files.
         #[arg(long)]
@@ -168,6 +207,14 @@ enum Command {
         /// The font-ml binary, for propose.
         #[arg(long)]
         tool: Option<PathBuf>,
+        /// Write this binary, by absolute path, as the `runebender` MCP
+        /// server into the named clients' settings files, or into all
+        /// of them. Other entries in those files are kept.
+        #[arg(long, num_args = 0.., value_delimiter = ',', conflicts_with_all = ["session", "live", "tool"])]
+        install: Option<Vec<McpClient>>,
+        /// With --install, report what would change and write nothing.
+        #[arg(long, requires = "install")]
+        dry_run: bool,
     },
     /// Derive precomposed glyphs from their base and marks through
     /// anchors, into the `com.runebender.proposal.compose` layer.
@@ -627,10 +674,16 @@ pub(crate) fn run() -> Startup {
             exit::OK
         }
         Command::Mcp {
+            install: Some(clients),
+            dry_run,
+            ..
+        } => mcp_install_cmd(clients, *dry_run, json),
+        Command::Mcp {
             font,
             session,
             live,
             tool,
+            ..
         } => mcp_serve(font.as_deref(), session.as_deref(), *live, tool.as_deref()),
         Command::Compose {
             source,
