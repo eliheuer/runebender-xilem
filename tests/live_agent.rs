@@ -289,6 +289,7 @@ fn live_mcp_serves_workflows_as_prompts_before_any_connection() {
         .map(|p| p["name"].as_str().unwrap())
         .collect();
     for expected in [
+        "runebender",
         "review-glyph",
         "compatibility-check",
         "spacing-pass",
@@ -321,7 +322,7 @@ fn live_mcp_serves_workflows_as_prompts_before_any_connection() {
         {
             if matches!(
                 word,
-                "set_width" | "user_approved" | "document_epoch" | "lsb" | "rsb"
+                "set_width" | "user_approved" | "document_epoch" | "lsb" | "rsb" | "runebender_"
             ) || word.ends_with("_date")
                 || !word.contains('_')
             {

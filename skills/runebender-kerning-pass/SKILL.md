@@ -1,6 +1,7 @@
 ---
 name: runebender-kerning-pass
 description: Kern a set of pairs in a session-only experiment in the open Runebender editor, compare specimens A/B, and apply only on request. Use when asked to kern, fix pairs or check kerning.
+surface: runebender-live-v1
 ---
 
 # Kerning pass

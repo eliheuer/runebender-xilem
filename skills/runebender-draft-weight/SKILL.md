@@ -1,6 +1,7 @@
 ---
 name: runebender-draft-weight
 description: Draft a heavier or lighter master for glyphs in the open Runebender editor from an approved source, as a proposal the designer grades. Use when asked to bolden, embolden, draft the Bold, or fill weight debt.
+surface: runebender-live-v1
 ---
 
 # Draft a weight

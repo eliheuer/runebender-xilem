@@ -21,7 +21,17 @@ pub struct Prompt {
     file: &'static str,
 }
 
+/// The tool contract these skills are written for. A skill file that
+/// names a different surface is refused, so an old skill cannot drive a
+/// host whose tools changed under it.
+pub const SURFACE: &str = "runebender-live-v1";
+
 const PROMPTS: &[Prompt] = &[
+    Prompt {
+        name: "runebender",
+        arguments: &[],
+        file: include_str!("../../skills/runebender/SKILL.md"),
+    },
     Prompt {
         name: "review-glyph",
         arguments: &[
@@ -80,6 +90,14 @@ impl Prompt {
             .unwrap_or_default()
     }
 
+    /// The `surface:` line from the front matter, if any.
+    pub fn surface(&self) -> Option<&'static str> {
+        front_matter(self.file)
+            .lines()
+            .find_map(|line| line.strip_prefix("surface:"))
+            .map(str::trim)
+    }
+
     /// The workflow text after the front matter.
     pub fn body(&self) -> &'static str {
         body(self.file)
@@ -135,6 +153,12 @@ pub fn get(name: &str, arguments: &Value) -> Result<Value, String> {
         .iter()
         .find(|prompt| prompt.name == name)
         .ok_or_else(|| format!("unknown prompt: {name}"))?;
+    if prompt.surface() != Some(SURFACE) {
+        return Err(format!(
+            "prompt {name} is written for surface {}, this host serves {SURFACE}",
+            prompt.surface().unwrap_or("none")
+        ));
+    }
     let text = prompt.render(arguments)?;
     Ok(json!({
         "description": prompt.description(),
@@ -155,10 +179,20 @@ mod tests {
                 prompt.name
             );
             let front = front_matter(prompt.file);
+            let expected = if prompt.name == "runebender" {
+                "name: runebender\n".to_owned()
+            } else {
+                format!("name: runebender-{}\n", prompt.name)
+            };
             assert!(
-                front.contains(&format!("name: runebender-{}", prompt.name)),
-                "{} skill name must be runebender-{}",
-                prompt.name,
+                format!("{front}\n").contains(&expected),
+                "{} skill name must be {expected}",
+                prompt.name
+            );
+            assert_eq!(
+                prompt.surface(),
+                Some(SURFACE),
+                "{} must declare surface: {SURFACE}",
                 prompt.name
             );
             let body = prompt.body();
@@ -201,8 +235,21 @@ mod tests {
         assert!(!text.contains("{{"));
         assert!(get("review-glyph", &json!({})).is_err());
         assert!(get("nothing", &json!({})).is_err());
+        let hub = get("runebender", &json!({})).unwrap();
+        let text = hub["messages"][0]["content"]["text"].as_str().unwrap();
+        for name in prompts()
+            .iter()
+            .map(|p| p.name)
+            .filter(|n| *n != "runebender")
+        {
+            assert!(
+                text.contains(&format!("runebender-{name}")),
+                "hub must route to {name}"
+            );
+        }
         let listed = list();
         assert_eq!(listed["prompts"].as_array().unwrap().len(), prompts().len());
-        assert_eq!(listed["prompts"][0]["arguments"][0]["required"], true);
+        assert_eq!(listed["prompts"][0]["name"], "runebender");
+        assert_eq!(listed["prompts"][1]["arguments"][0]["required"], true);
     }
 }

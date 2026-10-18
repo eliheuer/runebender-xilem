@@ -1,6 +1,7 @@
 ---
 name: runebender-spacing-pass
 description: Propose sidebearing changes for a group of glyphs in the open Runebender editor, proofed in a text line, as a proposal the designer installs or discards. Use when asked to space, fit or even out glyphs.
+surface: runebender-live-v1
 ---
 
 # Spacing pass

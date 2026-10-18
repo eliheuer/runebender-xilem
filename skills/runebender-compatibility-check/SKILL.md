@@ -1,6 +1,7 @@
 ---
 name: runebender-compatibility-check
 description: Check which glyphs in the open Runebender editor will not interpolate between sources, and say exactly why. Use before a variable build or after drafting a second master.
+surface: runebender-live-v1
 ---
 
 # Compatibility check

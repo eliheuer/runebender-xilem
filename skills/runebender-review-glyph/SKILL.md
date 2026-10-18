@@ -1,6 +1,7 @@
 ---
 name: runebender-review-glyph
 description: Review one glyph in the open Runebender editor with numbers and a proof image, without changing it. Use when asked to look at, check, critique or measure a glyph.
+surface: runebender-live-v1
 ---
 
 # Review a glyph

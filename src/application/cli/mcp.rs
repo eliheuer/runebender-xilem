@@ -324,7 +324,7 @@ fn mcp_response(
                     "version": env!("CARGO_PKG_VERSION"),
                 },
                 "instructions": if live_mode {
-                    format!("{}\n\n{}", runebender::automation::live::INSTRUCTIONS, runebender::automation::script_recipe::AUTHORING_INSTRUCTIONS)
+                    format!("{}\n\n{}\n\nThe `runebender` prompt holds the full connection and safety rules and lists the workflow prompts.", runebender::automation::live::INSTRUCTIONS, runebender::automation::script_recipe::AUTHORING_INSTRUCTIONS)
                 } else { mcp_instructions(font.expect("font or session")) },
             }))
         }
