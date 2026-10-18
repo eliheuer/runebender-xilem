@@ -153,18 +153,23 @@ fn legacy_projection(app: &Workspace) -> Option<CanvasProjection> {
     })
 }
 
-/// A live proof's image size: what the person resized it to, or else half
-/// its raster when the recipe sets one, so a 2x proof shows at its true size.
+/// A live proof's image size: what the person resized it to, or else the
+/// standard node width with the height of the recipe's raster at that width.
+/// Resizing the node shows the proof larger.
 fn proof_size(app: &Workspace, node: &runebender::workflows::graph::Node) -> [f32; 2] {
     if let Some(size) = app.graph.content_sizes.get(&node.id) {
         return *size;
     }
+    let width = runebender::ui::graph::LIVE_W - runebender::ui::graph::PAD * 2.0;
     match node
         .values
         .get("recipe")
         .and_then(runebender::workflows::graph_live::recipe_raster)
     {
-        Some([width, height]) => [px32(width / 2.0), px32(height / 2.0)],
+        Some([raster_width, raster_height]) => [
+            px32(width),
+            px32(width * raster_height / raster_width.max(1.0)),
+        ],
         None => content_size(app, node.id, runebender::ui::graph::IMAGE_H),
     }
 }

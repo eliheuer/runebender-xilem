@@ -17,10 +17,10 @@ use std::sync::Arc;
 use masonry::accesskit::{Node, Role};
 use masonry::core::keyboard::{Key, KeyState, NamedKey};
 use masonry::core::{
-    AccessCtx, ChildrenIds, EventCtx, LayerType, LayoutCtx, MeasureCtx, NewWidget, PaintCtx,
-    PointerButton, PointerButtonEvent, PointerEvent, PointerScrollEvent, PointerUpdate,
-    PropertiesMut, PropertiesRef, PropertySet, RegisterCtx, ScrollDelta, TextEvent, Widget,
-    WidgetId, WidgetPod,
+    AccessCtx, ChildrenIds, CursorIcon, EventCtx, LayerType, LayoutCtx, MeasureCtx, NewWidget,
+    PaintCtx, PointerButton, PointerButtonEvent, PointerEvent, PointerScrollEvent, PointerUpdate,
+    PropertiesMut, PropertiesRef, PropertySet, QueryCtx, RegisterCtx, ScrollDelta, TextEvent,
+    Widget, WidgetId, WidgetPod,
 };
 use masonry::imaging::Painter;
 use masonry::kurbo::{
@@ -42,7 +42,6 @@ use crate::application::design::areas;
 use crate::application::design::theme::Palette;
 use crate::application::editor::tools::graph::RowState;
 use crate::application::widgets::context_menu::{ContextMenu, MenuAction, MenuRow, MenuTarget};
-use crate::application::widgets::icon_paint;
 use crate::application::widgets::source_text_area::SourceTextArea;
 use crate::application::widgets::text_label::{self, Anchor};
 use crate::application::workspace::Workspace;
@@ -646,13 +645,24 @@ impl Widget for GraphWidget {
                 title_ink,
                 Anchor::Start,
             );
-            let mark_text = match self.rows.get(&nb.id) {
-                Some(RowState::Running(_)) => "\u{2026}",
-                Some(RowState::Done(Status::Ran, _)) => "\u{2713}",
-                Some(RowState::Done(Status::Skipped, _)) => "=",
-                Some(RowState::Done(Status::Failed, _)) => "\u{2717}",
-                Some(RowState::Done(Status::Blocked, _)) => "\u{2013}",
-                _ => "",
+            // The run state sits at the right of the title: a mark for a disk
+            // run, a word for embedded content. Idle and current say nothing.
+            let content_state = match &nb.content {
+                Some(nl::NodeContent::Script(content)) => Some(&content.state),
+                Some(nl::NodeContent::Image(content)) => Some(&content.state),
+                None => None,
+            };
+            let mark_text = match (self.rows.get(&nb.id), content_state) {
+                (_, Some(nl::ContentState::Running)) => "Running\u{2026}",
+                (_, Some(nl::ContentState::Stale)) => "Stale",
+                (_, Some(nl::ContentState::Error(_))) => "Failed",
+                (_, Some(nl::ContentState::Idle | nl::ContentState::Current)) => "",
+                (Some(RowState::Running(_)), None) => "\u{2026}",
+                (Some(RowState::Done(Status::Ran, _)), None) => "\u{2713}",
+                (Some(RowState::Done(Status::Skipped, _)), None) => "=",
+                (Some(RowState::Done(Status::Failed, _)), None) => "\u{2717}",
+                (Some(RowState::Done(Status::Blocked, _)), None) => "\u{2013}",
+                (Some(RowState::Waiting) | None, None) => "",
             };
             let header_right = tf * Point::new(nb.rect.x1, nb.rect.y0 + nl::HEADER_H / 2.0);
             text_label::draw(
@@ -696,59 +706,6 @@ impl Widget for GraphWidget {
             if let Some(RowState::Done(_, Some(note))) = self.rows.get(&nb.id) {
                 let at = tf * Point::new(nb.rect.x0, nb.rect.y1 + nl::PAD);
                 text_label::draw(painter, at, note, text_px, pal.text_muted, Anchor::Start);
-            }
-            if let Some(content) = &nb.content {
-                let (state, identity) = match content {
-                    nl::NodeContent::Script(content) => {
-                        (&content.state, Some(content.content_hash.as_str()))
-                    }
-                    nl::NodeContent::Image(content) => (
-                        &content.state,
-                        content
-                            .image
-                            .as_ref()
-                            .or(content.previous_image.as_ref())
-                            .map(|image| image.output_hash.as_str()),
-                    ),
-                };
-                let short_identity = identity
-                    .filter(|identity| !identity.is_empty())
-                    .map(|identity| identity.chars().take(24).collect::<String>());
-                let status: String = match state {
-                    nl::ContentState::Idle => "Not run".into(),
-                    nl::ContentState::Running => "Running\u{2026}".into(),
-                    nl::ContentState::Current => short_identity.map_or_else(
-                        || "Current".into(),
-                        |identity| format!("Current · {identity}"),
-                    ),
-                    nl::ContentState::Stale => short_identity
-                        .map_or_else(|| "Stale".into(), |identity| format!("Stale · {identity}")),
-                    nl::ContentState::Error(message) => message.clone(),
-                };
-                let at =
-                    tf * Point::new(nb.rect.x0 + nl::PAD, nb.rect.y1 - nl::RESIZE_HANDLE / 2.0);
-                text_label::draw(
-                    painter,
-                    at,
-                    &status,
-                    text_px,
-                    if matches!(state, nl::ContentState::Error(_)) {
-                        pal.role("danger")
-                    } else {
-                        pal.text_muted
-                    },
-                    Anchor::Start,
-                );
-                if let Some(handle) = nb.resize_rect() {
-                    let a = tf * Point::new(handle.x0, handle.y0);
-                    let b = tf * Point::new(handle.x1, handle.y1);
-                    icon_paint::paint(
-                        painter,
-                        "node-resize",
-                        Rect::new(a.x, a.y, b.x, b.y),
-                        pal.text_muted,
-                    );
-                }
             }
         }
         // Foreground wires and ports stay visible over card edges, as in GPUI.
@@ -804,6 +761,22 @@ impl Widget for GraphWidget {
                     painter.stroke(&ring, &Stroke::new(line), pal.text).draw();
                 }
             }
+        }
+    }
+
+    fn get_cursor(&self, ctx: &QueryCtx<'_>, pos: Point) -> CursorIcon {
+        // A node's resize corner is not drawn; the cursor shows it, as a window corner does.
+        let resizing = matches!(self.drag, Some(Drag::Resize { .. }));
+        let at = self.to_canvas(ctx.to_local(pos));
+        if resizing
+            || self
+                .boxes
+                .iter()
+                .any(|node| node.resize_rect().is_some_and(|corner| corner.contains(at)))
+        {
+            CursorIcon::NwseResize
+        } else {
+            CursorIcon::Default
         }
     }
 

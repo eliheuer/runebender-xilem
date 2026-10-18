@@ -280,9 +280,11 @@ pub fn recipe_raster(recipe: &Value) -> Option<[f64; 2]> {
 ///
 /// `recipes` come from [`specimen_recipe`], one per line, top to bottom.
 pub fn specimen_starter(source_id: SourceId, recipes: Vec<Value>) -> NodeGraph {
-    // A proof node is its image plus header, two port rows, padding, and the
-    // resize handle (see `ui::graph::node_box_with_content`), then a gap.
-    const NODE_CHROME: f32 = 92.0;
+    // A proof node shows its image at the standard content width, 240 px,
+    // inside a header, two port rows, and padding: 80 px in all
+    // (see `ui::graph::node_box_with_content`). Then a gap.
+    const CONTENT_WIDTH: f64 = 240.0;
+    const NODE_CHROME: f32 = 80.0;
     const GAP: f32 = 32.0;
     let mut graph = NodeGraph::default();
     let source = graph.add("live.font", [32.0, 32.0]);
@@ -293,7 +295,7 @@ pub fn specimen_starter(source_id: SourceId, recipes: Vec<Value>) -> NodeGraph {
         .insert("source".into(), json!(source_id.0));
     let mut y = 32.0_f32;
     for recipe in recipes {
-        let height = recipe_raster(&recipe).map_or(144.0, |[_, h]| h / 2.0);
+        let height = recipe_raster(&recipe).map_or(144.0, |[w, h]| CONTENT_WIDTH * h / w.max(1.0));
         let proof = graph.add("live.proof", [336.0, y]);
         graph
             .node_mut(proof)

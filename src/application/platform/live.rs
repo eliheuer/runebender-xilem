@@ -32,30 +32,47 @@ fn installed_in_active_source(
     serde_json::from_value(result["installed"]["installed"].clone()).ok()
 }
 
+/// The current workspace's wake signals: the socket mailbox and the live graph.
+///
+/// The polling task starts once and outlives a reload, which swaps in a new
+/// workspace with new signals. Each view build publishes them here and the
+/// task reads them on every tick, so a reload cannot leave it watching flags
+/// nobody sets.
+type WakeSignals = (Option<Arc<AtomicBool>>, Arc<AtomicBool>);
+static WAKE_SIGNALS: std::sync::Mutex<Option<WakeSignals>> = std::sync::Mutex::new(None);
+
+fn wake_requested() -> bool {
+    let signals = WAKE_SIGNALS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    signals.as_ref().is_some_and(|(pending, live_graph)| {
+        pending
+            .as_ref()
+            .is_some_and(|pending| pending.load(Ordering::Acquire))
+            || live_graph.load(Ordering::Acquire)
+    })
+}
+
 /// Pumps the mailbox on the UI thread; socket workers never touch font data.
 pub(crate) fn with_live<V: xilem::WidgetView<Workspace>>(
     view: V,
     pending: Option<Arc<AtomicBool>>,
     live_graph_pending: Arc<AtomicBool>,
 ) -> impl xilem::WidgetView<Workspace> + use<V> {
+    *WAKE_SIGNALS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some((pending, live_graph_pending));
     xilem::core::fork(
         view,
         xilem::view::task_raw(
-            move |proxy: xilem::core::MessageProxy<()>, _: &mut Workspace| {
-                let pending = pending.clone();
-                let live_graph_pending = live_graph_pending.clone();
-                async move {
-                    loop {
-                        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
-                        let has_request = pending
-                            .as_ref()
-                            .is_some_and(|pending| pending.load(Ordering::Acquire));
-                        if !(has_request || live_graph_pending.load(Ordering::Acquire)) {
-                            continue;
-                        }
-                        if proxy.message(()).is_err() {
-                            return;
-                        }
+            move |proxy: xilem::core::MessageProxy<()>, _: &mut Workspace| async move {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+                    if !wake_requested() {
+                        continue;
+                    }
+                    if proxy.message(()).is_err() {
+                        return;
                     }
                 }
             },
@@ -361,6 +378,22 @@ impl Workspace {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_wake_loop_follows_the_newest_workspace_signals() {
+        let first = Arc::new(AtomicBool::new(false));
+        let _ = with_live(xilem::view::label(""), None, first.clone());
+        // A reload builds the view again with a new workspace's signals.
+        let second = Arc::new(AtomicBool::new(false));
+        let _ = with_live(xilem::view::label(""), None, second.clone());
+        first.store(true, Ordering::Release);
+        assert!(
+            !wake_requested(),
+            "the replaced workspace no longer wakes it"
+        );
+        second.store(true, Ordering::Release);
+        assert!(wake_requested());
+    }
     use super::*;
     use runebender::font::project::{Project, SourceInput};
     use runebender::font::variable::SourceId;

@@ -200,14 +200,15 @@ impl NodeBox {
             };
             Rect::new(
                 self.rect.x0 + PAD,
-                self.rect.y1 - height - PAD - RESIZE_HANDLE,
+                self.rect.y1 - height - PAD,
                 self.rect.x1 - PAD,
-                self.rect.y1 - PAD - RESIZE_HANDLE,
+                self.rect.y1 - PAD,
             )
         })
     }
 
-    /// The bottom-right affordance for resizing an embedded node.
+    /// The bottom-right corner that resizes an embedded node. It is not
+    /// drawn: the pointer shows a resize cursor over it, as a window corner does.
     pub fn resize_rect(&self) -> Option<Rect> {
         self.content_rect().map(|_| {
             Rect::new(
@@ -289,10 +290,8 @@ pub fn node_box_with_content(
     };
     let width = if live { LIVE_W } else { NODE_W }.max(content_width);
     let content_height = match &content {
-        Some(NodeContent::Script(content)) => {
-            f64::from(content.size[1]) + PAD * 2.0 + RESIZE_HANDLE
-        }
-        Some(NodeContent::Image(content)) => f64::from(content.size[1]) + PAD * 2.0 + RESIZE_HANDLE,
+        Some(NodeContent::Script(content)) => f64::from(content.size[1]) + PAD * 2.0,
+        Some(NodeContent::Image(content)) => f64::from(content.size[1]) + PAD * 2.0,
         None => 0.0,
     };
     // The old live-node shell reserved space for canvas action buttons and a
