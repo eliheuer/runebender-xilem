@@ -26,6 +26,7 @@ The live tools talk to the unsaved document inside the running editor. Nothing h
 
 ## Which skill
 
+- `runebender-triage-font`: audit a whole source and rank what needs eyes first. Read only.
 - `runebender-review-glyph`: look at, check, critique or measure one glyph. Read only.
 - `runebender-compatibility-check`: whether glyphs interpolate between sources, and the first reason they do not.
 - `runebender-spacing-pass`: sidebearings for a set of glyphs, as proposals.

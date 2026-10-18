@@ -60,6 +60,31 @@ pub fn sessions() -> Vec<PathBuf> {
     paths
 }
 
+/// Removes session directories whose socket no longer answers, which a
+/// crashed or killed editor leaves behind. Returns how many were removed.
+/// Only entries this user owns in the temporary directory are touched, and
+/// a socket that merely times out is left alone in case its editor is busy.
+pub fn prune_stale() -> usize {
+    let mut removed = 0;
+    for path in sessions() {
+        let dead = match UnixStream::connect(&path) {
+            Ok(_) => false,
+            Err(error) => matches!(
+                error.kind(),
+                io::ErrorKind::ConnectionRefused | io::ErrorKind::NotFound
+            ),
+        };
+        if dead
+            && let Some(directory) = path.parent()
+            && std::fs::remove_file(&path).is_ok()
+            && std::fs::remove_dir(directory).is_ok()
+        {
+            removed += 1;
+        }
+    }
+    removed
+}
+
 /// A pending operation, with a deadline checked before the editor invokes it.
 #[derive(Debug)]
 pub struct Pending {
@@ -135,6 +160,9 @@ impl Server {
     /// Creates a private directory and socket in the system temporary directory.
     /// No source data is written there. The path identifies this document lifetime.
     pub fn start() -> io::Result<Self> {
+        // Each start tidies what earlier editors left; 376 dead sockets had
+        // piled up for one live editor on 2026-10-17.
+        let _ = prune_stale();
         let epoch = format!(
             "{}-{}-{}",
             std::process::id(),
@@ -809,5 +837,30 @@ mod tests {
         drop(server);
         assert!(client.join().unwrap().is_err());
         assert!(!path.exists());
+    }
+}
+
+#[cfg(test)]
+mod prune_tests {
+    use super::*;
+
+    #[test]
+    fn prune_removes_dead_sessions_and_keeps_live_ones() {
+        let live = Server::start().expect("a live server");
+        let live_path = live.path().to_path_buf();
+        let dead_dir =
+            std::env::temp_dir().join(format!("runebender-live-dead{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dead_dir);
+        std::fs::create_dir(&dead_dir).unwrap();
+        let dead_sock = dead_dir.join("session.sock");
+        drop(UnixListener::bind(&dead_sock).unwrap());
+        assert!(dead_sock.exists());
+        assert!(prune_stale() >= 1);
+        assert!(!dead_sock.exists() && !dead_dir.exists());
+        assert!(
+            live_path.exists(),
+            "a live editor's socket survives pruning"
+        );
+        drop(live);
     }
 }

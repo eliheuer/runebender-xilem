@@ -41,6 +41,14 @@ const PROMPTS: &[Prompt] = &[
         file: include_str!("../../skills/runebender-review-glyph/SKILL.md"),
     },
     Prompt {
+        name: "triage-font",
+        arguments: &[
+            ("source", "Stable source id from project_info", false),
+            ("limit", "Names per list, 1 to 100", false),
+        ],
+        file: include_str!("../../skills/runebender-triage-font/SKILL.md"),
+    },
+    Prompt {
         name: "compatibility-check",
         arguments: &[
             ("glyphs", "Glyph names, or 'all'", true),
