@@ -31,6 +31,7 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 
+use runebender::workflows::llama_server::{self, LlamaServer, LlamaSettings};
 use runebender::workflows::local_chat::LocalChatEndpoint;
 use runebender::workflows::process::{
     OutputStream, ProcessCancellation, ProcessLimits, ProcessOutcome,
@@ -76,6 +77,10 @@ pub(crate) struct ChatState {
     /// An explicitly configured resident local model, or its configuration error.
     pub(crate) endpoint: Option<Result<LocalChatEndpoint, String>>,
     pub(crate) installed: Vec<(String, PathBuf)>,
+    /// The `llama-server` child serving the selected GGUF, shared with the
+    /// turn's worker thread, which starts or replaces it as the model
+    /// changes. Dropped with the panel, which kills the server.
+    pub(crate) server: Arc<Mutex<Option<LlamaServer>>>,
     pub(crate) entries: Vec<ChatEntry>,
     pub(crate) messages: Vec<Value>,
     pub(crate) busy: Option<String>,
@@ -100,6 +105,35 @@ impl Drop for ChatState {
 /// A wake-up from the asynchronous chat pump.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ChatProgress;
+
+/// The endpoint of a running `llama-server` for `gguf`, starting one or
+/// replacing a server that holds another model. Blocks while the model
+/// loads, so it runs on the turn's worker thread.
+fn ensure_llama_server(
+    server: &Arc<Mutex<Option<LlamaServer>>>,
+    binary: &Path,
+    gguf: &Path,
+    folder: &Path,
+) -> Result<LocalChatEndpoint, String> {
+    let settings = LlamaSettings::default();
+    let mut slot = server.lock().unwrap_or_else(|error| error.into_inner());
+    let reuse = slot
+        .as_mut()
+        .is_some_and(|current| current.serves(gguf, &settings) && current.is_running());
+    if !reuse {
+        *slot = None;
+        let alias = folder
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("local");
+        *slot = Some(LlamaServer::start(binary, gguf, alias, settings)?);
+    }
+    Ok(slot
+        .as_ref()
+        .expect("server just checked or started")
+        .endpoint()
+        .clone())
+}
 
 /// Use this application's CLI, with an explicit override for custom runners.
 fn core_binary() -> Option<PathBuf> {
@@ -192,13 +226,30 @@ impl Workspace {
             .map(|server| server.document_epoch().to_string());
         #[cfg(not(unix))]
         let epoch: Option<String> = None;
-        let (font_ml, model, core) = if endpoint.is_none() {
+        // Without a configured endpoint, a selected GGUF is served by a
+        // supervised llama-server when that binary exists; otherwise the
+        // older font-ml runtime runs it.
+        let llama = if endpoint.is_none() {
+            let Some(model) = self.chat.model.clone() else {
+                self.note = "Choose a local chat model first".into();
+                return;
+            };
+            match (llama_server::find_binary(), llama_server::gguf_in(&model)) {
+                (Some(binary), Some(gguf)) => Some((binary, gguf, model)),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        let (font_ml, model, core) = if endpoint.is_none() && llama.is_none() {
             let Some(model) = self.chat.model.clone() else {
                 self.note = "Choose a local chat model first".into();
                 return;
             };
             let Some(font_ml) = self.graph.font_ml.clone() else {
-                self.note = "font-ml not found; install it or set RUNEBENDER_FONT_ML".into();
+                self.note =
+                    "Neither llama-server nor font-ml found; install one or set RUNEBENDER_LLAMA_SERVER"
+                        .into();
                 return;
             };
             let Some(core) = core_binary() else {
@@ -236,15 +287,25 @@ impl Workspace {
             ..ChatJob::default()
         };
         self.chat.job = Some(job.clone());
+        let server = self.chat.server.clone();
         std::thread::spawn(move || {
+            let endpoint = match (endpoint, llama) {
+                (Some(endpoint), _) => Some(Ok(endpoint)),
+                (None, Some((binary, gguf, folder))) => {
+                    Some(ensure_llama_server(&server, &binary, &gguf, &folder))
+                }
+                (None, None) => None,
+            };
             let result = if let Some(endpoint) = endpoint {
-                chat_endpoint::run_chat_endpoint(
-                    &endpoint,
-                    &session,
-                    epoch.as_deref().unwrap_or_default(),
-                    &conversation,
-                    &job,
-                )
+                endpoint.and_then(|endpoint| {
+                    chat_endpoint::run_chat_endpoint(
+                        &endpoint,
+                        &session,
+                        epoch.as_deref().unwrap_or_default(),
+                        &conversation,
+                        &job,
+                    )
+                })
             } else {
                 run_chat(
                     font_ml.as_deref().expect("subprocess runner checked"),

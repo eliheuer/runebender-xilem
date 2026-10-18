@@ -741,9 +741,8 @@ pub fn installed_chat_models(first: Option<&Path>) -> Vec<(String, PathBuf)> {
         };
         for entry in entries.flatten() {
             let path = entry.path();
-            if !path.join("tokenizer.json").is_file() {
-                continue;
-            }
+            // A GGUF carries its own tokenizer; `tokenizer.json` is only
+            // needed by the older font-ml runtime and is no longer required.
             let has_gguf = std::fs::read_dir(&path)
                 .map(|d| {
                     d.flatten()

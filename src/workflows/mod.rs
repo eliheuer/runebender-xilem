@@ -12,6 +12,7 @@ pub mod graph_live;
 pub mod graph_run;
 pub mod graph_session;
 /// Bounded requests to an externally managed local chat server.
+pub mod llama_server;
 pub mod local_chat;
 /// Detached invocation of the installed sketch-to-outline model.
 pub mod local_sketch;

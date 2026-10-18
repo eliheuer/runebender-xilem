@@ -10,6 +10,7 @@ Entries under Unreleased describe work being prepared, not an available public r
 - Local macOS application and drag-to-Applications DMG packaging for maintainer testing, with a temporary application icon.
 - Live MCP tool `analyze_font`: one audit of a whole source, with counts by mark label, off-grid points, kinks, stem medians per case and missing or incompatible glyphs against every other source, worst offenders named.
 - Live MCP tool `analyze_glyph`: stem and bar, ink spans, node continuity, grid fit, mark label, and point-structure compatibility with every other source, with a reason.
+- The Chat panel serves a selected GGUF through a supervised `llama-server` child when that binary is found beside the editor, at `RUNEBENDER_LLAMA_SERVER`, or on PATH: loopback only, the model's own chat template for tool calls, thinking off by default, one server kept across turns and stopped with the panel. `font-ml chat` remains the fallback. A chat model folder now needs only a `.gguf`.
 - `runebender mcp --install` writes the live server, by the binary's absolute path, into Claude Code, Codex, Claude Desktop and Cursor settings; `--dry-run` reports without writing.
 - A `runebender` hub skill and prompt with the connection, targeting and safety rules; every skill under `skills/` declares `surface: runebender-live-v1` and the host refuses another surface.
 - Live MCP workflows served as prompts (`review-glyph`, `compatibility-check`, `spacing-pass`, `kerning-pass`, `draft-weight`); the same files under `skills/` can be linked into a client's skills folder.
