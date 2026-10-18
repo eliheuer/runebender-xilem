@@ -85,6 +85,24 @@ pub fn tools() -> Vec<Tool> {
             ),
         },
         Tool {
+            name: "analyze_glyph".into(),
+            description: "Measures one glyph without changing it: narrowest stem and \
+                          bar, ink spans, node continuity with kinks and G1 curve joins \
+                          listed, points on the 8, 4 and 2 unit grids, the mark label, \
+                          and point-structure compatibility with the same glyph in every \
+                          other master with a reason. Use it for any question about \
+                          weight, stems, smoothness, grid fit or interpolation; quote \
+                          its numbers rather than deriving them from read_glyph points."
+                .into(),
+            parameters: params(
+                json!({
+                    "glyph": { "type": "string", "description": "The glyph name." },
+                    "layer": { "type": "string", "description": "A layer name, for a proposal layer." }
+                }),
+                &["glyph"],
+            ),
+        },
+        Tool {
             name: "proof".into(),
             description: "Writes an SVG proof sheet of several glyphs and returns \
                           per-glyph metrics: advance, sidebearings, bounds, point \

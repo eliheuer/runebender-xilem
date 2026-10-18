@@ -176,9 +176,8 @@ pub fn describe(tool: agent::Tool, surface: ToolSurface) -> ToolDescriptor {
 fn effects_for(name: &str, surface: ToolSurface) -> Option<ToolEffects> {
     let effects = match surface {
         ToolSurface::Disk => match name {
-            "project_info" | "font_info" | "read_glyph" | "proposal_list" | "docs" => {
-                ToolEffects::read()
-            }
+            "project_info" | "font_info" | "read_glyph" | "analyze_glyph" | "proposal_list"
+            | "docs" => ToolEffects::read(),
             "proof" => ToolEffects::file(),
             "propose" => ToolEffects::document().local_code(),
             "graph_run" => ToolEffects::file().local_code(),

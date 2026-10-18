@@ -65,6 +65,39 @@ fn read_glyph(source: &Path, name: &str, layer: Option<&str>) -> serde_json::Val
     runebender::analysis::glyph::read_project_glyph(&project, source_id, name, layer)
 }
 
+/// The glyph report against the whole font, so compatibility with the other
+/// masters is included: the project is loaded from `font`, which may be a
+/// designspace, and the selected `source` is found among its sources.
+fn analyze_glyph(font: &Path, source: &Path, name: &str, layer: Option<&str>) -> serde_json::Value {
+    let project = match Project::load(font).or_else(|_| Project::load(source)) {
+        Ok(project) => project,
+        Err(error) => return json!({ "ok": false, "error": error }),
+    };
+    let wanted = std::fs::canonicalize(source).unwrap_or_else(|_| source.to_path_buf());
+    let source_id = project
+        .document_sources()
+        .map(|candidate| candidate.id())
+        .find(|id| {
+            project
+                .document_source_path(*id)
+                .and_then(|path| std::fs::canonicalize(path).ok())
+                .is_some_and(|path| path == wanted)
+        })
+        .or_else(|| {
+            project
+                .document_sources()
+                .next()
+                .map(|candidate| candidate.id())
+        });
+    let Some(source_id) = source_id else {
+        return json!({ "ok": false, "error": "the font has no source" });
+    };
+    match runebender::analysis::report::analyze_project_glyph(&project, source_id, name, layer) {
+        Ok(value) => value,
+        Err(error) => json!({ "ok": false, "error": error }),
+    }
+}
+
 /// Searches the documentation folders for passages that match.
 ///
 /// Roots: `$RUNEBENDER_DOCS` (colon-separated) and
@@ -306,6 +339,15 @@ fn agent_call_source(
         "font_info" => self_json(&["--json".into(), "info".into(), src]),
         "read_glyph" => match text("glyph") {
             Some(g) => read_glyph(source, &g, args.get("layer").and_then(|v| v.as_str())),
+            None => json!({ "ok": false, "error": "glyph is required" }),
+        },
+        "analyze_glyph" => match text("glyph") {
+            Some(g) => analyze_glyph(
+                _font,
+                source,
+                &g,
+                args.get("layer").and_then(|v| v.as_str()),
+            ),
             None => json!({ "ok": false, "error": "glyph is required" }),
         },
         "proof" => {
