@@ -361,6 +361,7 @@ fn run_loop(
             // Always override a model-supplied epoch with this editor's own.
             args.insert("expected_document_epoch".into(), json!(epoch));
             if tool.name == "propose_edits" {
+                merge_edits_by_glyph(&mut args);
                 restore_read_revisions(&mut args, &revisions);
             }
             emit(json!({"event":"tool_call", "name":tool.name, "arguments":args}));
@@ -432,6 +433,34 @@ fn restore_read_revisions(
             edit.insert("expected_revision".into(), json!(read));
         }
     }
+}
+
+/// A batch names each glyph once, and a small model asked for two changes to
+/// one glyph writes two entries for it instead of one entry with two
+/// operations. The entries mean the same thing in order, so they are joined:
+/// the first entry keeps its revision and gains the later operations.
+fn merge_edits_by_glyph(args: &mut Map<String, Value>) {
+    let Some(edits) = args.get_mut("edits").and_then(Value::as_array_mut) else {
+        return;
+    };
+    let mut merged: Vec<Value> = Vec::with_capacity(edits.len());
+    for edit in edits.drain(..) {
+        let glyph = edit.get("glyph").and_then(Value::as_str).map(str::to_owned);
+        let earlier = glyph.as_deref().and_then(|glyph| {
+            merged
+                .iter_mut()
+                .find(|done| done.get("glyph").and_then(Value::as_str) == Some(glyph))
+        });
+        match (earlier, edit.get("operations").and_then(Value::as_array)) {
+            (Some(earlier), Some(operations)) => {
+                if let Some(target) = earlier.get_mut("operations").and_then(Value::as_array_mut) {
+                    target.extend(operations.iter().cloned());
+                }
+            }
+            _ => merged.push(edit),
+        }
+    }
+    *edits = merged;
 }
 
 pub(super) fn run_chat_endpoint(
@@ -508,6 +537,25 @@ mod tests {
         restore_read_revisions(&mut args, &revisions);
         assert_eq!(args["edits"][0]["expected_revision"], "glif-sha256:real");
         assert_eq!(args["edits"][1]["expected_revision"], "typed");
+    }
+
+    #[test]
+    fn two_entries_for_one_glyph_become_one_entry_with_both_operations() {
+        let mut args = json!({"task":"wider","reason":"r","edits":[
+            {"glyph":"zero","expected_revision":"a","operations":[{"op":"transform_points","dx":64.0}]},
+            {"glyph":"one","expected_revision":"b","operations":[{"op":"adjust_width","delta":1.0}]},
+            {"glyph":"zero","expected_revision":"a","operations":[{"op":"adjust_width","delta":64.0}]}
+        ]})
+        .as_object()
+        .cloned()
+        .unwrap();
+        merge_edits_by_glyph(&mut args);
+        let edits = args["edits"].as_array().unwrap();
+        assert_eq!(edits.len(), 2);
+        assert_eq!(edits[0]["glyph"], "zero");
+        assert_eq!(edits[0]["operations"].as_array().unwrap().len(), 2);
+        assert_eq!(edits[0]["operations"][1]["op"], "adjust_width");
+        assert_eq!(edits[1]["glyph"], "one");
     }
 
     #[test]

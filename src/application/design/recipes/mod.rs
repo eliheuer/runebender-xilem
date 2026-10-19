@@ -383,8 +383,9 @@ pub(crate) fn working_card(pal: &Palette, text: String) -> impl WidgetView<Works
         ))
         .dims(Dimensions::new(Dim::Stretch, Dim::Auto)),
         WashStyle {
-            tones: match (pal.mark("yellow"), pal.mark("green")) {
-                (Some(yellow), Some(green)) => [yellow, green],
+            // Purple to pink: the two marks the conversation itself does not use.
+            tones: match (pal.mark("purple"), pal.mark("pink")) {
+                (Some(purple), Some(pink)) => [purple, pink],
                 _ => pal.working_tones(),
             },
             outline: pal.field_outline,
