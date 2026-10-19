@@ -8,6 +8,7 @@ Entries under Unreleased describe work being prepared, not an available public r
 ### Added
 
 - Design context in three layers, read by agents before they design: the editor's default `type-design` and `font-engineering` files in `assets/context/`, the designer's own `*.context.md` files in `~/.config/runebender/context/` (or `RUNEBENDER_CONTEXT_PATH`), and the font's own `*.context.md` files beside the designspace up to the repository root. A later layer wins where it disagrees. `design_context` returns the files on the live and disk tool surfaces; the Chat panel puts the merged text in the local model's prompt within a budget.
+- The Chat panel prints every tool call, its arguments and its result to the terminal, so a wrong call can be read instead of guessed from the model's reply.
 - Proposal operations `transform_points` (move or scale a chosen set of points, by index or by a region in font units, handles included) and `adjust_width` (add to the advance), so a request such as "wider by 64" is one short edit instead of a redraw.
 
 - Local macOS application and drag-to-Applications DMG packaging for maintainer testing, with a temporary application icon.
@@ -24,6 +25,8 @@ Entries under Unreleased describe work being prepared, not an available public r
 - Live MCP workflows served as prompts (`review-glyph`, `compatibility-check`, `spacing-pass`, `kerning-pass`, `draft-weight`); the same files under `skills/` can be linked into a client's skills folder.
 
 ### Changed
+
+- Chat: the local model no longer gets an experiment `branch` parameter to fill with a guess, a layer named `foreground` (or `default`, `public.default`) reads the glyph itself instead of failing, and the prompt tells the model to correct a failed call once before reporting it.
 
 - While the chat model works, its status is the last card in the conversation, with the cards' keyline around a soft yellow-green to blue-green wash that drifts slowly across it. The wash takes the field's lightness in every theme, and the status drops its trailing ellipsis, whose glyph in the UI font read as a smudge.
 - Chat errors read as one plain sentence with what to do next, such as "The conversation got longer than the model can hold. Clear the chat and ask again, or ask for a smaller step.", with the original message under it in lighter type for bug reports. One function maps every chat failure to that language. A reply cut off at the context limit now says so, where before it surfaced as a missing finish reason.

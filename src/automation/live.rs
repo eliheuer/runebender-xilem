@@ -453,7 +453,15 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
     let layer = object
         .get("layer")
         .map(|v| v.as_str().ok_or("layer must be a string"))
-        .transpose()?;
+        .transpose()?
+        // The glyph itself goes by several names; none of them is a layer
+        // to look up.
+        .filter(|layer| {
+            !matches!(
+                layer.trim(),
+                "" | "foreground" | "default" | "public.default" | "main" | "none" | "null"
+            )
+        });
     let mut result = match name {
         "specimen" => {
             let text = object
@@ -1098,6 +1106,28 @@ mod tests {
             assert_eq!(read["ok"], true, "{query}: {read}");
         }
         let missing = call(&mut project, "read_glyph", &json!({"glyph": "U+E8FF"}));
+        assert_eq!(missing["ok"], false, "{missing}");
+    }
+
+    #[test]
+    fn the_glyph_itself_answers_to_the_names_a_model_gives_its_layer() {
+        let mut project = Project::new_font("never-saved.ufo".into());
+        project
+            .add_document_glyph("zero", 500.0, Some(0x30))
+            .unwrap();
+        for layer in ["foreground", "default", "public.default", ""] {
+            let read = call(
+                &mut project,
+                "analyze_glyph",
+                &json!({"glyph": "zero", "layer": layer}),
+            );
+            assert_eq!(read["ok"], true, "{layer:?}: {read}");
+        }
+        let missing = call(
+            &mut project,
+            "analyze_glyph",
+            &json!({"glyph": "zero", "layer": "proposal-x"}),
+        );
         assert_eq!(missing["ok"], false, "{missing}");
     }
 

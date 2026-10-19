@@ -487,6 +487,10 @@ impl Workspace {
             }
             "tool_call" => {
                 let name = event.get("name").and_then(Value::as_str).unwrap_or("?");
+                eprintln!(
+                    "chat tool call {name} {}",
+                    event.get("arguments").unwrap_or(&Value::Null)
+                );
                 self.chat.busy = Some(format!("Running {name}…"));
                 self.chat.entries.push(ChatEntry::Tool {
                     name: name.into(),
@@ -498,6 +502,10 @@ impl Workspace {
                 let name = event.get("name").and_then(Value::as_str).unwrap_or("?");
                 let ok = event.get("ok").and_then(Value::as_bool).unwrap_or(false);
                 let note = result_note(name, event.get("result").unwrap_or(&Value::Null));
+                eprintln!(
+                    "chat tool result {name} ok={ok} {}",
+                    short_result(event.get("result"))
+                );
                 if let Some(ChatEntry::Tool {
                     ok: current_ok,
                     note: current_note,
@@ -560,6 +568,18 @@ fn visible_text(raw: &str) -> String {
     }
     output.push_str(rest);
     output.trim_start().to_string()
+}
+
+/// A tool result for the terminal log: the whole thing when it is short,
+/// otherwise its head, so a glyph's point list does not flood the log.
+fn short_result(result: Option<&Value>) -> String {
+    const HEAD: usize = 600;
+    let text = result.map(Value::to_string).unwrap_or_default();
+    if text.chars().count() <= HEAD {
+        return text;
+    }
+    let head: String = text.chars().take(HEAD).collect();
+    format!("{head}… ({} chars)", text.chars().count())
 }
 
 fn result_note(name: &str, result: &Value) -> String {

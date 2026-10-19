@@ -54,6 +54,18 @@ fn tools() -> Vec<agent::Tool> {
     live::tools()
         .into_iter()
         .filter(|tool| ALLOWED_TOOLS.contains(&tool.name.as_str()))
+        .map(|mut tool| {
+            // The chat has no experiment tools, so a branch parameter is only
+            // a field for a small model to fill with a guess.
+            if let Some(properties) = tool.parameters["properties"].as_object_mut() {
+                properties.remove("branch");
+                if properties.contains_key("layer") && tool.name != "design_context" {
+                    properties["layer"] = json!({"type":"string",
+                        "description":"Only to read a proposal layer by its name from proposal_list. Omit for the glyph itself."});
+                }
+            }
+            tool
+        })
         .collect()
 }
 
@@ -89,7 +101,8 @@ fn base_prompt() -> String {
          source is a stable ID from project_info; never guess a source or a glyph revision. You \
          may read, measure, proof, and propose. A proposal is separate from installation; the person installs it. \
          You cannot install, apply, discard, save, run a program, or call another tool. \
-         Give short, factual answers. If a tool reports an error, say what failed. \
+         Give short, factual answers. If a tool reports an error, correct the call and try again \
+         once (glyph_inventory lists the real glyph names); only then say what failed. \
          Use the supplied function tools when needed; never write tool-call markup in prose.",
     )
 }
@@ -335,7 +348,7 @@ fn run_loop(
             let mut args = tool.arguments;
             // Always override a model-supplied epoch with this editor's own.
             args.insert("expected_document_epoch".into(), json!(epoch));
-            emit(json!({"event":"tool_call", "name":tool.name}));
+            emit(json!({"event":"tool_call", "name":tool.name, "arguments":args}));
             let result = match call(&tool.name, &Value::Object(args)) {
                 Ok(result) => result,
                 Err(error) => {
@@ -431,6 +444,15 @@ mod tests {
         json!({"choices":[{"message":{"role":"assistant","content":null,
             "tool_calls":[{"id":"call_0","type":"function","function":{
                 "name":name,"arguments":args.to_string()}}]},"finish_reason":"tool_calls"}]})
+    }
+
+    #[test]
+    fn chat_tools_carry_no_experiment_branch() {
+        for tool in tools() {
+            let properties = tool.parameters["properties"].as_object().unwrap();
+            assert!(!properties.contains_key("branch"), "{}", tool.name);
+        }
+        assert!(tools().iter().any(|tool| tool.name == "analyze_glyph"));
     }
 
     #[test]
