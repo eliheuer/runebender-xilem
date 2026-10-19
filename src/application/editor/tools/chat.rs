@@ -80,7 +80,11 @@ pub(crate) fn plain_error(raw: &str) -> Option<&'static str> {
     let has = |needle: &str| text.contains(needle);
     Some(if has("cancelled") {
         "Stopped."
-    } else if has("context limit") || has("too large") || has("too many messages") {
+    } else if has("context limit")
+        || has("context size")
+        || has("too large")
+        || has("too many messages")
+    {
         "The conversation got longer than the model can hold. Clear the chat and ask \
          again, or ask for a smaller step."
     } else if has("tool calls") && has("exceeded") || has("completion limit") {

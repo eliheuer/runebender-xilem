@@ -346,9 +346,9 @@ where
     V: WidgetView<Workspace>,
 {
     let fill = match kind {
-        Message::Question => pal.question,
-        Message::Answer => Palette::FLAT,
-        Message::Problem => pal.danger_wash(),
+        Message::Question => pal.mark("yellow").unwrap_or(pal.question),
+        Message::Answer => pal.mark("green").unwrap_or(Palette::FLAT),
+        Message::Problem => pal.mark("red").unwrap_or_else(|| pal.danger_wash()),
     };
     sized_box(body)
         .padding(masonry::properties::Padding::from_vh(
@@ -383,7 +383,10 @@ pub(crate) fn working_card(pal: &Palette, text: String) -> impl WidgetView<Works
         ))
         .dims(Dimensions::new(Dim::Stretch, Dim::Auto)),
         WashStyle {
-            tones: pal.working_tones(),
+            tones: match (pal.mark("yellow"), pal.mark("green")) {
+                (Some(yellow), Some(green)) => [yellow, green],
+                _ => pal.working_tones(),
+            },
             outline: pal.field_outline,
             stroke: pal.stroke,
             radius: pal.control_radius,

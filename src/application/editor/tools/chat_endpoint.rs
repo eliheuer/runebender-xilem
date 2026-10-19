@@ -276,6 +276,16 @@ fn run_loop(
     }
     let mut messages: Vec<Value> = serde_json::from_str(conversation)
         .map_err(|error| format!("invalid chat context: {error}"))?;
+    // Earlier turns keep what was asked and answered. Their tool calls and
+    // tool results were the work behind an answer, not the conversation, and
+    // one glyph's points can be more than the model's window holds.
+    messages.retain(|message| {
+        let role = message.get("role").and_then(Value::as_str);
+        role == Some("user")
+            || role == Some("assistant")
+                && message.get("tool_calls").is_none_or(Value::is_null)
+                && message.get("content").and_then(Value::as_str).is_some()
+    });
     let history_len = messages.len();
     let deadline = Instant::now() + LocalChatLimits::default().deadline;
     let allowed = tools();

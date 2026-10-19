@@ -26,7 +26,8 @@ Entries under Unreleased describe work being prepared, not an available public r
 
 ### Changed
 
-- Chat: what the person typed is a card one Base UI step below the panel, in the normal ink, instead of the dark selection face.
+- Chat: the cards take the theme's mark colors, as the glyph grid does: yellow for what the person typed, green for an answer, red for a problem, and a yellow-to-green wash while the model works.
+- Chat: earlier turns keep only what was asked and answered; their tool calls and results no longer ride along in the next request, and the local server's context is 32768 tokens. A request that still exceeds it reads as a plain sentence.
 - Chat: a glyph revision the model mistyped in `propose_edits` is replaced by the revision a tool returned for that glyph in the same run, so a 76-character hash no longer has to survive transcription by a small model. A glyph the model never read keeps the stale-revision guard.
 - Chat: the local model no longer gets an experiment `branch` parameter to fill with a guess, a layer named `foreground` (or `default`, `public.default`) reads the glyph itself instead of failing, and the prompt tells the model to correct a failed call once before reporting it.
 
