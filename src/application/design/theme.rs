@@ -110,6 +110,8 @@ pub(crate) struct Palette {
     /// Corner radius for pressable controls and fields.
     pub control_radius: f64,
     pub control: Color,
+    /// One Base UI step below the panel: the face of what the person typed.
+    pub question: Color,
     /// Button face at rest.
     pub button: Color,
     /// Button face under the pointer.
@@ -220,6 +222,10 @@ impl Palette {
                 .then(|| color(t.surface("panelShadow")).with_alpha(0.5)),
             control_radius: f64::from(t.geometry.radius_control),
             control: color(t.surface("control")),
+            question: color(
+                t.step_darker(t.surface("panel"))
+                    .unwrap_or_else(|| t.surface("control")),
+            ),
             button: color(t.surface("button")),
             button_hover: color(t.surface("buttonHover")),
             button_pressed: color(t.surface("buttonPressed")),

@@ -26,6 +26,8 @@ Entries under Unreleased describe work being prepared, not an available public r
 
 ### Changed
 
+- Chat: what the person typed is a card one Base UI step below the panel, in the normal ink, instead of the dark selection face.
+- Chat: a glyph revision the model mistyped in `propose_edits` is replaced by the revision a tool returned for that glyph in the same run, so a 76-character hash no longer has to survive transcription by a small model. A glyph the model never read keeps the stale-revision guard.
 - Chat: the local model no longer gets an experiment `branch` parameter to fill with a guess, a layer named `foreground` (or `default`, `public.default`) reads the glyph itself instead of failing, and the prompt tells the model to correct a failed call once before reporting it.
 
 - While the chat model works, its status is the last card in the conversation, with the cards' keyline around a soft yellow-green to blue-green wash that drifts slowly across it. The wash takes the field's lightness in every theme, and the status drops its trailing ellipsis, whose glyph in the UI font read as a smudge.

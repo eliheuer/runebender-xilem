@@ -290,6 +290,8 @@ fn run_loop(
         })
         .collect();
     let mut total_calls = 0;
+    // The revision of every glyph a tool returned in this run, by name.
+    let mut revisions: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     for turn in 0..MAX_COMPLETIONS {
         if cancellation.is_cancelled() {
             return Err("cancelled".into());
@@ -348,6 +350,9 @@ fn run_loop(
             let mut args = tool.arguments;
             // Always override a model-supplied epoch with this editor's own.
             args.insert("expected_document_epoch".into(), json!(epoch));
+            if tool.name == "propose_edits" {
+                restore_read_revisions(&mut args, &revisions);
+            }
             emit(json!({"event":"tool_call", "name":tool.name, "arguments":args}));
             let result = match call(&tool.name, &Value::Object(args)) {
                 Ok(result) => result,
@@ -374,6 +379,12 @@ fn run_loop(
                 return Err("live tool response has no success status".into());
             };
             emit(json!({"event":"tool_result", "name":tool.name, "ok":ok, "result":result}));
+            if let (Some(glyph), Some(revision)) = (
+                result.get("glyph").and_then(Value::as_str),
+                result.get("revision").and_then(Value::as_str),
+            ) {
+                revisions.insert(glyph.to_owned(), revision.to_owned());
+            }
             // A tool that says no, such as a glyph that is not in the font,
             // is an answer the model can act on: it goes back as the tool's
             // result, and the model can retry with another name or say so.
@@ -384,6 +395,33 @@ fn run_loop(
         }
     }
     Err("chat exceeded the completion limit".into())
+}
+
+/// A glyph revision is a 76-character hash, and a small model copying one
+/// back by hand drops or changes characters, so every proposal it wrote was
+/// refused as stale. The guard is about reading before proposing, not about
+/// transcription: for each edit whose glyph a tool returned in this run, the
+/// revision the tool returned replaces the one the model typed. A glyph the
+/// model never read keeps its typed revision and the guard still applies.
+fn restore_read_revisions(
+    args: &mut Map<String, Value>,
+    revisions: &std::collections::HashMap<String, String>,
+) {
+    let Some(edits) = args.get_mut("edits").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for edit in edits {
+        let Some(read) = edit
+            .get("glyph")
+            .and_then(Value::as_str)
+            .and_then(|glyph| revisions.get(glyph))
+        else {
+            continue;
+        };
+        if let Some(edit) = edit.as_object_mut() {
+            edit.insert("expected_revision".into(), json!(read));
+        }
+    }
 }
 
 pub(super) fn run_chat_endpoint(
@@ -444,6 +482,22 @@ mod tests {
         json!({"choices":[{"message":{"role":"assistant","content":null,
             "tool_calls":[{"id":"call_0","type":"function","function":{
                 "name":name,"arguments":args.to_string()}}]},"finish_reason":"tool_calls"}]})
+    }
+
+    #[test]
+    fn a_revision_the_model_mistyped_is_replaced_by_the_one_it_read() {
+        let mut revisions = std::collections::HashMap::new();
+        revisions.insert("zero".to_owned(), "glif-sha256:real".to_owned());
+        let mut args = json!({"task":"wider","reason":"r","edits":[
+            {"glyph":"zero","expected_revision":"glif-sha256:rea","operations":[]},
+            {"glyph":"one","expected_revision":"typed","operations":[]}
+        ]})
+        .as_object()
+        .cloned()
+        .unwrap();
+        restore_read_revisions(&mut args, &revisions);
+        assert_eq!(args["edits"][0]["expected_revision"], "glif-sha256:real");
+        assert_eq!(args["edits"][1]["expected_revision"], "typed");
     }
 
     #[test]

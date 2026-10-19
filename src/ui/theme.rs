@@ -406,6 +406,8 @@ pub struct Theme {
     pub id: String,
     /// Name shown to people.
     pub name: String,
+    /// The Base UI stops in file order, darkest first.
+    pub base_ui: Vec<ColorRgba>,
     /// Surface colors by token name, such as backgrounds and panels.
     pub surfaces: HashMap<String, ColorRgba>,
     /// Text colors by token name.
@@ -436,6 +438,13 @@ pub struct Theme {
 }
 
 impl Theme {
+    /// The Base UI stop one step darker than `color`, when `color` is a
+    /// stop and not the darkest one.
+    pub fn step_darker(&self, color: ColorRgba) -> Option<ColorRgba> {
+        let at = self.base_ui.iter().position(|stop| *stop == color)?;
+        at.checked_sub(1).map(|below| self.base_ui[below])
+    }
+
     /// Looks up a surface color by name, failing on an unknown role.
     pub fn surface(&self, name: &str) -> ColorRgba {
         *self
@@ -926,9 +935,16 @@ pub fn parse_theme(source: &str) -> Result<Theme, String> {
         "pointOutline",
         file.point_outline.as_deref(),
     )?;
+    let mut base_ui: Vec<(&String, &String)> = file.base_ui.iter().collect();
+    base_ui.sort();
+    let base_ui = base_ui
+        .into_iter()
+        .filter_map(|(_, value)| parse_color(value))
+        .collect();
     Ok(Theme {
         id: file.id,
         name: file.name,
+        base_ui,
         geometry,
         window: file.window,
         mark_style,

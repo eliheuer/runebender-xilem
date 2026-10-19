@@ -318,7 +318,7 @@ where
 /// one family; only the surface tells them apart.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Message {
-    /// What the person asked: the selection face.
+    /// What the person asked: one Base UI step below the panel.
     Question,
     /// What the model answered: the panel's own face.
     Answer,
@@ -330,8 +330,7 @@ impl Message {
     /// The ink for text on this card.
     pub(crate) fn ink(self, pal: &Palette) -> xilem::Color {
         match self {
-            Self::Question => pal.selected_ink(),
-            Self::Answer | Self::Problem => pal.text,
+            Self::Question | Self::Answer | Self::Problem => pal.text,
         }
     }
 }
@@ -347,7 +346,7 @@ where
     V: WidgetView<Workspace>,
 {
     let fill = match kind {
-        Message::Question => pal.selected_bg(),
+        Message::Question => pal.question,
         Message::Answer => Palette::FLAT,
         Message::Problem => pal.danger_wash(),
     };
