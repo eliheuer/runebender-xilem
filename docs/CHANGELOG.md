@@ -22,6 +22,7 @@ Entries under Unreleased describe work being prepared, not an available public r
 
 ### Changed
 
+- Section headers (Categories, Coordinates, Glyph and the rest) no longer show a hover fill. The fill sat inside the group's inset and stopped short of the rules and edges, which read as a mistake. The disclosure kind is now bare in every state.
 - Rail panels no longer print their name under the tab strip; the tab icon is the label. The Chat panel opens with a short note on what to do.
 - The Chat panel is laid out as a conversation: your questions are full-width blocks in the selection face, the model's answers are plain prose, and one spacing step sets the rhythm from paragraph to paragraph, around the field, and to the panel edge. The field stands alone with the model chip, Clear and Send in a row under it, Send becomes Stop while the model works, and the view follows new text. Successful tool calls are not shown; failures are.
 - The Local AI panel's weight debt block is built from the panel row vocabulary, so its lines wrap at the dock; it had used bare labels that pushed the whole left column wider than the dock, which cut off the buttons and stretched the marks bar. The last legacy row kind is gone from the vocabulary, and a layout test now renders every rail with the marks bar at the dock width and fails on the first widget that leaves it.

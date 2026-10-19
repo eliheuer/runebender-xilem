@@ -40,7 +40,9 @@ pub(crate) enum ControlKind {
     Chip,
     /// A row in a list: no face until hovered, inverted when selected.
     Row,
-    /// A section header that opens and closes: muted, no face until hovered.
+    /// A section header that opens and closes: muted, and never a face.
+    /// It sits inside the group's inset, so a fill would stop short of the
+    /// rules and edges around it; hover and press strengthen the ink instead.
     Disclosure,
     /// A control whose content is its face, such as a color swatch or a
     /// reference dot: the content covers the fill, so hover and pressed
@@ -249,6 +251,19 @@ impl ControlStyle {
                 Face {
                     fill: shift(base, pressed_step),
                     ..lit
+                },
+            )
+        } else if kind == ControlKind::Disclosure {
+            // No fill: the header reads as part of the group, and the ink
+            // answers the pointer.
+            (
+                Face {
+                    ink: pal.text,
+                    ..rest
+                },
+                Face {
+                    ink: pal.text_subdued,
+                    ..rest
                 },
             )
         } else if kind == ControlKind::Swatch {
