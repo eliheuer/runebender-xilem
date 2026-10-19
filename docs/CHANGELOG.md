@@ -23,7 +23,7 @@ Entries under Unreleased describe work being prepared, not an available public r
 ### Changed
 
 - Rail panels no longer print their name under the tab strip; the tab icon is the label. The Chat panel opens with a short note on what to do.
-- The Chat panel is laid out as a conversation: messages grow up from a composer at the bottom and the view follows new text, your messages sit in a bubble, the model's prose is plain, tool calls read as sentences such as "Measured a glyph", and the model is a chip inside the composer that opens the choices when clicked. Send, Stop and Clear follow the control kinds.
+- The Chat panel is laid out as a conversation: your questions are full-width blocks in the selection face, the model's answers are plain prose, and one spacing step sets the rhythm from paragraph to paragraph, around the field, and to the panel edge. The field stands alone with the model chip, Clear and Send in a row under it, Send becomes Stop while the model works, and the view follows new text. Successful tool calls are not shown; failures are.
 - The Local AI panel's weight debt block is built from the panel row vocabulary, so its lines wrap at the dock; it had used bare labels that pushed the whole left column wider than the dock, which cut off the buttons and stretched the marks bar. The last legacy row kind is gone from the vocabulary, and a layout test now renders every rail with the marks bar at the dock width and fails on the first widget that leaves it.
 
 - The canonical source repository is now [fontgarden/runebender](https://github.com/fontgarden/runebender).

@@ -106,22 +106,20 @@ fn word_button<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Swatch)))
 }
 
-/// One entry of the conversation.
-fn transcript_row(app: &Workspace, entry: &ChatEntry) -> Box<xilem::AnyWidgetView<Workspace>> {
+/// One entry of the conversation, or nothing for a tool call that
+/// succeeded: the answer is what the reader wants, not the bookkeeping.
+fn transcript_row(
+    app: &Workspace,
+    entry: &ChatEntry,
+) -> Option<Box<xilem::AnyWidgetView<Workspace>>> {
     let pal = &app.palette;
-    match entry {
+    let row = match entry {
         ChatEntry::Script(artifact) => script_artifact_row(app, artifact),
-        ChatEntry::User(text) => xrow(
-            Region::Inline,
-            (
-                FlexSpacer::Fixed(Space::Xl.length()),
-                recipes::bubble(
-                    pal,
-                    selectable_text::<Workspace, ()>(text.clone()).color(pal.selected_ink()),
-                )
-                .flex(1.0),
-            ),
+        ChatEntry::User(text) => recipes::bubble(
+            pal,
+            selectable_text::<Workspace, ()>(text.clone()).color(pal.selected_ink()),
         )
+        .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
         .boxed(),
         ChatEntry::Assistant(text) => sized_box(
             selectable_text::<Workspace, ()>(if text.is_empty() {
@@ -131,26 +129,36 @@ fn transcript_row(app: &Workspace, entry: &ChatEntry) -> Box<xilem::AnyWidgetVie
             })
             .color(pal.text),
         )
-        .padding(masonry::properties::Padding::horizontal(Space::Sm.length()))
+        .padding(masonry::properties::Padding::horizontal(Space::Md.length()))
         .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
         .boxed(),
+        ChatEntry::Tool { ok: true, .. } => return None,
         ChatEntry::Tool { name, ok, note } => sized_box(
             label(tool_sentence(name, *ok, note))
                 .text_size(TextSize::Caption.px())
-                .color(pal.text_muted)
+                .color(if note == "…" {
+                    pal.text_muted
+                } else {
+                    pal.role("danger")
+                })
                 .line_break_mode(masonry::properties::LineBreaking::WordWrap),
         )
-        .padding(masonry::properties::Padding::horizontal(Space::Sm.length()))
+        .padding(masonry::properties::Padding::horizontal(Space::Md.length()))
         .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
         .boxed(),
         ChatEntry::Error(text) => {
             sized_box(selectable_text::<Workspace, ()>(text.clone()).color(pal.role("danger")))
-                .padding(masonry::properties::Padding::horizontal(Space::Sm.length()))
+                .padding(masonry::properties::Padding::horizontal(Space::Md.length()))
                 .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
                 .boxed()
         }
-    }
+    };
+    Some(row)
 }
+
+/// One step of space sets the whole panel's rhythm: the inset, the gap
+/// between paragraphs, and the gaps around the field and its controls.
+const RHYTHM: Space = Space::Lg;
 
 pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
@@ -186,22 +194,11 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         )
         .boxed()
     } else {
-        let clear = (!busy).then(|| {
-            xrow(
-                Region::Inline,
-                (
-                    FlexSpacer::Flex(1.0),
-                    word_button(pal, ControlKind::Quiet, "Clear", |app: &mut Workspace| {
-                        app.chat_clear();
-                    }),
-                ),
-            )
-        });
         let mut rows: Vec<Box<xilem::AnyWidgetView<Workspace>>> = app
             .chat
             .entries
             .iter()
-            .map(|entry| transcript_row(app, entry))
+            .filter_map(|entry| transcript_row(app, entry))
             .collect();
         rows.extend(
             app.chat
@@ -209,18 +206,17 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                 .iter()
                 .map(|artifact| script_artifact_row(app, artifact)),
         );
-        // The conversation grows up from the composer: when it is shorter
+        // The conversation grows up from the field: when it is shorter
         // than the panel, the spacer holds it at the bottom.
         portal(
             xcolumn(
                 Region::List,
                 (
                     FlexSpacer::Flex(1.0),
-                    clear,
-                    xcolumn(Region::List, rows).gap(Space::Md),
+                    xcolumn(Region::List, rows).gap(RHYTHM),
                 ),
             )
-            .gap(Space::Md),
+            .gap(Space::None),
         )
         .constrain_horizontal(true)
         .must_fill(true)
@@ -228,16 +224,16 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         .boxed()
     };
 
-    let status = app
-        .chat
-        .busy
-        .clone()
-        .or_else(|| app.chat.last_speed.clone())
-        .map(|text| {
-            label(text)
-                .text_size(TextSize::Caption.px())
-                .color(pal.text_muted)
-        });
+    let field = recipes::field_bare(
+        pal,
+        "Ask about the open font",
+        app.chat.prompt.clone(),
+        |app, value| app.chat.prompt = value,
+        |app, value| {
+            app.chat.prompt.clear();
+            app.chat_send(value);
+        },
+    );
 
     // The model chips, open while the person is choosing.
     let selected = app.chat.model.clone();
@@ -267,30 +263,36 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         xrow(Region::Inline, chips)
     });
 
-    // The composer: the field, the model chip, and send or stop.
-    let field = recipes::field_flat(
-        pal,
-        "Ask about the open font",
-        app.chat.prompt.clone(),
-        |app, value| app.chat.prompt = value,
-        |app, value| {
-            app.chat.prompt.clear();
-            app.chat_send(value);
-        },
-    );
+    // The controls under the field: the model on the left, actions on the right.
     let model_chip = (!external).then(|| {
-        let name = model_name.clone();
-        recipes::chip(pal, name, app.chat.picking, |app: &mut Workspace| {
+        recipes::chip(pal, model_name, app.chat.picking, |app: &mut Workspace| {
             app.chat.picking = !app.chat.picking;
         })
     });
-    let endpoint_note = external.then(|| {
-        label(match &app.chat.endpoint {
-            Some(Ok(endpoint)) => endpoint.model().to_string(),
-            _ => "Local server".to_string(),
+    let status = app
+        .chat
+        .busy
+        .clone()
+        .or_else(|| {
+            external.then(|| match &app.chat.endpoint {
+                Some(Ok(endpoint)) => endpoint.model().to_string(),
+                _ => "Local server".to_string(),
+            })
         })
-        .text_size(TextSize::Caption.px())
-        .color(pal.text_muted)
+        .map(|text| {
+            label(text)
+                .text_size(TextSize::Caption.px())
+                .color(pal.text_muted)
+        });
+    let clear = (!busy && !empty).then(|| {
+        word_button(
+            pal,
+            ControlKind::Secondary,
+            "Clear",
+            |app: &mut Workspace| {
+                app.chat_clear();
+            },
+        )
     });
     let send = if busy {
         word_button(
@@ -311,26 +313,16 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         })
         .boxed()
     };
-    let composer = recipes::field_box(
-        pal,
-        xcolumn(
-            Region::List,
-            (
-                field,
-                xrow(
-                    Region::Inline,
-                    (model_chip, endpoint_note, FlexSpacer::Flex(1.0), send),
-                ),
-            ),
-        )
-        .gap(Space::Sm),
+    let controls = xrow(
+        Region::Inline,
+        (model_chip, status, FlexSpacer::Flex(1.0), clear, send),
     );
 
     xcolumn(
         Region::Panel,
-        (conversation.flex(1.0), status, picker, composer),
+        (conversation.flex(1.0), field, picker, controls),
     )
-    .gap(Space::Sm)
+    .gap(RHYTHM)
 }
 
 #[cfg(test)]
