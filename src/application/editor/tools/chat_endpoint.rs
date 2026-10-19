@@ -108,6 +108,9 @@ fn parse_reply(
         return Err(format!("chat exceeded {MAX_TOOL_CALLS} tool calls"));
     }
     let finish = choice.get("finish_reason").and_then(Value::as_str);
+    if finish == Some("length") {
+        return Err("chat response was cut off at the model's context limit".into());
+    }
     if raw_calls.is_empty() && finish != Some("stop") {
         return Err("chat response did not finish normally".into());
     }

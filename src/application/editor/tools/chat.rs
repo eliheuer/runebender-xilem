@@ -69,6 +69,55 @@ pub(crate) struct ChatJob {
     pub(crate) finished: Arc<Mutex<Option<Result<(), String>>>>,
 }
 
+/// What a chat failure means for the person using the panel, in one
+/// sentence with what to do next, or `None` when the original message is
+/// already plain. The original stays under it, for a bug report.
+///
+/// Errors are written where they happen, for whoever debugs that code;
+/// this is the one place that turns them into the panel's language.
+pub(crate) fn plain_error(raw: &str) -> Option<&'static str> {
+    let text = raw.to_lowercase();
+    let has = |needle: &str| text.contains(needle);
+    Some(if has("cancelled") {
+        "Stopped."
+    } else if has("context limit") || has("too large") || has("too many messages") {
+        "The conversation got longer than the model can hold. Clear the chat and ask \
+         again, or ask for a smaller step."
+    } else if has("tool calls") && has("exceeded") || has("completion limit") {
+        "The model kept using tools without reaching an answer. Try a more specific \
+         question."
+    } else if has("deadline") || has("did not become ready") {
+        "The model took too long. Try again; the first question after a model is picked \
+         also loads it."
+    } else if has("llama-server")
+        || has("model file not found")
+        || has("transport failed")
+        || has("font-ml") && !has("events")
+    {
+        "The local model could not start or stopped answering. Pick the model again, or \
+         restart the editor."
+    } else if has("epoch") || has("document changed") {
+        "The font changed while the model was working, so its answer was dropped. Ask \
+         again."
+    } else if has("chat response")
+        || has("assistant ")
+        || has("tool call")
+        || has("unsupported")
+        || has(" requires ")
+        || has("does not accept")
+        || has("has an invalid")
+        || has("live reply")
+        || has("success status")
+        || has("invalid local chat")
+        || has("events")
+    {
+        "The model's reply was not in a form the editor can use. Try again, or say it \
+         another way."
+    } else {
+        return None;
+    })
+}
+
 /// Everything retained by the Chat panel.
 #[derive(Debug, Default)]
 pub(crate) struct ChatState {
@@ -782,6 +831,46 @@ mod tests {
     }
 
     #[cfg(unix)]
+    #[test]
+    fn chat_errors_read_as_plain_sentences() {
+        for (raw, starts) in [
+            (
+                "chat response was cut off at the model's context limit",
+                "The conversation",
+            ),
+            (
+                "chat response has tool calls without tool_calls finish reason",
+                "The model's reply",
+            ),
+            ("chat exceeded 16 tool calls", "The model kept"),
+            (
+                "chat turn exceeded its 120-second deadline",
+                "The model took",
+            ),
+            (
+                "llama-server exited before it was ready (exit 1); see /tmp/x.log",
+                "The local model",
+            ),
+            (
+                "live tool response has a different document epoch",
+                "The font changed",
+            ),
+            ("cancelled", "Stopped"),
+        ] {
+            let plain = plain_error(raw).unwrap_or_else(|| panic!("{raw} has a plain form"));
+            assert!(plain.starts_with(starts), "{raw} -> {plain}");
+        }
+        assert_eq!(
+            plain_error(
+                "The open document changed; discarded the previous chat response and model context."
+            ),
+            Some(
+                "The font changed while the model was working, so its answer was dropped. Ask again."
+            )
+        );
+        assert_eq!(plain_error("no glyph named zero"), None);
+    }
+
     #[test]
     fn chat_cancellation_before_spawn_is_retained() {
         let job = ChatJob::default();

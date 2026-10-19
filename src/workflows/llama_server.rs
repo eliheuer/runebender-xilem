@@ -35,7 +35,7 @@ pub struct LlamaSettings {
 impl Default for LlamaSettings {
     fn default() -> Self {
         Self {
-            context: 8192,
+            context: 16384,
             thinking: false,
             gpu_layers: 99,
             ready_timeout: Duration::from_secs(180),

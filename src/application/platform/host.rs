@@ -466,7 +466,7 @@ impl Workspace {
                 "How many off-curve points does U+0035 have?".into(),
             ));
             app.chat.entries.push(ChatEntry::Error(
-                "The local model server stopped before it answered.".into(),
+                "chat response was cut off at the model's context limit".into(),
             ));
             app.chat.prompt = "And which of the figures have the most points, and is \
                                that a problem for interpolation?"

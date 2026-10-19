@@ -132,7 +132,28 @@ fn transcript_row(
         ChatEntry::Assistant(text) if text.trim().is_empty() => return None,
         ChatEntry::Assistant(text) => card(Message::Answer, text.clone()),
         ChatEntry::Tool { .. } => return None,
-        ChatEntry::Error(text) => card(Message::Problem, text.clone()),
+        ChatEntry::Error(text) => {
+            match crate::application::editor::tools::chat::plain_error(text) {
+                None => card(Message::Problem, text.clone()),
+                // The plain sentence, and the original in small type under it.
+                Some(plain) => recipes::message_card(
+                    pal,
+                    Message::Problem,
+                    xcolumn(
+                        Region::List,
+                        (
+                            selectable_text::<Workspace, ()>(plain)
+                                .color(Message::Problem.ink(pal)),
+                            selectable_text::<Workspace, ()>(text.clone())
+                                .color(pal.placeholder_ink())
+                                .text_size(TextSize::Caption.px()),
+                        ),
+                    )
+                    .gap(Space::Sm),
+                )
+                .boxed(),
+            }
+        }
     })
 }
 
