@@ -324,13 +324,15 @@ pub(crate) enum Message {
     Answer,
     /// Something that went wrong: the danger wash, in the normal ink.
     Problem,
+    /// The editor's own statement of fact, on the panel's face.
+    Note,
 }
 
 impl Message {
     /// The ink for text on this card.
     pub(crate) fn ink(self, pal: &Palette) -> xilem::Color {
         match self {
-            Self::Question | Self::Answer | Self::Problem => pal.text,
+            Self::Question | Self::Answer | Self::Problem | Self::Note => pal.text,
         }
     }
 }
@@ -349,6 +351,7 @@ where
         Message::Question => pal.mark("yellow").unwrap_or(pal.question),
         Message::Answer => pal.mark("green").unwrap_or(Palette::FLAT),
         Message::Problem => pal.mark("red").unwrap_or_else(|| pal.danger_wash()),
+        Message::Note => Palette::FLAT,
     };
     sized_box(body)
         .padding(masonry::properties::Padding::from_vh(

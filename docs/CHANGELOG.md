@@ -27,6 +27,7 @@ Entries under Unreleased describe work being prepared, not an available public r
 ### Changed
 
 - Chat: the cards take the theme's mark colors, as the glyph grid does: yellow for what the person typed, green for an answer, red for a problem, and a purple-to-pink wash while the model works.
+- `propose_edits` on the live surface returns `changes`: for each glyph, the advance, sidebearings, ink width and point count before and after, whether the outline moved, and a warning when the new advance ends inside the outline. The Chat panel shows this account of a proposal as the editor's own note beside the model's answer, and gives each proposal task a time stamp so the same request can run twice.
 - Chat: two proposal entries for one glyph are joined into one entry with both operations before the batch is written, instead of being refused as a duplicate.
 - Chat: earlier turns keep only what was asked and answered; their tool calls and results no longer ride along in the next request, and the local server's context is 32768 tokens. A request that still exceeds it reads as a plain sentence.
 - Chat: a glyph revision the model mistyped in `propose_edits` is replaced by the revision a tool returned for that glyph in the same run, so a 76-character hash no longer has to survive transcription by a small model. A glyph the model never read keeps the stale-revision guard.

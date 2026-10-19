@@ -219,7 +219,7 @@ fn persistent_chat_reads_unsaved_font_proposes_and_reuses_server_across_turns() 
         app.ai
             .proposals
             .iter()
-            .any(|p| p.task == "persistent-width")
+            .any(|p| p.task.starts_with("persistent-width-"))
     );
     app.chat_send("Is the foreground unchanged?".into());
     assert!(pump(&mut app).is_empty());

@@ -297,6 +297,73 @@ pub fn call(project: &mut Project, name: &str, args: &Value) -> Value {
     result
 }
 
+/// What a proposal did to each glyph, in numbers, next to the foreground:
+/// advance, sidebearings, ink width, point count, and whether the outline
+/// moved at all. A proposal that sets the advance inside the ink gets a
+/// warning, because it is nearly always a mistaken operation.
+fn proposal_changes(
+    project: &Project,
+    source: SourceId,
+    summary: &proposal::ProposalSummary,
+) -> Vec<Value> {
+    use crate::analysis::glyph::read_project_glyph;
+    summary
+        .glyphs
+        .iter()
+        .map(|glyph| {
+            let before = read_project_glyph(project, source, glyph, None);
+            let after = read_project_glyph(project, source, glyph, Some(&summary.layer));
+            let number = |value: &Value, key: &str| value.get(key).and_then(Value::as_f64);
+            let pair = |key: &str| json!([number(&before, key), number(&after, key)]);
+            let ink_width = |value: &Value| {
+                value
+                    .get("bounds")
+                    .and_then(Value::as_array)
+                    .and_then(|b| Some(b.get(2)?.as_f64()? - b.first()?.as_f64()?))
+            };
+            let outline_changed = before.get("contours") != after.get("contours");
+            let mut warnings = Vec::new();
+            if let (Some(advance), Some(bounds)) = (
+                number(&after, "advance"),
+                after.get("bounds").and_then(Value::as_array),
+            ) && let Some(right) = bounds.get(2).and_then(Value::as_f64)
+                && advance < right
+            {
+                warnings.push(format!(
+                    "the advance {advance} ends inside the outline, which reaches {right}"
+                ));
+            }
+            let mut sentence = format!(
+                "{glyph}: advance {} to {}",
+                number(&before, "advance").unwrap_or_default(),
+                number(&after, "advance").unwrap_or_default()
+            );
+            if outline_changed {
+                sentence.push_str(&format!(
+                    ", ink width {} to {}, {} to {} points",
+                    ink_width(&before).unwrap_or_default(),
+                    ink_width(&after).unwrap_or_default(),
+                    number(&before, "points").unwrap_or_default(),
+                    number(&after, "points").unwrap_or_default()
+                ));
+            } else {
+                sentence.push_str(", outline unchanged");
+            }
+            json!({
+                "glyph": glyph,
+                "advance": pair("advance"),
+                "lsb": pair("lsb"),
+                "rsb": pair("rsb"),
+                "ink_width": [ink_width(&before), ink_width(&after)],
+                "points": pair("points"),
+                "outline_changed": outline_changed,
+                "warnings": warnings,
+                "sentence": sentence,
+            })
+        })
+        .collect()
+}
+
 fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, String> {
     let resolved;
     let args = match glyph_by_character(project, args) {
@@ -893,7 +960,11 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
                     .propose(&batch)?,
                 None => edit_batch::propose_project(project, source, &batch)?,
             };
-            json!({"ok": true, "proposal": summary})
+            let changes = match branch {
+                Some(_) => Vec::new(),
+                None => proposal_changes(project, source, &summary),
+            };
+            json!({"ok": true, "proposal": summary, "changes": changes})
         }
         "proposal_install" => {
             let task = object
@@ -1107,6 +1178,31 @@ mod tests {
         }
         let missing = call(&mut project, "read_glyph", &json!({"glyph": "U+E8FF"}));
         assert_eq!(missing["ok"], false, "{missing}");
+    }
+
+    #[test]
+    fn a_proposal_reports_what_it_changed_in_numbers() {
+        let mut project = Project::new_font("never-saved.ufo".into());
+        project
+            .add_document_glyph("zero", 680.0, Some(0x30))
+            .unwrap();
+        let read = call(&mut project, "read_glyph", &json!({"glyph": "zero"}));
+        let before = read["advance"].as_f64().unwrap();
+        let result = call(
+            &mut project,
+            "propose_edits",
+            &json!({"task": "narrow", "reason": "a test", "edits": [{
+                "glyph": "zero", "expected_revision": read["revision"],
+                "operations": [{"op": "set_width", "width": 64.0}]}]}),
+        );
+        assert_eq!(result["ok"], true, "{result}");
+        let change = &result["changes"][0];
+        assert_eq!(change["advance"], json!([before, 64.0]));
+        assert_eq!(change["outline_changed"], false);
+        assert_eq!(
+            change["sentence"],
+            format!("zero: advance {before} to 64, outline unchanged")
+        );
     }
 
     #[test]

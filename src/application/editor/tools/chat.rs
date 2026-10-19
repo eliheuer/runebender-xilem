@@ -600,13 +600,29 @@ fn result_note(name: &str, result: &Value) -> String {
                 .and_then(Value::as_array)
                 .map_or(0, Vec::len)
         ),
-        "propose_edits" => result
-            .get("proposed")
-            .and_then(Value::as_array)
-            .map_or_else(
-                || "proposal request finished".into(),
-                |items| format!("proposed {} glyphs for review", items.len()),
-            ),
+        "propose_edits" => {
+            let task = result
+                .pointer("/proposal/task")
+                .and_then(Value::as_str)
+                .unwrap_or("proposal");
+            let changes = result.get("changes").and_then(Value::as_array);
+            let mut lines = vec![format!("Proposed {task}.")];
+            for change in changes.into_iter().flatten() {
+                if let Some(sentence) = change.get("sentence").and_then(Value::as_str) {
+                    lines.push(format!("{sentence}."));
+                }
+                for warning in change
+                    .get("warnings")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                {
+                    lines.push(format!("Check: {warning}."));
+                }
+            }
+            lines.join(" ")
+        }
         "proof" | "specimen" => "proof prepared".into(),
         _ => "done".into(),
     }

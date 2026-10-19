@@ -131,6 +131,12 @@ fn transcript_row(
         // The answer card appears with the first words, not before.
         ChatEntry::Assistant(text) if text.trim().is_empty() => return None,
         ChatEntry::Assistant(text) => card(Message::Answer, text.clone()),
+        // The editor's own account of a proposal, beside whatever the model says.
+        ChatEntry::Tool {
+            name,
+            ok: true,
+            note,
+        } if name == "propose_edits" => card(Message::Note, note.clone()),
         ChatEntry::Tool { .. } => return None,
         ChatEntry::Error(text) => {
             match crate::application::editor::tools::chat::plain_error(text) {

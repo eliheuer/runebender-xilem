@@ -101,7 +101,11 @@ fn base_prompt() -> String {
          source is a stable ID from project_info; never guess a source or a glyph revision. You \
          may read, measure, proof, and propose. A proposal is separate from installation; the person installs it. \
          You cannot install, apply, discard, save, run a program, or call another tool. \
-         Give short, factual answers. If a tool reports an error, correct the call and try again \
+         Answer in one to three sentences with the numbers the tools returned. \
+         To make a glyph wider by N units, move its right-hand points with transform_points and add \
+         N to the advance with adjust_width; set_width replaces the whole advance and is for a \
+         requested absolute width. After propose_edits, report its changes field as the result. \
+         If a tool reports an error, correct the call and try again \
          once (glyph_inventory lists the real glyph names); only then say what failed. \
          Use the supplied function tools when needed; never write tool-call markup in prose.",
     )
@@ -361,6 +365,7 @@ fn run_loop(
             // Always override a model-supplied epoch with this editor's own.
             args.insert("expected_document_epoch".into(), json!(epoch));
             if tool.name == "propose_edits" {
+                unique_task_name(&mut args);
                 merge_edits_by_glyph(&mut args);
                 restore_read_revisions(&mut args, &revisions);
             }
@@ -433,6 +438,26 @@ fn restore_read_revisions(
             edit.insert("expected_revision".into(), json!(read));
         }
     }
+}
+
+/// A proposal task name must be new, and a model asked for the same thing
+/// twice gives it the same name twice. A short time stamp makes each one its
+/// own; the task the model chose stays readable in front of it.
+fn unique_task_name(args: &mut Map<String, Value>) {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() % 100_000);
+    let task = args
+        .get("task")
+        .and_then(Value::as_str)
+        .map_or("edit", str::trim)
+        .to_owned();
+    let task = if task.is_empty() {
+        "edit".to_owned()
+    } else {
+        task
+    };
+    args.insert("task".into(), json!(format!("{task}-{stamp}")));
 }
 
 /// A batch names each glyph once, and a small model asked for two changes to
@@ -556,6 +581,18 @@ mod tests {
         assert_eq!(edits[0]["operations"].as_array().unwrap().len(), 2);
         assert_eq!(edits[0]["operations"][1]["op"], "adjust_width");
         assert_eq!(edits[1]["glyph"], "one");
+    }
+
+    #[test]
+    fn a_task_name_gets_a_stamp_so_the_same_request_can_run_twice() {
+        let mut args = json!({"task":"wider","edits":[]})
+            .as_object()
+            .cloned()
+            .unwrap();
+        unique_task_name(&mut args);
+        let task = args["task"].as_str().unwrap().to_owned();
+        assert!(task.starts_with("wider-"), "{task}");
+        assert!(task["wider-".len()..].chars().all(|c| c.is_ascii_digit()));
     }
 
     #[test]
