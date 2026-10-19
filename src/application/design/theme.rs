@@ -438,6 +438,17 @@ impl Palette {
             .with_alpha(crate::application::design::Alpha::Placeholder.value())
     }
 
+    /// The surface of a problem report: the field's lightness with a low
+    /// chroma of the danger hue, so the normal text ink stays legible on it
+    /// in light and dark themes alike, and red reads as the surface, not as
+    /// hard-to-read red text.
+    pub(crate) fn danger_wash(&self) -> Color {
+        use masonry::peniko::color::{AlphaColor, Oklch};
+        let field = self.field().convert::<Oklch>().components;
+        let hue = self.role("danger").convert::<Oklch>().components[2];
+        AlphaColor::<Oklch>::new([field[0], 0.07, hue, 1.0]).convert()
+    }
+
     /// The themed background for selected rows, tiles, and controls.
     pub(crate) fn selected_bg(&self) -> Color {
         self.role("controlSelected")

@@ -426,7 +426,6 @@ mod tests {
             ControlKind::Quiet,
             ControlKind::Toggle,
             ControlKind::Row,
-            ControlKind::Disclosure,
             ControlKind::Bare,
         ] {
             let (mut harness, id) = harness(kind);
@@ -438,6 +437,21 @@ mod tests {
             assert_ne!(rest, hover, "{kind:?} hover");
             assert_ne!(hover, pressed, "{kind:?} pressed");
         }
+    }
+
+    /// A section header paints nothing on hover or press: a fill inside
+    /// the group's inset stops short of the rules around it (Eli,
+    /// 2026-10-18). Folding the section is its feedback.
+    #[test]
+    fn a_disclosure_header_paints_no_hover() {
+        let (mut harness, id) = harness(ControlKind::Disclosure);
+        let rest = harness.render();
+        harness.mouse_move_to(id);
+        let hover = harness.render();
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        let pressed = harness.render();
+        assert_eq!(rest, hover, "Disclosure hover");
+        assert_eq!(rest, pressed, "Disclosure pressed");
     }
 
     #[test]

@@ -855,7 +855,9 @@ mod prune_tests {
         let dead_sock = dead_dir.join("session.sock");
         drop(UnixListener::bind(&dead_sock).unwrap());
         assert!(dead_sock.exists());
-        assert!(prune_stale() >= 1);
+        // Another test's server start may prune this socket first, so check
+        // what pruning leaves behind, not how many this call removed.
+        prune_stale();
         assert!(!dead_sock.exists() && !dead_dir.exists());
         assert!(
             live_path.exists(),

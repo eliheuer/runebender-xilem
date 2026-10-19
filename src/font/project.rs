@@ -2314,6 +2314,22 @@ impl Project {
         self.variable.glyphs.keys().map(String::as_str)
     }
 
+    /// The glyph a person or model means by `query`: the name itself, or the
+    /// glyph that carries the character it names, written as `U+0035`,
+    /// `uni0035`, `u1F600`, or the character `5`. `None` when nothing matches.
+    pub fn resolve_glyph_name(&self, query: &str) -> Option<String> {
+        if self.variable.glyphs.contains_key(query) {
+            return Some(query.to_owned());
+        }
+        let character = character_named(query)?;
+        self.glyph_names()
+            .find(|name| {
+                self.document_glyph_codepoints(name)
+                    .is_some_and(|sources| sources.iter().any(|cps| cps.contains(&character)))
+            })
+            .map(str::to_owned)
+    }
+
     pub(crate) fn codec_data(&self) -> &VariableData {
         &self.variable
     }
@@ -2355,6 +2371,25 @@ impl Project {
         }
         Ok(())
     }
+}
+
+/// The character named by `U+0035`, `u+0035`, `uni0035`, `u1F600`, or a
+/// single character such as `5`.
+fn character_named(query: &str) -> Option<char> {
+    let query = query.trim();
+    let mut chars = query.chars();
+    if let (Some(only), None) = (chars.next(), chars.next()) {
+        return Some(only);
+    }
+    let hex = query
+        .strip_prefix("U+")
+        .or_else(|| query.strip_prefix("u+"))
+        .or_else(|| query.strip_prefix("uni"))
+        .or_else(|| query.strip_prefix('u'))?;
+    if !(4..=6).contains(&hex.len()) {
+        return None;
+    }
+    char::from_u32(u32::from_str_radix(hex, 16).ok()?)
 }
 
 #[cfg(test)]

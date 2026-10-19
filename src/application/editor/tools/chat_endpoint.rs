@@ -337,13 +337,9 @@ fn run_loop(
                 return Err("live tool response has no success status".into());
             };
             emit(json!({"event":"tool_result", "name":tool.name, "ok":ok, "result":result}));
-            if !ok {
-                let error = result
-                    .get("error")
-                    .and_then(Value::as_str)
-                    .unwrap_or("live tool rejected the request");
-                return Err(format!("{}: {error}", tool.name));
-            }
+            // A tool that says no, such as a glyph that is not in the font,
+            // is an answer the model can act on: it goes back as the tool's
+            // result, and the model can retry with another name or say so.
             messages
                 .push(json!({"role":"tool", "tool_call_id":tool.id, "content":result.to_string()}));
             total_calls += 1;

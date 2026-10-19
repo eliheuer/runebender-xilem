@@ -42,7 +42,8 @@ pub(crate) enum ControlKind {
     Row,
     /// A section header that opens and closes: muted, and never a face.
     /// It sits inside the group's inset, so a fill would stop short of the
-    /// rules and edges around it; hover and press strengthen the ink instead.
+    /// rules and edges around it; it shows no hover or press, and folding
+    /// the section is its feedback.
     Disclosure,
     /// A control whose content is its face, such as a color swatch or a
     /// reference dot: the content covers the fill, so hover and pressed
@@ -114,13 +115,6 @@ impl ControlStyle {
 
     /// The same control drawn disabled, or not.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "disabled is a state of every control, before any view disables one"
-        )
-    )]
     pub(crate) fn disabled(self, pal: &Palette, disabled: bool) -> Self {
         Self::resolve(pal, self.kind, self.ground, self.selected, disabled)
     }
@@ -254,18 +248,8 @@ impl ControlStyle {
                 },
             )
         } else if kind == ControlKind::Disclosure {
-            // No fill: the header reads as part of the group, and the ink
-            // answers the pointer.
-            (
-                Face {
-                    ink: pal.text,
-                    ..rest
-                },
-                Face {
-                    ink: pal.text_subdued,
-                    ..rest
-                },
-            )
+            // No state paints: the header reads as part of the group.
+            (rest, rest)
         } else if kind == ControlKind::Swatch {
             // The content covers any fill, so the states draw on the edge.
             (
@@ -427,6 +411,12 @@ mod tests {
                         let rest = style.face(false, false);
                         let hover = style.face(true, false);
                         let pressed = style.face(true, true);
+                        // A section header shows no state at all.
+                        if kind == ControlKind::Disclosure {
+                            assert_eq!(rest, hover, "{id} Disclosure hover");
+                            assert_eq!(rest, pressed, "{id} Disclosure pressed");
+                            continue;
+                        }
                         // The open tab already shows the lit ink, so only its press shows.
                         if !(kind == ControlKind::Tab && selected) {
                             assert_ne!(rest, hover, "{id} {kind:?} selected={selected} hover");

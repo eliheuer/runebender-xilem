@@ -244,6 +244,33 @@ fn today() -> String {
     format!("{year:04}-{month:02}-{day:02}")
 }
 
+/// The arguments with a `glyph` written as a character, such as `U+0035`
+/// or `5`, replaced by the name of the glyph that carries it, so a tool
+/// finds `five` when that is what was meant. `None` when nothing changes.
+fn glyph_by_character(project: &Project, args: &Value) -> Option<Value> {
+    let query = args.get("glyph")?.as_str()?;
+    let name = project.resolve_glyph_name(query)?;
+    (name != query).then(|| {
+        let mut args = args.clone();
+        args["glyph"] = json!(name);
+        args
+    })
+}
+
+/// A font-unit value as JSON: a whole number as an integer, so a model
+/// quotes 1024, not 1024.0, the way a designer writes it.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "only whole values well inside the i64 range are cast"
+)]
+fn font_units(value: f64) -> Value {
+    if value.fract() == 0.0 && value.abs() < 1e15 {
+        json!(value as i64)
+    } else {
+        json!(value)
+    }
+}
+
 /// Handles a call on the GUI thread. Reads include unsaved changes; proposals mark
 /// their source dirty. Explicit proposal installation changes foreground with undo;
 /// no tool saves files.
@@ -269,6 +296,14 @@ pub fn call(project: &mut Project, name: &str, args: &Value) -> Value {
 }
 
 fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, String> {
+    let resolved;
+    let args = match glyph_by_character(project, args) {
+        Some(value) => {
+            resolved = value;
+            &resolved
+        }
+        None => args,
+    };
     let object = args.as_object().ok_or("arguments must be an object")?;
     if object.contains_key("master") {
         return Err(
@@ -578,10 +613,12 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
                         .count()
                 }
             };
+            let units = font_units;
+            let maybe = |value: Option<f64>| value.map(units);
             json!({"ok": true, "family": info.names.family_name,
-                "style": info.names.style_name, "units_per_em": metrics.units_per_em,
-                "ascender": metrics.ascender, "descender": metrics.descender,
-                "x_height": info.metrics.x_height, "cap_height": info.metrics.cap_height,
+                "style": info.names.style_name, "units_per_em": units(metrics.units_per_em),
+                "ascender": units(metrics.ascender), "descender": units(metrics.descender),
+                "x_height": maybe(info.metrics.x_height), "cap_height": maybe(info.metrics.cap_height),
                 "glyphs": glyphs, "proposals": proposals})
         }
         "glyph_inventory" => {
@@ -1039,6 +1076,20 @@ mod tests {
                 .width(),
             512.0
         );
+    }
+
+    #[test]
+    fn a_glyph_named_by_its_character_reaches_the_glyph() {
+        let mut project = Project::new_font("never-saved.ufo".into());
+        project
+            .add_document_glyph("five", 500.0, Some(0x35))
+            .unwrap();
+        for query in ["five", "U+0035", "u+0035", "uni0035", "5"] {
+            let read = call(&mut project, "read_glyph", &json!({"glyph": query}));
+            assert_eq!(read["ok"], true, "{query}: {read}");
+        }
+        let missing = call(&mut project, "read_glyph", &json!({"glyph": "U+E8FF"}));
+        assert_eq!(missing["ok"], false, "{missing}");
     }
 
     #[test]

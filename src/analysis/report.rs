@@ -293,6 +293,19 @@ pub fn analyze_project_font(
     }))
 }
 
+/// How many points the layer's contours have, on and off the curve.
+fn point_counts(layer: LayerView<'_>) -> Value {
+    let (mut on, mut off) = (0_usize, 0_usize);
+    for point in layer.contours().flat_map(|contour| contour.points()) {
+        if point.point_type() == crate::font::LayerPointType::OffCurve {
+            off += 1;
+        } else {
+            on += 1;
+        }
+    }
+    json!({"total": on + off, "on_curve": on, "off_curve": off})
+}
+
 /// The numbers of one layer on its own.
 pub fn analyze_layer(layer: LayerView<'_>) -> Value {
     let (stem, bar) = dimensions::stem_and_bar_from_layer(layer);
@@ -363,6 +376,9 @@ pub fn analyze_layer(layer: LayerView<'_>) -> Value {
         "bar": bar,
         "spans": spans,
         "contours": layer.contours().count(),
+        // Counted here so a model answers "how many off-curve points" from
+        // a number instead of counting a point list, which small models get wrong.
+        "points": point_counts(layer),
         "components": layer.components().count(),
         "anchors": layer.anchors().count(),
         "nodes": {
@@ -491,6 +507,16 @@ mod tests {
         assert_eq!(sources[0]["present"], true);
         assert_eq!(sources[0]["compatible"], true, "{}", sources[0]);
         assert!(report["nodes"]["total"].as_u64().unwrap() >= 12);
+        let points = &report["points"];
+        assert_eq!(
+            points["total"].as_u64().unwrap(),
+            points["on_curve"].as_u64().unwrap() + points["off_curve"].as_u64().unwrap(),
+            "{points}"
+        );
+        assert!(
+            points["on_curve"].as_u64().unwrap() >= 12,
+            "H has at least 12 corners"
+        );
     }
 
     #[test]

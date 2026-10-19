@@ -313,19 +313,83 @@ where
         .corner_radius(Length::px(pal.control_radius))
 }
 
-/// What the person said in a conversation: a card in the selection face,
-/// so it reads as theirs beside the model's plain prose.
-pub(crate) fn bubble<V>(
+/// The three kinds of entry in a conversation. Each is a card with the
+/// field's keyline, so the transcript and the field it grows from read as
+/// one family; only the surface tells them apart.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Message {
+    /// What the person asked: the selection face.
+    Question,
+    /// What the model answered: the panel's own face.
+    Answer,
+    /// Something that went wrong: the danger wash, in the normal ink.
+    Problem,
+}
+
+impl Message {
+    /// The ink for text on this card.
+    pub(crate) fn ink(self, pal: &Palette) -> xilem::Color {
+        match self {
+            Self::Question => pal.selected_ink(),
+            Self::Answer | Self::Problem => pal.text,
+        }
+    }
+}
+
+/// One entry of a conversation as a card. The text inset matches the
+/// field's, so the text in every card and in the field starts on one edge.
+pub(crate) fn message_card<V>(
     pal: &Palette,
+    kind: Message,
     body: V,
 ) -> impl WidgetView<Workspace, Widget: Sized> + use<V>
 where
     V: WidgetView<Workspace>,
 {
+    let fill = match kind {
+        Message::Question => pal.selected_bg(),
+        Message::Answer => Palette::FLAT,
+        Message::Problem => pal.danger_wash(),
+    };
     sized_box(body)
-        .padding(Space::Md)
-        .background_color(pal.selected_bg())
+        .padding(masonry::properties::Padding::from_vh(
+            Space::Md.length(),
+            Length::px(crate::application::design::INPUT_HORIZONTAL_INSET),
+        ))
+        .background_color(fill)
+        .border_color(pal.field_outline)
+        .border_width(Length::px(pal.stroke))
         .corner_radius(Length::px(pal.control_radius))
+        .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
+}
+
+/// A text field that grows a line at a time as its text wraps. Return
+/// submits, Shift+Return starts a new line, and Escape cancels, as in every
+/// chat composer.
+pub(crate) fn field_growing<F, G, H>(
+    pal: &Palette,
+    placeholder: &'static str,
+    value: String,
+    on_change: F,
+    on_enter: G,
+    on_escape: H,
+) -> impl WidgetView<Workspace> + use<F, G, H>
+where
+    F: Fn(&mut Workspace, String) + Send + Sync + 'static,
+    G: Fn(&mut Workspace, String) + Send + Sync + 'static,
+    H: Fn(&mut Workspace) + Send + Sync + 'static,
+{
+    sized_box(input_typography::input_typography(
+        text_input(value, move |app: &mut Workspace, v| on_change(app, v))
+            .on_enter(move |app: &mut Workspace, v| on_enter(app, v))
+            .on_cancel(move |app: &mut Workspace, _| on_escape(app))
+            .insert_newline(masonry::widgets::InsertNewline::OnShiftEnter)
+            .placeholder(placeholder)
+            .text_color(pal.text)
+            .placeholder_color(pal.placeholder_ink()),
+        pal.text,
+    ))
+    .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
 }
 
 /// A one-stroke rule across its container in the outline color.

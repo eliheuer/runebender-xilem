@@ -92,7 +92,11 @@ fn analyze_glyph(font: &Path, source: &Path, name: &str, layer: Option<&str>) ->
     let Some(source_id) = source_id else {
         return json!({ "ok": false, "error": "the font has no source" });
     };
-    match runebender::analysis::report::analyze_project_glyph(&project, source_id, name, layer) {
+    // `U+0035` or `5` finds `five`, as on the live surface.
+    let name = project
+        .resolve_glyph_name(name)
+        .unwrap_or_else(|| name.to_owned());
+    match runebender::analysis::report::analyze_project_glyph(&project, source_id, &name, layer) {
         Ok(value) => value,
         Err(error) => json!({ "ok": false, "error": error }),
     }

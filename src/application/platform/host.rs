@@ -462,7 +462,15 @@ impl Workspace {
                         .into(),
                 ),
             ];
-            app.chat.last_speed = Some("14 tokens/s".into());
+            app.chat.entries.push(ChatEntry::User(
+                "How many off-curve points does U+0035 have?".into(),
+            ));
+            app.chat.entries.push(ChatEntry::Error(
+                "The local model server stopped before it answered.".into(),
+            ));
+            app.chat.prompt = "And which of the figures have the most points, and is \
+                               that a problem for interpolation?"
+                .into();
         }
         if app.tool == Tool::AiShape {
             // The tool was set directly, not picked, so scan for its models here.

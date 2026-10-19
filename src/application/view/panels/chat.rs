@@ -86,13 +86,15 @@ fn tool_sentence(name: &str, ok: bool, note: &str) -> String {
 }
 
 /// A word on a control: the base button with a kind, at control height.
+/// A disabled one shows it cannot act and does not answer the pointer.
 fn word_button<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     pal: &crate::application::design::theme::Palette,
     kind: ControlKind,
     text: &'static str,
+    enabled: bool,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
-    let style = ControlStyle::new(pal, kind);
+    let style = ControlStyle::new(pal, kind).disabled(pal, !enabled);
     sized_box(
         recipes::button(
             style,
@@ -106,54 +108,32 @@ fn word_button<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Swatch)))
 }
 
-/// One entry of the conversation, or nothing for a tool call that
-/// succeeded: the answer is what the reader wants, not the bookkeeping.
+/// One entry of the conversation, or nothing for a tool call: a tool that
+/// worked shows in the answer, and one that refused goes back to the model,
+/// which says what it could not do. Only a turn that failed is a problem.
 fn transcript_row(
     app: &Workspace,
     entry: &ChatEntry,
 ) -> Option<Box<xilem::AnyWidgetView<Workspace>>> {
+    use recipes::Message;
     let pal = &app.palette;
-    let row = match entry {
-        ChatEntry::Script(artifact) => script_artifact_row(app, artifact),
-        ChatEntry::User(text) => recipes::bubble(
+    let card = |kind: Message, text: String| {
+        recipes::message_card(
             pal,
-            selectable_text::<Workspace, ()>(text.clone()).color(pal.selected_ink()),
+            kind,
+            selectable_text::<Workspace, ()>(text).color(kind.ink(pal)),
         )
-        .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
-        .boxed(),
-        ChatEntry::Assistant(text) => sized_box(
-            selectable_text::<Workspace, ()>(if text.is_empty() {
-                "…".to_string()
-            } else {
-                text.clone()
-            })
-            .color(pal.text),
-        )
-        .padding(masonry::properties::Padding::horizontal(Space::Md.length()))
-        .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
-        .boxed(),
-        ChatEntry::Tool { ok: true, .. } => return None,
-        ChatEntry::Tool { name, ok, note } => sized_box(
-            label(tool_sentence(name, *ok, note))
-                .text_size(TextSize::Caption.px())
-                .color(if note == "…" {
-                    pal.text_muted
-                } else {
-                    pal.role("danger")
-                })
-                .line_break_mode(masonry::properties::LineBreaking::WordWrap),
-        )
-        .padding(masonry::properties::Padding::horizontal(Space::Md.length()))
-        .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
-        .boxed(),
-        ChatEntry::Error(text) => {
-            sized_box(selectable_text::<Workspace, ()>(text.clone()).color(pal.role("danger")))
-                .padding(masonry::properties::Padding::horizontal(Space::Md.length()))
-                .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
-                .boxed()
-        }
+        .boxed()
     };
-    Some(row)
+    Some(match entry {
+        ChatEntry::Script(artifact) => script_artifact_row(app, artifact),
+        ChatEntry::User(text) => card(Message::Question, text.clone()),
+        // The answer card appears with the first words, not before.
+        ChatEntry::Assistant(text) if text.trim().is_empty() => return None,
+        ChatEntry::Assistant(text) => card(Message::Answer, text.clone()),
+        ChatEntry::Tool { .. } => return None,
+        ChatEntry::Error(text) => card(Message::Problem, text.clone()),
+    })
 }
 
 /// One step of space sets the whole panel's rhythm: the inset, the gap
@@ -224,14 +204,24 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         .boxed()
     };
 
-    let field = recipes::field_bare(
+    // The hint is for the first question; after that the field is blank.
+    let field = recipes::field_growing(
         pal,
-        "Ask about the open font",
+        if empty { "Ask about the open font" } else { "" },
         app.chat.prompt.clone(),
         |app, value| app.chat.prompt = value,
+        // Return while the model works keeps the text for the next turn,
+        // and a blank field sends nothing.
         |app, value| {
-            app.chat.prompt.clear();
-            app.chat_send(value);
+            if app.chat.job.is_none() && !value.trim().is_empty() {
+                app.chat.prompt.clear();
+                app.chat_send(value);
+            }
+        },
+        |app| {
+            if app.chat.job.is_some() {
+                app.chat_cancel();
+            }
         },
     );
 
@@ -299,6 +289,7 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             pal,
             ControlKind::Secondary,
             "Clear",
+            true,
             |app: &mut Workspace| {
                 app.chat_clear();
             },
@@ -309,18 +300,26 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             pal,
             ControlKind::Secondary,
             "Stop",
+            true,
             |app: &mut Workspace| {
                 app.chat_cancel();
             },
         )
         .boxed()
     } else {
-        word_button(pal, ControlKind::Primary, "Send", |app: &mut Workspace| {
-            if app.chat.job.is_none() {
-                let prompt = std::mem::take(&mut app.chat.prompt);
-                app.chat_send(prompt);
-            }
-        })
+        let ready = !app.chat.prompt.trim().is_empty();
+        word_button(
+            pal,
+            ControlKind::Primary,
+            "Send",
+            ready,
+            |app: &mut Workspace| {
+                if app.chat.job.is_none() {
+                    let prompt = std::mem::take(&mut app.chat.prompt);
+                    app.chat_send(prompt);
+                }
+            },
+        )
         .boxed()
     };
     let controls = xrow(
