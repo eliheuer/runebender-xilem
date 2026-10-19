@@ -322,7 +322,17 @@ fn live_mcp_serves_workflows_as_prompts_before_any_connection() {
         {
             if matches!(
                 word,
-                "set_width" | "user_approved" | "document_epoch" | "lsb" | "rsb" | "runebender_"
+                // Proposal operations and argument names, not tools.
+                "set_width"
+                    | "set_point"
+                    | "set_outline"
+                    | "transform_points"
+                    | "adjust_width"
+                    | "user_approved"
+                    | "document_epoch"
+                    | "lsb"
+                    | "rsb"
+                    | "runebender_"
             ) || word.ends_with("_date")
                 || !word.contains('_')
             {

@@ -343,6 +343,13 @@ impl Workspace {
             }
         };
         let font = self.font.document_source().to_path_buf();
+        // The design context the model reasons from: defaults, the
+        // designer's files, and this font's own rules, within the budget a
+        // small context window leaves for it.
+        let context = runebender::automation::context::merged(
+            &runebender::automation::context::load(Some(&font)),
+            Some(chat_endpoint::CONTEXT_BUDGET_CHARS),
+        );
         let job = ChatJob {
             document_epoch: epoch.clone(),
             ..ChatJob::default()
@@ -364,6 +371,7 @@ impl Workspace {
                         &session,
                         epoch.as_deref().unwrap_or_default(),
                         &conversation,
+                        &context,
                         &job,
                     )
                 })

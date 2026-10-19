@@ -301,6 +301,16 @@ fn agent_call_value(
     if name == "docs" {
         return docs_search(args.get("query").and_then(|v| v.as_str()).unwrap_or(""));
     }
+    if name == "design_context" {
+        let wanted = args.get("layer").and_then(|v| v.as_str());
+        let files: Vec<_> = runebender::automation::context::load(Some(font))
+            .into_iter()
+            .filter(|file| wanted.is_none_or(|layer| file.layer.name() == layer))
+            .collect();
+        return json!({ "ok": true,
+            "precedence": "A later layer wins where it disagrees with an earlier one: font over personal over default.",
+            "files": runebender::automation::context::to_json(&files) });
+    }
     let master = match args.get("master") {
         None => None,
         Some(value) => match value.as_u64().and_then(|v| usize::try_from(v).ok()) {

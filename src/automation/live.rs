@@ -105,8 +105,10 @@ pub fn tools() -> Vec<agent::Tool> {
     });
     result.push(agent::Tool {
         name: "design_context".into(),
-        description: "Read the type-design workflow and documentation entry points before designing. Project DESIGN.md and the user's reference choices determine the style; docs describe technique, not a universal aesthetic.".into(),
-        parameters: json!({"type":"object", "properties":{},"additionalProperties":false}),
+        description: "Read the design context before judging or changing a glyph: the editor's default type design and font engineering principles, the designer's personal context files, and the open font's own rules from the *.context.md files beside it, in that order, with a later layer winning where it disagrees. Returns each file with its layer, name and path, plus the documentation links. Call it once at the start of design work; the font layer is where a family's grid, metrics, stems and spacing rules live.".into(),
+        parameters: json!({"type":"object", "properties":{
+            "layer":{"type":"string","enum":["default","personal","font"],"description":"Only this layer; omit for all three."}
+        },"additionalProperties":false}),
     });
     result.push(agent::Tool {
         name: "analyze_glyph".into(),
@@ -343,7 +345,14 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
         );
     }
     if name == "design_context" {
+        let wanted = object.get("layer").and_then(Value::as_str);
+        let files: Vec<_> = crate::automation::context::load(project.export_source.as_deref())
+            .into_iter()
+            .filter(|file| wanted.is_none_or(|layer| file.layer.name() == layer))
+            .collect();
         return Ok(json!({"ok":true,
+            "precedence":"A later layer wins where it disagrees with an earlier one: font over personal over default.",
+            "files": crate::automation::context::to_json(&files),
             "documentation":["https://runebender.org/docs/type-design.html", "https://runebender.org/docs/mcp.html", "https://runebender.org/llms-full.txt"],
             "workflow":["Read the project DESIGN.md with your file tools and the official type-design guide with your web tools.",
                 "Confirm stable source identities, Unicode mapping, mark meanings, reference glyphs and target glyphs. Missing and empty are different.",

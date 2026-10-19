@@ -22,6 +22,7 @@ const MAX_COMPLETIONS: usize = 7;
 const MAX_MESSAGES: usize = 64;
 const MAX_CONTEXT_BYTES: usize = 1024 * 1024;
 const ALLOWED_TOOLS: &[&str] = &[
+    "design_context",
     "project_info",
     "font_info",
     "editor_context",
@@ -56,7 +57,26 @@ fn tools() -> Vec<agent::Tool> {
         .collect()
 }
 
-fn system_prompt() -> String {
+/// How much of the design context the local model gets in its prompt, in
+/// characters: about five thousand tokens of a 16k window, leaving room for the
+/// tools, the conversation and the answer.
+pub(super) const CONTEXT_BUDGET_CHARS: usize = 20_000;
+
+fn system_prompt(context: &str) -> String {
+    let mut prompt = base_prompt();
+    if !context.trim().is_empty() {
+        prompt.push_str(
+            "\n\nThe design context below is how this font is drawn and how fonts are kept \
+             sound. Reason from it when a request asks for a change: name the structure the \
+             request means, measure it, make the smallest edit that does the job as a \
+             proposal, and measure again. Where layers disagree the later one wins.\n\n",
+        );
+        prompt.push_str(context);
+    }
+    prompt
+}
+
+fn base_prompt() -> String {
     // The tool descriptions and schemas come from the shared agent/live
     // contract; the host alone decides which of them the model may execute.
     String::from(
@@ -231,6 +251,7 @@ fn remaining(deadline: Instant) -> Result<Duration, String> {
 
 fn run_loop(
     conversation: &str,
+    context: &str,
     cancellation: &ProcessCancellation,
     epoch: &str,
     mut infer: impl FnMut(&Value, Duration) -> Result<Value, String>,
@@ -263,7 +284,7 @@ fn run_loop(
         let inference_budget = remaining(deadline)?;
         check_messages(&messages)?;
         let mut request_messages = Vec::with_capacity(messages.len() + 1);
-        request_messages.push(json!({"role":"system", "content":system_prompt()}));
+        request_messages.push(json!({"role":"system", "content":system_prompt(context)}));
         request_messages.extend(messages.iter().cloned());
         let request = json!({
             "messages":request_messages,
@@ -357,10 +378,12 @@ pub(super) fn run_chat_endpoint(
     session: &std::path::Path,
     epoch: &str,
     conversation: &str,
+    context: &str,
     job: &ChatJob,
 ) -> Result<(), String> {
     run_loop(
         conversation,
+        context,
         &job.cancellation,
         epoch,
         |request, remaining| {
@@ -428,6 +451,7 @@ mod tests {
         let events = RefCell::new(Vec::new());
         let result = run_loop(
             r#"[{"role":"user","content":"Read and propose a change to a"}]"#,
+            "",
             &ProcessCancellation::default(),
             "host-epoch",
             |request, _| {
@@ -472,6 +496,7 @@ mod tests {
             let dispatched = Cell::new(0);
             let result = run_loop(
                 r#"[{"role":"user","content":"hello"}]"#,
+                "",
                 &ProcessCancellation::default(),
                 "host-epoch",
                 |_, _| Ok(reply.clone()),
@@ -492,6 +517,7 @@ mod tests {
         let calls = Cell::new(0);
         let result = run_loop(
             r#"[{"role":"user","content":"inspect"}]"#,
+            "",
             &ProcessCancellation::default(),
             "host-epoch",
             |_, _| {
@@ -511,6 +537,7 @@ mod tests {
         let calls = Cell::new(0);
         let result = run_loop(
             r#"[{"role":"user","content":"inspect"}]"#,
+            "",
             &ProcessCancellation::default(),
             "host-epoch",
             |_, _| Ok(call_reply("project_info", json!({}))),
@@ -531,6 +558,7 @@ mod tests {
         let inference = Cell::new(0);
         let result = run_loop(
             r#"[{"role":"user","content":"inspect"}]"#,
+            "",
             &cancellation,
             "host-epoch",
             |_, _| {
@@ -549,6 +577,7 @@ mod tests {
         let published = Cell::new(0);
         let result = run_loop(
             r#"[{"role":"user","content":"inspect"}]"#,
+            "",
             &cancellation,
             "host-epoch",
             |_, _| {

@@ -85,6 +85,20 @@ pub fn tools() -> Vec<Tool> {
             ),
         },
         Tool {
+            name: "design_context".into(),
+            description: "Reads the design context before judging or changing a glyph: \
+                          the editor's default type design and font engineering \
+                          principles, the designer's personal context files, and the \
+                          font's own rules from the *.context.md files beside it, in \
+                          that order, with a later layer winning where it disagrees."
+                .into(),
+            parameters: params(
+                json!({ "layer": { "type": "string", "enum": ["default", "personal", "font"],
+                    "description": "Only this layer; omit for all three." } }),
+                &[],
+            ),
+        },
+        Tool {
             name: "analyze_glyph".into(),
             description: "Measures one glyph without changing it: narrowest stem and \
                           bar, ink spans, node continuity with kinks and G1 curve joins \
@@ -194,7 +208,10 @@ pub fn tools() -> Vec<Tool> {
         parameters: serde_json::to_value(schemars::schema_for!(crate::font::edit_batch::EditBatch)).expect("schema serializes"),
     });
     for tool in &mut tools {
-        if !matches!(tool.name.as_str(), "project_info" | "docs") {
+        if !matches!(
+            tool.name.as_str(),
+            "project_info" | "docs" | "design_context"
+        ) {
             tool.parameters["properties"]["master"] = json!({"type": "integer", "minimum": 0,
                 "description": "Master index from project_info. Required for multi-master projects."});
         }

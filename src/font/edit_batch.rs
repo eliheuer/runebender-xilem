@@ -86,6 +86,58 @@ pub enum Operation {
         /// New y coordinate.
         y: f64,
     },
+    /// Move, and optionally scale, a chosen set of existing points, keeping point
+    /// count and order. Choose points by `points` (pairs of contour index and point
+    /// index from `read_glyph`), by a region in font units (`x_min`, `x_max`, `y_min`,
+    /// `y_max`, each optional and inclusive), or both; a point is chosen when it is
+    /// listed or inside the region. Off-curve control points are points too: to move a
+    /// stem, take its on-curve points and their handles together, usually with a region
+    /// that covers the whole stem. Scaling is about (`origin_x`, `origin_y`) and happens
+    /// before the move. Anchors and components stay; use `adjust_width` or `set_width`
+    /// for the advance. This is the edit for widening, narrowing, or shifting part of a
+    /// glyph: say which structure moves and by how much, never redraw.
+    TransformPoints {
+        /// Pairs of contour index and point index to move, from `read_glyph`.
+        #[serde(default)]
+        points: Vec<[usize; 2]>,
+        /// Lowest x of the region, inclusive.
+        #[serde(default)]
+        x_min: Option<f64>,
+        /// Highest x of the region, inclusive.
+        #[serde(default)]
+        x_max: Option<f64>,
+        /// Lowest y of the region, inclusive.
+        #[serde(default)]
+        y_min: Option<f64>,
+        /// Highest y of the region, inclusive.
+        #[serde(default)]
+        y_max: Option<f64>,
+        /// Horizontal move, in font units.
+        #[serde(default)]
+        dx: f64,
+        /// Vertical move, in font units.
+        #[serde(default)]
+        dy: f64,
+        /// Horizontal scale about the origin; 1 leaves x alone.
+        #[serde(default = "one")]
+        scale_x: f64,
+        /// Vertical scale about the origin; 1 leaves y alone.
+        #[serde(default = "one")]
+        scale_y: f64,
+        /// Scale origin x.
+        #[serde(default)]
+        origin_x: f64,
+        /// Scale origin y.
+        #[serde(default)]
+        origin_y: f64,
+    },
+    /// Add `delta` to the advance width, keeping the outline where it is; negative
+    /// narrows. After moving one side of a glyph outward by a distance, add that
+    /// distance here so the far sidebearing stays what it was.
+    AdjustWidth {
+        /// Change to the advance, in font units.
+        delta: f64,
+    },
     /// Translate all outline points, component offsets, and anchors; keep the advance.
     Translate {
         /// Horizontal displacement.
@@ -102,6 +154,67 @@ pub enum Operation {
         /// New y coordinate.
         y: f64,
     },
+}
+
+fn one() -> f64 {
+    1.0
+}
+
+/// The points a `transform_points` chooses, as (contour, point) indices, and
+/// where each one goes. Shared by the canonical and the file paths so the two
+/// cannot disagree.
+/// A chosen point by (contour, point) index, and where it goes.
+type MovedPoint = ((usize, usize), kurbo::Point);
+
+fn transformed_points(
+    positions: &[Vec<kurbo::Point>],
+    points: &[[usize; 2]],
+    region: [Option<f64>; 4],
+    delta: kurbo::Vec2,
+    scale: (f64, f64),
+    origin: kurbo::Point,
+) -> Result<Vec<MovedPoint>, String> {
+    finite(&[delta.x, delta.y, scale.0, scale.1, origin.x, origin.y])?;
+    finite(&region.iter().flatten().copied().collect::<Vec<_>>())?;
+    if scale.0 == 0.0 || scale.1 == 0.0 {
+        return Err("scale must not be zero".into());
+    }
+    for [contour, point] in points {
+        if positions
+            .get(*contour)
+            .and_then(|c| c.get(*point))
+            .is_none()
+        {
+            return Err(format!("no point {contour}:{point}"));
+        }
+    }
+    let [x_min, x_max, y_min, y_max] = region;
+    let has_region = region.iter().any(Option::is_some);
+    let mut moved = Vec::new();
+    for (ci, contour) in positions.iter().enumerate() {
+        for (pi, position) in contour.iter().enumerate() {
+            let listed = points.contains(&[ci, pi]);
+            let inside = has_region
+                && x_min.is_none_or(|v| position.x >= v)
+                && x_max.is_none_or(|v| position.x <= v)
+                && y_min.is_none_or(|v| position.y >= v)
+                && y_max.is_none_or(|v| position.y <= v);
+            if listed || inside {
+                let scaled = kurbo::Point::new(
+                    origin.x + (position.x - origin.x) * scale.0,
+                    origin.y + (position.y - origin.y) * scale.1,
+                );
+                moved.push(((ci, pi), scaled + delta));
+            }
+        }
+    }
+    if moved.is_empty() {
+        return Err(
+            "transform_points chose no points; check the indices or region against read_glyph"
+                .into(),
+        );
+    }
+    Ok(moved)
 }
 
 fn finite(values: &[f64]) -> Result<(), String> {
@@ -225,6 +338,58 @@ pub fn apply_canonical_operation(
             draft
                 .set_point_position(id, kurbo::Point::new(*x, *y))
                 .map_err(|error| error.to_string())?;
+            Ok(())
+        }
+        Operation::TransformPoints {
+            points,
+            x_min,
+            x_max,
+            y_min,
+            y_max,
+            dx,
+            dy,
+            scale_x,
+            scale_y,
+            origin_x,
+            origin_y,
+        } => {
+            let view = draft.view();
+            let ids: Vec<Vec<(crate::font::PointId, kurbo::Point)>> = view
+                .contours()
+                .map(|contour| {
+                    contour
+                        .points()
+                        .map(|point| (point.id(), point.position()))
+                        .collect()
+                })
+                .collect();
+            let positions: Vec<Vec<kurbo::Point>> = ids
+                .iter()
+                .map(|contour| contour.iter().map(|(_, p)| *p).collect())
+                .collect();
+            let moved = transformed_points(
+                &positions,
+                points,
+                [*x_min, *x_max, *y_min, *y_max],
+                kurbo::Vec2::new(*dx, *dy),
+                (*scale_x, *scale_y),
+                kurbo::Point::new(*origin_x, *origin_y),
+            )?;
+            for ((ci, pi), position) in moved {
+                finite(&[position.x, position.y])?;
+                draft
+                    .set_point_position(ids[ci][pi].0, position)
+                    .map_err(|error| error.to_string())?;
+            }
+            Ok(())
+        }
+        Operation::AdjustWidth { delta } => {
+            finite(&[*delta])?;
+            let width = draft.view().width() + delta;
+            if width < 0.0 {
+                return Err("advance must be nonnegative".into());
+            }
+            draft.set_width(width).map_err(|error| error.to_string())?;
             Ok(())
         }
         Operation::Translate { dx, dy } => {
@@ -381,6 +546,51 @@ fn apply(glyph: &mut Glyph, operation: &Operation) -> Result<(), String> {
                 .ok_or_else(|| format!("no point {contour}:{point}"))?;
             target.x = *x;
             target.y = *y;
+        }
+        Operation::TransformPoints {
+            points,
+            x_min,
+            x_max,
+            y_min,
+            y_max,
+            dx,
+            dy,
+            scale_x,
+            scale_y,
+            origin_x,
+            origin_y,
+        } => {
+            let positions: Vec<Vec<kurbo::Point>> = glyph
+                .contours
+                .iter()
+                .map(|c| {
+                    c.points
+                        .iter()
+                        .map(|p| kurbo::Point::new(p.x, p.y))
+                        .collect()
+                })
+                .collect();
+            let moved = transformed_points(
+                &positions,
+                points,
+                [*x_min, *x_max, *y_min, *y_max],
+                kurbo::Vec2::new(*dx, *dy),
+                (*scale_x, *scale_y),
+                kurbo::Point::new(*origin_x, *origin_y),
+            )?;
+            for ((ci, pi), position) in moved {
+                finite(&[position.x, position.y])?;
+                let target = &mut glyph.contours[ci].points[pi];
+                target.x = position.x;
+                target.y = position.y;
+            }
+        }
+        Operation::AdjustWidth { delta } => {
+            finite(&[*delta])?;
+            if glyph.width + delta < 0.0 {
+                return Err("advance must be nonnegative".into());
+            }
+            glyph.width += delta;
         }
         Operation::Translate { dx, dy } => {
             finite(&[*dx, *dy])?;
@@ -641,6 +851,112 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn transform_points_moves_a_chosen_region_and_adjust_width_follows() {
+        let project = Project::new_font("canonical.ufo".into());
+        let source = project.source_id(0).unwrap();
+        let layer = project.document_source(source).unwrap().default_layer();
+        let address = GlyphLayerAddress {
+            glyph: "A".into(),
+            layer,
+        };
+        let mut transaction = project.begin_document_layer_transaction(&address).unwrap();
+        let width = transaction.draft().view().width();
+        use crate::outline::drawing::{DrawingContour, DrawingPoint, DrawingPointType};
+        let square = DrawingContour {
+            points: [(100.0, 0.0), (400.0, 0.0), (400.0, 700.0), (100.0, 700.0)]
+                .into_iter()
+                .map(|(x, y)| DrawingPoint {
+                    x,
+                    y,
+                    kind: DrawingPointType::Line,
+                    smooth: false,
+                })
+                .collect(),
+        };
+        apply_canonical_operation(
+            transaction.draft_mut(),
+            &Operation::SetOutline {
+                contours: vec![square],
+                clear_components: false,
+            },
+        )
+        .unwrap();
+        // Widen: everything at or right of x=300 moves 64, the advance follows.
+        let widen: Operation = serde_json::from_value(serde_json::json!({
+            "op": "transform_points", "x_min": 300, "dx": 64
+        }))
+        .unwrap();
+        apply_canonical_operation(transaction.draft_mut(), &widen).unwrap();
+        apply_canonical_operation(
+            transaction.draft_mut(),
+            &Operation::AdjustWidth { delta: 64.0 },
+        )
+        .unwrap();
+        let view = transaction.draft().view();
+        let xs: Vec<f64> = view
+            .contours()
+            .flat_map(|c| c.points())
+            .map(|p| p.position().x)
+            .collect();
+        assert_eq!(xs, [100.0, 464.0, 464.0, 100.0]);
+        assert_eq!(view.width(), width + 64.0);
+        // Scale about an origin, by listed indices, before the move.
+        let scale: Operation = serde_json::from_value(serde_json::json!({
+            "op": "transform_points", "points": [[0, 0]], "scale_x": 2, "origin_x": 50, "dy": 10
+        }))
+        .unwrap();
+        apply_canonical_operation(transaction.draft_mut(), &scale).unwrap();
+        let first = transaction
+            .draft()
+            .view()
+            .contours()
+            .next()
+            .unwrap()
+            .points()
+            .next()
+            .unwrap()
+            .position();
+        assert_eq!((first.x, first.y), (150.0, 10.0));
+        // An empty choice and a bad index are refused, not silently ignored.
+        let nothing: Operation = serde_json::from_value(serde_json::json!({
+            "op": "transform_points", "x_min": 9000, "dx": 1
+        }))
+        .unwrap();
+        assert!(
+            apply_canonical_operation(transaction.draft_mut(), &nothing)
+                .unwrap_err()
+                .contains("chose no points")
+        );
+        let missing: Operation = serde_json::from_value(serde_json::json!({
+            "op": "transform_points", "points": [[0, 9]], "dx": 1
+        }))
+        .unwrap();
+        assert_eq!(
+            apply_canonical_operation(transaction.draft_mut(), &missing).unwrap_err(),
+            "no point 0:9"
+        );
+        // The file path applies the same arithmetic.
+        let mut glyph = Glyph::new("A");
+        let mut contour = norad::Contour::default();
+        for (x, y) in [(100.0, 0.0), (400.0, 0.0)] {
+            contour.points.push(norad::ContourPoint::new(
+                x,
+                y,
+                norad::PointType::Line,
+                false,
+                None,
+                None,
+            ));
+        }
+        glyph.contours.push(contour);
+        glyph.width = 500.0;
+        apply(&mut glyph, &widen).unwrap();
+        apply(&mut glyph, &Operation::AdjustWidth { delta: 64.0 }).unwrap();
+        assert_eq!(glyph.contours[0].points[1].x, 464.0);
+        assert_eq!(glyph.width, 564.0);
     }
 
     fn fixture() -> (Font, EditBatch) {
