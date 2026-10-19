@@ -8,7 +8,7 @@ use masonry::core::{
     AccessCtx, ChildrenIds, LayoutCtx, MeasureCtx, PaintCtx, PropertiesRef, RegisterCtx, Widget,
 };
 use masonry::imaging::Painter;
-use masonry::kurbo::{Axis, Insets, Rect, Shape, Size, Stroke, Vec2};
+use masonry::kurbo::{Axis, Insets, Rect, Shape, Size, Stroke};
 use masonry::layout::{LenReq, Length};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
@@ -81,9 +81,8 @@ impl Widget for PanelFrameWidget {
             );
             // Paint only outside the panel face, including its rounded corner cutouts.
             painter.with_fill_clip(outside, |painter| {
-                let shadow_rect = rect + Vec2::new(-offset, offset);
                 painter
-                    .fill(design::rounded_rect_path(shadow_rect, radius), shadow)
+                    .fill(design::hard_shadow_path(rect, radius, offset), shadow)
                     .draw();
             });
         }

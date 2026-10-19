@@ -86,6 +86,54 @@ pub(crate) fn rounded_rect_path(rect: kurbo::Rect, radius: f64) -> kurbo::BezPat
         rect.to_path(0.1)
     }
 }
+/// A hard shadow for `rect` with corner `radius`, cast `offset` down and
+/// to the left: the shape swept from its place to the offset place, as a
+/// solid block extruded toward the viewer's lower left.
+///
+/// A copy of the shape slid by the offset shows at the top-left and
+/// bottom-right corners as a crescent that thickens along the edge, which
+/// reads as a misshapen, doubled corner beside the keyline. The swept shape
+/// joins the two copies with straight 45-degree edges tangent to the
+/// corner arcs, so the shadow is a band of even width.
+pub(crate) fn hard_shadow_path(rect: kurbo::Rect, radius: f64, offset: f64) -> kurbo::BezPath {
+    use kurbo::{Arc, BezPath, Point, Vec2};
+    use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
+    let r = radius.clamp(0.0, rect.width().min(rect.height()) / 2.0);
+    let v = Vec2::new(-offset, offset);
+    // Corner centers, clockwise from the top left (y grows downward).
+    let tl = Point::new(rect.x0 + r, rect.y0 + r);
+    let tr = Point::new(rect.x1 - r, rect.y0 + r);
+    let br = Point::new(rect.x1 - r, rect.y1 - r);
+    let bl = Point::new(rect.x0 + r, rect.y1 - r);
+    let at = |center: Point, angle: f64| center + Vec2::new(r * angle.cos(), r * angle.sin());
+    let mut path = BezPath::new();
+    let arc = |path: &mut BezPath, center: Point, start: f64| {
+        if r > 0.0 {
+            Arc::new(center, (r, r), start, FRAC_PI_4, 0.0)
+                .to_cubic_beziers(0.01, |a, b, c| path.curve_to(a, b, c));
+        }
+    };
+    path.move_to(at(tl, -FRAC_PI_2));
+    path.line_to(at(tr, -FRAC_PI_2));
+    arc(&mut path, tr, -FRAC_PI_2);
+    arc(&mut path, tr, -FRAC_PI_4);
+    path.line_to(at(br, 0.0));
+    arc(&mut path, br, 0.0);
+    // The sweep's lower edge, tangent to both bottom-right arcs.
+    path.line_to(at(br + v, FRAC_PI_4));
+    arc(&mut path, br + v, FRAC_PI_4);
+    path.line_to(at(bl + v, FRAC_PI_2));
+    arc(&mut path, bl + v, FRAC_PI_2);
+    arc(&mut path, bl + v, 3.0 * FRAC_PI_4);
+    path.line_to(at(tl + v, PI));
+    arc(&mut path, tl + v, PI);
+    // The sweep's upper edge, tangent to both top-left arcs.
+    path.line_to(at(tl, PI + FRAC_PI_4));
+    arc(&mut path, tl, PI + FRAC_PI_4);
+    path.close_path();
+    path
+}
+
 /// Resizable panel bounds retain a visible canvas.
 pub(crate) const CENTER_MIN_WIDTH: f64 = 280.0;
 pub(crate) const EDITOR_MIN_HEIGHT: f64 = 160.0;
@@ -679,5 +727,64 @@ mod tests {
             COORD_PICKER_INSET * 2.0 + ControlSize::Dot.px() * 3.0 + COORD_PICKER_GAP * 2.0,
             COORD_PICKER_EDGE
         );
+    }
+}
+
+#[cfg(test)]
+mod hard_shadow_tests {
+    use super::hard_shadow_path;
+    use kurbo::{Point, Rect, Shape as _};
+
+    #[test]
+    fn the_shadow_is_the_shape_swept_along_its_offset() {
+        let rect = Rect::new(0.0, 0.0, 100.0, 60.0);
+        let (radius, offset) = (10.0, 3.0);
+        let shadow = hard_shadow_path(rect, radius, offset);
+        // Both ends of the sweep, and the band between them, are shadow.
+        for point in [
+            Point::new(50.0, 30.0),
+            Point::new(47.0, 33.0),
+            Point::new(-2.0, 30.0),
+            Point::new(50.0, 62.0),
+        ] {
+            assert!(shadow.contains(point), "{point:?} is in the swept shape");
+        }
+        // Where a slid copy leaves a notch at the top-left corner, the swept
+        // shape is filled: just inside the tangent edge, halfway along it,
+        // a point outside both the shape and its slid copy.
+        let center = Point::new(radius, radius);
+        let lean = (radius - 0.1) / std::f64::consts::SQRT_2;
+        let notch = Point::new(center.x - lean, center.y - lean)
+            + kurbo::Vec2::new(-offset / 2.0, offset / 2.0);
+        let rounded = rect.to_rounded_rect(radius);
+        let slid = (rect + kurbo::Vec2::new(-offset, offset)).to_rounded_rect(radius);
+        assert!(
+            !rounded.contains(notch) && !slid.contains(notch),
+            "the probe is in the notch a slid copy leaves"
+        );
+        assert!(shadow.contains(notch), "the top-left joins without a notch");
+        // Nothing beyond the sweep.
+        assert!(!shadow.contains(Point::new(101.0, 30.0)));
+        assert!(!shadow.contains(Point::new(50.0, -1.0)));
+        assert!(!shadow.contains(Point::new(-4.0, 30.0)));
+        // Its area is the shape's plus a band of the offset's length
+        // across the shape's width perpendicular to the sweep.
+        let expected = rect.to_rounded_rect(radius).area()
+            + offset
+                * std::f64::consts::SQRT_2
+                * ((100.0 + 60.0) / std::f64::consts::SQRT_2
+                    - 2.0 * radius * (std::f64::consts::SQRT_2 - 1.0));
+        assert!(
+            (shadow.area() - expected).abs() < 0.05,
+            "{} vs {expected}",
+            shadow.area()
+        );
+    }
+
+    #[test]
+    fn square_corners_and_no_offset_are_handled() {
+        let rect = Rect::new(0.0, 0.0, 40.0, 20.0);
+        assert!((hard_shadow_path(rect, 0.0, 0.0).area() - 800.0).abs() < 1e-6);
+        assert!(hard_shadow_path(rect, 0.0, 2.0).contains(Point::new(-1.0, 21.0)));
     }
 }

@@ -749,14 +749,15 @@ impl Widget for GridWidget {
                     GRID_CELL_SHADOW_OFFSET
                 };
                 let radius = pal.corner_radius.min(rect.width().min(rect.height()) / 2.0);
-                let shadow = rect + kurbo::Vec2::new(-shadow_offset, shadow_offset);
+                painter
+                    .fill(
+                        crate::application::design::hard_shadow_path(rect, radius, shadow_offset),
+                        pal.cell_shadow(),
+                    )
+                    .draw();
                 if radius > 0.0 {
-                    painter
-                        .fill(shadow.to_rounded_rect(radius), pal.cell_shadow())
-                        .draw();
                     painter.fill(rect.to_rounded_rect(radius), bg).draw();
                 } else {
-                    painter.fill(shadow, pal.cell_shadow()).draw();
                     painter.fill(rect, bg).draw();
                 }
                 // Square themes retain the rectangle path: a zero-radius

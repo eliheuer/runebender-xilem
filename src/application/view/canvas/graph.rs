@@ -805,9 +805,11 @@ impl Widget for GraphWidget {
             // Body, header band in the mark colour (inverted when
             // selected), the rule between them, the keyline.
             let offset = areas::graph::shadow_offset(selected) / zoom.max(0.01);
-            let shadow = nb.rect + Vec2::new(-offset, offset);
             painter
-                .fill(&(tf * rounded_path(shadow, radius)), pal.cell_shadow())
+                .fill(
+                    &(tf * crate::application::design::hard_shadow_path(nb.rect, radius, offset)),
+                    pal.cell_shadow(),
+                )
                 .draw();
             painter
                 .fill(&(tf * rounded_path(nb.rect, radius)), pal.field)
