@@ -249,7 +249,9 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         },
     );
 
-    // The model chips, open while the person is choosing.
+    // The installed models as a list, open while the person is choosing:
+    // one row each, the chosen one inverted, in place of the chip that
+    // opened it. Picking a row, the chosen one included, closes it.
     let selected = app.chat.model.clone();
     let model_name = app
         .chat
@@ -258,29 +260,38 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         .find(|(_, path)| selected.as_deref() == Some(path.as_path()))
         .map_or("No model", |(name, _)| name.as_str())
         .to_string();
-    let picker = (app.chat.picking && !external).then(|| {
-        let chips: Vec<_> = app
+    let picking = app.chat.picking && !external;
+    let picker = picking.then(|| {
+        let names = app
             .chat
             .installed
             .iter()
-            .cloned()
-            .map(|(name, path)| {
-                let active = selected.as_deref() == Some(path.as_path());
-                recipes::chip(pal, name, active, move |app: &mut Workspace| {
-                    if app.chat.job.is_none() {
-                        app.chat.model = Some(path.clone());
-                    }
-                    app.chat.picking = false;
-                })
-            })
+            .map(|(name, _)| name.clone())
             .collect();
-        xrow(Region::Inline, chips)
+        let chosen = app
+            .chat
+            .installed
+            .iter()
+            .position(|(_, path)| selected.as_deref() == Some(path.as_path()));
+        recipes::picker(
+            pal,
+            names,
+            chosen,
+            std::sync::Arc::new(|app: &mut Workspace, i: usize| {
+                if app.chat.job.is_none()
+                    && let Some((_, path)) = app.chat.installed.get(i)
+                {
+                    app.chat.model = Some(path.clone());
+                }
+                app.chat.picking = false;
+            }),
+        )
     });
 
     // The controls under the field: the model on the left, actions on the right.
-    let model_chip = (!external).then(|| {
-        recipes::chip(pal, model_name, app.chat.picking, |app: &mut Workspace| {
-            app.chat.picking = !app.chat.picking;
+    let model_chip = (!external && !picking).then(|| {
+        recipes::chip(pal, model_name, false, |app: &mut Workspace| {
+            app.chat.picking = true;
         })
     });
     let endpoint_note = external.then(|| {

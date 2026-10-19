@@ -26,6 +26,9 @@ Entries under Unreleased describe work being prepared, not an available public r
 
 ### Changed
 
+- Chat: the model picker opens as a list of full-width rows, the chosen
+  model inverted, in place of the chip that opened it. The conversation
+  gives up height first, so the controls stay inside the panel.
 - Chat: the conversation is a list that grows up from the field and shows whole cards only; a card the panel cannot show entirely is left out instead of cut by the top edge. The wheel scrolls up through older cards, and a new card keeps the list on its end.
 - Chat: the cards take the theme's mark colors, as the glyph grid does: yellow for what the person typed, green for an answer, red for a problem, and a purple-to-pink wash while the model works.
 - `propose_edits` on the live surface returns `changes`: for each glyph, the advance, sidebearings, ink width and point count before and after, whether the outline moved, and a warning when the new advance ends inside the outline. The Chat panel shows this account of a proposal as the editor's own note beside the model's answer, and gives each proposal task a time stamp so the same request can run twice.

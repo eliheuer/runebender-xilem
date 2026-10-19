@@ -348,7 +348,7 @@ fn quiet(pal: &Palette, text: String, on_click: Click) -> impl WidgetView<Worksp
 /// The choices as rows at control height, the chosen one inverted,
 /// the same silhouette as every other control in the section. With
 /// nothing to choose from, one muted line says so.
-fn picker(
+pub(crate) fn picker(
     pal: &Palette,
     choices: Vec<String>,
     chosen: Option<usize>,

@@ -173,21 +173,18 @@ impl Widget for TailListWidget {
         len_req: LenReq,
         cross: Option<Length>,
     ) -> Length {
+        // The list takes the height it is given and hides the cards that do
+        // not fit, so it asks for none: the controls beside it in a column
+        // always get their room first.
+        if axis == Axis::Vertical {
+            return Length::ZERO;
+        }
         let auto: LenDef = len_req.into();
         let context = LayoutSize::maybe(axis.cross(), cross);
         let mut total = 0.0_f64;
         for row in &mut self.rows {
             let length = ctx.compute_length(row, auto, context, axis, cross).get();
-            total = match axis {
-                Axis::Vertical => total + length,
-                Axis::Horizontal => total.max(length),
-            };
-        }
-        if axis == Axis::Vertical && self.rows.len() > 1 {
-            // Precision loss is fine for a count of rows.
-            #[expect(clippy::cast_precision_loss, reason = "row counts are small")]
-            let gaps = (self.rows.len() - 1) as f64;
-            total += self.gap * gaps;
+            total = total.max(length);
         }
         Length::px(total)
     }

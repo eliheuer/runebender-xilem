@@ -477,6 +477,10 @@ impl Workspace {
                 app.chat.prompt.clear();
                 app.chat.busy = Some("Running analyze_glyph…".into());
             }
+            // RUNEBENDER_CHAT_SAMPLE=models shows the model list open.
+            if std::env::var("RUNEBENDER_CHAT_SAMPLE").as_deref() == Ok("models") {
+                app.chat.picking = true;
+            }
         }
         if app.tool == Tool::AiShape {
             // The tool was set directly, not picked, so scan for its models here.
