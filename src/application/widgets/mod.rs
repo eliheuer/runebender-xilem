@@ -19,6 +19,7 @@ pub(crate) mod quadrant_picker;
 pub(crate) mod rounded_clip;
 pub(crate) mod shortcuts;
 pub(crate) mod source_text_area;
+pub(crate) mod tail_list;
 pub(crate) mod text_label;
 pub(crate) mod tool_group;
 pub(crate) mod working_wash;

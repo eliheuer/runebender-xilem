@@ -11,8 +11,8 @@ use crate::application::design::{
 use crate::application::editor::tools::chat::ChatEntry;
 use crate::application::editor::tools::scripts::ScriptArtifact;
 use crate::application::view::label;
-use crate::application::widgets::scroll_viewport::portal;
 use crate::application::widgets::selectable_text::selectable_text;
+use crate::application::widgets::tail_list::tail_list;
 use crate::application::workspace::Workspace;
 use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
@@ -223,22 +223,9 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             rows.push(recipes::working_card(pal, text).boxed());
         }
 
-        // The conversation grows up from the field: when it is shorter
-        // than the panel, the spacer holds it at the bottom.
-        portal(
-            xcolumn(
-                Region::List,
-                (
-                    FlexSpacer::Flex(1.0),
-                    xcolumn(Region::List, rows).gap(RHYTHM),
-                ),
-            )
-            .gap(Space::None),
-        )
-        .constrain_horizontal(true)
-        .must_fill(true)
-        .stick_to_end(true)
-        .boxed()
+        // The conversation grows up from the field, and a card the panel
+        // cannot show whole is not shown at all.
+        tail_list(rows, RHYTHM.px()).boxed()
     };
 
     // The hint is for the first question; after that the field is blank.

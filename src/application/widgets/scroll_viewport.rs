@@ -31,7 +31,6 @@ where
         constrain_vertical: false,
         must_fill: false,
         trailing_rule_clearance: None,
-        stick_to_end: false,
         phantom: PhantomData,
     }
 }
@@ -44,7 +43,6 @@ pub(crate) struct Portal<V, State, Action> {
     constrain_vertical: bool,
     must_fill: bool,
     trailing_rule_clearance: Option<f64>,
-    stick_to_end: bool,
     phantom: PhantomData<fn(State) -> Action>,
 }
 
@@ -74,13 +72,6 @@ impl<V, State, Action> Portal<V, State, Action> {
         self.must_fill = must_fill;
         self
     }
-
-    /// Scroll to the end whenever the content grows, as a transcript does,
-    /// and otherwise leave the viewport where the reader put it.
-    pub(crate) fn stick_to_end(mut self, stick: bool) -> Self {
-        self.stick_to_end = stick;
-        self
-    }
 }
 
 impl<V, State, Action> ViewMarker for Portal<V, State, Action> {}
@@ -104,7 +95,6 @@ where
                 .content_must_fill(self.must_fill),
         );
         viewport.trailing_rule_clearance = self.trailing_rule_clearance;
-        viewport.stick_to_end = self.stick_to_end;
         let widget_pod = ctx.create_pod(viewport);
         (widget_pod, child_state)
     }
@@ -119,10 +109,6 @@ where
     ) {
         if self.trailing_rule_clearance != prev.trailing_rule_clearance {
             element.widget.trailing_rule_clearance = self.trailing_rule_clearance;
-            element.ctx.request_layout();
-        }
-        if self.stick_to_end != prev.stick_to_end {
-            element.widget.stick_to_end = self.stick_to_end;
             element.ctx.request_layout();
         }
         let mut element = ScrollViewport::portal_mut(&mut element);
@@ -178,10 +164,6 @@ use masonry::layout::{LenReq, Length};
 pub(crate) struct ScrollViewport<W: Widget + masonry::core::FromDynWidget + ?Sized> {
     inner: WidgetPod<widgets::Portal<W>>,
     trailing_rule_clearance: Option<f64>,
-    stick_to_end: bool,
-    /// The content height at the last layout, so a sticky viewport moves
-    /// only when the content changes, not on every pass.
-    last_content_height: f64,
 }
 
 impl<W: Widget + masonry::core::FromDynWidget + ?Sized> ScrollViewport<W> {
@@ -189,8 +171,6 @@ impl<W: Widget + masonry::core::FromDynWidget + ?Sized> ScrollViewport<W> {
         Self {
             inner: WidgetPod::new(portal),
             trailing_rule_clearance: None,
-            stick_to_end: false,
-            last_content_height: 0.0,
         }
     }
 
@@ -223,23 +203,6 @@ impl<W: Widget + masonry::core::FromDynWidget + ?Sized> Widget for ScrollViewpor
         ctx.run_layout(&mut self.inner, size);
         ctx.place_child(&mut self.inner, Point::ORIGIN);
         ctx.derive_baselines(&self.inner);
-        if self.stick_to_end {
-            let content_height = ctx
-                .compute_length(
-                    &mut self.inner,
-                    masonry::layout::LenDef::MaxContent,
-                    size.into(),
-                    Axis::Vertical,
-                    Some(Length::px(size.width)),
-                )
-                .get();
-            if (content_height - self.last_content_height).abs() > 0.5 {
-                self.last_content_height = content_height;
-                ctx.mutate_child_later(&mut self.inner, move |mut portal| {
-                    widgets::Portal::set_viewport_pos(&mut portal, Point::new(0.0, content_height));
-                });
-            }
-        }
         if let Some(clearance) = self.trailing_rule_clearance {
             let content_height = ctx
                 .compute_length(
