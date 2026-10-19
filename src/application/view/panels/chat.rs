@@ -186,6 +186,16 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                 .iter()
                 .map(|artifact| script_artifact_row(app, artifact)),
         );
+        // What the model is doing, as the last card of the conversation while
+        // it works: the drifting wash says something is happening.
+        if let Some(text) = app.chat.busy.as_deref() {
+            let text = text
+                .strip_prefix("Running ")
+                .and_then(|rest| rest.strip_suffix('…'))
+                .map_or_else(|| text.to_string(), |name| tool_sentence(name, false, "…"));
+            rows.push(recipes::working_card(pal, text).boxed());
+        }
+
         // The conversation grows up from the field: when it is shorter
         // than the panel, the spacer holds it at the bottom.
         portal(
@@ -259,23 +269,6 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             app.chat.picking = !app.chat.picking;
         })
     });
-    // What the model is doing, as one wrapped caption line above the
-    // field while it works. It is a column child, never part of the
-    // control row, so a long report wraps instead of widening the dock.
-    let working = app.chat.busy.as_deref().map(|text| {
-        let text = text
-            .strip_prefix("Running ")
-            .and_then(|rest| rest.strip_suffix('…'))
-            .map_or_else(|| text.to_string(), |name| tool_sentence(name, false, "…"));
-        sized_box(
-            label(text)
-                .text_size(TextSize::Caption.px())
-                .color(pal.text_muted)
-                .line_break_mode(masonry::properties::LineBreaking::WordWrap),
-        )
-        .padding(masonry::properties::Padding::horizontal(Space::Md.length()))
-        .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
-    });
     let endpoint_note = external.then(|| {
         label(match &app.chat.endpoint {
             Some(Ok(endpoint)) => endpoint.model().to_string(),
@@ -335,7 +328,7 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
 
     xcolumn(
         Region::Panel,
-        (conversation.flex(1.0), working, field, picker, controls),
+        (conversation.flex(1.0), field, picker, controls),
     )
     .gap(RHYTHM)
 }

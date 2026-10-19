@@ -363,6 +363,36 @@ where
         .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
 }
 
+/// What the model is doing right now, as a card in the conversation: the
+/// cards' keyline and text inset around a slowly drifting wash. Shown only
+/// while work is under way, so the motion itself says something is happening.
+pub(crate) fn working_card(pal: &Palette, text: String) -> impl WidgetView<Workspace> + use<> {
+    use crate::application::widgets::working_wash::{WashStyle, working_wash};
+    // The motion says "in progress", so the text needs no trailing ellipsis,
+    // whose glyph in the UI font is small enough to read as a smudge.
+    let text = text.trim_end_matches(['…', '.']).to_string();
+    sized_box(working_wash(
+        sized_box(
+            label(text)
+                .text_size(TextSize::Body.px())
+                .color(pal.text)
+                .line_break_mode(masonry::properties::LineBreaking::WordWrap),
+        )
+        .padding(masonry::properties::Padding::from_vh(
+            Space::Md.length(),
+            Length::px(crate::application::design::INPUT_HORIZONTAL_INSET),
+        ))
+        .dims(Dimensions::new(Dim::Stretch, Dim::Auto)),
+        WashStyle {
+            tones: pal.working_tones(),
+            outline: pal.field_outline,
+            stroke: pal.stroke,
+            radius: pal.control_radius,
+        },
+    ))
+    .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
+}
+
 /// A text field that grows a line at a time as its text wraps. Return
 /// submits, Shift+Return starts a new line, and Escape cancels, as in every
 /// chat composer.

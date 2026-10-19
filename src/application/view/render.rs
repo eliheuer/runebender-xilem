@@ -2309,7 +2309,7 @@ mod rail_width_tests {
 }
 
 #[cfg(test)]
-pub(super) mod panel_resize_tests_support {
+pub(crate) mod panel_resize_tests_support {
     //! Shared pieces for the view layout tests.
     use crate::application::font_model::FontModel;
     use crate::application::workspace::Workspace;
@@ -2329,7 +2329,7 @@ pub(super) mod panel_resize_tests_support {
         }
     }
 
-    pub(super) fn context() -> ViewCtx {
+    pub(crate) fn context() -> ViewCtx {
         ViewCtx::new(
             Arc::new(NoProxy),
             Arc::new(

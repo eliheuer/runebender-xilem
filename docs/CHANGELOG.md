@@ -22,6 +22,8 @@ Entries under Unreleased describe work being prepared, not an available public r
 
 ### Changed
 
+- While the chat model works, its status is the last card in the conversation, with the cards' keyline around a soft yellow-green to blue-green wash that drifts slowly across it. The wash takes the field's lightness in every theme, and the status drops its trailing ellipsis, whose glyph in the UI font read as a smudge.
+- Outlined controls, fields and cards draw even corners. Masonry stroked a border at the full corner radius from a centerline half a stroke inside the box, so its corner arcs were not concentric with the box and a sliver of ground showed between fill and border, which read as heavier corners. The pinned xilem fork now strokes at the radius minus half the width and fills to the stroke's centerline.
 - A chat turn no longer ends when a tool says no. A rejection, such as a glyph that is not in the font, goes back to the model as the tool's answer, so it can retry or say what it could not find. Before, the turn stopped and the same error printed twice.
 - Tools accept a glyph by its character: `U+0035`, `uni0035`, or `5` finds `five`, on the live and disk surfaces.
 - `analyze_glyph` reports point counts, total, on-curve, and off-curve, so a model answers "how many off-curve points" from a number. `font_info` reports whole font units as integers, 1024 rather than 1024.0.

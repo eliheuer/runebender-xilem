@@ -21,6 +21,7 @@ pub(crate) mod shortcuts;
 pub(crate) mod source_text_area;
 pub(crate) mod text_label;
 pub(crate) mod tool_group;
+pub(crate) mod working_wash;
 
 pub(crate) mod preview_blur;
 

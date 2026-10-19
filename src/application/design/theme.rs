@@ -449,6 +449,18 @@ impl Palette {
         AlphaColor::<Oklch>::new([field[0], 0.07, hue, 1.0]).convert()
     }
 
+    /// The two tones of the working wash: a yellow-green and a blue-green
+    /// at the field's lightness and a low chroma, so the motion reads as
+    /// life in the card rather than as a color, in light and dark themes.
+    pub(crate) fn working_tones(&self) -> [Color; 2] {
+        use masonry::peniko::color::{AlphaColor, Oklch};
+        let l = self.field().convert::<Oklch>().components[0];
+        [
+            AlphaColor::<Oklch>::new([l, 0.06, 125.0, 1.0]).convert(),
+            AlphaColor::<Oklch>::new([l, 0.06, 195.0, 1.0]).convert(),
+        ]
+    }
+
     /// The themed background for selected rows, tiles, and controls.
     pub(crate) fn selected_bg(&self) -> Color {
         self.role("controlSelected")

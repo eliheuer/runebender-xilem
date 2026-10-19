@@ -471,6 +471,12 @@ impl Workspace {
             app.chat.prompt = "And which of the figures have the most points, and is \
                                that a problem for interpolation?"
                 .into();
+            // RUNEBENDER_CHAT_SAMPLE=busy shows the model at work instead.
+            if std::env::var("RUNEBENDER_CHAT_SAMPLE").as_deref() == Ok("busy") {
+                app.chat.entries.pop();
+                app.chat.prompt.clear();
+                app.chat.busy = Some("Running analyze_glyph…".into());
+            }
         }
         if app.tool == Tool::AiShape {
             // The tool was set directly, not picked, so scan for its models here.
