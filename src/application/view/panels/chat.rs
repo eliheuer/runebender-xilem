@@ -269,21 +269,31 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             app.chat.picking = !app.chat.picking;
         })
     });
-    let status = app
-        .chat
-        .busy
-        .clone()
-        .or_else(|| {
-            external.then(|| match &app.chat.endpoint {
-                Some(Ok(endpoint)) => endpoint.model().to_string(),
-                _ => "Local server".to_string(),
-            })
-        })
-        .map(|text| {
+    // What the model is doing, as one wrapped caption line above the
+    // field while it works. It is a column child, never part of the
+    // control row, so a long report wraps instead of widening the dock.
+    let working = app.chat.busy.as_deref().map(|text| {
+        let text = text
+            .strip_prefix("Running ")
+            .and_then(|rest| rest.strip_suffix('…'))
+            .map_or_else(|| text.to_string(), |name| tool_sentence(name, false, "…"));
+        sized_box(
             label(text)
                 .text_size(TextSize::Caption.px())
                 .color(pal.text_muted)
-        });
+                .line_break_mode(masonry::properties::LineBreaking::WordWrap),
+        )
+        .padding(masonry::properties::Padding::horizontal(Space::Md.length()))
+        .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
+    });
+    let endpoint_note = external.then(|| {
+        label(match &app.chat.endpoint {
+            Some(Ok(endpoint)) => endpoint.model().to_string(),
+            _ => "Local server".to_string(),
+        })
+        .text_size(TextSize::Caption.px())
+        .color(pal.text_muted)
+    });
     let clear = (!busy && !empty).then(|| {
         word_button(
             pal,
@@ -315,12 +325,18 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
     };
     let controls = xrow(
         Region::Inline,
-        (model_chip, status, FlexSpacer::Flex(1.0), clear, send),
+        (
+            model_chip,
+            endpoint_note,
+            FlexSpacer::Flex(1.0),
+            clear,
+            send,
+        ),
     );
 
     xcolumn(
         Region::Panel,
-        (conversation.flex(1.0), field, picker, controls),
+        (conversation.flex(1.0), working, field, picker, controls),
     )
     .gap(RHYTHM)
 }

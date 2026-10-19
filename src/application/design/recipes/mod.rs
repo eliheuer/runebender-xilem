@@ -237,7 +237,7 @@ where
             .on_enter(move |app: &mut Workspace, v| on_enter(app, v))
             .placeholder(placeholder)
             .text_color(pal.text)
-            .placeholder_color(pal.text_muted),
+            .placeholder_color(pal.placeholder_ink()),
         pal.text,
     ))
     .dims(Dimensions::new(
@@ -285,7 +285,7 @@ where
         sized_box(input_typography::input_typography(
             text_input(value, move |app: &mut Workspace, v| on_change(app, v))
                 .text_color(pal.text)
-                .placeholder_color(pal.text_muted),
+                .placeholder_color(pal.placeholder_ink()),
             pal.text,
         ))
         .dims(Dimensions::new(

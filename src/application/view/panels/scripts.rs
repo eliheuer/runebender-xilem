@@ -46,7 +46,7 @@ pub(crate) fn scripts_panel(app: &Workspace) -> impl WidgetView<Workspace> + use
                     })
                     .placeholder("Script name.py")
                     .text_color(pal.text)
-                    .placeholder_color(pal.text_muted),
+                    .placeholder_color(pal.placeholder_ink()),
                     pal.text,
                 ),
                 recipes::field_box(

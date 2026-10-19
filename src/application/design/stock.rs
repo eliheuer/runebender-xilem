@@ -96,7 +96,7 @@ pub(crate) fn widget_properties(pal: &Palette) -> DefaultProperties {
     });
     properties.insert::<TextInput, _>(stroke);
     properties.insert::<TextInput, _>(control_radius);
-    properties.insert::<TextInput, _>(PlaceholderColor::new(pal.text_muted));
+    properties.insert::<TextInput, _>(PlaceholderColor::new(pal.placeholder_ink()));
     properties.insert::<TextInput, _>(CaretColor { color: pal.text });
     properties.insert::<TextInput, _>(text_selection);
     {

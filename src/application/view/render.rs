@@ -2240,6 +2240,72 @@ mod rail_width_tests {
         failures.extend(overflow("sidebar", &harness, width));
         assert!(failures.is_empty(), "{}", failures.join("\n"));
     }
+
+    fn text_inputs(widget: WidgetRef<'_, dyn Widget>, out: &mut Vec<masonry::core::WidgetId>) {
+        if widget.short_type_name() == "TextArea" {
+            out.push(widget.id());
+        }
+        for child in widget.children() {
+            text_inputs(child, out);
+        }
+    }
+
+    /// Typing a long line into the chat field must not widen the column:
+    /// not for the frame after the key, and not after the view rebuild
+    /// that follows it, which is when the text reaches the state.
+    #[test]
+    fn typing_in_the_chat_field_stays_inside_the_dock() {
+        let Some(mut app) = workspace_for_layout() else {
+            return;
+        };
+        app.rail = Rail::Chat;
+        let width = DOCK_WIDTH;
+        let mut ctx = context();
+        let mut view = sized_box(super::left_column(&app));
+        let (pod, mut state) = view.build(&mut ctx, &mut app);
+        let mut harness = TestHarness::create_with_size(
+            crate::application::view::default_property_set(),
+            pod.new_widget,
+            (dock_pixels(width), 1200),
+        );
+        let mut inputs = Vec::new();
+        text_inputs(harness.root_widget().as_dyn(), &mut inputs);
+        let field = *inputs.first().expect("the chat panel has a text field");
+        harness.focus_on(Some(field));
+        let mut failures = Vec::new();
+        let mut typed = String::new();
+        for chunk in [
+            "How does the stem of H ",
+            "compare with the other capitals, ",
+            "and which ones are off?",
+        ] {
+            harness.keyboard_type_chars(chunk);
+            typed.push_str(chunk);
+            failures.extend(overflow("chat field after the key", &harness, width));
+            // The key's text reaches the state, and the view rebuilds.
+            app.chat.prompt.clone_from(&typed);
+            let next = sized_box(super::left_column(&app));
+            harness.edit_root_widget(|root| {
+                next.rebuild(&view, &mut state, &mut ctx, root, &mut app);
+            });
+            view = next;
+            failures.extend(overflow("chat field after the rebuild", &harness, width));
+        }
+        let area = harness.get_widget_with_id(field);
+        let area = area
+            .downcast::<masonry::widgets::TextArea<true>>()
+            .expect("the focused widget is the text area");
+        assert_eq!(area.text().to_string(), typed, "the keys reached the field");
+        // While the model works, the panel reports what it is doing, and the
+        // longest of those reports must fit beside the controls.
+        app.chat.busy = Some("Running glyph_inventory…".into());
+        let next = sized_box(super::left_column(&app));
+        harness.edit_root_widget(|root| {
+            next.rebuild(&view, &mut state, &mut ctx, root, &mut app);
+        });
+        failures.extend(overflow("chat panel while working", &harness, width));
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+    }
 }
 
 #[cfg(test)]

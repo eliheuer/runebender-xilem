@@ -22,6 +22,8 @@ Entries under Unreleased describe work being prepared, not an available public r
 
 ### Changed
 
+- Field placeholders are the text ink at half strength in every theme, so a hint reads as a hint beside typed text. The gray theme's muted step was one shade from the text and the two looked the same.
+- While the chat model works, its status ("Measuring a glyph…", "Loading the model…") is a wrapped caption above the field. It had been a bare label in the control row, and a long tool name pushed the whole left column past the dock until the work ended. A layout test now types into the chat field, rebuilds the view, and sets the working status, and fails if the column widens at any of those steps.
 - Section headers (Categories, Coordinates, Glyph and the rest) no longer show a hover fill. The fill sat inside the group's inset and stopped short of the rules and edges, which read as a mistake. The disclosure kind is now bare in every state.
 - Rail panels no longer print their name under the tab strip; the tab icon is the label. The Chat panel opens with a short note on what to do.
 - The Chat panel is laid out as a conversation: your questions are full-width blocks in the selection face, the model's answers are plain prose, and one spacing step sets the rhythm from paragraph to paragraph, around the field, and to the panel edge. The field stands alone with the model chip, Clear and Send in a row under it, Send becomes Stop while the model works, and the view follows new text. Successful tool calls are not shown; failures are.

@@ -430,6 +430,14 @@ impl Palette {
         })
     }
 
+    /// The ink of a field's placeholder: the text ink faded by the
+    /// placeholder step, so the hint is lighter than typed text whatever
+    /// the theme's muted step is.
+    pub(crate) fn placeholder_ink(&self) -> Color {
+        self.text
+            .with_alpha(crate::application::design::Alpha::Placeholder.value())
+    }
+
     /// The themed background for selected rows, tiles, and controls.
     pub(crate) fn selected_bg(&self) -> Color {
         self.role("controlSelected")

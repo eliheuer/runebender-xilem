@@ -83,7 +83,7 @@ fn glyph_search(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 })
                 .placeholder("Search glyphs")
                 .text_color(pal.text)
-                .placeholder_color(pal.text_muted)
+                .placeholder_color(pal.placeholder_ink())
                 .dims(Dimensions::new(
                     Dim::Stretch,
                     Dim::from(ControlSize::Control),
@@ -174,7 +174,7 @@ fn shapes_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         )
                         .placeholder("Base glyph")
                         .text_color(pal.text)
-                        .placeholder_color(pal.text_muted)
+                        .placeholder_color(pal.placeholder_ink())
                         .dims(Dimensions::new(
                             Dim::Stretch,
                             Dim::from(ControlSize::Control),

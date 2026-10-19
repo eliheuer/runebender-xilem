@@ -199,7 +199,7 @@ mod tests {
             })
             .placeholder("Glyph name")
             .text_color(pal.text)
-            .placeholder_color(pal.text_muted)
+            .placeholder_color(pal.placeholder_ink())
             .background_color(pal.field())
             .border_color(pal.field_outline),
             pal.text,

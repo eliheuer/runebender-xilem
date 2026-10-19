@@ -610,7 +610,7 @@ pub(crate) fn graph_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                         },
                     )
                     .text_color(pal.text)
-                    .placeholder_color(pal.text_muted),
+                    .placeholder_color(pal.placeholder_ink()),
                     pal.text,
                 ))
                 .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
