@@ -172,7 +172,7 @@ fn ensure_llama_server(
     gguf: &Path,
     folder: &Path,
 ) -> Result<LocalChatEndpoint, String> {
-    let settings = LlamaSettings::default();
+    let settings = LlamaSettings::for_folder(folder)?;
     let mut slot = server.lock().unwrap_or_else(|error| error.into_inner());
     let reuse = slot
         .as_mut()

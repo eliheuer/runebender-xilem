@@ -60,3 +60,13 @@ Check status, open the comparison, run the matched proofs, and inspect the candi
 Retry retains whether the previous request was plain tracing or Virtua inference.
 No model result is automatically approved or graded green.
 Keep the sketch, settings, model identity, output and visual feedback when recording failures for future training.
+
+## Chat model folders
+
+A chat model folder holds one `.gguf` file, and may hold a `model.json` with the server's defaults for that model:
+
+```json
+{"thinking":false, "temperature":0.7, "top_p":0.8, "top_k":20, "min_p":0, "presence_penalty":1.5}
+```
+
+`context` sets the prompt size in tokens and `template_kwargs` is an object passed to the chat template, such as `{"reasoning_effort":"low"}`. Each model family publishes its own sampling values; the file holds the ones for its model.

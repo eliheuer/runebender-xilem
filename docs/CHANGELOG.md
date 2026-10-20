@@ -7,6 +7,9 @@ Entries under Unreleased describe work being prepared, not an available public r
 
 ### Added
 
+- Chat: a `model.json` beside a model's GGUF sets the server's thinking,
+  context, sampling and chat template values for that model, so each
+  family runs with the settings it was published with.
 - Chat: every reply is restated for the designer before it is shown. A
   second request, constrained to a schema with no tools, turns the model's
   reply into one or two plain sentences and a detail; a Detail word under

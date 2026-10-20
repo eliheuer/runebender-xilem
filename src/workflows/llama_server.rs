@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 use super::local_chat::LocalChatEndpoint;
 
 /// How a server is started for one model.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LlamaSettings {
     /// Prompt context in tokens.
     pub context: u32,
@@ -30,6 +30,27 @@ pub struct LlamaSettings {
     pub gpu_layers: u32,
     /// How long to wait for the server to report healthy.
     pub ready_timeout: Duration,
+    /// The server's default sampling, where the model's folder sets it.
+    pub sampling: Sampling,
+    /// Extra values for the chat template, as a JSON object, such as
+    /// `{"reasoning_effort":"low"}` for gpt-oss.
+    pub template_kwargs: Option<String>,
+}
+
+/// Sampling defaults for a model. Each family publishes its own, and they
+/// differ enough that one set for all of them is wrong for most.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Sampling {
+    /// `--temp`: how far from the likeliest token the model may stray.
+    pub temperature: Option<f64>,
+    /// `--top-p`: nucleus sampling cutoff.
+    pub top_p: Option<f64>,
+    /// `--top-k`: how many candidates are kept at each step.
+    pub top_k: Option<u32>,
+    /// `--min-p`: the least likelihood a candidate may have, as a share of the top.
+    pub min_p: Option<f64>,
+    /// `--presence-penalty`: discourages repeating what is already said.
+    pub presence_penalty: Option<f64>,
 }
 
 impl Default for LlamaSettings {
@@ -39,7 +60,87 @@ impl Default for LlamaSettings {
             thinking: false,
             gpu_layers: 99,
             ready_timeout: Duration::from_secs(180),
+            sampling: Sampling::default(),
+            template_kwargs: None,
         }
+    }
+}
+
+/// The name of the settings file in a chat model's folder.
+pub const SETTINGS_FILE: &str = "model.json";
+
+impl LlamaSettings {
+    /// The settings for the model in `folder`: the defaults, overridden by
+    /// the folder's `model.json` where it has one. Its keys are `context`,
+    /// `thinking`, `temperature`, `top_p`, `top_k`, `min_p`,
+    /// `presence_penalty` and `template_kwargs` (an object); any other key
+    /// is ignored. A file that is not a JSON object is an error, so a typo
+    /// shows in the chat instead of silently running the defaults.
+    pub fn for_folder(folder: &Path) -> Result<Self, String> {
+        let path = folder.join(SETTINGS_FILE);
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return Ok(Self::default());
+        };
+        let value: serde_json::Value =
+            serde_json::from_str(&text).map_err(|error| format!("{}: {error}", path.display()))?;
+        let Some(object) = value.as_object() else {
+            return Err(format!("{}: expected a JSON object", path.display()));
+        };
+        let mut settings = Self::default();
+        let number = |key: &str| object.get(key).and_then(serde_json::Value::as_f64);
+        if let Some(context) = object.get("context").and_then(serde_json::Value::as_u64) {
+            settings.context = u32::try_from(context)
+                .map_err(|_| format!("{}: context is too large", path.display()))?;
+        }
+        if let Some(thinking) = object.get("thinking").and_then(serde_json::Value::as_bool) {
+            settings.thinking = thinking;
+        }
+        settings.sampling = Sampling {
+            temperature: number("temperature"),
+            top_p: number("top_p"),
+            top_k: object
+                .get("top_k")
+                .and_then(serde_json::Value::as_u64)
+                .map(|k| u32::try_from(k).unwrap_or(u32::MAX)),
+            min_p: number("min_p"),
+            presence_penalty: number("presence_penalty"),
+        };
+        settings.template_kwargs = object
+            .get("template_kwargs")
+            .filter(|kwargs| kwargs.is_object())
+            .map(serde_json::Value::to_string);
+        Ok(settings)
+    }
+
+    /// The sampling and template arguments for `llama-server`.
+    fn extra_args(&self) -> Vec<String> {
+        let mut args = Vec::new();
+        let Sampling {
+            temperature,
+            top_p,
+            top_k,
+            min_p,
+            presence_penalty,
+        } = &self.sampling;
+        if let Some(t) = temperature {
+            args.extend(["--temp".to_owned(), t.to_string()]);
+        }
+        if let Some(p) = top_p {
+            args.extend(["--top-p".to_owned(), p.to_string()]);
+        }
+        if let Some(k) = top_k {
+            args.extend(["--top-k".to_owned(), k.to_string()]);
+        }
+        if let Some(p) = min_p {
+            args.extend(["--min-p".to_owned(), p.to_string()]);
+        }
+        if let Some(p) = presence_penalty {
+            args.extend(["--presence-penalty".to_owned(), p.to_string()]);
+        }
+        if let Some(kwargs) = &self.template_kwargs {
+            args.extend(["--chat-template-kwargs".to_owned(), kwargs.clone()]);
+        }
+        args
     }
 }
 
@@ -195,6 +296,7 @@ impl LlamaServer {
             .args(["-c", &settings.context.to_string()])
             .args(["-ngl", &settings.gpu_layers.to_string()])
             .args(["--reasoning", if settings.thinking { "on" } else { "off" }])
+            .args(settings.extra_args())
             .stdin(Stdio::null())
             .stdout(Stdio::from(log_file))
             .stderr(Stdio::from(log_err));
@@ -426,6 +528,62 @@ mod tests {
     }
 
     #[cfg(unix)]
+    #[test]
+    fn a_folder_without_a_settings_file_runs_the_defaults() {
+        let dir = scratch("defaults");
+        assert_eq!(
+            LlamaSettings::for_folder(&dir.0).unwrap(),
+            LlamaSettings::default()
+        );
+    }
+
+    #[test]
+    fn a_settings_file_sets_thinking_sampling_and_template_values() {
+        let dir = scratch("settings");
+        std::fs::write(
+            dir.0.join(SETTINGS_FILE),
+            r#"{"thinking":true,"context":16384,"temperature":0.7,"top_p":0.8,"top_k":20,
+                "min_p":0,"presence_penalty":1.5,"template_kwargs":{"reasoning_effort":"low"},
+                "unknown":"ignored"}"#,
+        )
+        .unwrap();
+        let settings = LlamaSettings::for_folder(&dir.0).unwrap();
+        assert!(settings.thinking, "thinking is read");
+        assert_eq!(settings.context, 16384);
+        assert_eq!(settings.sampling.temperature, Some(0.7));
+        assert_eq!(settings.sampling.top_k, Some(20));
+        assert_eq!(settings.sampling.min_p, Some(0.0));
+        assert_eq!(
+            settings.template_kwargs.as_deref(),
+            Some(r#"{"reasoning_effort":"low"}"#)
+        );
+        let args = settings.extra_args();
+        assert_eq!(
+            args,
+            [
+                "--temp",
+                "0.7",
+                "--top-p",
+                "0.8",
+                "--top-k",
+                "20",
+                "--min-p",
+                "0",
+                "--presence-penalty",
+                "1.5",
+                "--chat-template-kwargs",
+                r#"{"reasoning_effort":"low"}"#
+            ]
+        );
+        assert!(
+            LlamaSettings::default().extra_args().is_empty(),
+            "the defaults add no flags"
+        );
+        std::fs::write(dir.0.join(SETTINGS_FILE), "[1,2]").unwrap();
+        let error = LlamaSettings::for_folder(&dir.0).unwrap_err();
+        assert!(error.contains("expected a JSON object"), "{error}");
+    }
+
     #[test]
     fn early_exit_and_silence_are_errors_with_the_log_named() {
         let dir = scratch("fail");
