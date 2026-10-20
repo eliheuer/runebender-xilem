@@ -47,6 +47,8 @@ pub(crate) enum ChatEntry {
     User(String),
     /// Model prose, with tool-call markup removed.
     Assistant(String),
+    /// What the answer before it left out, shown when the person asks.
+    Detail { text: String, open: bool },
     /// A complete Python block the user can explicitly open as a draft.
     Script(ScriptArtifact),
     /// One tool invocation and its short result.
@@ -540,6 +542,20 @@ impl Workspace {
                     let artifacts = python_artifacts(text);
                     if let Some(ChatEntry::Assistant(current)) = self.chat.entries.last_mut() {
                         *current = visible_text(text);
+                    }
+                    if let Some(draft) = event.get("draft").and_then(Value::as_str) {
+                        eprintln!("chat reply as the model wrote it: {draft}");
+                        eprintln!("chat reply restated: {text}");
+                    }
+                    if let Some(detail) = event
+                        .get("detail")
+                        .and_then(Value::as_str)
+                        .filter(|detail| !detail.trim().is_empty())
+                    {
+                        self.chat.entries.push(ChatEntry::Detail {
+                            text: detail.trim().to_owned(),
+                            open: false,
+                        });
                     }
                     self.chat
                         .entries

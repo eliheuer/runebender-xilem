@@ -113,6 +113,7 @@ fn word_button<F: Fn(&mut Workspace) + Send + Sync + 'static>(
 /// which says what it could not do. Only a turn that failed is a problem.
 fn transcript_row(
     app: &Workspace,
+    index: usize,
     entry: &ChatEntry,
 ) -> Option<Box<xilem::AnyWidgetView<Workspace>>> {
     use recipes::Message;
@@ -131,6 +132,31 @@ fn transcript_row(
         // The answer card appears with the first words, not before.
         ChatEntry::Assistant(text) if text.trim().is_empty() => return None,
         ChatEntry::Assistant(text) => card(Message::Answer, text.clone()),
+        // The detail behind an answer: a word under the card opens it as a
+        // note and closes it again.
+        ChatEntry::Detail { text, open } => {
+            let open = *open;
+            let toggle = word_button(
+                pal,
+                ControlKind::Quiet,
+                if open { "Less" } else { "Detail" },
+                true,
+                move |app: &mut Workspace| {
+                    if let Some(ChatEntry::Detail { open, .. }) = app.chat.entries.get_mut(index) {
+                        *open = !*open;
+                    }
+                },
+            );
+            xcolumn(
+                Region::List,
+                (
+                    open.then(|| card(Message::Note, text.clone())),
+                    xrow(Region::Inline, (FlexSpacer::Flex(1.0), toggle)),
+                ),
+            )
+            .gap(Space::Sm)
+            .boxed()
+        }
         // The editor's own account of a proposal, beside whatever the model says.
         ChatEntry::Tool {
             name,
@@ -205,7 +231,8 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             .chat
             .entries
             .iter()
-            .filter_map(|entry| transcript_row(app, entry))
+            .enumerate()
+            .filter_map(|(index, entry)| transcript_row(app, index, entry))
             .collect();
         rows.extend(
             app.chat

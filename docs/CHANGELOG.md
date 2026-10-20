@@ -7,6 +7,12 @@ Entries under Unreleased describe work being prepared, not an available public r
 
 ### Added
 
+- Chat: every reply is restated for the designer before it is shown. A
+  second request, constrained to a schema with no tools, turns the model's
+  reply into one or two plain sentences and a detail; a Detail word under
+  the answer opens the rest. The model's own reply stays in the history for
+  follow-up questions, and is logged beside the restated one. When the
+  restating request fails, the reply is shown as it is.
 - Design context in three layers, read by agents before they design: the editor's default `type-design` and `font-engineering` files in `assets/context/`, the designer's own `*.context.md` files in `~/.config/runebender/context/` (or `RUNEBENDER_CONTEXT_PATH`), and the font's own `*.context.md` files beside the designspace up to the repository root. A later layer wins where it disagrees. `design_context` returns the files on the live and disk tool surfaces; the Chat panel puts the merged text in the local model's prompt within a budget.
 - The Chat panel prints every tool call, its arguments and its result to the terminal, so a wrong call can be read instead of guessed from the model's reply.
 - Proposal operations `transform_points` (move or scale a chosen set of points, by index or by a region in font units, handles included) and `adjust_width` (add to the advance), so a request such as "wider by 64" is one short edit instead of a redraw.

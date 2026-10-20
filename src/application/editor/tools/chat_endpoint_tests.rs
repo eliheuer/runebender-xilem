@@ -78,6 +78,28 @@ fn respond(mut stream: TcpStream, message: Value) {
     );
 }
 
+/// Serve the restating request that follows a final reply: no tools, a
+/// schema, and the reply itself as the last assistant message.
+fn restate(listener: &TcpListener, draft: &str, answer: &str, detail: &str) {
+    let (stream, request) = request(listener);
+    assert!(request.get("tools").is_none(), "restating carries no tools");
+    assert!(
+        request.get("response_format").is_some(),
+        "restating constrains the reply to a schema"
+    );
+    let messages = request["messages"].as_array().unwrap();
+    assert_eq!(
+        messages[messages.len() - 2]["content"],
+        draft,
+        "the reply being restated is the last assistant message"
+    );
+    respond(
+        stream,
+        json!({"role":"assistant",
+            "content":json!({"answer":answer,"detail":detail}).to_string()}),
+    );
+}
+
 fn call(name: &str, arguments: Value) -> Value {
     json!({"role":"assistant","content":null,"tool_calls":[{
         "id":"call_0","type":"function","function":{"name":name,"arguments":arguments.to_string()}
@@ -184,6 +206,12 @@ fn persistent_chat_reads_unsaved_font_proposes_and_reuses_server_across_turns() 
             stream,
             json!({"role":"assistant","content":"The proposal is ready for review."}),
         );
+        restate(
+            &listener,
+            "The proposal is ready for review.",
+            "A wider A is ready to review.",
+            "The advance goes from 412 to 500.",
+        );
         let (stream, fourth) = request(&listener);
         let messages = fourth["messages"].as_array().unwrap();
         assert!(
@@ -199,9 +227,24 @@ fn persistent_chat_reads_unsaved_font_proposes_and_reuses_server_across_turns() 
             stream,
             json!({"role":"assistant","content":"The foreground was not installed."}),
         );
+        restate(
+            &listener,
+            "The foreground was not installed.",
+            "No, the foreground is as it was.",
+            "",
+        );
     });
     app.chat_send("Read A and propose a wider advance.".into());
     assert_eq!(pump(&mut app), ["read_glyph", "propose_edits"]);
+    // The person sees the restated answer and can open its detail; the
+    // model's own reply is what the next turn carries.
+    assert!(app.chat.entries.iter().any(
+        |entry| matches!(entry, ChatEntry::Assistant(text) if text == "A wider A is ready to review.")
+    ));
+    assert!(app.chat.entries.iter().any(|entry| matches!(
+        entry,
+        ChatEntry::Detail { text, open: false } if text == "The advance goes from 412 to 500."
+    )));
     assert!(
         app.chat
             .entries
@@ -278,6 +321,12 @@ fn replacing_document_after_inference_discards_reply_and_context() {
         respond(
             stream,
             json!({"role":"assistant","content":"Reply from the previous document."}),
+        );
+        restate(
+            &listener,
+            "Reply from the previous document.",
+            "A reply from before.",
+            "",
         );
     });
     app.chat_send("Describe this font.".into());

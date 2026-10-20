@@ -461,6 +461,13 @@ impl Workspace {
                      within 2 units of the others. The farthest is M at 84."
                         .into(),
                 ),
+                ChatEntry::Detail {
+                    text: "Measured with analyze_font on the Regular source. Stems: H 92, \
+                           I 92, N 90, M 84. The outlier M is 6 units lighter."
+                        .into(),
+                    // The detail sample opens with RUNEBENDER_CHAT_SAMPLE=detail.
+                    open: std::env::var("RUNEBENDER_CHAT_SAMPLE").as_deref() == Ok("detail"),
+                },
             ];
             app.chat.entries.push(ChatEntry::User(
                 "How many off-curve points does U+0035 have?".into(),

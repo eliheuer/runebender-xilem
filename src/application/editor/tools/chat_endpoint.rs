@@ -111,6 +111,70 @@ fn base_prompt() -> String {
     )
 }
 
+/// The longest plain answer, in characters. The grammar enforces it, so
+/// the model has to say the result first and leave the rest for the detail.
+const PLAIN_ANSWER_MAX: usize = 280;
+
+/// The prompt for the restating step: the model's own reply, which names
+/// tools, IDs and hashes, said again for the designer who asked.
+const PLAIN_PROMPT: &str = "You are rewriting a font assistant's reply for the type designer \
+    who asked. Give answer: one or two plain sentences that state the result and the numbers \
+    that matter, in a designer's words, with no tool names, IDs, hashes or JSON. Give detail: \
+    what the answer leaves out, as plain sentences: each measurement, each step taken, and \
+    anything the designer should check.";
+
+/// A request that restates `draft`, the model's final reply, as a plain
+/// answer and a detail. It carries the conversation but no tools: the
+/// server constrains the whole output to the schema, so a tool call is not
+/// possible in the same request, which is why this is a step of its own.
+fn plain_answer_request(history: &[Value], draft: &str) -> Value {
+    let mut messages = vec![json!({"role":"system", "content":PLAIN_PROMPT})];
+    // The first message is the tool-using system prompt; the restating
+    // prompt stands in for it.
+    messages.extend(history.iter().skip(1).cloned());
+    messages.push(json!({"role":"assistant", "content":draft}));
+    messages.push(json!({"role":"user", "content":"Restate your last reply for the designer."}));
+    json!({
+        "messages":messages,
+        "stream":false,
+        "temperature":0.2,
+        "response_format":{"type":"json_schema", "json_schema":{"name":"plain_answer", "schema":{
+            "type":"object",
+            "properties":{
+                "answer":{"type":"string", "maxLength":PLAIN_ANSWER_MAX},
+                "detail":{"type":"string"}
+            },
+            "required":["answer", "detail"]
+        }}}
+    })
+}
+
+/// The answer and detail from a restating response, or `None` when the
+/// response is not the schema's object or its answer is empty.
+fn parse_plain_answer(response: &Value) -> Option<(String, String)> {
+    let content = response
+        .get("choices")?
+        .get(0)?
+        .get("message")?
+        .get("content")?
+        .as_str()?
+        .trim();
+    let content = content
+        .strip_prefix("```json")
+        .or_else(|| content.strip_prefix("```"))
+        .and_then(|rest| rest.strip_suffix("```"))
+        .unwrap_or(content);
+    let value: Value = serde_json::from_str(content.trim()).ok()?;
+    let answer = value.get("answer")?.as_str()?.trim().to_owned();
+    let detail = value
+        .get("detail")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_owned();
+    (!answer.is_empty()).then_some((answer, detail))
+}
+
 fn parse_reply(
     response: &Value,
     allowed: &[agent::Tool],
@@ -337,9 +401,27 @@ fn run_loop(
         if reply.calls.is_empty() {
             remaining(deadline)?;
             let text = reply.content.expect("nonempty final content checked");
+            // The model's own reply stays in the history, so a follow-up
+            // question has everything it said. The person sees it restated
+            // in plain words, with the rest as a detail; if restating fails
+            // for any reason, they see the reply itself.
+            let plain = remaining(deadline)
+                .ok()
+                .and_then(|budget| {
+                    infer(&plain_answer_request(&request_messages, &text), budget).ok()
+                })
+                .and_then(|response| parse_plain_answer(&response));
+            if cancellation.is_cancelled() {
+                return Err("cancelled".into());
+            }
             messages.push(json!({"role":"assistant", "content":text}));
             check_messages(&messages)?;
-            emit(json!({"event":"done", "text":text}));
+            match plain {
+                Some((answer, detail)) => emit(json!({
+                    "event":"done", "text":answer, "detail":detail, "draft":text
+                })),
+                None => emit(json!({"event":"done", "text":text})),
+            }
             emit(json!({"event":"messages", "messages":messages}));
             return Ok(());
         }
@@ -615,6 +697,7 @@ mod tests {
                 "edits":[], "expected_document_epoch":"model-chosen"}),
                 ),
                 completion("A proposal is ready for review."),
+                completion(r#"{"answer":"A proposal is ready.","detail":"It narrows a."}"#),
             ]
             .into_iter(),
         );
@@ -637,10 +720,28 @@ mod tests {
         );
         assert!(result.is_ok(), "{result:?}");
         let seen = seen.into_inner();
-        assert_eq!(seen.len(), 3);
+        assert_eq!(seen.len(), 4, "three turns and one restating request");
         assert_eq!(seen[1]["messages"][3]["tool_call_id"], "turn_1_0_call_0");
         assert_eq!(seen[2]["messages"][5]["tool_call_id"], "turn_1_1_call_0");
+        // The restating request carries the conversation and the reply, a
+        // schema, and no tools.
+        assert!(seen[3].get("tools").is_none(), "no tools while restating");
+        assert_eq!(
+            seen[3]["response_format"]["json_schema"]["schema"]["required"],
+            json!(["answer", "detail"])
+        );
+        assert_eq!(
+            seen[3]["messages"][6]["content"],
+            "A proposal is ready for review."
+        );
         let events = events.into_inner();
+        let done = events
+            .iter()
+            .find(|event| event["event"] == "done")
+            .expect("a done event");
+        assert_eq!(done["text"], "A proposal is ready.");
+        assert_eq!(done["detail"], "It narrows a.");
+        assert_eq!(done["draft"], "A proposal is ready for review.");
         assert_eq!(
             events
                 .iter()
@@ -649,6 +750,50 @@ mod tests {
             2
         );
         assert_eq!(events.last().expect("messages event")["event"], "messages");
+    }
+
+    #[test]
+    fn a_reply_the_server_cannot_restate_is_shown_as_it_is() {
+        let replies = RefCell::new(vec![completion("The stem is 92 units.")].into_iter());
+        let events = RefCell::new(Vec::new());
+        let result = run_loop(
+            r#"[{"role":"user","content":"How wide is the stem?"}]"#,
+            "",
+            &ProcessCancellation::default(),
+            "host-epoch",
+            |_, _| {
+                replies
+                    .borrow_mut()
+                    .next()
+                    .ok_or_else(|| "server went away".to_owned())
+            },
+            |_, _| unreachable!("no tool is called"),
+            |event| events.borrow_mut().push(event),
+        );
+        assert!(result.is_ok(), "{result:?}");
+        let events = events.into_inner();
+        let done = &events[0];
+        assert_eq!(done["text"], "The stem is 92 units.");
+        assert!(done.get("detail").is_none(), "nothing was restated");
+    }
+
+    #[test]
+    fn a_plain_answer_is_read_from_the_schema_object_with_or_without_a_fence() {
+        let bare = completion(r#"{"answer":"The stem is 92.","detail":"H measured."}"#);
+        assert_eq!(
+            parse_plain_answer(&bare),
+            Some(("The stem is 92.".to_owned(), "H measured.".to_owned()))
+        );
+        let fenced = completion("```json\n{\"answer\":\"The stem is 92.\",\"detail\":\"\"}\n```");
+        assert_eq!(
+            parse_plain_answer(&fenced),
+            Some(("The stem is 92.".to_owned(), String::new()))
+        );
+        assert_eq!(parse_plain_answer(&completion("not json")), None);
+        assert_eq!(
+            parse_plain_answer(&completion(r#"{"answer":"  ","detail":"x"}"#)),
+            None
+        );
     }
 
     #[test]
