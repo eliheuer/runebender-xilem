@@ -24,7 +24,7 @@ pub(crate) fn overview(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         app.selected,
         app.multi_selected.clone(),
         |app: &mut Workspace, ev| match ev {
-            GridEvent::Selected { index, cmd, shift } => app.grid_select(index, cmd, shift),
+            GridEvent::Selected { index, cmd, shift } => app.grid_pick(index, cmd, shift),
             GridEvent::Open(i) => app.open_glyph(i),
         },
     ))

@@ -269,6 +269,19 @@ impl Workspace {
         expected.saturating_sub(self.filter_present(index))
     }
 
+    /// A click on a cell in either glyph grid: the overview's and the
+    /// editor rail's. Both grids answer the modifiers the same way, so
+    /// a range or a toggle works wherever the cells are. A plain click
+    /// highlights a cell in the overview and opens it in the editor,
+    /// which is the one thing the two grids are for differently.
+    pub(crate) fn grid_pick(&mut self, index: usize, cmd: bool, shift: bool) {
+        if !cmd && !shift && matches!(self.mode, Mode::Editor(_)) {
+            self.open_glyph(index);
+        } else {
+            self.grid_select(index, cmd, shift);
+        }
+    }
+
     pub(crate) fn grid_select(&mut self, index: usize, cmd: bool, shift: bool) {
         use std::collections::HashSet;
         if cmd {
@@ -316,6 +329,54 @@ impl Workspace {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_editor_rail_grid_selects_ranges_and_toggles_like_the_overview() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/incompatible/Regular.ufo");
+        let mut app = Workspace::open(&path).expect("the fixture opens");
+        let count = app.font.glyphs.len();
+        for name in ["b", "c", "d"] {
+            app.filter = name.into();
+            app.new_glyph();
+        }
+        assert_eq!(app.font.glyphs.len(), count + 3);
+        app.sel = Sel::Category(GlyphCategory::All);
+        app.sort = Sort::Name;
+        app.filter.clear();
+        let order: Vec<usize> = app.filtered_cells().iter().map(|c| c.index).collect();
+        assert_eq!(order.len(), count + 3);
+
+        // A plain click in the editor opens the glyph, as before.
+        app.open_glyph(order[0]);
+        assert!(matches!(app.mode, Mode::Editor(_)));
+        app.grid_pick(order[1], false, false);
+        assert!(matches!(app.mode, Mode::Editor(i) if i == order[1]));
+        assert!(app.multi_selected.is_empty());
+
+        // Shift extends a range from the open glyph, and the glyph in hand stays.
+        app.grid_pick(order[3], false, true);
+        assert!(matches!(app.mode, Mode::Editor(i) if i == order[1]));
+        let mut selected: Vec<usize> = app.multi_selected.iter().copied().collect();
+        selected.sort_unstable();
+        let mut expected = order[1..=3].to_vec();
+        expected.sort_unstable();
+        assert_eq!(selected, expected);
+
+        // Cmd toggles one cell out again.
+        app.grid_pick(order[2], true, false);
+        assert!(!app.multi_selected.contains(&order[2]));
+        assert!(app.multi_selected.contains(&order[3]));
+
+        // The overview answers the same clicks the same way, without opening.
+        app.mode = Mode::Overview;
+        app.multi_selected = Arc::new(std::collections::HashSet::new());
+        app.grid_pick(order[0], false, false);
+        assert!(matches!(app.mode, Mode::Overview));
+        assert_eq!(app.selected, Some(order[0]));
+        app.grid_pick(order[2], false, true);
+        assert_eq!(app.multi_selected.len(), 3);
+    }
 
     #[test]
     fn glyph_search_preserves_scope_case_unicode_and_category() {
