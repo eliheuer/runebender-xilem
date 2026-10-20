@@ -167,7 +167,8 @@ fn workspace_columns<State, A, B, C>(
     left: A,
     middle: B,
     right: C,
-    collapsed: bool,
+    left_collapsed: bool,
+    right_collapsed: bool,
     ground_color: Color,
 ) -> impl WidgetView<State, Widget: Sized> + use<State, A, B, C>
 where
@@ -182,12 +183,15 @@ where
     let shadow_extent = design::PANEL_SHADOW_OFFSET;
     let panel_width = DOCK_WIDTH + shadow_extent;
     let panel_gutter = WORKSPACE_GUTTER - shadow_extent;
-    let left_gutter = if collapsed { 0.0 } else { panel_gutter };
-    let left_width = if collapsed {
+    let left_gutter = if left_collapsed { 0.0 } else { panel_gutter };
+    let left_width = if left_collapsed {
         0.0
     } else {
         panel_width + left_gutter
     };
+    // A folded right dock also gives up the gutter the middle column keeps beside it.
+    let middle_gutter = if right_collapsed { 0.0 } else { panel_gutter };
+    let right_width = if right_collapsed { 0.0 } else { panel_width };
     // The gutters between columns paint the window ground; each panel cuts its own corners.
     let left = ground(
         left,
@@ -198,30 +202,31 @@ where
     let middle = ground(
         middle,
         ground_color,
-        Insets::new(0.0, 0.0, panel_gutter, 0.0),
+        Insets::new(0.0, 0.0, middle_gutter, 0.0),
         None,
     );
     let columns = crate::application::widgets::quiet_split::split(left, middle)
         .split_point_from_start(Length::px(left_width))
         .min_lengths(
             Length::px(left_width),
-            Length::px(CENTER_MIN_WIDTH + shadow_extent + panel_gutter),
+            Length::px(CENTER_MIN_WIDTH + shadow_extent + middle_gutter),
         )
         // Split keeps the generous hit target and all native resize behavior;
         // the visible gutter comes from padding, not its hard-coded bar.
         .bar_thickness(Length::ZERO)
         .min_bar_area(Length::px(SIDEBAR_SPLITTER_HIT_WIDTH))
         .solid_bar(false)
-        .draggable(!collapsed);
+        .draggable(!left_collapsed);
     let columns = crate::application::widgets::quiet_split::split(columns, right)
-        .split_point_from_end(Length::px(panel_width))
+        .split_point_from_end(Length::px(right_width))
         .min_lengths(
-            Length::px(CENTER_MIN_WIDTH + shadow_extent + panel_gutter + left_width),
-            Length::px(panel_width),
+            Length::px(CENTER_MIN_WIDTH + shadow_extent + middle_gutter + left_width),
+            Length::px(right_width),
         )
         .bar_thickness(Length::ZERO)
         .min_bar_area(Length::px(SPLITTER_HIT_WIDTH))
-        .solid_bar(false);
+        .solid_bar(false)
+        .draggable(!right_collapsed);
     clip_split(columns)
 }
 
@@ -244,19 +249,24 @@ pub(crate) fn left_column(app: &Workspace) -> impl WidgetView<Workspace> + use<>
 ///
 /// Window resizing stops here, at the same limits that dragging a splitter respects.
 /// Below it, the splitters cannot meet their minimums and squeeze the docks.
-pub(crate) fn workspace_min_width(collapsed: bool) -> f64 {
+pub(crate) fn workspace_min_width(left_collapsed: bool, right_collapsed: bool) -> f64 {
     use crate::application::design::{CENTER_MIN_WIDTH, WORKSPACE_GUTTER};
     let shadow_extent = design::PANEL_SHADOW_OFFSET;
     let panel_width = DOCK_WIDTH + shadow_extent;
     let panel_gutter = WORKSPACE_GUTTER - shadow_extent;
-    let left_width = if collapsed {
+    let left_width = if left_collapsed {
         0.0
     } else {
         panel_width + panel_gutter
     };
-    let center_width = CENTER_MIN_WIDTH + shadow_extent + panel_gutter;
+    let right_width = if right_collapsed {
+        0.0
+    } else {
+        panel_width + panel_gutter
+    };
+    let center_width = CENTER_MIN_WIDTH + shadow_extent;
     // The columns' outer padding: the shadow-adjusted left gutter and the full right gutter.
-    panel_gutter + left_width + center_width + panel_width + WORKSPACE_GUTTER
+    panel_gutter + left_width + center_width + right_width + WORKSPACE_GUTTER
 }
 
 /// Clip the native splitter's expanded focus outline at the panel boundary.
@@ -383,6 +393,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         floating_panel(middle.boxed(), pal, pal.panel, pal.app_background()),
         floating_panel(inspector, pal, pal.side_panel_face(), pal.app_background()),
         app.left_collapsed,
+        app.right_collapsed,
         pal.app_background(),
     );
     // The native header already centers its controls between the window edge
@@ -1279,6 +1290,9 @@ mod panel_resize_tests {
                 controls(footer, &mut icons, &mut sliders);
                 assert!(!icons.is_empty());
                 assert_eq!(icons[0].x0, FOOTER_INSET);
+                // The dock toggles bracket the footer: one at each inset edge.
+                let last = icons[icons.len() - 1];
+                assert_eq!(f64::from(width) - last.x1, FOOTER_INSET);
                 for icon in icons {
                     assert_eq!(icon.height(), STATUS_ICON_SIZE);
                     assert_eq!(icon.y0, (FOOTER_HEIGHT - STATUS_ICON_SIZE) / 2.0);
@@ -1288,7 +1302,7 @@ mod panel_resize_tests {
                     );
                 }
                 assert_eq!(sliders.len(), 1);
-                assert_eq!(f64::from(width) - sliders[0].x1, FOOTER_INSET);
+                assert!(sliders[0].x1 < last.x0);
                 assert_eq!((sliders[0].y0 + sliders[0].y1) / 2.0, FOOTER_HEIGHT / 2.0);
             }
         }
@@ -1760,6 +1774,7 @@ mod panel_resize_tests {
                 label("Canvas"),
                 label("Right"),
                 false,
+                false,
                 xilem::Color::TRANSPARENT,
             )
         };
@@ -1828,7 +1843,7 @@ mod panel_resize_tests {
         palette.panel_shadow = None;
         let ground = xilem::Color::from_rgba8(255, 0, 0, 128);
         let panel = || floating_panel(label(""), &palette, palette.panel, ground);
-        let view = workspace_columns(panel(), panel(), panel(), false, ground);
+        let view = workspace_columns(panel(), panel(), panel(), false, false, ground);
         let mut ctx = context();
         let (pod, _) = view.build(&mut ctx, &mut ());
         // An odd width splits the center into a fractional width, as dragging does.
@@ -1869,6 +1884,7 @@ mod panel_resize_tests {
             label("Canvas"),
             label("Right"),
             false,
+            false,
             xilem::Color::TRANSPARENT,
         );
         let mut ctx = context();
@@ -1899,7 +1915,7 @@ mod panel_resize_tests {
         h.mouse_move(Point::new(953.5, 100.0));
         h.mouse_button_release(None);
         let padding = (WORKSPACE_GUTTER - PANEL_SHADOW_OFFSET) + WORKSPACE_GUTTER;
-        assert_eq!(super::workspace_min_width(false) - padding, 790.0);
+        assert_eq!(super::workspace_min_width(false, false) - padding, 790.0);
         h.process_window_event(WindowEvent::Resize(PhysicalSize::new(790, 650)));
         let dock = DOCK_WIDTH + PANEL_SHADOW_OFFSET;
         assert_eq!(
@@ -1918,6 +1934,7 @@ mod panel_resize_tests {
                 label("Canvas"),
                 label("Right"),
                 collapsed,
+                false,
                 xilem::Color::TRANSPARENT,
             )
         };
@@ -2120,7 +2137,14 @@ mod panel_resize_tests {
             }
         }
         check(
-            workspace_columns(pane(), pane(), pane(), false, xilem::Color::TRANSPARENT),
+            workspace_columns(
+                pane(),
+                pane(),
+                pane(),
+                false,
+                false,
+                xilem::Color::TRANSPARENT,
+            ),
             (1296, 666),
             Point::new(1041.5, 108.0),
             Point::new(961.5, 108.0),

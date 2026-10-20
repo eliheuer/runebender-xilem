@@ -69,9 +69,9 @@ mod tests {
     fn parses_all_icons() {
         let source = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/icons.ufo");
         let font = norad::Font::load(source).expect("editable icon UFO loads");
-        assert_eq!(font.default_layer().iter().count(), 55);
+        assert_eq!(font.default_layer().iter().count(), 57);
         let icons = icons();
-        assert_eq!(icons.len(), 55);
+        assert_eq!(icons.len(), 57);
         let mut assigned = HashSet::new();
         for glyph in font.default_layer().iter() {
             let codepoints = glyph.codepoints.iter().collect::<Vec<_>>();
@@ -111,6 +111,8 @@ mod tests {
             "invert",
             "sidebar-open",
             "sidebar-closed",
+            "sidebar-right-open",
+            "sidebar-right-closed",
             "disclosure-bullet",
             "disclosure-closed",
             "disclosure-open",
@@ -154,6 +156,15 @@ mod tests {
             assert!(is_inked(panel, 8.0, 2.5), "{name} includes its top edge");
             assert!(!is_inked(panel, 11.0, 8.0), "{name} has an open interior");
             assert!(!is_inked(panel, 1.0, 2.0), "{name} has rounded corners");
+        }
+        assert!(is_inked(&icons["sidebar-right-open"], 10.0, 8.0));
+        assert!(is_inked(&icons["sidebar-right-closed"], 11.75, 8.0));
+        for name in ["sidebar-right-open", "sidebar-right-closed"] {
+            let panel = &icons[name];
+            assert!(is_inked(panel, 14.5, 8.0), "{name} includes its frame");
+            assert!(is_inked(panel, 8.0, 2.5), "{name} includes its top edge");
+            assert!(!is_inked(panel, 5.0, 8.0), "{name} has an open interior");
+            assert!(!is_inked(panel, 15.0, 2.0), "{name} has rounded corners");
         }
 
         let dot = &icons["coordinate-dot"];

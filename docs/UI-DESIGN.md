@@ -209,6 +209,7 @@ These variables control what the frame shows:
 | `RUNEBENDER_SELECTALL=1` | Select all points in the open glyph. |
 | `RUNEBENDER_EXPAND=<key>` | Expand the panel section with this collapse key. |
 | `RUNEBENDER_COLLAPSED=<key,...>` | Collapse these panel sections. |
+| `RUNEBENDER_HIDDEN_DOCKS=<left,right>` | Fold these docks away, as the footer toggles do. |
 | `RUNEBENDER_RAIL=<ai\|chat\|scripts\|shapes>` | Open this tool pane. |
 | `RUNEBENDER_VIEW=<option,...>` | Turn on canvas view options: `comb`, `continuity`, `colorize`, `handles`, `segments`, `bearings`, `popcount`. |
 | `RUNEBENDER_AXIS=wght=500,wdth=80` | Set the design-space location. |

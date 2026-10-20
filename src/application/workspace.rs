@@ -181,6 +181,8 @@ pub(crate) struct Workspace {
     pub(crate) layer_name_buf: String,
     /// Whether the left column is folded away.
     pub(crate) left_collapsed: bool,
+    /// Whether the right column is folded away.
+    pub(crate) right_collapsed: bool,
     /// Sidebar groups that are folded shut, by title.
     pub(crate) collapsed: std::collections::HashSet<&'static str>,
     pub(crate) sel: Sel,

@@ -8,6 +8,7 @@ The glyph's advance width and height define its display frame, so keep the outli
 The `plus`, `minus`, `grid`, `list`, `eye-*`, `invert`, and `sidebar-*` glyphs are the small status and navigation controls.
 Their 768-unit frames correspond to 16 logical pixels in the footer.
 The `sidebar-open` and `sidebar-closed` glyphs each include their complete rounded frame and state indicator.
+The `sidebar-right-open` and `sidebar-right-closed` glyphs are their mirror images for the right dock.
 Their 72-unit outline thickness corresponds to 1.5 logical pixels, matching the neighboring proof controls.
 The `plus`, `minus`, `grid`, and `list` glyphs use the same thickness and rounded corners or line ends.
 Disclosure markers, menu symbols, the coordinate picker grid and dots, and the node resize grip also live here.
@@ -77,6 +78,15 @@ The `select-all-layers` glyph is reserved for a future multi-layer editing tool;
 | `U+E033` | `download` |
 | `U+E034` | `expand` |
 | `U+E035` | `contract` |
+| `U+E036` | `sidebar-right-open` |
+| `U+E037` | `sidebar-right-closed` |
 
 Some of these designs started as Private Use Area glyphs in Virtua Grotesk.
 This small UFO keeps the application's editable copies together without making it depend on the full font source.
+
+## macOS application artwork
+
+`runebender.png` is the temporary application artwork supplied by Eli as `runebender-app-icon-001.png` on October 17, 2026.
+It is a 2048 × 2048 PNG with transparency, retained here so local builds do not depend on a Desktop file.
+The macOS packaging script generates the required ICNS sizes using Apple's `sips` and `iconutil` tools.
+Replace this file with approved artwork before a public release, or explicitly approve this temporary artwork and confirm its license and attribution requirements.

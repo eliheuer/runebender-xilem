@@ -223,9 +223,12 @@ pub(crate) fn run(
             app.palette.blur_background,
         );
         // An open document cannot shrink the window past its panels' minimum widths.
-        // The option is reactive, so collapsing the left dock lowers the limit.
+        // The option is reactive, so collapsing a dock lowers the limit.
         let min_width = app.workspace.as_ref().map(|workspace| {
-            crate::application::view::render::workspace_min_width(workspace.left_collapsed)
+            crate::application::view::render::workspace_min_width(
+                workspace.left_collapsed,
+                workspace.right_collapsed,
+            )
         });
         let view = xilem::window(window_id, "Runebender", content)
             // Stock widgets follow the active theme; the window swaps them on a theme change.

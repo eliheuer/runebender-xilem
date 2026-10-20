@@ -102,6 +102,10 @@
 	<string>sidebar-closed.glif</string>
 	<key>sidebar-open</key>
 	<string>sidebar-open.glif</string>
+	<key>sidebar-right-closed</key>
+	<string>sidebar-right-closed.glif</string>
+	<key>sidebar-right-open</key>
+	<string>sidebar-right-open.glif</string>
 	<key>subtract</key>
 	<string>subtract.glif</string>
 	<key>text</key>

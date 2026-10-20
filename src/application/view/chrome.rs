@@ -351,6 +351,7 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     ),
                 )
             }),
+            inspector_toggle(app),
         ),
     ))
 }
@@ -464,6 +465,7 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
                 |app: &mut Workspace, value| app.preview_blur = value,
             )
             .width(Length::px(STATUS_SLIDER_WIDTH)),
+            inspector_toggle(app),
         ),
     )
 }
@@ -507,6 +509,23 @@ fn sidebar_toggle(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         },
         "Toggle sidebar",
         |app: &mut Workspace| app.left_collapsed = !app.left_collapsed,
+    )
+    .icon_size(STATUS_ICON_SIZE)
+    .tile_size(STATUS_ICON_SIZE)
+}
+
+/// The matching control at the footer's far right for hiding and restoring the inspector.
+fn inspector_toggle(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    let pal = &app.palette;
+    icon_button(
+        ControlStyle::new(pal, ControlKind::Bare),
+        if app.right_collapsed {
+            "sidebar-right-closed"
+        } else {
+            "sidebar-right-open"
+        },
+        "Toggle inspector",
+        |app: &mut Workspace| app.right_collapsed = !app.right_collapsed,
     )
     .icon_size(STATUS_ICON_SIZE)
     .tile_size(STATUS_ICON_SIZE)

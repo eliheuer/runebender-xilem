@@ -79,6 +79,9 @@ impl Workspace {
         let source_fingerprint = source_fingerprint(&source_roots);
         let features_buf = font.feature_text().to_owned();
         let source_name_buf = font.master_names()[font.active()].to_string();
+        let hidden_docks: Vec<String> = std::env::var("RUNEBENDER_HIDDEN_DOCKS")
+            .map(|s| s.split(',').map(str::trim).map(str::to_string).collect())
+            .unwrap_or_default();
         let theme_id = crate::application::platform::themes::catalog().initial_id();
         let palette = Arc::new(Palette::load(theme_id));
         let cells = Arc::new(cells_of(&font, &palette));
@@ -230,7 +233,10 @@ impl Workspace {
                 .filter(|value| !value.is_empty()),
             source_name_buf,
             layer_name_buf: "sketch".into(),
-            left_collapsed: false,
+            // Headless frames can start with a dock folded away:
+            // `RUNEBENDER_HIDDEN_DOCKS=left,right`.
+            left_collapsed: hidden_docks.iter().any(|d| d == "left"),
+            right_collapsed: hidden_docks.iter().any(|d| d == "right"),
             // Headless frames can start with sections folded:
             // `RUNEBENDER_COLLAPSED=Kerning,Groups`.
             collapsed: {
@@ -607,6 +613,7 @@ impl Workspace {
         let list = self.list;
         let detail = self.detail;
         let left_collapsed = self.left_collapsed;
+        let right_collapsed = self.right_collapsed;
         let preview_visible = self.preview_visible;
         let search_mode = self.search_mode;
         let search_case = self.search_case;
@@ -622,6 +629,7 @@ impl Workspace {
                 fresh.list = list;
                 fresh.detail = detail;
                 fresh.left_collapsed = left_collapsed;
+                fresh.right_collapsed = right_collapsed;
                 fresh.preview_visible = preview_visible;
                 fresh.search_mode = search_mode;
                 fresh.search_case = search_case;
@@ -897,6 +905,7 @@ mod tests {
         workspace.list = true;
         workspace.detail = true;
         workspace.left_collapsed = true;
+        workspace.right_collapsed = true;
         workspace.search_mode = 2;
         workspace.search_case = true;
         workspace.search_regex = true;
@@ -907,6 +916,7 @@ mod tests {
         assert!(workspace.list);
         assert!(workspace.detail);
         assert!(workspace.left_collapsed);
+        assert!(workspace.right_collapsed);
         assert_eq!(workspace.search_mode, 2);
         assert!(workspace.search_case);
         assert!(workspace.search_regex);
