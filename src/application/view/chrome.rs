@@ -15,6 +15,7 @@ use crate::application::editor::tools::graph;
 use crate::application::view::label;
 use crate::application::view::panels::tabs::{tab_chip, tab_strip};
 use crate::application::widgets::drag_region::drag_region;
+use crate::application::widgets::text_label::{self, Anchor};
 use crate::application::widgets::tool_group::{ToolGroup, tool_group};
 use crate::application::workspace::{Mode, Tool, Workspace};
 use masonry::layout::{Dim, Length};
@@ -25,27 +26,17 @@ use xilem::WidgetView;
 use xilem::style::Style;
 use xilem::view::FlexExt as _;
 use xilem::view::flex_row;
-use xilem::view::{flex_col, sized_box};
+use xilem::view::{canvas, flex_col, portal, sized_box};
 
-/// The title bar for document identity, editor tools, and tabs.
+/// The title bar for editor tools and tabs.
 ///
-/// Left to right: the file name, the save state, the tools when a
-/// glyph is open, and the tab
-/// strip. The tabs live here in both modes, so the strip does not move
-/// when the mode changes.
+/// Left to right: the window controls, the tools when a glyph is open,
+/// and the tab strip. The tabs live here in both modes, so the strip
+/// does not move when the mode changes. The document's name and save
+/// state sit in the footer, where there is room for them.
 pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     let editing = matches!(app.mode, Mode::Editor(_));
-    // Keep the document identity visible in every mode. An editor tab says
-    // which glyph is open; it is not a substitute
-    // for knowing which font the edits belong to.
-    let title = app
-        .font
-        .source()
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let status = if app.modified { "Not saved" } else { "Saved" };
     sized_box(
         flex_row((
             // Room for the traffic lights, which sit where AppKit puts
@@ -55,29 +46,6 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             (cfg!(target_os = "macos") && !app.fullscreen).then(|| {
                 sized_box(label("")).dims(Dimensions::new(Dim::Fixed(Length::px(66.0)), Dim::Auto))
             }),
-            // The name and the save state take whatever is left and
-            // clip. When the window is narrow, the file name is the part that
-            // can go.
-            sized_box(xrow(
-                Region::Inline,
-                (
-                    label(title)
-                        .text_size(TextSize::Body.px())
-                        .color(pal.header_ink),
-                    // Pale headers need darker status ink than filled glyph tiles.
-                    label(status.to_string())
-                        .text_size(TextSize::Body.px())
-                        .color(pal.save_status_ink(app.modified)),
-                ),
-            ))
-            // In the overview this takes the leftover space. In the
-            // editor it is sized to its content, and the content is
-            // truncated above, because nothing here will clip: a
-            // `Dim::Stretch` child with a flex factor still refuses to
-            // go under the intrinsic width of its text, and an
-            // over-wide label pushes the tab strip off the window
-            // instead of being cut.
-            .dims(Dimensions::new(Dim::Auto, Dim::Auto)),
             // The empty middle of the bar moves the window and zooms
             // it on a double click, as the system title bar would.
             drag_region().flex(1.0),
@@ -211,26 +179,121 @@ pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace, Widget: S
     .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
 }
 
+/// The document's name and save state, centred in the footer.
+///
+/// The path is the part that can shrink: the whole path when the bar
+/// has room for it, the file name alone when it does not, and an elided
+/// name below that. The save state always shows. A transient `note`
+/// takes the readout's place while it has something to say.
+fn document_readout(app: &Workspace, note: String) -> impl WidgetView<Workspace> + use<> {
+    let source = app.font.source();
+    // The path as opened may be relative to wherever the app was started,
+    // and may climb through `..`; show it from the root with those folded.
+    let path = {
+        use std::path::Component;
+        let mut folded = std::path::PathBuf::new();
+        for part in std::path::absolute(source)
+            .unwrap_or_else(|_| source.to_path_buf())
+            .components()
+        {
+            match part {
+                Component::CurDir => {}
+                Component::ParentDir => {
+                    folded.pop();
+                }
+                other => folded.push(other),
+            }
+        }
+        folded.display().to_string()
+    };
+    let name = source
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let status = if app.modified { "Not saved" } else { "Saved" };
+    let ink = app.palette.text_muted;
+    // Saved is the resting state and stays as quiet as the name beside it;
+    // only an unsaved document asks for attention.
+    let status_ink = if app.modified {
+        app.palette.save_status_ink(true)
+    } else {
+        ink
+    };
+    let description = if note.is_empty() {
+        format!("{name}, {status}")
+    } else {
+        note.clone()
+    };
+    sized_box(
+        portal(
+            canvas(move |_: &mut Workspace, _, scene, size| {
+                let mut painter: masonry::imaging::Painter<'_> =
+                    masonry::imaging::Painter::new(scene);
+                let text_size = TextSize::Body.px();
+                let middle = kurbo::Point::new(size.width / 2.0, size.height / 2.0);
+                if !note.is_empty() {
+                    text_label::draw_elided(
+                        &mut painter,
+                        middle,
+                        &note,
+                        text_size,
+                        ink,
+                        Anchor::Middle,
+                        size.width,
+                    );
+                    return;
+                }
+                let gap = Space::Md.px();
+                let status_width = text_label::width(status, text_size);
+                let room = (size.width - status_width - gap).max(0.0);
+                let text = if text_label::width(&path, text_size) <= room {
+                    &path
+                } else {
+                    &name
+                };
+                let text_width = text_label::width(text, text_size).min(room);
+                // With no room for a name, the status centres on its own.
+                let gap = if room > 0.0 { gap } else { 0.0 };
+                let start = ((size.width - text_width - gap - status_width) / 2.0).max(0.0);
+                text_label::draw_elided(
+                    &mut painter,
+                    kurbo::Point::new(start, middle.y),
+                    text,
+                    text_size,
+                    ink,
+                    Anchor::Start,
+                    room,
+                );
+                let status_start = start + text_width + gap;
+                text_label::draw_elided(
+                    &mut painter,
+                    kurbo::Point::new(status_start, middle.y),
+                    status,
+                    text_size,
+                    status_ink,
+                    Anchor::Start,
+                    (size.width - status_start).max(0.0),
+                );
+            })
+            .alt_text(description),
+        )
+        .constrain_horizontal(true)
+        .constrain_vertical(true)
+        .must_fill(true),
+    )
+    .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
+}
+
 /// The bar under the middle column: add and remove glyph at the
-/// left, the count centred, the view boxes and the zoom at the right.
-/// The workspace status bar.
+/// left, the document readout centred, the view boxes and the zoom at
+/// the right.
 pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     use xilem::core::one_of::Either;
     let pal = &app.palette;
     let text = match app.mode {
-        Mode::Overview => format!(
-            "{} selected \u{00b7} {}/{} glyphs",
-            app.multi_selected.len()
-                + usize::from(
-                    app.selected
-                        .is_some_and(|index| !app.multi_selected.contains(&index))
-                ),
-            app.filtered_cells().len(),
-            app.font.glyphs.len(),
-        ),
-        // Keep the resting edit footer quiet; transient notes still
+        // The readout shows the document at rest; transient notes still
         // replace this empty string below when an action has something to say.
-        Mode::Editor(_) => String::new(),
+        Mode::Overview | Mode::Editor(_) => String::new(),
         Mode::Graph => app
             .graph
             .open
@@ -288,13 +351,7 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     ),
                 )
             }),
-            label(text)
-                .text_size(TextSize::Body.px())
-                .text_alignment(masonry::TextAlign::Center)
-                .color(pal.text_muted)
-                .prop(masonry::properties::LineBreaking::Clip)
-                .dims(Dimensions::new(Dim::Fixed(Length::ZERO), Dim::Auto))
-                .flex(1.0),
+            document_readout(app, text).flex(1.0),
             // The slider sits where the overview's cell-size slider does.
             matches!(app.mode, Mode::Graph).then(|| {
                 use crate::application::view::canvas::graph::{ZOOM_MAX, ZOOM_MIN};
@@ -448,14 +505,7 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
                 ),
             )
             .gap(Space::Sm),
-            // The readout yields width to controls; Flex still gives it
-            // the remaining space during layout. Its intrinsic text width
-            // must not widen the whole center dock in a narrow window.
-            label(text)
-                .color(pal.text_muted)
-                .prop(masonry::properties::LineBreaking::Clip)
-                .dims(Dimensions::new(Dim::Fixed(Length::ZERO), Dim::Auto))
-                .flex(1.0),
+            document_readout(app, text).flex(1.0),
             label("blur").color(pal.text_muted),
             recipes::neutral_slider(
                 pal,

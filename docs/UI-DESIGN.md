@@ -117,7 +117,7 @@ Inspector preview markers use 75% of the main editor point radius.
 Optional `roles.proofInk` separates proof-strip type from neutral `previewFill` in the editing canvas.
 Optional `roles.headerActiveInk` colors active title-bar tools and tabs without changing the document title.
 Optional `roles.controlSelectedOutline` colors selected control keylines.
-Optional `roles.savedInk` and `roles.unsavedInk` keep save-state text readable on pale headers without changing glyph mark colors.
+Optional `roles.savedInk` and `roles.unsavedInk` keep save-state text readable without changing glyph mark colors.
 Older custom themes retain their previous colors when these roles are absent.
 Dark uses green active controls, yellow proof type, and subdued neutral field borders to keep the glyph primary.
 Dark Gray uses Gray's filled tiles, neutral proof ink, and yellow selected labels on charcoal panels.
@@ -125,7 +125,7 @@ Its colored ring points keep their edges visible on a dark canvas.
 Both dark themes use slider knobs one Base UI step darker than their panels and brighten the fill during interaction.
 Light pairs pale gray window chrome with near-white panels and a white drawing surface.
 Light Gray uses the same light chrome with softer gray panels and canvas; its fields are one Base UI stop above the panel.
-Both light themes and Strawberry use a deep green Saved label and dim red Not saved label, with at least 4.5:1 contrast against their headers.
+Both light themes and Strawberry use a deep green Saved label and dim red Not saved label, with at least 4.5:1 contrast against their panels.
 Strawberry applies a rose Base UI ramp across the window, panels, controls, and ink.
 Campfire applies an ember-brown and copper Base UI ramp with cream ink.
 These showcase themes preserve Gray's Rainbow mark colors and shared geometry.
@@ -173,6 +173,9 @@ The experiment and tested settings are recorded beside `set_backdrop` in `src/ap
 ## Center-panel footers
 
 Use `recipes::panel_footer(pal, controls)` for the center bottom bar in overview and editor modes.
+The middle of the bar is the document readout: the font's path and save state, centred.
+The path gives way to the file name when the bar is narrow, and the name is elided below that; a transient note replaces the readout while it shows.
+Bare footer icons show hover and press in their ink, never as a tile behind them.
 It owns the full-width upper divider, the 28-pixel height, centered controls, and the outer inset.
 The 10-pixel side inset gives controls optical clearance from the curved panel corners; the 16-pixel icons remain vertically centered with 6 pixels above and below.
 Neutral slider tracks use the shared 2-pixel `SLIDER_TRACK_THICKNESS`, independently of the thumb size and hit area.
