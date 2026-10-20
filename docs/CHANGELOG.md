@@ -7,6 +7,9 @@ Entries under Unreleased describe work being prepared, not an available public r
 
 ### Added
 
+- Packaging: `scripts/bundle_llama.py` puts a pinned llama.cpp release's
+  `llama-server` and libraries into the app bundle, where the editor looks
+  first, so a DMG runs the chat without Homebrew.
 - Chat: a `model.json` beside a model's GGUF sets the server's thinking,
   context, sampling and chat template values for that model, so each
   family runs with the settings it was published with.

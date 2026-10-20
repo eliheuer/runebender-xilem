@@ -9,6 +9,19 @@
 //! is killed when the model changes, the panel closes, or the editor
 //! quits. No model is downloaded or loaded here without a running server
 //! request; this module only runs what is already on disk.
+//!
+//! The binary comes from the app bundle first (`scripts/bundle_llama.py`
+//! puts a pinned llama.cpp release in `Resources/llama/`), then from
+//! `RUNEBENDER_LLAMA_SERVER`, then from PATH and Homebrew's folders.
+//!
+//! If llama.cpp ever becomes the problem (a model family it does not
+//! parse, a template it mishandles, a crash we cannot work around), the
+//! alternative to try is mistral.rs (<https://github.com/EricLBuehler/mistral.rs>):
+//! a Rust server with Metal, GGUF loading and OpenAI-style tool calling,
+//! usable as a library in this process or as the same kind of child. It
+//! lags llama.cpp on new model families, which is why it is not the
+//! default. Everything above `LlamaServer::start` speaks the OpenAI chat
+//! API, so swapping the child is the whole change.
 
 use std::fmt;
 use std::io::{Read as _, Write as _};
