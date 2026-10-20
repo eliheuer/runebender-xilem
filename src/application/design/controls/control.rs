@@ -26,7 +26,7 @@ use masonry::core::{
 use masonry::imaging::Painter;
 use masonry::kurbo::{Axis, Size, Stroke};
 use masonry::layout::{LayoutSize, LenReq, Length, SizeDef};
-use masonry::properties::{Background, BorderColor, BorderWidth, CornerRadius};
+use masonry::properties::{Background, BorderColor, BorderWidth, ContentColor, CornerRadius};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewId, ViewMarker, ViewPathTracker};
 use xilem::{Pod, ViewCtx, WidgetView};
 
@@ -159,9 +159,19 @@ impl Widget for ControlWidget {
         match event {
             Update::WidgetAdded => self.apply_face(props),
             Update::HoveredChanged(_) | Update::ActiveChanged(_) => {
+                let was = self.style.face(self.hovered, self.pressed).ink;
                 self.hovered = ctx.is_hovered();
                 self.pressed = ctx.is_active();
                 self.apply_face(props);
+                // A kind whose states show in the ink, such as a bare word,
+                // has to reach its label: the control owns the face, the
+                // child owns the text. Kinds with one ink never touch it.
+                let ink = self.style.face(self.hovered, self.pressed).ink;
+                if ink != was {
+                    ctx.mutate_child_later(&mut self.child, move |mut child| {
+                        child.insert_prop(ContentColor::new(ink));
+                    });
+                }
                 ctx.request_render();
             }
             Update::FocusChanged(_) => ctx.request_render(),

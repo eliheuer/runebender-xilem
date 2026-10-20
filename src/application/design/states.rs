@@ -13,8 +13,9 @@
 //! from `surfaces.button` to `surfaces.buttonHover`, and to
 //! `surfaces.buttonPressed`. Every kind takes the same lightness step
 //! from its own rest face, so an inverted Primary button lightens on
-//! hover by as much as an outlined one, and a bare control in the dark
-//! header by as much as one on a light panel.
+//! hover by as much as an outlined one. A bare icon in a bar has no
+//! face to step: a tinted tile behind it reads as a smudge with no
+//! edge, so its ink takes the step instead and the ground stays put.
 
 use masonry::peniko::color::Oklab;
 use xilem::Color;
@@ -49,13 +50,13 @@ pub(crate) enum ControlKind {
     /// reference dot: the content covers the fill, so hover and pressed
     /// show as a ring, and the shape is a circle.
     Swatch,
-    /// A bare icon or word in a bar that does something: full ink, no
-    /// face until hovered.
+    /// A bare icon or word in a bar that does something: full ink, never
+    /// a face. Hover and press show in the ink.
     Bare,
     /// A bare icon in a bar that is on or off, such as an editing tool or
-    /// a view switch: quiet ink when off, full ink when on, no face until
-    /// hovered. It strengthens instead of inverting so a bar of tools
-    /// stays quiet.
+    /// a view switch: quiet ink when off, full ink when on, never a face.
+    /// Hover and press show in the ink, and the on state strengthens
+    /// instead of inverting so a bar of tools stays quiet.
     Tool,
     /// A sidebar rail tab: the tab shape is its face, so hover and press
     /// show in the ink, and the open tab is the panel showing through.
@@ -250,6 +251,26 @@ impl ControlStyle {
         } else if kind == ControlKind::Disclosure {
             // No state paints: the header reads as part of the group.
             (rest, rest)
+        } else if matches!(kind, ControlKind::Bare | ControlKind::Tool) {
+            // The ground shows through, so the ink takes the steps. An ink
+            // already at the end of the lightness range steps the other way.
+            let l = lightness(rest.ink);
+            let reach = hover_step.abs().max(pressed_step.abs());
+            let sign = if l + reach > 1.0 || l - reach < 0.0 {
+                if l > 0.5 { -1.0 } else { 1.0 }
+            } else {
+                1.0
+            };
+            (
+                Face {
+                    ink: shift(rest.ink, sign * hover_step),
+                    ..rest
+                },
+                Face {
+                    ink: shift(rest.ink, sign * pressed_step),
+                    ..rest
+                },
+            )
         } else if kind == ControlKind::Swatch {
             // The content covers any fill, so the states draw on the edge.
             (
@@ -424,6 +445,25 @@ mod tests {
                         assert_ne!(hover, pressed, "{id} {kind:?} selected={selected} pressed");
                         assert_ne!(rest, pressed, "{id} {kind:?} selected={selected} press");
                     }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn bare_icons_keep_the_ground_and_move_their_ink() {
+        for id in crate::application::platform::themes::catalog().ids() {
+            let pal = Palette::load(id);
+            for kind in [ControlKind::Bare, ControlKind::Tool] {
+                for ground in [Ground::Panel, Ground::Header] {
+                    let style = ControlStyle::new(&pal, kind).on(&pal, ground);
+                    let rest = style.face(false, false);
+                    let hover = style.face(true, false);
+                    let pressed = style.face(true, true);
+                    assert_eq!(hover.fill, Color::TRANSPARENT, "{id} {kind:?} hover fill");
+                    assert_eq!(pressed.fill, Color::TRANSPARENT, "{id} {kind:?} press fill");
+                    assert_ne!(hover.ink, rest.ink, "{id} {kind:?} hover ink");
+                    assert_ne!(pressed.ink, hover.ink, "{id} {kind:?} press ink");
                 }
             }
         }
