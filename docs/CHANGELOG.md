@@ -35,6 +35,8 @@ Entries under Unreleased describe work being prepared, not an available public r
 
 ### Changed
 
+- Chat: the DMG build finds a Homebrew `llama-server` when opened from the
+  Finder, where PATH does not include Homebrew's folders.
 - Chat: the model picker opens as a list of full-width rows, the chosen
   model inverted, in place of the chip that opened it. The conversation
   gives up height first, so the controls stay inside the panel.

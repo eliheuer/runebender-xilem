@@ -189,8 +189,16 @@ pub fn find_binary() -> Option<PathBuf> {
         let path = PathBuf::from(path);
         return path.is_file().then_some(path);
     }
-    let path = std::env::var_os("PATH")?;
+    // An app opened from the Finder has a PATH without Homebrew's folders,
+    // so those are tried after it: a `brew install llama.cpp` serves the
+    // DMG build too.
+    let path = std::env::var_os("PATH").unwrap_or_default();
     std::env::split_paths(&path)
+        .chain(
+            ["/opt/homebrew/bin", "/usr/local/bin"]
+                .into_iter()
+                .map(PathBuf::from),
+        )
         .map(|dir| dir.join(name))
         .find(|candidate| candidate.is_file())
 }
