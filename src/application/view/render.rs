@@ -2253,6 +2253,17 @@ mod rail_width_tests {
             ));
         }
         app.mode = Mode::Overview;
+        // Every script and category open at once: the rows under them
+        // have the longest names in the sidebar.
+        for (index, _) in runebender::ui::sidebar::language_groups()
+            .iter()
+            .enumerate()
+        {
+            app.expanded_scripts.insert(index);
+        }
+        for category in runebender::GlyphCategory::all_categories() {
+            app.expanded_categories.insert(category.display_name());
+        }
         let mut ctx = context();
         let view = sized_box(super::left_column(&app));
         let (pod, _) = view.build(&mut ctx, &mut app);

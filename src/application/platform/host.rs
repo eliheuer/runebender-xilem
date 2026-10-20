@@ -107,6 +107,11 @@ impl Workspace {
         // (set later, after session is final)
 
         let start_cat = std::env::var("RUNEBENDER_CAT").ok();
+        let start_script = std::env::var("RUNEBENDER_SCRIPT").ok().and_then(|label| {
+            runebender::ui::sidebar::language_groups()
+                .iter()
+                .position(|group| group.label == label)
+        });
         let (mode, open) = match std::env::var("RUNEBENDER_OPEN")
             .ok()
             .and_then(|n| font.index_of(&n))
@@ -274,15 +279,20 @@ impl Workspace {
                 ]);
                 set
             },
-            sel: Sel::Category(match start_cat.as_deref() {
-                Some("Number") => GlyphCategory::Number,
-                Some("Symbol") => GlyphCategory::Symbol,
-                Some("Mark") => GlyphCategory::Mark,
-                _ => GlyphCategory::All,
-            }),
+            sel: match start_script {
+                Some(index) => Sel::Language(index),
+                None => Sel::Category(match start_cat.as_deref() {
+                    Some("Number") => GlyphCategory::Number,
+                    Some("Symbol") => GlyphCategory::Symbol,
+                    Some("Mark") => GlyphCategory::Mark,
+                    _ => GlyphCategory::All,
+                }),
+            },
             sort: Sort::Name,
             expanded_categories: std::collections::HashSet::new(),
-            expanded_scripts: std::collections::HashSet::new(),
+            // Headless frames can start with a script group open:
+            // `RUNEBENDER_SCRIPT=Hebrew`. The selection follows below.
+            expanded_scripts: start_script.into_iter().collect(),
             search_regex: false,
             search_re: None,
             advance_buf: format!("{}", round_units(session.advance())),

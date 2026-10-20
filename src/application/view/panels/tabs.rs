@@ -340,7 +340,7 @@ fn editor_glyph_rail(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             current,
             app.multi_selected.clone(),
             |app: &mut Workspace, ev| match ev {
-                GridEvent::Selected { index, .. } => app.open_glyph(index),
+                GridEvent::Selected { index, cmd, shift } => app.grid_pick(index, cmd, shift),
                 GridEvent::Open(i) => app.open_glyph(i),
             },
         )
@@ -620,7 +620,7 @@ fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let cats = GlyphCategory::all_categories();
     // Categories: a chevron on one with subfilters, a bullet on one
     // without. Clicking a selected expandable row folds it, as the
-    // GPUI sidebar does; the rows under it are indented leaves.
+    // GPUI sidebar does; the rows under it are bulleted leaves.
     let mut cat_rows: Vec<_> = Vec::new();
     for c in cats.iter().copied().filter(|c| app.category_count(*c) > 0) {
         let subs = runebender::ui::sidebar::category_subfilters(c.display_name());
@@ -638,7 +638,6 @@ fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         cat_rows.push(Either::A(recipes::list_row_marked(
             pal,
             marker,
-            false,
             c.display_name().to_string(),
             format!("{}", app.category_count(c)),
             app.sel == Sel::Category(c),
@@ -654,7 +653,6 @@ fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 cat_rows.push(Either::B(recipes::list_row_marked(
                     pal,
                     recipes::Marker::Bullet,
-                    true,
                     (*sub_label).to_string(),
                     format!("{}", app.subfilter_count(c, sub)),
                     app.sel == Sel::Subfilter(c, sub),
@@ -684,7 +682,6 @@ fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         lang_rows.push(Either::A(recipes::list_row_marked(
             pal,
             marker,
-            false,
             g.label.clone(),
             format!("{}", app.language_count(i)),
             app.sel == Sel::Language(i),
@@ -711,7 +708,6 @@ fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 lang_rows.push(Either::B(recipes::list_row_marked(
                     pal,
                     recipes::Marker::Bullet,
-                    true,
                     f.label.clone(),
                     count,
                     app.sel == Sel::LanguageFilter(i, fi),

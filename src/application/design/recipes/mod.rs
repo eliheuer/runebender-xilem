@@ -500,7 +500,7 @@ pub(crate) fn list_row<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     active: bool,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
-    list_row_marked(pal, Marker::None, false, text, trailing, active, on_click)
+    list_row_marked(pal, Marker::None, text, trailing, active, on_click)
 }
 
 /// What a sidebar row shows before its label: a chevron on a row that
@@ -537,12 +537,14 @@ pub(crate) fn marker(marker: Marker, color: xilem::Color) -> impl WidgetView<Wor
     ))
 }
 
-/// A list row with a chosen marker, indented when it sits under
-/// another row.
+/// A list row with a chosen marker. A row under another row is not
+/// indented: the marker already says which rows are leaves, and the
+/// dock has no width to spare (Eli, 2026-10-20). The name yields to
+/// the count, which stays at the edge, so a long name clips instead of
+/// pushing the row past the dock.
 pub(crate) fn list_row_marked<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     pal: &Palette,
     row_marker: Marker,
-    indent: bool,
     text: String,
     trailing: String,
     active: bool,
@@ -557,11 +559,14 @@ pub(crate) fn list_row_marked<F: Fn(&mut Workspace) + Send + Sync + 'static>(
             row(
                 Region::Inline,
                 (
-                    indent.then_some(FlexSpacer::Fixed(Space::Lg.length())),
                     (row_marker != Marker::None)
                         .then(|| marker(row_marker, if active { fg } else { pal.text_muted })),
-                    label(text).text_size(TextSize::Body.px()).color(fg),
-                    FlexSpacer::Flex(1.0),
+                    label(text)
+                        .text_size(TextSize::Body.px())
+                        .color(fg)
+                        .prop(masonry::properties::LineBreaking::Clip)
+                        .dims(Dimensions::new(Dim::Fixed(Length::ZERO), Dim::Auto))
+                        .flex(1.0),
                     label(trailing)
                         .text_size(TextSize::Body.px())
                         .color(trailing_color),
