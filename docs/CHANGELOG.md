@@ -7,6 +7,11 @@ Entries under Unreleased describe work being prepared, not an available public r
 
 ### Added
 
+- Proof view: a button at the foot of the editor swaps the canvas for a
+  proof of the open glyph. It shows the current drawing and the proposal
+  waiting for it side by side at one scale, and both in running text at
+  three reading sizes, with Install and Discard at hand. The text is the
+  open composition, or a sample built around the glyph.
 - Packaging: `scripts/bundle_llama.py` puts a pinned llama.cpp release's
   `llama-server` and libraries into the app bundle, where the editor looks
   first, so a DMG runs the chat without Homebrew.

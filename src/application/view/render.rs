@@ -350,10 +350,15 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     // panel with its own content and footer.
     let body = match app.mode {
         Mode::Overview => OneOf3::A(overview(app)),
-        Mode::Editor(_) => OneOf3::B(editor_pane(app)),
+        // The proof view takes the canvas's place, and brings its own text,
+        // so the strip under it is not shown.
+        Mode::Editor(_) if app.proof_view => {
+            OneOf3::B(Either::A(super::canvas::proof::proof_view(app)))
+        }
+        Mode::Editor(_) => OneOf3::B(Either::B(editor_pane(app))),
         Mode::Graph => OneOf3::C(graph_pane(app)),
     };
-    let body = if matches!(app.mode, Mode::Editor(_)) && app.preview_visible {
+    let body = if matches!(app.mode, Mode::Editor(_)) && app.preview_visible && !app.proof_view {
         Either::A(proof_split(body, preview_strip(app), pal.outline))
     } else {
         Either::B(body)

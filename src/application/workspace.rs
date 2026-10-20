@@ -306,6 +306,9 @@ pub(crate) struct Workspace {
     pub(crate) preview_visible: bool,
     /// Reverse the proof foreground and background contrast.
     pub(crate) preview_invert: bool,
+    /// Show the proof view in the edit area instead of the canvas: the glyph
+    /// and the proposal waiting for it, as drawings and in running text.
+    pub(crate) proof_view: bool,
     /// What the proof strip shows for a neural source: the outline, or the labeled pieces.
     pub(crate) preview_view: crate::application::pieces::PreviewView,
     /// The labeled pieces of every sample, for the piece view.

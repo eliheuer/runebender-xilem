@@ -373,6 +373,7 @@ impl Workspace {
                 .clamp(0.0, 8.0),
             preview_visible: true,
             preview_invert: std::env::var("RUNEBENDER_PREVIEW_INVERT").as_deref() == Ok("1"),
+            proof_view: std::env::var("RUNEBENDER_PROOF_VIEW").as_deref() == Ok("1"),
             search_mode: 0,
             search_case: false,
             reference_layers: std::collections::HashSet::new(),

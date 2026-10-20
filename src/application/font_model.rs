@@ -538,6 +538,16 @@ impl FontModel {
         self.project.document_layer_path(&address).ok()
     }
 
+    /// The advance a proposal gives a glyph, when the proposal names it.
+    pub(crate) fn proposal_advance(&self, task: &str, glyph: &str) -> Option<f64> {
+        let source = self.project.source_id(self.active())?;
+        let layer = runebender::font::variable::LayerId {
+            source,
+            name: proposal::layer_name(task),
+        };
+        Some(self.project.document_layer(glyph, &layer)?.width())
+    }
+
     /// Another glyph's outline, for the reference underlay.
     pub(crate) fn glyph_outline(&self, glyph: &str) -> Option<Arc<BezPath>> {
         let index = self.index_of(glyph)?;

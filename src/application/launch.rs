@@ -32,6 +32,12 @@ pub(crate) fn run(
         && let Some(index) = workspace.font.index_of(&name)
     {
         workspace.open_glyph(index);
+        // RUNEBENDER_PROOF_SAMPLE=1 proposes a wider open glyph through the
+        // live tools, so a headless render of the proof view has a proposal
+        // to compare.
+        if std::env::var("RUNEBENDER_PROOF_SAMPLE").as_deref() == Ok("1") {
+            proof_sample(workspace);
+        }
         // RUNEBENDER_LABEL_SAMPLE=<n> opens the label tool on that sample.
         if let Some(sample) = std::env::var("RUNEBENDER_LABEL_SAMPLE")
             .ok()
@@ -347,4 +353,33 @@ impl<D: AppDriver> AppDriver for WindowAppearanceDriver<D> {
         self.inner.on_file_dropped(window_id, path, ctx);
         self.sync_theme(window_id, ctx);
     }
+}
+
+/// Propose the open glyph 64 units wider through the live tools, as a
+/// model would, so the proof view has something to compare.
+fn proof_sample(app: &mut crate::application::workspace::Workspace) {
+    use runebender::automation::agent::ToolCall;
+    let Some(source) = app.font.project.source_id(app.font.active()) else {
+        return;
+    };
+    let glyph = app.session.glyph_name.clone();
+    let read = app.call_live(&ToolCall {
+        name: "read_glyph".into(),
+        arguments: serde_json::json!({"glyph": glyph, "source": source.0}),
+    });
+    let x_min = read["advance"].as_f64().unwrap_or(0.0) / 2.0;
+    let proposed = app.call_live(&ToolCall {
+        name: "propose_edits".into(),
+        arguments: serde_json::json!({
+            "source": source.0, "task": "wider-sample",
+            "reason": "A sample proposal for the proof view",
+            "edits": [{"glyph": glyph, "expected_revision": read["revision"],
+                "operations": [
+                    {"op": "transform_points", "x_min": x_min, "dx": 64},
+                    {"op": "adjust_width", "delta": 64}
+                ]}]
+        }),
+    });
+    eprintln!("proof sample proposal: {proposed}");
+    app.refresh_proposals();
 }

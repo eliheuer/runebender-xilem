@@ -206,6 +206,17 @@ impl TextInputs {
         self
     }
 
+    /// Give one glyph another advance, as a proposal that changes its width would.
+    pub(crate) fn with_live_advance(mut self, name: &str, advance: f64) -> Self {
+        self.inventory.set_advance(name.to_owned(), advance);
+        if let Some((active, _, width)) = &mut self.active_glyph
+            && active == name
+        {
+            *width = advance;
+        }
+        self
+    }
+
     /// Substitute the editor's live draft without recompiling the shaping font.
     pub(crate) fn with_live_outline(mut self, name: &str, outline: Arc<BezPath>) -> Self {
         if let Some((_, path)) = Arc::make_mut(&mut self.outlines)

@@ -466,6 +466,16 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
                     )
                     .icon_size(STATUS_ICON_SIZE)
                     .tile_size(STATUS_ICON_SIZE),
+                    // The proof view in place of the canvas: the glyph and its
+                    // proposal as drawings and in text.
+                    icon_button(
+                        ControlStyle::new(pal, ControlKind::Tool).selected(pal, app.proof_view),
+                        "text",
+                        "Proof view",
+                        |app: &mut Workspace| app.proof_view = !app.proof_view,
+                    )
+                    .icon_size(STATUS_ICON_SIZE)
+                    .tile_size(STATUS_ICON_SIZE),
                     // A neural source can show its text set from the labeled pieces.
                     app.font.project.is_neural().then(|| {
                         use crate::application::pieces::PreviewView;
