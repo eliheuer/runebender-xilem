@@ -9,3 +9,4 @@ pub(crate) mod graph;
 pub(crate) mod grid;
 pub(crate) mod list;
 pub(crate) mod proof;
+pub(crate) mod specimen;

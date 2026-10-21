@@ -786,8 +786,8 @@ fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         )
         .padding(Space::Md),
         recipes::hairline(pal),
-        // The groups take their natural height, and the selected glyph's waterfall fills
-        // what they leave, as the outline preview does under the inspector.
+        // The groups take their natural height, and the specimen fills what they leave,
+        // as the outline preview does under the inspector.
         portal(recipes::panel_stack((
             sidebar_group(app, "Categories", cat_rows),
             (!lang_rows.is_empty()).then(|| sidebar_group(app, "Global Scripts", lang_rows)),
@@ -795,7 +795,7 @@ fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         )))
         .trailing_rule_clearance(design::PANEL_SECTION_INSET.px())
         .constrain_horizontal(true),
-        super::preview::glyph_waterfall(app).flex(1.0),
+        crate::application::view::canvas::specimen::glyph_specimen(app).flex(1.0),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)
     .gap(Space::None)

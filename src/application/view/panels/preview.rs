@@ -1,7 +1,7 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! The preview strip, the glyph preview, and the glyph waterfall.
+//! The preview strip and the glyph preview.
 
 use crate::application::design;
 use crate::application::design::Space;
@@ -386,116 +386,6 @@ pub(crate) fn glyph_preview(app: &Workspace) -> impl WidgetView<Workspace> + use
     .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
 }
 
-/// The selected glyph as a waterfall at the foot of the sidebar: filled, in lines that shrink
-/// from large to small, each repeated across the width.
-///
-/// It pairs with the outline preview under the inspector, so one glyph shows as a drawing on
-/// one side and as type on the other.
-pub(crate) fn glyph_waterfall(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
-    use masonry::imaging::Painter;
-    use masonry::kurbo::{Shape, Size};
-    let glyph = app.selected.and_then(|index| {
-        let entry = app.font.glyphs.get(index)?;
-        let advance = entry.advance.max(entry.outline.bounding_box().width());
-        Some((entry.outline.clone(), advance))
-    });
-    let (ascender, descender) = (app.font.ascender(), app.font.descender());
-    let pal = app.palette.clone();
-    let background = pal.glyph_preview;
-    sized_box(canvas(
-        move |_app: &mut Workspace, _ctx, scene, size: Size| {
-            let mut p = Painter::new(scene);
-            p.fill_rect(size.to_rect(), background);
-            if size.height < design::INSPECTOR_PREVIEW_MIN_READABLE_HEIGHT {
-                return;
-            }
-            let Some((outline, advance)) = &glyph else {
-                return;
-            };
-            let ink = pal.proof_ink();
-            for transform in waterfall_transforms(*advance, ascender, descender, size) {
-                p.fill(&(transform * (**outline).clone()), ink).draw();
-            }
-        },
-    ))
-    .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
-}
-
-/// Where each copy of a glyph goes in a waterfall filling `size`.
-///
-/// The first line is one copy as large as fits; each next line is smaller and repeats the
-/// glyph across the width. Lines stop when they would be too small to read or there is no
-/// room left, and the whole stack is centred.
-fn waterfall_transforms(
-    advance: f64,
-    ascender: f64,
-    descender: f64,
-    size: kurbo::Size,
-) -> Vec<kurbo::Affine> {
-    use masonry::kurbo::Affine;
-    /// Each line is this much of the one above it.
-    const STEP: f64 = 0.72;
-    /// Space between lines, as a share of the line's em.
-    const LEADING: f64 = 0.15;
-    /// The smallest line drawn, in pixels of em.
-    const SMALLEST_EM: f64 = 10.0;
-    /// The most copies on one line.
-    const MOST_COPIES: f64 = 32.0;
-    let em = (ascender - descender).max(1.0);
-    let advance = advance.max(1.0);
-    let width = size.width * design::OVERVIEW_GLYPH_PREVIEW_FILL;
-    let room = size.height * design::OVERVIEW_GLYPH_PREVIEW_FILL;
-    // Lines from `first` down to the smallest size, as (scale, bottom edge) pairs.
-    let stack = |first: f64| {
-        let mut lines = Vec::new();
-        let mut used = 0.0;
-        let mut scale = first;
-        while scale * em >= SMALLEST_EM {
-            let height = scale * em;
-            let gap = if lines.is_empty() {
-                0.0
-            } else {
-                height * LEADING
-            };
-            if used + gap + height > room {
-                break;
-            }
-            used += gap + height;
-            lines.push((scale, used));
-            scale *= STEP;
-        }
-        (lines, used, scale * em < SMALLEST_EM)
-    };
-    // The largest first line whose whole run down to the smallest size fits; when even a
-    // small start cannot reach it, keep as many lines as fit from the largest start.
-    let largest = (width / advance).min(room / em);
-    let mut first = largest;
-    let (mut lines, mut used, mut complete) = stack(first);
-    while !complete && first * em > SMALLEST_EM * 2.0 {
-        first *= 0.95;
-        (lines, used, complete) = stack(first);
-    }
-    if !complete {
-        (lines, used, _) = stack(largest);
-    }
-    let top = (size.height - used) / 2.0;
-    let mut transforms = Vec::new();
-    for (scale, bottom) in lines {
-        let copies = (width / (advance * scale)).floor().clamp(1.0, MOST_COPIES);
-        let run = copies * advance * scale;
-        let baseline = top + bottom + descender * scale;
-        let start = (size.width - run) / 2.0;
-        let mut x = start;
-        while x + advance * scale <= start + run + 0.5 {
-            transforms.push(
-                Affine::scale_non_uniform(scale, -scale).then_translate((x, baseline).into()),
-            );
-            x += advance * scale;
-        }
-    }
-    transforms
-}
-
 /// Copies of `ink`, fitted to the width of `size` and stacked down it as many
 /// times as fit, with the stack centered. Ink too tall for one copy at full
 /// width is fitted to the height instead.
@@ -534,39 +424,6 @@ fn stacked_transforms(ink: kurbo::Rect, size: kurbo::Size) -> Vec<kurbo::Affine>
 mod proof_tests {
     use super::*;
     use masonry::kurbo::{Point, Rect, Size};
-
-    #[test]
-    fn the_waterfall_shrinks_line_by_line_and_stays_inside() {
-        let size = Size::new(260.0, 600.0);
-        let transforms = waterfall_transforms(500.0, 800.0, -200.0, size);
-        // Lines shrink one after another, and the small ones repeat the glyph more.
-        let scales: Vec<f64> = transforms.iter().map(|t| t.as_coeffs()[0]).collect();
-        let mut lines: Vec<(f64, usize)> = Vec::new();
-        for scale in scales {
-            match lines.last_mut() {
-                Some((last, copies)) if *last == scale => *copies += 1,
-                _ => lines.push((scale, 1)),
-            }
-        }
-        assert!(lines.len() >= 5, "a run of sizes fits: {lines:?}");
-        assert!(lines.windows(2).all(|pair| pair[1].0 < pair[0].0));
-        assert!(lines[lines.len() - 1].1 > lines[0].1);
-        assert!(
-            lines[lines.len() - 1].0 * 1000.0 < 14.0,
-            "it reaches small sizes"
-        );
-        for t in &transforms {
-            let ink = t.transform_rect_bbox(Rect::new(0.0, -200.0, 500.0, 800.0));
-            assert!(
-                ink.x0 >= 0.0 && ink.x1 <= size.width,
-                "{ink:?} fits the width"
-            );
-            assert!(
-                ink.y0 >= 0.0 && ink.y1 <= size.height,
-                "{ink:?} fits the height"
-            );
-        }
-    }
 
     #[test]
     fn proof_centers_ink_vertically_and_preserves_sidebearings() {
