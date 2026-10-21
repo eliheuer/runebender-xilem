@@ -10,6 +10,7 @@ Their 768-unit frames correspond to 16 logical pixels in the footer.
 The `sidebar-open` and `sidebar-closed` glyphs each include their complete rounded frame and state indicator.
 The `sidebar-right-open` and `sidebar-right-closed` glyphs are their mirror images for the right dock.
 Their 72-unit outline thickness corresponds to 1.5 logical pixels, matching the neighboring proof controls.
+The `components` glyph, a square outline with a node at each corner, uses the same thickness for the editor footer's component points toggle.
 The `plus`, `minus`, `grid`, and `list` glyphs use the same thickness and rounded corners or line ends.
 Disclosure markers, menu symbols, the coordinate picker grid and dots, and the node resize grip also live here.
 Colors and placement remain in the application, while each icon's shape comes from its UFO glyph.
@@ -80,6 +81,7 @@ The `select-all-layers` glyph is reserved for a future multi-layer editing tool;
 | `U+E035` | `contract` |
 | `U+E036` | `sidebar-right-open` |
 | `U+E037` | `sidebar-right-closed` |
+| `U+E038` | `components` |
 
 Some of these designs started as Private Use Area glyphs in Virtua Grotesk.
 This small UFO keeps the application's editable copies together without making it depend on the full font source.

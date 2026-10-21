@@ -69,7 +69,7 @@ pub(crate) fn editor_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<>
                     let (start, end) = value.split_once(':')?;
                     Some((start.parse().ok()?, end.parse().ok()?))
                 });
-            text_tool::TextInputs::for_glyph(&app.font, &app.session.glyph_name)
+            text_tool::TextInputs::for_glyph(&app.font, app.session.root_glyph())
                 .with_location(&app.font, &app.axis_values)
                 .with_context(app.text_context_id())
                 .with_text(&app.initial_text)
@@ -113,6 +113,14 @@ pub(crate) fn editor_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<>
                     selection,
                 });
             }
+            canvas::editor::EditorEvent::EnterComponent(id) => app.enter_component(id),
+            canvas::editor::EditorEvent::EnterPart { owner, point } => {
+                app.enter_part(owner, point.as_slice());
+            }
+            canvas::editor::EditorEvent::ExitComponent => {
+                app.exit_component();
+            }
+            canvas::editor::EditorEvent::OpenGlyphTab(name) => app.open_glyph_tab(&name),
             canvas::editor::EditorEvent::EditGlyph { name, tool } => {
                 if let Some(index) = app.font.index_of(&name) {
                     app.edit_text_sort_glyph(index, tool);

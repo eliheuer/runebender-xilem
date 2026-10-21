@@ -6,6 +6,8 @@
 	<string>brush.glif</string>
 	<key>close</key>
 	<string>close.glif</string>
+	<key>components</key>
+	<string>components.glif</string>
 	<key>contract</key>
 	<string>contract.glif</string>
 	<key>coordinate-dot</key>

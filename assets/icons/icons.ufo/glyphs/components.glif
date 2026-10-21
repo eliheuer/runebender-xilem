@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="components" format="2">
+	<unicode hex="E038"/>
+	<advance height="768" width="768"/>
+	<outline>
+		<contour>
+			<point x="64" y="64" type="line"/>
+			<point x="704" y="64" type="line"/>
+			<point x="704" y="704" type="line"/>
+			<point x="64" y="704" type="line"/>
+		</contour>
+		<contour>
+			<point x="136" y="136" type="line"/>
+			<point x="136" y="632" type="line"/>
+			<point x="632" y="632" type="line"/>
+			<point x="632" y="136" type="line"/>
+		</contour>
+		<contour>
+			<point x="0" y="0" type="line"/>
+			<point x="200" y="0" type="line"/>
+			<point x="200" y="200" type="line"/>
+			<point x="0" y="200" type="line"/>
+		</contour>
+		<contour>
+			<point x="0" y="568" type="line"/>
+			<point x="200" y="568" type="line"/>
+			<point x="200" y="768" type="line"/>
+			<point x="0" y="768" type="line"/>
+		</contour>
+		<contour>
+			<point x="568" y="0" type="line"/>
+			<point x="768" y="0" type="line"/>
+			<point x="768" y="200" type="line"/>
+			<point x="568" y="200" type="line"/>
+		</contour>
+		<contour>
+			<point x="568" y="568" type="line"/>
+			<point x="768" y="568" type="line"/>
+			<point x="768" y="768" type="line"/>
+			<point x="568" y="768" type="line"/>
+		</contour>
+	</outline>
+</glyph>

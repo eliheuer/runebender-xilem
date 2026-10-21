@@ -1005,6 +1005,7 @@ impl Workspace {
                     self.view = canvas::editor::ViewOptions {
                         comb: self.view.comb,
                         continuity: self.view.continuity,
+                        components: self.view.components,
                         ..measuring
                     };
                 }

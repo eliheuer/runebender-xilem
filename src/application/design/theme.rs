@@ -559,6 +559,17 @@ impl Palette {
         self.role("metricsLine")
     }
 
+    /// A component's fill on the canvas: the `component` role at half strength,
+    /// so the outline and points drawn over it stay readable.
+    pub(crate) fn component_fill(&self) -> Color {
+        self.role("component").with_alpha(0.5)
+    }
+
+    /// The canvas-colored halo around a point marker, which keeps its edge over a curve.
+    pub(crate) fn point_halo_fill(&self) -> Color {
+        self.canvas.with_alpha(0.85)
+    }
+
     /// The translucent fill beneath an editable glyph outline.
     ///
     /// Keep this recipe beside the shared `outlineFill` role so every canvas

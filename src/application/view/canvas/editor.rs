@@ -20,11 +20,12 @@ use masonry::kurbo;
 use masonry::kurbo::{Affine, Axis, Circle, Line, Point, Rect, Shape as _, Size, Stroke};
 use masonry::layout::{LenReq, Length};
 use masonry::peniko::{Blob, ImageAlphaType, ImageData, ImageFormat};
-use runebender::font::{AnchorId, ContourId, PointId};
+use runebender::font::{AnchorId, ComponentId, ContourId, PointId};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
 use crate::application::design::theme::Palette;
+use crate::application::editor::component_host::PartOwner;
 use crate::application::editor::session::{Session, SessionSyncOutcome};
 use crate::application::editor::tools::ai_shapes::ShapeGhost;
 use crate::application::editor::tools::label::LABEL_GRID;
@@ -349,6 +350,21 @@ impl EditorWidget {
                     .submit_action::<EditorEvent>(EditorEvent::ToggleComponentAlignment);
                 false
             }
+            MenuAction::EditComponent(id) => {
+                this.ctx
+                    .submit_action::<EditorEvent>(EditorEvent::EnterComponent(id));
+                false
+            }
+            MenuAction::ExitComponent => {
+                this.ctx
+                    .submit_action::<EditorEvent>(EditorEvent::ExitComponent);
+                false
+            }
+            MenuAction::OpenBaseGlyph(name) => {
+                this.ctx
+                    .submit_action::<EditorEvent>(EditorEvent::OpenGlyphTab(name));
+                false
+            }
             // Not this canvas's menu.
             MenuAction::AddNode(_) => false,
         };
@@ -392,6 +408,17 @@ pub(crate) enum EditorEvent {
     AiShapeDrop,
     /// The local AI shapes tool: the ghost was added to the glyph.
     AiShapeKept { word: String },
+    /// Open a component of the open glyph in place.
+    EnterComponent(ComponentId),
+    /// Move to another part of the composite, selecting one of its points.
+    EnterPart {
+        owner: PartOwner,
+        point: Option<PointId>,
+    },
+    /// Leave the open component for the glyph that contains it.
+    ExitComponent,
+    /// Open a glyph in a tab of its own, outside this text line.
+    OpenGlyphTab(String),
     /// Cmd+Z: the app undoes on the master's pile.
     Undo,
     /// Cmd+Shift+Z or Cmd+Y.
@@ -456,6 +483,11 @@ const AI_HANDLE_PX: f64 = 7.0;
 const AI_HANDLE_HOT_PX: f64 = 9.0;
 
 enum Drag {
+    /// A press on another part's point is opening that part; the point drag starts when the
+    /// new session arrives.
+    Enter {
+        start: Point,
+    },
     Metaballs {
         last: Point,
         changed: bool,
@@ -986,13 +1018,12 @@ impl EditorWidget {
                 anchor,
             );
         };
-        header_text(
-            painter,
-            PAD,
-            &self.session.glyph_name,
-            TextSize::Body.px(),
-            Anchor::Start,
-        );
+        // Inside a component, the header says which composite it is open in.
+        let title = match &self.session.host {
+            Some(host) => format!("{} in {}", self.session.glyph_name, host.root),
+            None => self.session.glyph_name.clone(),
+        };
+        header_text(painter, PAD, &title, TextSize::Body.px(), Anchor::Start);
         // The codepoint, right aligned on the same line, as the GPUI
         // build has it. This one is free because the session carries the
         // glyph; the kerning groups it also shows are not, because they
@@ -1113,6 +1144,71 @@ impl EditorWidget {
         }
     }
 
+    /// The other parts' outlines, handles and points, for View > Components.
+    ///
+    /// They use the open glyph's markers without the grid window or start arrows, so the
+    /// glyph being edited stays the most detailed thing on the canvas.
+    fn paint_part_points(&self, painter: &mut Painter<'_>, sort_affine: Affine) {
+        let pal = &self.palette;
+        let marker_scale = point_marker_scale(self.session.viewport.zoom);
+        let ring_width = (POINT_RING_WIDTH * marker_scale).max(DesignStroke::Hairline.px());
+        let halo_width = ring_width + POINT_HALO_EXTRA;
+        for part in self
+            .session
+            .parts
+            .iter()
+            .filter(|part| part.owner != PartOwner::Fixed)
+        {
+            painter
+                .stroke(
+                    &(sort_affine * part.outline.clone()),
+                    &Stroke::new(pal.stroke),
+                    pal.role("pathStroke"),
+                )
+                .draw();
+            for line in &part.handles {
+                painter
+                    .stroke(
+                        sort_affine * *line,
+                        &Stroke::new(pal.stroke),
+                        pal.handle_line,
+                    )
+                    .draw();
+            }
+            for point in &part.points {
+                let hue = if !point.on_curve {
+                    pal.role("pointOffcurve")
+                } else if point.smooth {
+                    pal.role("pointSmooth")
+                } else {
+                    pal.role("pointCorner")
+                };
+                let (fill, interior) = if pal.points_filled {
+                    (pal.point_outline.unwrap_or(pal.text), hue)
+                } else {
+                    (hue, pal.canvas)
+                };
+                let square = point.on_curve && !point.smooth;
+                let radius = if square {
+                    POINT_CORNER_RADIUS
+                } else {
+                    POINT_CURVE_RADIUS
+                };
+                let shape =
+                    point_marker_shape(sort_affine * point.point, radius * marker_scale, square);
+                if pal.point_halo {
+                    painter
+                        .stroke(&shape, &Stroke::new(halo_width), pal.point_halo_fill())
+                        .draw();
+                }
+                painter.fill(&shape, interior).draw();
+                painter
+                    .stroke(&shape, &Stroke::new(ring_width), fill)
+                    .draw();
+            }
+        }
+    }
+
     fn screen_points(&self) -> Vec<(PointId, Point, bool, bool, bool)> {
         let affine = self.glyph_affine();
         self.session
@@ -1150,14 +1246,70 @@ impl EditorWidget {
             .unwrap_or(Point::ORIGIN)
     }
 
+    /// Design-to-screen transform for the active sort: the root composite when a component
+    /// is open in place.
+    fn sort_affine(&self) -> Affine {
+        self.session.viewport.affine() * Affine::translate(self.active_sort_origin().to_vec2())
+    }
+
     /// Design-to-screen transform for the glyph currently being edited.
     fn glyph_affine(&self) -> Affine {
-        self.session.viewport.affine() * Affine::translate(self.active_sort_origin().to_vec2())
+        self.sort_affine() * self.session.host_transform()
     }
 
     /// Convert a screen point into the active sort's glyph-local design space.
     fn screen_to_glyph_design(&self, at: Point) -> Point {
-        self.session.viewport.screen_to_design(at) - self.active_sort_origin().to_vec2()
+        self.glyph_affine().inverse() * at
+    }
+
+    /// Convert a screen point into the active sort's design space.
+    fn screen_to_sort_design(&self, at: Point) -> Point {
+        self.sort_affine().inverse() * at
+    }
+
+    /// What a double click at `at` does to components, if anything: open the component under
+    /// it, move to another part of the composite, or leave the open component.
+    fn component_double_click(&self, at: Point) -> Option<EditorEvent> {
+        if let Some(id) = self.session.component_at(self.screen_to_glyph_design(at)) {
+            return Some(EditorEvent::EnterComponent(id));
+        }
+        self.session.host.as_ref()?;
+        if self
+            .session
+            .outline_contains(self.screen_to_glyph_design(at))
+        {
+            return None;
+        }
+        if let Some(owner) = self.session.part_at(self.screen_to_sort_design(at)) {
+            return Some(EditorEvent::EnterPart { owner, point: None });
+        }
+        // Empty space inside the sort climbs out; another sort is the text line's business.
+        let design = self.screen_to_sort_design(at);
+        let m = &self.session.metrics;
+        let inside = (0.0..=self.session.frame_advance()).contains(&design.x)
+            && (m.descender..=m.upm.max(m.ascender)).contains(&design.y);
+        (inside || self.text.is_none()).then_some(EditorEvent::ExitComponent)
+    }
+
+    /// The point of another part of the composite under `at`, when View > Components
+    /// shows their points.
+    fn hit_part_point(&self, at: Point) -> Option<(PartOwner, PointId)> {
+        if !self.view.components {
+            return None;
+        }
+        let affine = self.sort_affine();
+        self.session
+            .parts
+            .iter()
+            .filter(|part| part.owner != PartOwner::Fixed)
+            .flat_map(|part| {
+                part.points
+                    .iter()
+                    .map(move |point| (part.owner, point.id, affine * point.point))
+            })
+            .filter(|(_, _, sp)| sp.distance(at) <= HIT_RADIUS_PX)
+            .min_by(|a, b| a.2.distance(at).total_cmp(&b.2.distance(at)))
+            .map(|(owner, id, _)| (owner, id))
     }
 
     fn fit(&mut self) {
@@ -1966,28 +2118,30 @@ impl Widget for EditorWidget {
         }
 
         let m = &self.session.metrics;
+        // Inside a component, the frame is the composite's: its sort, its advance.
+        let frame_affine = self.sort_affine();
         // Metrics belong to this glyph's advance, not the whole workspace.
         // Include the full em even when its top lies above the ascender.
         let frame = pal.metrics_line();
         let rule = DesignStroke::Hairline.px();
         let box_top = m.upm.max(m.ascender);
-        let x0 = (affine * Point::new(0.0, 0.0)).x;
-        let x1 = (affine * Point::new(self.session.advance(), 0.0)).x;
+        let x0 = (frame_affine * Point::new(0.0, 0.0)).x;
+        let x1 = (frame_affine * Point::new(self.session.frame_advance(), 0.0)).x;
         let levels = text_sort_metric_ys(m);
         // A neural item is not set in a box: no advance, ascender, or descender.
         // One baseline at y = 0 runs across the whole canvas as the anchor
         // between positive and negative heights.
         let neural = self.session.neural;
         if neural {
-            let sy = (affine * Point::new(0.0, 0.0)).y;
+            let sy = (frame_affine * Point::new(0.0, 0.0)).y;
             painter.fill_rect(horizontal_rule_rect(0.0, self.size.width, sy, rule), frame);
         }
         for &y in levels.iter().filter(|_| !neural) {
-            let sy = (affine * Point::new(0.0, y)).y;
+            let sy = (frame_affine * Point::new(0.0, y)).y;
             painter.fill_rect(horizontal_rule_rect(x0, x1, sy, rule), frame);
         }
-        let top = (affine * Point::new(0.0, box_top)).y;
-        let bottom = (affine * Point::new(0.0, m.descender)).y;
+        let top = (frame_affine * Point::new(0.0, box_top)).y;
+        let bottom = (frame_affine * Point::new(0.0, m.descender)).y;
         for x in [x0, x1].into_iter().filter(|_| !neural) {
             painter.fill_rect(vertical_rule_rect(x, top, bottom, rule), frame);
         }
@@ -1998,7 +2152,9 @@ impl Widget for EditorWidget {
                 painter,
                 [x0, x1],
                 [top, bottom],
-                levels.iter().map(|&y| (affine * Point::new(0.0, y)).y),
+                levels
+                    .iter()
+                    .map(|&y| (frame_affine * Point::new(0.0, y)).y),
                 mark,
                 pal.outline,
             );
@@ -2008,12 +2164,24 @@ impl Widget for EditorWidget {
         // shows the read-only interpolated instance instead (web/Glyphs
         // behavior): swap the outline, don't ghost it behind an editable one.
         if self.interp.is_none() {
+            // Inside a component, the rest of the composite sits around it: its own contours
+            // in the edit fill, its other components in the component tint.
+            let sort_affine = self.sort_affine();
+            if self.session.host.is_some() {
+                for part in self.session.parts.iter() {
+                    let fill = if part.owner == PartOwner::Root {
+                        pal.outline_fill()
+                    } else {
+                        pal.component_fill()
+                    };
+                    painter
+                        .fill(&(sort_affine * part.outline.clone()), fill)
+                        .draw();
+                }
+            }
             if !self.session.components.elements().is_empty() {
                 painter
-                    .fill(
-                        &self.session.components,
-                        pal.role("component").with_alpha(0.5),
-                    )
+                    .fill(&self.session.components, pal.component_fill())
                     .transform(affine)
                     .draw();
                 if let Some(selected) = self.session.selected_component_path() {
@@ -2064,11 +2232,15 @@ impl Widget for EditorWidget {
             }
 
             let outline = affine * self.session.outline();
-            painter
+            // An open component keeps its tint, so it still reads as a component.
+            let fill = if self.session.host.is_some() {
+                pal.component_fill()
+            } else {
                 // GPUI keeps the edit fill at 70% opacity so the glyph reads
                 // as a shape without hiding the design grid and metrics.
-                .fill(&outline, pal.outline_fill())
-                .draw();
+                pal.outline_fill()
+            };
+            painter.fill(&outline, fill).draw();
             painter
                 .stroke(&outline, &Stroke::new(pal.stroke), pal.role("pathStroke"))
                 .draw();
@@ -2076,6 +2248,9 @@ impl Widget for EditorWidget {
             // Labeling reads the ink as a whole; points and handles would only hide it.
             let point_chrome = self.tool != Tool::Label;
             let handle = Stroke::new(pal.stroke);
+            if point_chrome && self.view.components {
+                self.paint_part_points(painter, sort_affine);
+            }
             for line in self
                 .session
                 .handle_lines()
@@ -2134,7 +2309,7 @@ impl Widget for EditorWidget {
                     .find(|(start_id, _, _)| *start_id == id)
                     .and_then(|(_, from, to)| direction_marker_shape(*from, *to, r, smooth))
                     .unwrap_or_else(|| point_marker_shape(sp, r, square));
-                let halo = pal.canvas.with_alpha(0.85);
+                let halo = pal.point_halo_fill();
                 let ring = Stroke::new(ring_width);
                 if pal.point_halo {
                     painter
@@ -2201,11 +2376,7 @@ impl Widget for EditorWidget {
                     point_marker_shape(affine * handle, POINT_CURVE_RADIUS * marker_scale, false);
                 if pal.point_halo {
                     painter
-                        .stroke(
-                            &shape,
-                            &Stroke::new(halo_width),
-                            pal.canvas.with_alpha(0.85),
-                        )
+                        .stroke(&shape, &Stroke::new(halo_width), pal.point_halo_fill())
                         .draw();
                 }
                 painter.fill(&shape, interior).draw();
@@ -2463,11 +2634,7 @@ impl Widget for EditorWidget {
                     let marker = Circle::new(center, radius);
                     if pal.point_halo {
                         painter
-                            .stroke(
-                                marker,
-                                &Stroke::new(halo_width),
-                                pal.canvas.with_alpha(0.85),
-                            )
+                            .stroke(marker, &Stroke::new(halo_width), pal.point_halo_fill())
                             .draw();
                     }
                     painter.fill(marker, interior).draw();
@@ -2641,6 +2808,18 @@ impl Widget for EditorWidget {
                 // session is what keeps the surrounding word on the canvas.
                 if state.count >= 2
                     && *button == Some(PointerButton::Primary)
+                    && self.tool == Tool::Select
+                    && self.hit_point(at).is_none()
+                    && let Some(event) = self.component_double_click(at)
+                {
+                    ctx.submit_action::<EditorEvent>(event);
+                    self.drag = Drag::None;
+                    ctx.request_render();
+                    ctx.set_handled();
+                    return;
+                }
+                if state.count >= 2
+                    && *button == Some(PointerButton::Primary)
                     && let Some(text) = self.text.as_mut()
                 {
                     let design = self.session.viewport.screen_to_design(at);
@@ -2715,15 +2894,47 @@ impl Widget for EditorWidget {
                             self.session.select_component_id(component);
                             self.emit(ctx, false);
                             let aligned = self.session.selected_component_aligned() == Some(true);
+                            let mut component_rows = vec![MenuRow {
+                                label: std::borrow::Cow::Borrowed("Edit Component in Place"),
+                                action: MenuAction::EditComponent(component),
+                            }];
+                            if let Some(base) = self.session.component_reference(component) {
+                                component_rows.push(MenuRow {
+                                    label: std::borrow::Cow::Owned(format!("Open {base}")),
+                                    action: MenuAction::OpenBaseGlyph(base),
+                                });
+                            }
+                            component_rows.push(MenuRow {
+                                label: std::borrow::Cow::Borrowed(if aligned {
+                                    "Disable Automatic Alignment"
+                                } else {
+                                    "Enable Automatic Alignment"
+                                }),
+                                action: MenuAction::ToggleComponentAlignment,
+                            });
+                            rows.splice(0..0, component_rows);
+                        }
+                        if let Some(host) = &self.session.host {
                             rows.insert(
                                 0,
                                 MenuRow {
-                                    label: std::borrow::Cow::Borrowed(if aligned {
-                                        "Disable Automatic Alignment"
-                                    } else {
-                                        "Enable Automatic Alignment"
-                                    }),
-                                    action: MenuAction::ToggleComponentAlignment,
+                                    label: std::borrow::Cow::Owned(format!(
+                                        "Back to {}",
+                                        host.root
+                                    )),
+                                    action: MenuAction::ExitComponent,
+                                },
+                            );
+                            rows.insert(
+                                1,
+                                MenuRow {
+                                    label: std::borrow::Cow::Owned(format!(
+                                        "Open {}",
+                                        self.session.glyph_name
+                                    )),
+                                    action: MenuAction::OpenBaseGlyph(
+                                        self.session.glyph_name.clone(),
+                                    ),
                                 },
                             );
                         }
@@ -3067,7 +3278,11 @@ impl Widget for EditorWidget {
                         let affine = self.glyph_affine();
                         let adv_x = (affine * Point::new(self.session.advance(), 0.0)).x;
                         let lsb_x = (affine * Point::new(0.0, 0.0)).x;
-                        if self.hit_point(at).is_none() && !self.session.neural {
+                        if self.hit_point(at).is_none()
+                            && self.hit_part_point(at).is_none()
+                            && !self.session.neural
+                            && self.session.host.is_none()
+                        {
                             if (at.x - adv_x).abs() <= 4.0 {
                                 self.drag = Drag::AdvanceLine;
                                 ctx.set_handled();
@@ -3104,6 +3319,17 @@ impl Widget for EditorWidget {
                             )
                         {
                             self.emit(ctx, true);
+                            ctx.set_handled();
+                            return;
+                        }
+                        if self.hit_point(at).is_none()
+                            && let Some((owner, point)) = self.hit_part_point(at)
+                        {
+                            ctx.submit_action::<EditorEvent>(EditorEvent::EnterPart {
+                                owner,
+                                point: Some(point),
+                            });
+                            self.drag = Drag::Enter { start: at };
                             ctx.set_handled();
                             return;
                         }
@@ -3172,10 +3398,8 @@ impl Widget for EditorWidget {
             }
             PointerEvent::Move(PointerUpdate { current, .. }) => {
                 let at = ctx.local_position(current.position);
-                let active_origin = self.active_sort_origin().to_vec2();
-                let glyph_design = self.session.viewport.screen_to_design(at) - active_origin;
-                let glyph_affine =
-                    self.session.viewport.affine() * Affine::translate(active_origin);
+                let glyph_design = self.screen_to_glyph_design(at);
+                let glyph_affine = self.glyph_affine();
                 if self.tool == Tool::AiShape && matches!(self.drag, Drag::None) {
                     let hover = self.ai_box_handle(at);
                     if hover != self.ai_hover {
@@ -3297,8 +3521,11 @@ impl Widget for EditorWidget {
                         }
                     }
                     Drag::Points { start } => {
-                        let zoom = self.session.viewport.zoom;
-                        let total = ((at.x - start.x) / zoom, -(at.y - start.y) / zoom);
+                        // Through the inverse, so a flipped or scaled component follows the
+                        // pointer too.
+                        let inverse = glyph_affine.inverse();
+                        let delta = inverse * at - inverse * *start;
+                        let total = (delta.x, delta.y);
                         // Option moves on-curve points without their handles.
                         let independent = current.modifiers.alt();
                         if self.session.drag_points_to(total, independent) {
@@ -3391,7 +3618,7 @@ impl Widget for EditorWidget {
                         self.ai_resize(handle, glyph_design);
                         ctx.request_render();
                     }
-                    Drag::None => {}
+                    Drag::None | Drag::Enter { .. } => {}
                 }
             }
             event @ (PointerEvent::Up(_) | PointerEvent::Cancel(_)) => {
@@ -3584,6 +3811,7 @@ impl Widget for EditorWidget {
                         self.drag = Drag::None;
                         self.emit(ctx, !cancelled);
                     }
+                    Drag::Enter { .. } => self.drag = Drag::None,
                     Drag::Component { .. } => {
                         if cancelled {
                             self.session.cancel_component_drag();
@@ -4028,6 +4256,10 @@ impl Widget for EditorWidget {
                     self.session.pen_cancel();
                     self.emit(ctx, false);
                     ctx.set_handled();
+                } else if self.session.host.is_some() {
+                    // Inside a component, Escape climbs back out to its composite.
+                    ctx.submit_action::<EditorEvent>(EditorEvent::ExitComponent);
+                    ctx.set_handled();
                 }
                 // Otherwise do not handle: the shortcut host turns Escape into
                 // "back to overview".
@@ -4248,6 +4480,8 @@ pub(crate) struct ViewOptions {
     pub bearings: bool,
     /// Spell lengths as sums of powers of two: 96 = 64+32.
     pub popcount: bool,
+    /// Show every component's points in place, ready to edit.
+    pub components: bool,
 }
 
 impl ViewOptions {
@@ -4379,6 +4613,16 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
             element.widget.session = (*self.session).clone();
             element.widget.session.viewport = viewport;
             element.widget.session.fitted = fitted;
+            // A press on another part's point opened that part: keep the press going as a
+            // drag of the point it selected.
+            if let Drag::Enter { start } = element.widget.drag {
+                element.widget.drag = if element.widget.session.selection.is_empty() {
+                    Drag::None
+                } else {
+                    element.widget.session.begin_point_drag();
+                    Drag::Points { start }
+                };
+            }
             dirty = true;
         }
         if self.tool != prev.tool {
@@ -5263,11 +5507,88 @@ mod tests {
         harness.mouse_move(menu_origin + (20.0, 16.0));
         harness.mouse_button_press(Some(PointerButton::Primary));
         harness.mouse_button_release(Some(PointerButton::Primary));
-        let mut toggled = false;
+        let mut entered = false;
         while let Some((event, _)) = harness.pop_action::<EditorEvent>() {
-            toggled |= matches!(event, EditorEvent::ToggleComponentAlignment);
+            entered |= matches!(event, EditorEvent::EnterComponent(_));
         }
-        assert!(toggled, "the component menu submits the alignment command");
+        assert!(
+            entered,
+            "the component menu opens the component in place first"
+        );
+    }
+
+    fn composite_editor() -> EditorWidget {
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(projected_glyph(&session()));
+        let mut composite = norad::Glyph::new("composite");
+        composite.width = 500.0;
+        composite.components.push(norad::Component::new(
+            norad::Name::new("A").expect("valid glyph name"),
+            norad::AffineTransform::default(),
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(composite);
+        let mut editor = widget();
+        editor.session = Session::new(&font, "composite").expect("composite resolves");
+        editor.tool = Tool::Select;
+        editor
+    }
+
+    fn double_click(harness: &mut TestHarness<EditorWidget>, at: Point) {
+        harness.process_pointer_event(PointerEvent::Down(PointerButtonEvent {
+            pointer: PRIMARY_MOUSE,
+            button: Some(PointerButton::Primary),
+            state: PointerState {
+                position: PhysicalPosition::new(at.x, at.y),
+                count: 2,
+                ..PointerState::default()
+            },
+        }));
+    }
+
+    #[test]
+    fn a_double_click_on_a_component_opens_it_in_place() {
+        let mut harness = TestHarness::create_with_size(
+            default_property_set(),
+            composite_editor().prepare(),
+            (600, 400),
+        );
+        let at =
+            harness.edit_root_widget(|root| root.widget.glyph_affine() * Point::new(200.0, 350.0));
+        double_click(&mut harness, at);
+        let mut entered = false;
+        while let Some((event, _)) = harness.pop_action::<EditorEvent>() {
+            entered |= matches!(event, EditorEvent::EnterComponent(_));
+        }
+        assert!(entered, "the double click opens the component");
+    }
+
+    #[test]
+    fn with_components_shown_a_press_on_a_component_point_opens_that_part() {
+        let mut editor = composite_editor();
+        editor.view.components = true;
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+        let (at, expected) = harness.edit_root_widget(|root| {
+            let part = &root.widget.session.parts[0];
+            let point = part.points[0];
+            (root.widget.sort_affine() * point.point, point.id)
+        });
+        harness.mouse_move(at);
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        let mut opened = None;
+        while let Some((event, _)) = harness.pop_action::<EditorEvent>() {
+            if let EditorEvent::EnterPart { owner, point } = event {
+                opened = Some((owner, point));
+            }
+        }
+        let (owner, point) = opened.expect("the press opens the component's part");
+        assert!(matches!(owner, PartOwner::Component(_)));
+        assert_eq!(point, Some(expected));
+        harness.edit_root_widget(|root| {
+            assert!(matches!(root.widget.drag, Drag::Enter { .. }));
+        });
     }
 
     /// A left click still edits rather than being eaten by menu handling.

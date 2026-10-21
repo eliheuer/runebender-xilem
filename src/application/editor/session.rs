@@ -9,6 +9,7 @@
 //! transactions.
 //! UFO contours and images appear only as explicit import or format-boundary payloads.
 
+use crate::application::editor::component_host::{self, ComponentHost, Part};
 use crate::application::editor::tools::label;
 use crate::application::editor::tools::metaballs;
 use crate::application::font_model::FontModel;
@@ -158,6 +159,10 @@ pub(crate) struct Session {
     pub selected_component: Option<ComponentId>,
     /// Last flip or rotation, re-applied by Duplicate + Repeat.
     last_transform: Option<kurbo::Affine>,
+    /// The composite this glyph was opened inside, when it was entered as a component.
+    pub(crate) host: Option<ComponentHost>,
+    /// The root composite's other parts, drawn around the open glyph.
+    pub(crate) parts: Arc<Vec<Part>>,
 }
 
 #[derive(Clone)]
@@ -230,6 +235,8 @@ impl Session {
             selected_anchor: None,
             selected_component: None,
             last_transform: None,
+            host: None,
+            parts: Arc::default(),
         }
     }
 
@@ -288,7 +295,10 @@ impl Session {
             selected_anchor: None,
             selected_component: None,
             last_transform: None,
+            host: None,
+            parts: Arc::default(),
         };
+        session.refresh_placement(project, &address.layer);
         session.refresh_metaball_preview();
         Some(session)
     }
@@ -432,24 +442,7 @@ impl Session {
         let Some(layer) = self.current_layer() else {
             return Vec::new();
         };
-        let mut lines = Vec::new();
-        for contour in layer.contours() {
-            let points: Vec<_> = contour
-                .points()
-                .map(|point| (point.position(), point.point_type()))
-                .collect();
-            let count = points.len();
-            for index in 0..count {
-                if !matches!(points[index].1, LayerPointType::OffCurve) {
-                    continue;
-                }
-                for neighbor in [(index + count - 1) % count, (index + 1) % count] {
-                    if !matches!(points[neighbor].1, LayerPointType::OffCurve) {
-                        lines.push(kurbo::Line::new(points[index].0, points[neighbor].0));
-                    }
-                }
-            }
-        }
+        let mut lines = component_host::layer_handles(layer, kurbo::Affine::IDENTITY);
         for (endpoint, handle) in self.pen_handle_previews() {
             lines.push(kurbo::Line::new(endpoint, handle));
         }
@@ -948,24 +941,9 @@ impl Session {
     }
 
     pub(crate) fn points(&self) -> Vec<PointView> {
-        let mut out = Vec::new();
-        let Some(layer) = self.current_layer() else {
-            return out;
-        };
-        for contour in layer.contours() {
-            for (index, point) in contour.points().enumerate() {
-                let point_type = point.point_type();
-                let on_curve = !matches!(point_type, LayerPointType::OffCurve);
-                out.push(PointView {
-                    id: point.id(),
-                    point: point.position(),
-                    on_curve,
-                    smooth: on_curve && point.is_smooth(),
-                    start: index == 0,
-                });
-            }
-        }
-        out
+        self.current_layer().map_or_else(Vec::new, |layer| {
+            component_host::layer_points(layer, kurbo::Affine::IDENTITY)
+        })
     }
 
     pub(crate) fn point_count(&self) -> usize {
@@ -1004,6 +982,7 @@ impl Session {
         };
         let canonical_base = project.begin_document_layer_transaction(address).ok();
         self.reload_parts(component_cache, canonical_base);
+        self.refresh_placement(project, &address.layer);
         true
     }
 
@@ -2169,7 +2148,7 @@ impl Session {
     }
 }
 
-fn resolved_document_components(
+pub(crate) fn resolved_document_components(
     project: &runebender::font::project::Project,
     address: &runebender::font::variable::GlyphLayerAddress,
 ) -> Result<
@@ -2291,7 +2270,7 @@ impl Workspace {
         }
     }
 
-    fn persistent_tool(&self) -> Tool {
+    pub(crate) fn persistent_tool(&self) -> Tool {
         self.tool_before_space_pan.unwrap_or(self.tool)
     }
 
@@ -2602,6 +2581,7 @@ impl Workspace {
         let Mode::Editor(_) = self.mode else {
             return;
         };
+        self.follow_history_into_part(redo);
         if self.metadata_history_step(redo) {
             return;
         }
@@ -2791,8 +2771,7 @@ impl Workspace {
         // into the new one. Viewports and text contexts remain tab-local.
         let font = &self.font;
         self.tabs.retain_mut(|tab| {
-            let name = tab.session.glyph_name.clone();
-            let Some(mut session) = Session::new_from_model(font, &name) else {
+            let Some(mut session) = tab.session.reopen(font) else {
                 return false;
             };
             session.viewport = tab.session.viewport.clone();

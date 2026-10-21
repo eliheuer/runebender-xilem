@@ -10,6 +10,7 @@
 #[cfg(unix)]
 pub(crate) mod agent_history;
 pub(crate) mod commands;
+pub(crate) mod component_host;
 pub(crate) mod inspector;
 pub(crate) mod session;
 pub(crate) mod sidebar;

@@ -151,6 +151,7 @@ impl Workspace {
                     "segments" => view.segments = true,
                     "bearings" => view.bearings = true,
                     "popcount" => view.popcount = true,
+                    "components" => view.components = true,
                     _ => {}
                 }
             }

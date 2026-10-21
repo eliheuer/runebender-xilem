@@ -466,6 +466,17 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
                     )
                     .icon_size(STATUS_ICON_SIZE)
                     .tile_size(STATUS_ICON_SIZE),
+                    // Every component's points, in place: edit a base glyph without leaving
+                    // the composite or the text line.
+                    icon_button(
+                        ControlStyle::new(pal, ControlKind::Tool)
+                            .selected(pal, app.view.components),
+                        "components",
+                        "Edit components in place",
+                        |app: &mut Workspace| app.view.components = !app.view.components,
+                    )
+                    .icon_size(STATUS_ICON_SIZE)
+                    .tile_size(STATUS_ICON_SIZE),
                     // The proof view in place of the canvas: the glyph and its
                     // proposal as drawings and in text.
                     icon_button(

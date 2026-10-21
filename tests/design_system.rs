@@ -129,7 +129,7 @@ const BUDGET: &[(&str, &str, usize)] = &[
     // The editor canvas draws many overlays (selection, warnings,
     // kerning, metrics), each faded for its own reason. Name them as
     // `areas::editor` overrides rather than raising these numbers.
-    ("view/canvas/editor.rs", "literal opacity", 30),
+    ("view/canvas/editor.rs", "literal opacity", 26),
     ("view/canvas/editor.rs", "literal stroke", 8),
     ("view/chrome.rs", "local face", 1),
     ("view/panels/chat.rs", "local face", 4),

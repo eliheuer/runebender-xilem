@@ -182,6 +182,21 @@ Neutral slider tracks use the shared 2-pixel `SLIDER_TRACK_THICKNESS`, independe
 Keep icon clusters in unpadded `Region::Inline` rows and use `STATUS_ICON_SIZE` for compact footer buttons.
 Do not add a local footer height or horizontal padding; change the shared recipe and geometry when the footer contract changes.
 
+## Components in place
+
+A component opens in place: the session edits its base glyph, but the canvas draws it where the composite puts it.
+Double-click a component, or choose Edit Component in Place from its context menu, to open it.
+The text line keeps the composite as its active sort, so shaping does not change.
+Every glyph that uses the base follows the edit when it is committed.
+The open base keeps the component tint, and the rest of the composite stays around it.
+The metrics card names the composite, as in `dotbelow-ar in beh-ar`, and the metrics box keeps the composite's advance.
+Escape, or a double-click on empty space in the sort, goes back to the composite.
+
+The editor footer's components toggle shows the points of every part of the composite at once.
+A press on one of those points moves the session into that part and drags the point.
+Undo moves into the part whose edit it undoes, so the history stays in order across parts.
+Open a base glyph in its own tab from the context menu when it needs its own text line.
+
 ## Check a new section
 
 Check the expanded and collapsed section, including its last control and the next divider, in a headless screenshot using the default Gray theme.
@@ -215,7 +230,8 @@ These variables control what the frame shows:
 | `RUNEBENDER_HIDDEN_DOCKS=<left,right>` | Fold these docks away, as the footer toggles do. |
 | `RUNEBENDER_SCRIPT=<label>` | Select this script group in the sidebar and open its coverage rows. |
 | `RUNEBENDER_RAIL=<ai\|chat\|scripts\|shapes>` | Open this tool pane. |
-| `RUNEBENDER_VIEW=<option,...>` | Turn on canvas view options: `comb`, `continuity`, `colorize`, `handles`, `segments`, `bearings`, `popcount`. |
+| `RUNEBENDER_VIEW=<option,...>` | Turn on canvas view options: `comb`, `continuity`, `colorize`, `handles`, `segments`, `bearings`, `popcount`, `components`. |
+| `RUNEBENDER_COMPONENT=<n>` | Open the open glyph's component at index `n` in place, inside its composite. |
 | `RUNEBENDER_AXIS=wght=500,wdth=80` | Set the design-space location. |
 | `RUNEBENDER_MASTER=<name>` | Make this master active, by its style name. |
 

@@ -69,9 +69,9 @@ mod tests {
     fn parses_all_icons() {
         let source = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/icons.ufo");
         let font = norad::Font::load(source).expect("editable icon UFO loads");
-        assert_eq!(font.default_layer().iter().count(), 57);
+        assert_eq!(font.default_layer().iter().count(), 58);
         let icons = icons();
-        assert_eq!(icons.len(), 57);
+        assert_eq!(icons.len(), 58);
         let mut assigned = HashSet::new();
         for glyph in font.default_layer().iter() {
             let codepoints = glyph.codepoints.iter().collect::<Vec<_>>();
@@ -113,6 +113,7 @@ mod tests {
             "sidebar-closed",
             "sidebar-right-open",
             "sidebar-right-closed",
+            "components",
             "disclosure-bullet",
             "disclosure-closed",
             "disclosure-open",

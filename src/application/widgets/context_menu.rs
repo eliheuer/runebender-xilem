@@ -56,6 +56,12 @@ pub(crate) enum MenuAction {
     AddAnchor,
     /// Switch the selected component between manual and automatic placement.
     ToggleComponentAlignment,
+    /// Edit this component's base glyph in place, inside the composite.
+    EditComponent(runebender::font::ComponentId),
+    /// Leave the open component for the glyph that contains it.
+    ExitComponent,
+    /// Open this base glyph in a tab of its own.
+    OpenBaseGlyph(String),
     /// Add a node of this type where the menu was opened, on the
     /// nodes canvas.
     AddNode(String),

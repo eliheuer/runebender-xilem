@@ -38,6 +38,17 @@ pub(crate) fn run(
         if std::env::var("RUNEBENDER_PROOF_SAMPLE").as_deref() == Ok("1") {
             proof_sample(workspace);
         }
+        // RUNEBENDER_COMPONENT=<n> opens the glyph's nth component in place.
+        if let Some(id) = std::env::var("RUNEBENDER_COMPONENT")
+            .ok()
+            .and_then(|n| n.parse::<usize>().ok())
+            .and_then(|n| {
+                let layer = workspace.session.current_layer()?;
+                layer.components().nth(n).map(|component| component.id())
+            })
+        {
+            workspace.enter_component(id);
+        }
         // RUNEBENDER_LABEL_SAMPLE=<n> opens the label tool on that sample.
         if let Some(sample) = std::env::var("RUNEBENDER_LABEL_SAMPLE")
             .ok()
