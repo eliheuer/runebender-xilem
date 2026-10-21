@@ -255,10 +255,13 @@ impl Workspace {
                                 .collect()
                         })
                         .unwrap_or_default();
-                // Every inspector section starts folded, so the panel opens clean
+                // Every sidebar and inspector section starts folded, so the panel opens clean
                 // and each one is a click away. This is state only;
                 // every header still toggles its existing accessible panel.
                 set.extend([
+                    "Categories",
+                    "Global Scripts",
+                    "Filters",
                     "Coordinates",
                     "Transformations",
                     "Curves",
@@ -280,6 +283,13 @@ impl Workspace {
                     "Measure",
                     "Masters",
                 ]);
+                // A headless start on a script or category shows its group.
+                if start_script.is_some() {
+                    set.remove("Global Scripts");
+                }
+                if start_cat.is_some() {
+                    set.remove("Categories");
+                }
                 set
             },
             sel: match start_script {
@@ -892,6 +902,9 @@ mod tests {
         let document_id = workspace.document_id;
         assert!(matches!(workspace.mode, Mode::Overview));
         for title in [
+            "Categories",
+            "Global Scripts",
+            "Filters",
             "Coordinates",
             "Transformations",
             "Curves",
