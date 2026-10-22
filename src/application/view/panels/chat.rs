@@ -3,6 +3,7 @@
 
 //! Local Chat transcript, model selection, prompt, and process controls.
 
+use crate::application::design::controls::icon_button::icon_button;
 use crate::application::design::recipes;
 use crate::application::design::{
     ControlKind, ControlSize, ControlStyle, Region, Space, Stroke, TextSize, column as xcolumn,
@@ -332,76 +333,70 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
     let listening = app.voice.capture.is_some();
     let flowing = app.voice.capture.as_ref().is_some_and(|c| c.started);
     let transcribing = !listening && app.voice.job.is_some();
+    // Clear is the quiet cross: the row has no room for a word beside the
+    // model's name and the two voice controls.
     let clear = (!busy && !empty && !listening && !transcribing).then(|| {
-        word_button(
-            pal,
-            ControlKind::Secondary,
+        icon_button(
+            ControlStyle::new(pal, ControlKind::Quiet),
+            "close",
             "Clear",
-            true,
             |app: &mut Workspace| {
                 app.chat_clear();
             },
         )
+        .icon_size(ControlSize::Icon.px() * 0.5)
+        .tile_size(ControlSize::Icon.px())
     });
-    // One trailing button, as in a messaging app: Send once there is text,
-    // Talk while the field is blank and a speech model is on this machine,
-    // then Done to stop the microphone and put the words in the field.
+    // The microphone and the arrow, as in a messaging app: the mic opens
+    // the microphone and turns into the sound bars while it listens, which
+    // stop it; the arrow sends once there is text, and is the stop square
+    // while the model answers.
+    let mic = (!busy && app.voice_available()).then(|| {
+        let style = ControlStyle::new(pal, ControlKind::Tool)
+            .selected(pal, listening)
+            .disabled(pal, listening && !flowing || transcribing);
+        let icon = if listening || transcribing {
+            "listening"
+        } else {
+            "mic"
+        };
+        let label = if listening { "Stop listening" } else { "Talk" };
+        icon_button(style, icon, label, |app: &mut Workspace| {
+            if app.voice.capture.is_some() {
+                app.voice_stop();
+            } else if app.voice.job.is_none() {
+                app.voice_start();
+            }
+        })
+        .tile_size(ControlSize::Icon.px())
+    });
     let send = if busy {
-        word_button(
-            pal,
-            ControlKind::Secondary,
+        icon_button(
+            ControlStyle::new(pal, ControlKind::Primary),
+            "stop",
             "Stop",
-            true,
-            |app: &mut Workspace| {
-                app.chat_cancel();
-            },
+            |app: &mut Workspace| app.chat_cancel(),
         )
-        .boxed()
-    } else if listening {
-        word_button(
-            pal,
-            if flowing {
-                ControlKind::Primary
-            } else {
-                ControlKind::Secondary
-            },
-            if flowing { "Done" } else { "Wait…" },
-            flowing,
-            |app: &mut Workspace| app.voice_stop(),
-        )
-        .boxed()
-    } else if transcribing {
-        word_button(
-            pal,
-            ControlKind::Secondary,
-            "Hearing…",
-            false,
-            |_: &mut Workspace| {},
-        )
-        .boxed()
-    } else if app.chat.prompt.trim().is_empty() && app.voice_available() {
-        word_button(
-            pal,
-            ControlKind::Primary,
-            "Talk",
-            true,
-            |app: &mut Workspace| app.voice_start(),
-        )
+        .tile_size(ControlSize::Icon.px())
         .boxed()
     } else {
-        let ready = !app.chat.prompt.trim().is_empty();
-        word_button(
-            pal,
-            ControlKind::Primary,
+        let ready = !app.chat.prompt.trim().is_empty() && !listening && !transcribing;
+        icon_button(
+            ControlStyle::new(pal, ControlKind::Primary).disabled(pal, !ready),
+            "send",
             "Send",
-            ready,
             |app: &mut Workspace| {
-                if app.chat.job.is_none() {
+                if app.chat.job.is_none()
+                    && app.voice.capture.is_none()
+                    && app.voice.job.is_none()
+                    && !app.chat.prompt.trim().is_empty()
+                {
                     let prompt = std::mem::take(&mut app.chat.prompt);
                     app.chat_send(prompt);
                 }
             },
         )
+        .tile_size(ControlSize::Icon.px())
         .boxed()
     };
     let controls = xrow(
@@ -411,6 +406,7 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             endpoint_note,
             FlexSpacer::Flex(1.0),
             clear,
+            mic,
             send,
         ),
     );

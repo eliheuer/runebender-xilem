@@ -468,6 +468,11 @@ impl Workspace {
         }
         // RUNEBENDER_CHAT_SAMPLE=1 seeds the Chat panel with one exchange, so a
         // headless screenshot shows the transcript and not only the empty state.
+        // RUNEBENDER_CHAT_SAMPLE=listening shows the composer with the
+        // microphone open, without opening one.
+        if std::env::var("RUNEBENDER_CHAT_SAMPLE").as_deref() == Ok("listening") {
+            app.voice.capture = Some(voice::Capture::sample());
+        }
         if std::env::var_os("RUNEBENDER_CHAT_SAMPLE").is_some() {
             use crate::application::editor::tools::chat::ChatEntry;
             app.chat.entries = vec![

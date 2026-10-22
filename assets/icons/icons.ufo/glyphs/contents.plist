@@ -118,5 +118,13 @@
 	<string>text-rtl.glif</string>
 	<key>union</key>
 	<string>union.glif</string>
+	<key>mic</key>
+	<string>mic.glif</string>
+	<key>send</key>
+	<string>send.glif</string>
+	<key>stop</key>
+	<string>stop.glif</string>
+	<key>listening</key>
+	<string>listening.glif</string>
 </dict>
 </plist>

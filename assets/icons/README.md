@@ -12,6 +12,7 @@ The `sidebar-right-open` and `sidebar-right-closed` glyphs are their mirror imag
 Their 72-unit outline thickness corresponds to 1.5 logical pixels, matching the neighboring proof controls.
 The `components` glyph, a square outline with a node at each corner, uses the same thickness for the editor footer's component points toggle.
 The `plus`, `minus`, `grid`, and `list` glyphs use the same thickness and rounded corners or line ends.
+The `mic`, `send`, `stop`, and `listening` glyphs are the chat composer's controls, at the same thickness.
 Disclosure markers, menu symbols, the coordinate picker grid and dots, and the node resize grip also live here.
 Colors and placement remain in the application, while each icon's shape comes from its UFO glyph.
 
@@ -82,6 +83,10 @@ The `select-all-layers` glyph is reserved for a future multi-layer editing tool;
 | `U+E036` | `sidebar-right-open` |
 | `U+E037` | `sidebar-right-closed` |
 | `U+E038` | `components` |
+| `U+E0A1` | `mic` |
+| `U+E0A2` | `send` |
+| `U+E0A3` | `stop` |
+| `U+E0A4` | `listening` |
 
 Some of these designs started as Private Use Area glyphs in Virtua Grotesk.
 This small UFO keeps the application's editable copies together without making it depend on the full font source.

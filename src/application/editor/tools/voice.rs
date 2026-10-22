@@ -46,6 +46,15 @@ pub(crate) struct Capture {
 }
 
 impl Capture {
+    /// A capture with samples flowing and no thread behind it, for
+    /// headless renders of the listening state.
+    pub(crate) fn sample() -> Self {
+        Self {
+            started: true,
+            ..Self::default()
+        }
+    }
+
     fn thread_view(&self) -> Self {
         Self {
             samples: self.samples.clone(),
@@ -83,6 +92,26 @@ impl Drop for VoiceState {
         if let Some(capture) = &self.capture {
             capture.stop.store(true, Ordering::Release);
         }
+    }
+}
+
+/// Whether a transcription is only the model's note about non-speech,
+/// such as `(audience mumbling)` or `[BLANK_AUDIO]`.
+fn is_placeholder(text: &str) -> bool {
+    let text = text.trim();
+    (text.starts_with('(') && text.ends_with(')')) || (text.starts_with('[') && text.ends_with(']'))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_placeholder;
+
+    #[test]
+    fn silence_notes_are_placeholders_and_speech_is_not() {
+        assert!(is_placeholder("(audience mumbling)"));
+        assert!(is_placeholder(" [BLANK_AUDIO] "));
+        assert!(!is_placeholder("Make the zero (the figure) wider."));
+        assert!(!is_placeholder(""));
     }
 }
 
@@ -200,11 +229,22 @@ impl Workspace {
             ..Capture::default()
         };
         let thread_view = capture.thread_view();
-        let finished = job.finished.clone();
+        // The job outlives the microphone: it is the same one the
+        // transcription reports through, so the panel's poll of it runs
+        // from Talk to the words arriving. The thread ending on its own
+        // (the time limit, a fault) is an event, not the end of the job.
         std::thread::spawn(move || {
             let result = record(&thread_view);
             thread_view.stop.store(true, Ordering::Release);
-            *finished.lock().unwrap_or_else(|e| e.into_inner()) = Some(result);
+            let event = match result {
+                Ok(()) => serde_json::json!({"event": "ended"}),
+                Err(error) => serde_json::json!({"event": "ended", "error": error}),
+            };
+            thread_view
+                .events
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(event);
         });
         self.voice.capture = Some(capture);
         self.voice.job = Some(job);
@@ -215,7 +255,13 @@ impl Workspace {
         let Some(capture) = self.voice.capture.take() else {
             return;
         };
-        self.voice.job = None;
+        let Some(job) = self.voice.job.clone() else {
+            return;
+        };
+        let fail = |app: &mut Self, note: String| {
+            app.voice.job = None;
+            app.note = note;
+        };
         capture.stop.store(true, Ordering::Release);
         // The capture thread may still be appending its last buffer.
         std::thread::sleep(Duration::from_millis(80));
@@ -225,24 +271,24 @@ impl Workspace {
             .unwrap_or_else(|e| e.into_inner())
             .take()
         {
-            self.note = error;
+            fail(self, error);
             return;
         }
         let samples =
             std::mem::take(&mut *capture.samples.lock().unwrap_or_else(|e| e.into_inner()));
         let Some((rate, channels)) = *capture.format.lock().unwrap_or_else(|e| e.into_inner())
         else {
-            self.note = "The microphone did not open".into();
+            fail(self, "The microphone did not open".into());
             return;
         };
         let samples = whisper_server::to_mono_16k(&samples, channels, rate);
         if samples.len() < whisper_server::SAMPLE_RATE as usize / 2 {
-            self.note = "Nothing heard".into();
+            fail(self, "Nothing heard".into());
             return;
         }
         let (Some(binary), Some(model)) = (whisper_server::find_binary(), self.voice_model())
         else {
-            self.note = "The speech model is no longer available".into();
+            fail(self, "The speech model is no longer available".into());
             return;
         };
         let family = self
@@ -253,8 +299,6 @@ impl Workspace {
             .clone()
             .unwrap_or_default();
         let prompt = format!("{family}. {VOCABULARY}");
-        let job = ChatJob::default();
-        self.voice.job = Some(job.clone());
         let server = self.voice.server.clone();
         std::thread::spawn(move || {
             let result = (|| {
@@ -294,12 +338,26 @@ impl Workspace {
                         capture.started = true;
                     }
                 }
+                Some("ended") if self.voice.capture.is_some() => {
+                    // The microphone thread ended on its own: the time
+                    // limit, or a fault.
+                    match event.get("error").and_then(serde_json::Value::as_str) {
+                        None => self.voice_stop(),
+                        Some(error) => {
+                            self.voice.capture = None;
+                            self.voice.job = None;
+                            self.note = error.to_owned();
+                        }
+                    }
+                }
                 Some("heard") => {
                     let text = event
                         .get("text")
                         .and_then(serde_json::Value::as_str)
                         .unwrap_or_default();
-                    if text.is_empty() {
+                    // Silence comes back as a bracketed note such as
+                    // "(audience mumbling)" or "[BLANK_AUDIO]".
+                    if text.is_empty() || is_placeholder(text) {
                         self.note = "Nothing heard".into();
                         continue;
                     }
@@ -317,20 +375,7 @@ impl Workspace {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .take();
-        let Some(result) = finished else {
-            return;
-        };
-        if self.voice.capture.is_some() {
-            // The microphone thread ended on its own: the time limit, or a fault.
-            match result {
-                Ok(()) => self.voice_stop(),
-                Err(error) => {
-                    self.voice.capture = None;
-                    self.voice.job = None;
-                    self.note = error;
-                }
-            }
-        } else {
+        if let Some(result) = finished {
             self.voice.job = None;
             if let Err(error) = result {
                 self.note = error;
@@ -372,8 +417,63 @@ mod real_microphone {
         assert!(!mono.is_empty(), "samples arrived");
         assert!(capture.error.lock().unwrap().is_none());
         assert!(
-            !capture.events.lock().unwrap().is_empty(),
+            capture.events.lock().unwrap()[0]["event"] == "started",
             "the thread reported that samples were flowing"
         );
+    }
+}
+
+#[cfg(test)]
+mod real_voice {
+    //! Runs only with `RUNEBENDER_REAL_VOICE=<designspace>`, a microphone,
+    //! `whisper-server` and a speech model: Talk, five seconds, Done, and
+    //! the pump until the words arrive. This is the whole path the panel
+    //! drives, including the hand-over from the microphone thread to the
+    //! transcription.
+    use super::*;
+
+    #[test]
+    #[ignore = "opens the microphone and runs whisper-server; set RUNEBENDER_REAL_VOICE"]
+    fn talk_then_done_puts_words_in_the_field() {
+        let Some(font) = std::env::var_os("RUNEBENDER_REAL_VOICE").map(PathBuf::from) else {
+            return;
+        };
+        let mut app = Workspace::open(&font).unwrap();
+        assert!(
+            app.voice_available(),
+            "whisper-server and a model are needed"
+        );
+        app.voice_start();
+        assert!(
+            app.voice.capture.is_some() && app.voice.job.is_some(),
+            "{}",
+            app.note
+        );
+        let started = std::time::Instant::now();
+        while started.elapsed() < Duration::from_secs(5) {
+            app.voice_pump();
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        assert!(
+            app.voice.capture.as_ref().is_some_and(|c| c.started),
+            "samples flow within five seconds"
+        );
+        app.voice_stop();
+        assert!(
+            app.voice.capture.is_none() && app.voice.job.is_some(),
+            "{}",
+            app.note
+        );
+        let started = std::time::Instant::now();
+        while app.voice.job.is_some() && started.elapsed() < Duration::from_secs(60) {
+            app.voice_pump();
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        assert!(
+            app.voice.job.is_none(),
+            "the transcription ends; note: {}",
+            app.note
+        );
+        eprintln!("field: {:?}; note: {:?}", app.chat.prompt, app.note);
     }
 }
