@@ -452,30 +452,35 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         debt_eval_pump(
             ai_pump(
                 script_pump(
-                    chat_pump(
-                        model_pump(
-                            train_pump(
-                                export_pump(
-                                    graph_pump(
-                                        preview_pump(
-                                            shapes_pump(content, app.shapes.pump.clone()).boxed(),
-                                            app.font.project.preview_pending(),
-                                        )
-                                        .boxed(),
-                                        app.graph.job.clone(),
-                                    ),
-                                    app.export_job.clone(),
+                    voice_pump(
+                        chat_pump(
+                            model_pump(
+                                train_pump(
+                                    export_pump(
+                                        graph_pump(
+                                            preview_pump(
+                                                shapes_pump(content, app.shapes.pump.clone())
+                                                    .boxed(),
+                                                app.font.project.preview_pending(),
+                                            )
+                                            .boxed(),
+                                            app.graph.job.clone(),
+                                        ),
+                                        app.export_job.clone(),
+                                    )
+                                    // Boxed: another nested pump makes a symbol name the linker refuses.
+                                    .boxed(),
+                                    app.train.job.clone(),
                                 )
-                                // Boxed: another nested pump makes a symbol name the linker refuses.
                                 .boxed(),
-                                app.train.job.clone(),
-                            )
-                            .boxed(),
-                            app.model.job.is_some()
-                                && app.preview_view
-                                    == crate::application::pieces::PreviewView::Model,
-                        ),
-                        app.chat.job.clone(),
+                                app.model.job.is_some()
+                                    && app.preview_view
+                                        == crate::application::pieces::PreviewView::Model,
+                            ),
+                            app.chat.job.clone(),
+                        )
+                        .boxed(),
+                        app.voice.job.clone(),
                     ),
                     app.scripts.running.is_some(),
                 ),
@@ -702,6 +707,23 @@ fn chat_pump<V: WidgetView<Workspace>>(
     view: V,
     job: Option<chat::ChatJob>,
 ) -> impl WidgetView<Workspace> + use<V> {
+    job_pump(view, job, |app: &mut Workspace| app.chat_pump())
+}
+
+/// Put a finished voice transcription into the chat field.
+fn voice_pump<V: WidgetView<Workspace>>(
+    view: V,
+    job: Option<chat::ChatJob>,
+) -> impl WidgetView<Workspace> + use<V> {
+    job_pump(view, job, |app: &mut Workspace| app.voice_pump())
+}
+
+/// Wake `on_progress` while `job` has unread events, and once when it ends.
+fn job_pump<V: WidgetView<Workspace>>(
+    view: V,
+    job: Option<chat::ChatJob>,
+    on_progress: fn(&mut Workspace),
+) -> impl WidgetView<Workspace> + use<V> {
     use xilem::core::{MessageProxy, fork};
     use xilem::view::task_raw;
     fork(
@@ -732,7 +754,7 @@ fn chat_pump<V: WidgetView<Workspace>>(
                         }
                     }
                 },
-                |app: &mut Workspace, _: chat::ChatProgress| app.chat_pump(),
+                move |app: &mut Workspace, _: chat::ChatProgress| on_progress(app),
             )
         }),
     )

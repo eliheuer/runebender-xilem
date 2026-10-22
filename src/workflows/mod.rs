@@ -18,3 +18,5 @@ pub mod local_chat;
 pub mod local_sketch;
 /// Bounded native subprocess execution shared by worker adapters.
 pub mod process;
+/// A supervised `whisper-server` child turning speech into chat text.
+pub mod whisper_server;

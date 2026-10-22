@@ -70,3 +70,14 @@ A chat model folder holds one `.gguf` file, and may hold a `model.json` with the
 ```
 
 `context` sets the prompt size in tokens and `template_kwargs` is an object passed to the chat template, such as `{"reasoning_effort":"low"}`. Each model family publishes its own sampling values; the file holds the ones for its model.
+
+## Voice input
+
+The Chat panel's Talk button records a spoken request and puts the words in
+the text field for you to check before sending. It needs whisper.cpp's
+`whisper-server` (`brew install whisper.cpp`, or set `RUNEBENDER_WHISPER_SERVER`)
+and a speech model: a whisper.cpp `ggml-*.bin` saved as `model.bin` in a model
+folder whose name starts with `whisper`, for example
+`~/Runebender/models/whisper-small/model.bin` from
+<https://huggingface.co/ggerganov/whisper.cpp>. `RUNEBENDER_WHISPER_MODEL` names a
+model file directly. The button is absent until both are found.

@@ -7,6 +7,7 @@ Entries under Unreleased describe work being prepared, not an available public r
 
 ### Added
 
+- Chat: a Talk button records a spoken request through a local whisper.cpp model and puts the words in the text field.
 - Proof view: a button at the foot of the editor swaps the canvas for a
   proof of the open glyph. It shows the current drawing and the proposal
   waiting for it side by side at one scale, and both in running text at

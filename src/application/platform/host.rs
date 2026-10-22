@@ -6,7 +6,9 @@
 use crate::application::design;
 use crate::application::design::theme::Palette;
 use crate::application::editor::session::Session;
-use crate::application::editor::tools::{chat, graph, local_ai, scripts, sketch, weight_debt};
+use crate::application::editor::tools::{
+    chat, graph, local_ai, scripts, sketch, voice, weight_debt,
+};
 use crate::application::font_model::FontModel;
 use crate::application::view::canvas;
 use crate::application::view::canvas::grid::cells_of;
@@ -406,6 +408,7 @@ impl Workspace {
             shapes: crate::application::editor::tools::ai_shapes::AiShapesState::default(),
             debt: weight_debt::WeightDebtState::default(),
             chat: chat::ChatState::default(),
+            voice: voice::VoiceState::default(),
             scripts: scripts::ScriptsState::default(),
             script_jobs: None,
             kern_filter_buf: String::new(),

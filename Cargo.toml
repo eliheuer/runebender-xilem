@@ -22,6 +22,7 @@ application = [
     "dep:neuraltype-core",
     "dep:clap",
     "dep:copypasta",
+    "dep:cpal",
     "dep:imaging_vello_cpu",
     "dep:masonry",
     "dep:masonry_winit",
@@ -79,6 +80,8 @@ write-fonts = "0.52"
 kurbo_09 = { package = "kurbo", version = "0.9.5" }
 spline = { git = "https://github.com/linebender/spline", rev = "83f46cbfebb1f5d6042059c867719c0010073d42" }
 copypasta = { version = "0.10.2", optional = true }
+# Microphone capture for the Chat panel's spoken requests.
+cpal = { version = "0.18.2", optional = true }
 winit = { version = "0.30", optional = true }
 notify = { version = "8", optional = true }
 rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"], optional = true }

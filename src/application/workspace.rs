@@ -5,7 +5,7 @@
 
 use crate::application::design::theme::Palette;
 use crate::application::editor::session::Session;
-use crate::application::editor::tools::{chat, graph, local_ai, scripts, sketch};
+use crate::application::editor::tools::{chat, graph, local_ai, scripts, sketch, voice};
 use crate::application::font_model::FontModel;
 use crate::application::platform::{dialogs, export, script_jobs};
 use crate::application::view::canvas;
@@ -345,6 +345,8 @@ pub(crate) struct Workspace {
     pub(crate) debt: crate::application::editor::tools::weight_debt::WeightDebtState,
     /// Local chat transcript, model choice, and current process.
     pub(crate) chat: chat::ChatState,
+    /// Spoken requests for the Chat panel.
+    pub(crate) voice: voice::VoiceState,
     /// The non-executing script draft opened explicitly from Chat or the library.
     pub(crate) scripts: scripts::ScriptsState,
     /// The one native recipe queue shared by Scripts and Graph.

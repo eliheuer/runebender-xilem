@@ -329,7 +329,10 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         .text_size(TextSize::Caption.px())
         .color(pal.text_muted)
     });
-    let clear = (!busy && !empty).then(|| {
+    let listening = app.voice.capture.is_some();
+    let flowing = app.voice.capture.as_ref().is_some_and(|c| c.started);
+    let transcribing = !listening && app.voice.job.is_some();
+    let clear = (!busy && !empty && !listening && !transcribing).then(|| {
         word_button(
             pal,
             ControlKind::Secondary,
@@ -340,6 +343,9 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             },
         )
     });
+    // One trailing button, as in a messaging app: Send once there is text,
+    // Talk while the field is blank and a speech model is on this machine,
+    // then Done to stop the microphone and put the words in the field.
     let send = if busy {
         word_button(
             pal,
@@ -349,6 +355,37 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             |app: &mut Workspace| {
                 app.chat_cancel();
             },
+        )
+        .boxed()
+    } else if listening {
+        word_button(
+            pal,
+            if flowing {
+                ControlKind::Primary
+            } else {
+                ControlKind::Secondary
+            },
+            if flowing { "Done" } else { "Wait…" },
+            flowing,
+            |app: &mut Workspace| app.voice_stop(),
+        )
+        .boxed()
+    } else if transcribing {
+        word_button(
+            pal,
+            ControlKind::Secondary,
+            "Hearing…",
+            false,
+            |_: &mut Workspace| {},
+        )
+        .boxed()
+    } else if app.chat.prompt.trim().is_empty() && app.voice_available() {
+        word_button(
+            pal,
+            ControlKind::Primary,
+            "Talk",
+            true,
+            |app: &mut Workspace| app.voice_start(),
         )
         .boxed()
     } else {
