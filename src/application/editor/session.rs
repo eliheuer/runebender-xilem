@@ -2637,7 +2637,6 @@ impl Workspace {
         if !matches!(self.mode, Mode::Overview) {
             return;
         }
-        #[cfg(unix)]
         if matches!(
             if redo {
                 self.metadata_redo.last()

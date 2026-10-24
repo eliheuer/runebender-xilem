@@ -18,6 +18,19 @@ pub fn load(path: &Path) -> Result<DesignSpaceDocument, String> {
     parse(&xml).map_err(|error| format!("{}: {error}", path.display()))
 }
 
+/// Serialize a Designspace to the XML text norad writes to disk.
+pub fn to_xml(document: &DesignSpaceDocument) -> Result<String, String> {
+    use serde::Serialize;
+    let mut xml = String::from("<?xml version='1.0' encoding='UTF-8'?>\n");
+    let mut serializer = quick_xml::se::Serializer::new(&mut xml);
+    serializer.indent(' ', 2);
+    document
+        .serialize(serializer)
+        .map_err(|error| format!("designspace: {error}"))?;
+    xml.push('\n');
+    Ok(xml)
+}
+
 /// Parse supported XML without silently dropping extensions or narrowing coordinates.
 pub fn parse(xml: &str) -> Result<DesignSpaceDocument, String> {
     let mut reader = quick_xml::Reader::from_str(xml);

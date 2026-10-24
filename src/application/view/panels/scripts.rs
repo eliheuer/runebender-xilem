@@ -17,6 +17,7 @@ use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
 use xilem::WidgetView;
 use xilem::style::Style;
+#[cfg(not(target_arch = "wasm32"))]
 use xilem::view::sized_box;
 
 /// Show the current script draft without providing a second persistence or

@@ -2363,13 +2363,19 @@ impl Project {
             None
         };
         super::persistence::ExportPlan::new(exports, designspace)?.execute()?;
+        self.mark_saved();
+        Ok(())
+    }
+
+    /// Record that a host persisted every source and the designspace itself.
+    ///
+    /// Hosts without a filesystem write the files from
+    /// [`crate::font::persistence::memory::memory_save_files`], then call this.
+    pub fn mark_saved(&mut self) {
         for source in &mut self.sources {
             source.dirty = false;
         }
-        if self.ds_dirty {
-            self.ds_dirty = false;
-        }
-        Ok(())
+        self.ds_dirty = false;
     }
 }
 

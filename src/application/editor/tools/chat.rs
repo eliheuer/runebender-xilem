@@ -12,11 +12,13 @@
 mod chat_endpoint;
 #[cfg(not(unix))]
 mod chat_endpoint {
+    pub(super) const CONTEXT_BUDGET_CHARS: usize = 20_000;
     pub(super) fn run_chat_endpoint(
         _endpoint: &runebender::workflows::local_chat::LocalChatEndpoint,
         _session: &std::path::Path,
         _epoch: &str,
         _conversation: &str,
+        _context: &str,
         _job: &super::ChatJob,
     ) -> Result<(), String> {
         Err("live Chat tools require a native Unix editor".into())

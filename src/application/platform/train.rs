@@ -247,6 +247,8 @@ impl Workspace {
                 *worker.finished.lock().unwrap_or_else(|e| e.into_inner()) = Some(result);
             });
         }
+        #[cfg(target_arch = "wasm32")]
+        let _ = (epochs, &settings, &script, &source, &name, &out_dir, &only);
         self.train.status = "Starting…".into();
         self.train.job = Some(job);
         self.note = "Training…".into();

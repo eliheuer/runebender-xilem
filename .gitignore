@@ -18,3 +18,6 @@
 
 # Trained neural font versions beside a .nufo source
 *.models/
+
+# Icons of the installable browser app.
+!/web/icons/*.png

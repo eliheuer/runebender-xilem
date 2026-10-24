@@ -438,6 +438,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         app.live_graph_wants_wake(),
         std::sync::atomic::Ordering::Release,
     );
+    #[cfg(unix)]
     let content = live::with_live(
         content,
         app.live

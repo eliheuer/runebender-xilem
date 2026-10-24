@@ -67,14 +67,19 @@ path = "../src/main.rs"
 crate-type = ["cdylib"]
 [dependencies]
 xilem = { package = "runebender-xilem-browser", path = "compat" }
-masonry = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a", default-features = false }
+masonry = { git = "https://github.com/eliheuer/xilem", rev = "0b0b5e754ed7e024b92e246bc65d4ad8accbf0bf", default-features = false }
 wasm-bindgen = "=0.2.127"
 console_error_panic_hook = "0.1.7"
 web-time = "1"
 runebender = { path = "..", default-features = false }
 norad = "0.18"
 regex = "1"
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1"
+toml = "0.8"
+# The desktop's neural proof strip and its tracer are pure Rust and compile for the browser.
+neuraltype-core = { git = "https://github.com/eliheuer/post-opentype", rev = "572c905cde57fa65a3e0d5754f6c62699109029c" }
+img2bez = { git = "https://github.com/eliheuer/img2bez", rev = "80bdb2e6d0226449a5e9bf05a49b3339276020c8", default-features = false }
 kurbo = "0.13"
 linesweeper = "0.4"
 tokio = { version = "1", features = ["rt", "time"] }

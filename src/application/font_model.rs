@@ -277,6 +277,10 @@ impl FontModel {
 
     /// Whether every master source is writable according to its filesystem mode.
     pub(crate) fn is_writable(&self) -> bool {
+        // The browser host writes through the File System Access API, not file modes.
+        if cfg!(target_arch = "wasm32") {
+            return true;
+        }
         self.project
             .document_sources()
             .all(|source| save_target_is_writable(source.path()))

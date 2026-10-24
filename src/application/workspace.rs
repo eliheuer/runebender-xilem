@@ -85,7 +85,6 @@ pub(crate) struct OverviewEditBatch {
 /// before it. The depth keeps metadata Undo ordered with outline edits.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum MetadataEdit {
-    #[cfg(unix)]
     AgentGroup {
         group: runebender::font::project::EditHistoryGroupId,
         addresses: Vec<runebender::font::variable::GlyphLayerAddress>,
@@ -531,13 +530,17 @@ impl AppState {
     /// welcome screen.
     pub(crate) fn dispatch(&mut self, action: shortcuts::AppAction) {
         #[cfg(target_arch = "wasm32")]
-        if crate::application::browser::desktop_action(action) {
-            if let Some(workspace) = self.workspace.as_mut() {
-                workspace.note =
-                    "This demo keeps edits in this tab. Use the desktop app to open or save fonts."
-                        .into();
+        {
+            let modified = self
+                .workspace
+                .as_ref()
+                .is_some_and(|workspace| workspace.modified);
+            if let Some(note) = crate::application::browser::intercept(action, modified) {
+                if let Some(workspace) = self.workspace.as_mut() {
+                    workspace.note = note;
+                }
+                return;
             }
-            return;
         }
         if action == shortcuts::AppAction::Quit {
             self.request_quit();

@@ -6,4 +6,4 @@ license = "Apache-2.0 OR MIT"
 publish = false
 [dependencies]
 xilem_masonry = { path = "../target/xilem_masonry" }
-masonry = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a", default-features = false }
+masonry = { git = "https://github.com/eliheuer/xilem", rev = "0b0b5e754ed7e024b92e246bc65d4ad8accbf0bf", default-features = false }

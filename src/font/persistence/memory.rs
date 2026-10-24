@@ -7,9 +7,12 @@
 //! data as `(path, bytes)` pairs over fetch or embedded in the
 //! binary. This module assembles a font from those pairs.
 //!
-//! The supported subset is font metadata, feature text, groups, kerning and default-layer glyphs.
-//! Extra layers, images and data are rejected explicitly so hosts never mistake a lossy import for
-//! a preserved document.
+//! [`ufo_from_files`] supports font metadata, feature text, groups, kerning and default-layer
+//! glyphs, and rejects extra layers, images and data explicitly so hosts never mistake a lossy
+//! import for a preserved document.
+//! [`decode_ufo_files`] and [`ufo_files_from_font`] handle a complete UFO 3 package for hosts
+//! that read and write a folder themselves, such as the browser with the File System Access API;
+//! [`open_memory_project`] and [`memory_save_files`] do the same for a whole project.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
@@ -299,6 +302,609 @@ pub fn kerning_plist_bytes(font: &Font) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+/// A complete UFO decoded from memory: every layer, image and data file.
+///
+/// Unlike [`ufo_from_files`], this boundary accepts a whole UFO 3 package.
+/// Files it does not interpret are kept unchanged so a host can write them back.
+#[derive(Debug)]
+pub struct DecodedUfo {
+    /// The assembled font, with every layer loaded.
+    pub font: Font,
+    /// Layer name to the directory it was read from, where norad chose another name.
+    pub layer_directories: HashMap<String, String>,
+    /// (layer name, glyph name) to the GLIF file name the package used.
+    pub glif_paths: HashMap<(String, String), String>,
+    /// Files outside the UFO specification, kept unchanged for the host to write back.
+    pub preserved: Vec<(String, Vec<u8>)>,
+}
+
+/// The UFO files a host writes, relative to the UFO root.
+#[derive(Debug, Default)]
+pub struct EncodedUfo {
+    /// Every file of the package, as (path, bytes) pairs.
+    pub files: Vec<(String, Vec<u8>)>,
+    /// The glyph directories; a `.glif` file in one that is not in `files` is stale.
+    pub layer_directories: Vec<String>,
+}
+
+/// What a host keeps beside a project opened from memory, so it can write the project back.
+#[derive(Debug, Default)]
+pub struct MemoryBookkeeping {
+    /// Per source path, the layer directories norad renamed on import.
+    pub layer_directories: HashMap<PathBuf, HashMap<String, String>>,
+    /// Per source path, the GLIF file name each (layer, glyph) pair used.
+    pub glif_paths: HashMap<PathBuf, HashMap<(String, String), String>>,
+    /// Per source path, files outside the UFO specification, written back unchanged.
+    pub preserved: HashMap<PathBuf, Vec<(String, Vec<u8>)>>,
+}
+
+/// A project opened from in-memory files plus the host's save bookkeeping.
+#[derive(Debug)]
+pub struct MemoryProject {
+    /// The canonical project; its source paths are relative to the opened folder.
+    pub project: crate::font::project::Project,
+    /// What [`memory_save_files`] needs to write the project back exactly.
+    pub bookkeeping: MemoryBookkeeping,
+}
+
+/// The files a host writes to persist a project, relative to the folder it was opened from.
+#[derive(Debug, Default)]
+pub struct MemorySave {
+    /// Every file to write, as (path, bytes) pairs.
+    pub files: Vec<(String, Vec<u8>)>,
+    /// Glyph directories whose `.glif` files not in `files` are stale and can be removed.
+    pub glif_directories: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct LayerInfo {
+    color: Option<norad::Color>,
+    #[serde(default)]
+    lib: plist::Dictionary,
+}
+
+fn read_root_files(files: &HashMap<&str, &[u8]>, font: &mut Font) -> Result<(), String> {
+    if let Some(bytes) = files.get("metainfo.plist") {
+        font.meta = plist::from_bytes(bytes).map_err(|e| format!("metainfo.plist: {e}"))?;
+    }
+    if let Some(bytes) = files.get("fontinfo.plist") {
+        font.font_info = plist::from_bytes(bytes).map_err(|e| format!("fontinfo.plist: {e}"))?;
+    }
+    if let Some(bytes) = files.get("lib.plist") {
+        let value: plist::Dictionary =
+            plist::from_bytes(bytes).map_err(|e| format!("lib.plist: {e}"))?;
+        font.lib = value;
+    }
+    if let Some(bytes) = files.get("groups.plist") {
+        font.groups = plist::from_bytes(bytes).map_err(|e| format!("groups.plist: {e}"))?;
+    }
+    if let Some(bytes) = files.get("kerning.plist") {
+        font.kerning = plist::from_bytes(bytes).map_err(|e| format!("kerning.plist: {e}"))?;
+    }
+    if let Some(bytes) = files.get("features.fea") {
+        font.features = std::str::from_utf8(bytes)
+            .map_err(|error| format!("features.fea: {error}"))?
+            .to_owned();
+    }
+    Ok(())
+}
+
+/// The layers a package declares, as (name, directory) pairs, default layer first.
+fn declared_layers(files: &HashMap<&str, &[u8]>) -> Result<Vec<(String, String)>, String> {
+    let Some(bytes) = files.get("layercontents.plist") else {
+        return Ok(vec![("public.default".into(), "glyphs".into())]);
+    };
+    let entries: Vec<(String, String)> =
+        plist::from_bytes(bytes).map_err(|error| format!("layercontents.plist: {error}"))?;
+    if entries.is_empty() {
+        return Err("layercontents.plist: no layers".into());
+    }
+    let mut names = HashSet::new();
+    let mut directories = HashSet::new();
+    for (name, directory) in &entries {
+        if !names.insert(name.as_str()) {
+            return Err(format!("layercontents.plist: duplicate layer {name:?}"));
+        }
+        if directory.is_empty()
+            || directory.contains(['/', '\\'])
+            || directory == "."
+            || directory == ".."
+            || !directories.insert(directory.to_lowercase())
+        {
+            return Err(format!(
+                "layercontents.plist: unusable directory {directory:?}"
+            ));
+        }
+    }
+    let Some(default) = entries
+        .iter()
+        .position(|(_, directory)| directory == "glyphs")
+    else {
+        return Err("layercontents.plist: no layer uses the glyphs directory".into());
+    };
+    let mut ordered = entries;
+    ordered.rotate_left(default);
+    Ok(ordered)
+}
+
+fn load_layer_glyphs<'a>(
+    files: &HashMap<&'a str, &[u8]>,
+    directory: &str,
+    layer: &mut norad::Layer,
+    consumed: &mut HashSet<&'a str>,
+    glif_paths: &mut HashMap<(String, String), String>,
+) -> Result<(), String> {
+    let contents_path = format!("{directory}/contents.plist");
+    let contents: plist::Dictionary = match files.get_key_value(contents_path.as_str()) {
+        Some((key, bytes)) => {
+            consumed.insert(key);
+            plist::from_bytes(bytes).map_err(|e| format!("{contents_path}: {e}"))?
+        }
+        None if directory == "glyphs" => plist::Dictionary::new(),
+        None => return Err(format!("missing {contents_path}")),
+    };
+    let info_path = format!("{directory}/layerinfo.plist");
+    if let Some((key, bytes)) = files.get_key_value(info_path.as_str()) {
+        consumed.insert(key);
+        let info: LayerInfo =
+            plist::from_bytes(bytes).map_err(|error| format!("{info_path}: {error}"))?;
+        layer.color = info.color;
+        layer.lib = info.lib;
+    }
+    for (name, value) in &contents {
+        crate::font::canonical_metadata::validate_name(name).map_err(|error| error.to_string())?;
+        let file = value
+            .as_string()
+            .ok_or_else(|| format!("{contents_path}: {name:?} path is not a string"))?;
+        if file.contains(['/', '\\']) || file.is_empty() || file == "." || file == ".." {
+            return Err(format!("unsafe GLIF path for {name:?}: {file:?}"));
+        }
+        let path = format!("{directory}/{file}");
+        let Some((key, bytes)) = files.get_key_value(path.as_str()) else {
+            return Err(format!("missing glif: {path}"));
+        };
+        if !consumed.insert(key) {
+            return Err(format!("duplicate GLIF path {path:?}"));
+        }
+        let glyph = Glyph::parse_raw(bytes).map_err(|e| format!("{path}: {e}"))?;
+        if glyph.name().as_str() != name {
+            return Err(format!(
+                "{path}: contents name {name:?} does not match GLIF name {:?}",
+                glyph.name().as_str()
+            ));
+        }
+        glif_paths.insert((layer.name().to_string(), name.clone()), file.to_owned());
+        layer.insert_glyph(glyph);
+    }
+    Ok(())
+}
+
+/// Decode a complete UFO package from (path, bytes) pairs relative to the UFO root.
+///
+/// Every layer in `layercontents.plist` loads, images and data enter the font's stores,
+/// and files the specification does not name are returned in `preserved`.
+pub fn decode_ufo_files<'a>(
+    files: impl IntoIterator<Item = (&'a str, &'a [u8])>,
+) -> Result<DecodedUfo, String> {
+    let files = validate_file_inventory(files)?;
+    let mut font = Font::new();
+    read_root_files(&files, &mut font)?;
+    let mut consumed: HashSet<&str> = files
+        .keys()
+        .copied()
+        .filter(|path| is_supported_root_file(path))
+        .collect();
+    let mut layer_directories = HashMap::new();
+    let mut glif_paths = HashMap::new();
+    for (name, directory) in declared_layers(&files)? {
+        if directory == "glyphs" && name != "public.default" {
+            font.layers
+                .rename_layer("public.default", &name, false)
+                .map_err(|error| format!("layer {name:?}: {error}"))?;
+        }
+        let layer = if directory == "glyphs" {
+            font.layers.default_layer_mut()
+        } else {
+            font.layers
+                .new_layer(&name)
+                .map_err(|error| format!("layer {name:?}: {error}"))?
+        };
+        if layer.path() != Path::new(&directory) {
+            layer_directories.insert(name.clone(), directory.clone());
+        }
+        load_layer_glyphs(&files, &directory, layer, &mut consumed, &mut glif_paths)?;
+    }
+    let mut preserved = Vec::new();
+    let mut remaining: Vec<_> = files
+        .iter()
+        .filter(|(path, _)| !consumed.contains(*path))
+        .collect();
+    remaining.sort();
+    for (path, bytes) in remaining {
+        if let Some(rest) = path.strip_prefix("images/") {
+            font.images
+                .insert(PathBuf::from(rest), bytes.to_vec())
+                .map_err(|error| format!("{path}: {error}"))?;
+        } else if let Some(rest) = path.strip_prefix("data/") {
+            font.data
+                .insert(PathBuf::from(rest), bytes.to_vec())
+                .map_err(|error| format!("{path}: {error}"))?;
+        } else {
+            preserved.push(((*path).to_owned(), bytes.to_vec()));
+        }
+    }
+    Ok(DecodedUfo {
+        font,
+        layer_directories,
+        glif_paths,
+        preserved,
+    })
+}
+
+fn plist_xml<T: serde::Serialize>(value: &T, label: &str) -> Result<Vec<u8>, String> {
+    let mut out = Vec::new();
+    plist::to_writer_xml(&mut out, value).map_err(|error| format!("{label}: {error}"))?;
+    Ok(out)
+}
+
+fn sort_plist_keys(value: &mut plist::Value) {
+    match value {
+        plist::Value::Dictionary(dictionary) => {
+            dictionary.sort_keys();
+            for (_, value) in dictionary.iter_mut() {
+                sort_plist_keys(value);
+            }
+        }
+        plist::Value::Array(values) => values.iter_mut().for_each(sort_plist_keys),
+        _ => {}
+    }
+}
+
+/// `lib.plist` as norad writes it: the font lib plus guideline object libs, keys sorted.
+fn lib_plist(font: &Font) -> Option<plist::Dictionary> {
+    let mut lib = font.lib.clone();
+    let mut object_libs = plist::Dictionary::new();
+    for guideline in font.font_info.guidelines.iter().flatten() {
+        if let (Some(identifier), Some(guideline_lib)) = (guideline.identifier(), guideline.lib()) {
+            object_libs.insert(identifier.as_str().to_owned(), guideline_lib.clone().into());
+        }
+    }
+    if !object_libs.is_empty() {
+        lib.insert("public.objectLibs".into(), object_libs.into());
+    }
+    if lib.is_empty() {
+        return None;
+    }
+    let mut value = plist::Value::Dictionary(lib);
+    sort_plist_keys(&mut value);
+    value.into_dictionary()
+}
+
+/// `kerning.plist` as norad writes it: whole values as integers.
+fn kerning_plist(font: &Font) -> plist::Dictionary {
+    let mut kerning = plist::Dictionary::new();
+    for (first, pairs) in &font.kerning {
+        let mut inner = plist::Dictionary::new();
+        for (second, value) in pairs {
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "a kerning value is a small whole number of font units"
+            )]
+            let encoded = if (value - value.round()).abs() < f64::EPSILON {
+                plist::Value::Integer((value.round() as i64).into())
+            } else {
+                plist::Value::Real(*value)
+            };
+            inner.insert(second.to_string(), encoded);
+        }
+        kerning.insert(first.to_string(), inner.into());
+    }
+    kerning
+}
+
+/// Serialize a font to the UFO files norad writes to disk, as (path, bytes) pairs.
+///
+/// `layer_directories` restores the directory a layer was read from when norad renamed it,
+/// and `glif_paths` the GLIF file name each (layer, glyph) pair had, so a save keeps the
+/// package's own file names.
+pub fn ufo_files_from_font(
+    font: &Font,
+    layer_directories: &HashMap<String, String>,
+    glif_paths: &HashMap<(String, String), String>,
+) -> Result<EncodedUfo, String> {
+    let mut encoded = EncodedUfo::default();
+    encoded.files.push((
+        "metainfo.plist".into(),
+        plist_xml(&font.meta, "metainfo.plist")?,
+    ));
+    if !font.font_info.is_empty() {
+        encoded.files.push((
+            "fontinfo.plist".into(),
+            plist_xml(&font.font_info, "fontinfo.plist")?,
+        ));
+    }
+    if let Some(lib) = lib_plist(font) {
+        encoded
+            .files
+            .push(("lib.plist".into(), plist_xml(&lib, "lib.plist")?));
+    }
+    if !font.groups.is_empty() {
+        encoded.files.push((
+            "groups.plist".into(),
+            plist_xml(&font.groups, "groups.plist")?,
+        ));
+    }
+    if !font.kerning.is_empty() {
+        encoded.files.push((
+            "kerning.plist".into(),
+            plist_xml(&kerning_plist(font), "kerning.plist")?,
+        ));
+    }
+    if !font.features.is_empty() {
+        let features = font.features.replace("\r\n", "\n");
+        encoded
+            .files
+            .push(("features.fea".into(), features.into_bytes()));
+    }
+    let mut layer_contents = Vec::new();
+    for layer in font.layers.iter() {
+        let name = layer.name().to_string();
+        let directory = layer_directories
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(|| layer.path().to_string_lossy().into_owned());
+        let mut contents = std::collections::BTreeMap::new();
+        let mut taken: HashSet<String> = layer
+            .iter()
+            .filter_map(|glyph| glif_paths.get(&(name.clone(), glyph.name().to_string())))
+            .map(|file| file.to_lowercase())
+            .collect();
+        for glyph in layer.iter() {
+            let glyph_name = glyph.name().as_str();
+            let file = match glif_paths.get(&(name.clone(), glyph_name.to_owned())) {
+                Some(file) => file.clone(),
+                None => {
+                    let generated = layer
+                        .get_path(glyph_name)
+                        .ok_or_else(|| format!("{directory}: glyph {glyph_name:?} has no file"))?
+                        .to_string_lossy()
+                        .into_owned();
+                    let mut candidate = generated.clone();
+                    let mut counter = 1;
+                    while !taken.insert(candidate.to_lowercase()) {
+                        let stem = generated.strip_suffix(".glif").unwrap_or(&generated);
+                        candidate = format!("{stem}{counter:03}.glif");
+                        counter += 1;
+                    }
+                    candidate
+                }
+            };
+            encoded
+                .files
+                .push((format!("{directory}/{file}"), glif_bytes(glyph)?));
+            contents.insert(glyph_name.to_owned(), file);
+        }
+        encoded.files.push((
+            format!("{directory}/contents.plist"),
+            plist_xml(&contents, "contents.plist")?,
+        ));
+        if layer.color.is_some() || !layer.lib.is_empty() {
+            let mut info = plist::Dictionary::new();
+            if let Some(color) = &layer.color {
+                info.insert("color".into(), color.to_rgba_string().into());
+            }
+            if !layer.lib.is_empty() {
+                info.insert("lib".into(), layer.lib.clone().into());
+            }
+            let mut value = plist::Value::Dictionary(info);
+            sort_plist_keys(&mut value);
+            encoded.files.push((
+                format!("{directory}/layerinfo.plist"),
+                plist_xml(&value, "layerinfo.plist")?,
+            ));
+        }
+        layer_contents.push((name, directory.clone()));
+        encoded.layer_directories.push(directory);
+    }
+    encoded.files.push((
+        "layercontents.plist".into(),
+        plist_xml(&layer_contents, "layercontents.plist")?,
+    ));
+    store_files("data", font.data.iter(), &mut encoded.files)?;
+    store_files("images", font.images.iter(), &mut encoded.files)?;
+    Ok(encoded)
+}
+
+fn store_files<'a>(
+    prefix: &str,
+    store: impl Iterator<
+        Item = (
+            &'a PathBuf,
+            Result<std::sync::Arc<[u8]>, norad::error::StoreError>,
+        ),
+    >,
+    files: &mut Vec<(String, Vec<u8>)>,
+) -> Result<(), String> {
+    let mut entries: Vec<_> = store.collect();
+    entries.sort_by(|a, b| a.0.cmp(b.0));
+    for (path, entry) in entries {
+        let bytes = entry.map_err(|error| format!("{prefix}/{}: {error}", path.display()))?;
+        files.push((format!("{prefix}/{}", path.display()), bytes.to_vec()));
+    }
+    Ok(())
+}
+
+fn first_component(path: &str) -> &str {
+    path.split('/').next().unwrap_or(path)
+}
+
+/// Open a UFO or designspace from the files of one folder.
+///
+/// `ufo_name` names the folder when it is the UFO itself; the paths are then relative to the
+/// UFO root. Otherwise the folder holds one designspace with its UFOs, or one UFO, and every
+/// path is relative to the folder.
+pub fn open_memory_project(
+    ufo_name: Option<&str>,
+    files: &[(String, Vec<u8>)],
+) -> Result<MemoryProject, String> {
+    use crate::font::project::{Project, SourceInput};
+    let mut bookkeeping = MemoryBookkeeping::default();
+    let decode_ufo = |source_path: PathBuf,
+                      prefix: &str,
+                      bookkeeping: &mut MemoryBookkeeping|
+     -> Result<SourceInput, String> {
+        let selected: Vec<(&str, &[u8])> = files
+            .iter()
+            .filter_map(|(path, bytes)| {
+                path.strip_prefix(prefix)
+                    .map(|relative| (relative, bytes.as_slice()))
+            })
+            .collect();
+        if selected.is_empty() {
+            return Err(format!("{}: no files", source_path.display()));
+        }
+        let decoded = decode_ufo_files(selected)
+            .map_err(|error| format!("{}: {error}", source_path.display()))?;
+        bookkeeping
+            .layer_directories
+            .insert(source_path.clone(), decoded.layer_directories);
+        bookkeeping
+            .glif_paths
+            .insert(source_path.clone(), decoded.glif_paths);
+        bookkeeping
+            .preserved
+            .insert(source_path.clone(), decoded.preserved);
+        Ok(SourceInput::from_font(decoded.font, source_path))
+    };
+    if let Some(name) = ufo_name {
+        if !safe_relative_path(name) || name.contains('/') {
+            return Err(format!("unsafe UFO name {name:?}"));
+        }
+        let input = decode_ufo(PathBuf::from(name), "", &mut bookkeeping)?;
+        let mut project = Project::from_source(input);
+        project.export_source = Some(PathBuf::from(name));
+        return Ok(MemoryProject {
+            project,
+            bookkeeping,
+        });
+    }
+    let mut designspaces: Vec<&str> = files
+        .iter()
+        .map(|(path, _)| path.as_str())
+        .filter(|path| !path.contains('/') && path.ends_with(".designspace"))
+        .collect();
+    designspaces.sort_unstable();
+    match designspaces.as_slice() {
+        [] => {}
+        [designspace] => {
+            let xml = files
+                .iter()
+                .find(|(path, _)| path == designspace)
+                .map(|(_, bytes)| String::from_utf8_lossy(bytes).into_owned())
+                .ok_or("designspace vanished")?;
+            let document =
+                designspace_from_str(&xml).map_err(|error| format!("{designspace}: {error}"))?;
+            let mut project = Project::from_designspace(document, |filename| {
+                if !safe_relative_path(filename) {
+                    return Err(format!("{designspace}: unsafe source path {filename:?}"));
+                }
+                decode_ufo(
+                    PathBuf::from(filename),
+                    &format!("{filename}/"),
+                    &mut bookkeeping,
+                )
+            })?;
+            project.export_source = Some(PathBuf::from(designspace));
+            project.compute_compat();
+            return Ok(MemoryProject {
+                project,
+                bookkeeping,
+            });
+        }
+        _ => {
+            return Err("this folder holds more than one designspace; open one UFO instead".into());
+        }
+    }
+    let mut ufos: Vec<&str> = files
+        .iter()
+        .map(|(path, _)| first_component(path))
+        .filter(|name| name.to_lowercase().ends_with(".ufo"))
+        .collect();
+    ufos.sort_unstable();
+    ufos.dedup();
+    match ufos.as_slice() {
+        [name] => {
+            let input = decode_ufo(PathBuf::from(name), &format!("{name}/"), &mut bookkeeping)?;
+            let mut project = Project::from_source(input);
+            project.export_source = Some(PathBuf::from(name));
+            Ok(MemoryProject {
+                project,
+                bookkeeping,
+            })
+        }
+        [] => Err("this folder holds no UFO or designspace".into()),
+        _ => Err("this folder holds several UFOs and no designspace; open one UFO".into()),
+    }
+}
+
+/// The files that persist `project`, relative to the folder it was opened from.
+///
+/// Every source is written in full; the designspace only when its metadata changed.
+/// Call [`crate::font::project::Project::mark_saved`] once the host has written them.
+pub fn memory_save_files(
+    project: &crate::font::project::Project,
+    bookkeeping: &MemoryBookkeeping,
+) -> Result<MemorySave, String> {
+    let mut save = MemorySave::default();
+    let empty_directories = HashMap::new();
+    let empty_glif_paths = HashMap::new();
+    for source in project.document_sources() {
+        let id = source.id();
+        let path = source.path().to_path_buf();
+        let font = project
+            .encode_ufo_source(id)
+            .ok_or_else(|| format!("{}: source data is missing", path.display()))?;
+        let layer_directories = bookkeeping
+            .layer_directories
+            .get(&path)
+            .unwrap_or(&empty_directories);
+        let glif_paths = bookkeeping
+            .glif_paths
+            .get(&path)
+            .unwrap_or(&empty_glif_paths);
+        let encoded = ufo_files_from_font(&font, layer_directories, glif_paths)
+            .map_err(|error| format!("{}: {error}", path.display()))?;
+        let prefix = path.to_string_lossy();
+        for (file, bytes) in encoded.files {
+            save.files.push((format!("{prefix}/{file}"), bytes));
+        }
+        for directory in encoded.layer_directories {
+            save.glif_directories.push(format!("{prefix}/{directory}"));
+        }
+        for (file, bytes) in bookkeeping.preserved.get(&path).into_iter().flatten() {
+            save.files.push((format!("{prefix}/{file}"), bytes.clone()));
+        }
+    }
+    if project.ds_dirty {
+        let destination = project
+            .export_source
+            .as_ref()
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension == "designspace")
+            })
+            .ok_or("the designspace changed but has no file to write")?;
+        let document = project
+            .document_designspace()
+            .ok_or("designspace document is unavailable")?
+            .to_norad()?;
+        let xml = crate::formats::designspace::to_xml(&document)?;
+        save.files
+            .push((destination.to_string_lossy().into_owned(), xml.into_bytes()));
+    }
+    Ok(save)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -560,5 +1166,254 @@ mod tests {
         let doc = designspace_from_str(ds).expect("parses");
         assert_eq!(doc.axes.len(), 1);
         assert_eq!(doc.sources.len(), 1);
+    }
+
+    fn read_tree(root: &Path, directory: &Path, out: &mut Vec<(String, Vec<u8>)>) {
+        let mut entries: Vec<_> = std::fs::read_dir(directory)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect();
+        entries.sort();
+        for path in entries {
+            if path.is_dir() {
+                read_tree(root, &path, out);
+            } else {
+                let relative = path
+                    .strip_prefix(root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned();
+                out.push((relative, std::fs::read(&path).unwrap()));
+            }
+        }
+    }
+
+    fn pairs(files: &[(String, Vec<u8>)]) -> Vec<(&str, &[u8])> {
+        files
+            .iter()
+            .map(|(path, bytes)| (path.as_str(), bytes.as_slice()))
+            .collect()
+    }
+
+    const BACKGROUND_LAYERCONTENTS: &[u8] = br#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><array>
+<array><string>public.default</string><string>glyphs</string></array>
+<array><string>public.background</string><string>glyphs.background</string></array>
+</array></plist>"#;
+    const BACKGROUND_INFO: &[u8] = br#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>color</key><string>1,0,0,1</string>
+</dict></plist>"#;
+    const IMAGE_GLIF: &[u8] = br#"<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="A" format="2">
+<advance width="600"/>
+<image fileName="reference.png"/>
+<outline>
+<contour>
+<point x="0" y="0" type="line"/>
+<point x="100" y="0" type="line"/>
+<point x="50" y="700" type="line"/>
+</contour>
+</outline>
+</glyph>"#;
+
+    fn complete_files() -> Vec<(&'static str, &'static [u8])> {
+        let png = include_bytes!("../../../tests/fixtures/variable/reference.png");
+        vec![
+            ("metainfo.plist", METAINFO),
+            ("fontinfo.plist", FONTINFO),
+            ("lib.plist", LIB),
+            ("groups.plist", GROUPS),
+            ("kerning.plist", KERNING),
+            ("features.fea", FEATURES),
+            ("layercontents.plist", BACKGROUND_LAYERCONTENTS),
+            ("glyphs/contents.plist", CONTENTS),
+            ("glyphs/A_.glif", IMAGE_GLIF),
+            ("glyphs.background/contents.plist", CONTENTS),
+            ("glyphs.background/layerinfo.plist", BACKGROUND_INFO),
+            ("glyphs.background/A_.glif", GLIF),
+            ("images/reference.png", png),
+            ("data/com.example/payload.bin", b"payload"),
+            ("notes.txt", b"kept as is"),
+        ]
+    }
+
+    #[test]
+    fn complete_package_round_trips_through_memory() {
+        let decoded = decode_ufo_files(complete_files()).expect("complete package decodes");
+        assert_eq!(decoded.font.layers.len(), 2);
+        assert_eq!(
+            decoded
+                .layer_directories
+                .get("public.background")
+                .map(String::as_str),
+            Some("glyphs.background")
+        );
+        assert_eq!(
+            decoded.preserved,
+            vec![("notes.txt".to_owned(), b"kept as is".to_vec())]
+        );
+        assert!(
+            decoded
+                .font
+                .images
+                .get(Path::new("reference.png"))
+                .is_some()
+        );
+        assert!(
+            decoded
+                .font
+                .data
+                .get(Path::new("com.example/payload.bin"))
+                .is_some()
+        );
+        let background = decoded.font.layers.get("public.background").unwrap();
+        assert!(background.color.is_some());
+
+        let encoded = ufo_files_from_font(
+            &decoded.font,
+            &decoded.layer_directories,
+            &decoded.glif_paths,
+        )
+        .unwrap();
+        let mut written: Vec<&str> = encoded
+            .files
+            .iter()
+            .map(|(path, _)| path.as_str())
+            .collect();
+        written.sort_unstable();
+        let mut expected: Vec<&str> = complete_files()
+            .iter()
+            .map(|(path, _)| *path)
+            .filter(|path| *path != "notes.txt")
+            .collect();
+        expected.sort_unstable();
+        assert_eq!(written, expected);
+        assert_eq!(encoded.layer_directories, ["glyphs", "glyphs.background"]);
+
+        let again = decode_ufo_files(pairs(&encoded.files)).expect("written package decodes");
+        assert_eq!(again.font, decoded.font);
+        assert_eq!(again.layer_directories, decoded.layer_directories);
+    }
+
+    #[test]
+    fn folder_with_one_ufo_opens_as_a_project() {
+        let files: Vec<(String, Vec<u8>)> = complete_files()
+            .into_iter()
+            .map(|(path, bytes)| (format!("Mem.ufo/{path}"), bytes.to_vec()))
+            .collect();
+        let opened = open_memory_project(None, &files).expect("folder opens");
+        assert_eq!(opened.project.glyph_names().count(), 1);
+        assert_eq!(
+            opened.project.export_source.as_deref(),
+            Some(Path::new("Mem.ufo"))
+        );
+        let save = memory_save_files(&opened.project, &opened.bookkeeping).unwrap();
+        assert!(
+            save.files
+                .iter()
+                .any(|(path, _)| path == "Mem.ufo/glyphs/A_.glif")
+        );
+        assert!(
+            save.files
+                .iter()
+                .any(|(path, _)| path == "Mem.ufo/notes.txt")
+        );
+        assert!(
+            save.files
+                .iter()
+                .any(|(path, _)| path == "Mem.ufo/glyphs.background/A_.glif")
+        );
+        assert_eq!(
+            save.glif_directories,
+            ["Mem.ufo/glyphs", "Mem.ufo/glyphs.background"]
+        );
+
+        let as_root: Vec<(String, Vec<u8>)> = complete_files()
+            .into_iter()
+            .map(|(path, bytes)| (path.to_owned(), bytes.to_vec()))
+            .collect();
+        let opened = open_memory_project(Some("Mem.ufo"), &as_root).expect("ufo opens");
+        let save = memory_save_files(&opened.project, &opened.bookkeeping).unwrap();
+        assert!(
+            save.files
+                .iter()
+                .all(|(path, _)| path.starts_with("Mem.ufo/"))
+        );
+    }
+
+    #[test]
+    fn designspace_folder_round_trips_through_memory() {
+        let root = crate::testing::fonts::dir();
+        let mut files = Vec::new();
+        read_tree(&root, &root, &mut files);
+        // Only the designspace and the UFOs beside it, as the browser host reads a folder.
+        files.retain(|(path, _)| {
+            (!path.contains('/') && path.ends_with(".designspace"))
+                || first_component(path).to_lowercase().ends_with(".ufo")
+        });
+        let opened = open_memory_project(None, &files).expect("designspace folder opens");
+        assert_eq!(opened.project.document_sources().count(), 2);
+        assert!(!opened.project.is_modified());
+        assert_eq!(
+            opened.project.export_source.as_deref(),
+            Some(Path::new("VirtuaGrotesk.designspace"))
+        );
+
+        let save = memory_save_files(&opened.project, &opened.bookkeeping).unwrap();
+        assert!(
+            !save
+                .files
+                .iter()
+                .any(|(path, _)| path.ends_with(".designspace")),
+            "an unchanged designspace is not rewritten"
+        );
+        let mut written: Vec<&str> = save.files.iter().map(|(path, _)| path.as_str()).collect();
+        written.sort_unstable();
+        let mut original: Vec<&str> = files
+            .iter()
+            .map(|(path, _)| path.as_str())
+            .filter(|path| !path.ends_with(".designspace"))
+            .collect();
+        original.sort_unstable();
+        assert_eq!(
+            written, original,
+            "the saved file set matches the opened one"
+        );
+
+        for source in opened.project.document_sources() {
+            let prefix = format!("{}/", source.path().display());
+            let before: Vec<(&str, &[u8])> = files
+                .iter()
+                .filter_map(|(path, bytes)| {
+                    path.strip_prefix(&prefix)
+                        .map(|rest| (rest, bytes.as_slice()))
+                })
+                .collect();
+            let after: Vec<(&str, &[u8])> = save
+                .files
+                .iter()
+                .filter_map(|(path, bytes)| {
+                    path.strip_prefix(&prefix)
+                        .map(|rest| (rest, bytes.as_slice()))
+                })
+                .collect();
+            let before = decode_ufo_files(before).unwrap();
+            let after = decode_ufo_files(after).unwrap();
+            assert_eq!(
+                after.font, before.font,
+                "{prefix} is unchanged by a round trip"
+            );
+        }
+        let unchanged = save
+            .files
+            .iter()
+            .filter(|(path, bytes)| files.iter().any(|(p, b)| p == path && b == bytes))
+            .count();
+        assert!(
+            unchanged * 10 >= save.files.len() * 9,
+            "most files are byte-identical: {unchanged} of {}",
+            save.files.len()
+        );
     }
 }

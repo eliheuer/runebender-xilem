@@ -963,10 +963,8 @@ impl Workspace {
 
     fn dispatch_inner(&mut self, action: shortcuts::AppAction) {
         #[cfg(target_arch = "wasm32")]
-        if crate::application::browser::desktop_action(action) {
-            self.note =
-                "This demo keeps edits in this tab. Use the desktop app to open or save fonts."
-                    .into();
+        if let Some(note) = crate::application::browser::intercept(action, self.modified) {
+            self.note = note;
             return;
         }
         use shortcuts::AppAction as A;

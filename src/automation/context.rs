@@ -125,7 +125,7 @@ pub fn personal_dirs() -> Vec<PathBuf> {
 /// repository, the font's folder and its parent only, so a loose font in
 /// a home folder never scans the whole home.
 pub fn font_dirs(font: &Path) -> Vec<PathBuf> {
-    let start = if font.is_dir() && !font.extension().is_some_and(|e| e == "ufo") {
+    let start = if font.is_dir() && font.extension().is_none_or(|e| e != "ufo") {
         font.to_path_buf()
     } else {
         font.parent().map_or_else(PathBuf::new, Path::to_path_buf)

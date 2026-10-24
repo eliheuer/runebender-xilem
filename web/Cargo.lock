@@ -1458,6 +1458,17 @@ dependencies = [
 
 [[package]]
 name = "kurbo"
+version = "0.11.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c62026ae44756f8a599ba21140f350303d4f08dcdcc71b5ad9c9bb8128c13c62"
+dependencies = [
+ "arrayvec",
+ "euclid",
+ "smallvec",
+]
+
+[[package]]
+name = "kurbo"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4b60dfc32f652b926df6192e55525b16d186c69d47876c3ead4da5cc9f8450e2"
@@ -1500,7 +1511,7 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 [[package]]
 name = "linebender_include_doc_path"
 version = "0.1.0"
-source = "git+https://github.com/linebender/xilem?rev=b81d8d7a#b81d8d7a631849def6eeab282561439b963862e5"
+source = "git+https://github.com/eliheuer/xilem?rev=0b0b5e754ed7e024b92e246bc65d4ad8accbf0bf#0b0b5e754ed7e024b92e246bc65d4ad8accbf0bf"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1549,7 +1560,7 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 [[package]]
 name = "masonry"
 version = "0.4.0"
-source = "git+https://github.com/linebender/xilem?rev=b81d8d7a#b81d8d7a631849def6eeab282561439b963862e5"
+source = "git+https://github.com/eliheuer/xilem?rev=0b0b5e754ed7e024b92e246bc65d4ad8accbf0bf#0b0b5e754ed7e024b92e246bc65d4ad8accbf0bf"
 dependencies = [
  "accesskit",
  "linebender_include_doc_path",
@@ -1563,7 +1574,7 @@ dependencies = [
 [[package]]
 name = "masonry_core"
 version = "0.4.0"
-source = "git+https://github.com/linebender/xilem?rev=b81d8d7a#b81d8d7a631849def6eeab282561439b963862e5"
+source = "git+https://github.com/eliheuer/xilem?rev=0b0b5e754ed7e024b92e246bc65d4ad8accbf0bf#0b0b5e754ed7e024b92e246bc65d4ad8accbf0bf"
 dependencies = [
  "accesskit",
  "anymap3",
@@ -1663,6 +1674,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "neuraltype-core"
+version = "0.1.0"
+source = "git+https://github.com/eliheuer/post-opentype?rev=572c905cde57fa65a3e0d5754f6c62699109029c#572c905cde57fa65a3e0d5754f6c62699109029c"
+dependencies = [
+ "kurbo 0.11.3",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "norad"
 version = "0.18.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1688,6 +1709,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
  "windows-sys",
+]
+
+[[package]]
+name = "nufo"
+version = "0.1.0"
+dependencies = [
+ "kurbo 0.13.1",
+ "norad",
+ "plist",
+ "serde",
 ]
 
 [[package]]
@@ -2293,6 +2324,7 @@ dependencies = [
  "kurbo 0.9.5",
  "linesweeper",
  "norad",
+ "nufo",
  "plist",
  "quick-xml 0.41.0",
  "schemars 1.2.2",
@@ -2315,15 +2347,19 @@ dependencies = [
  "console_error_panic_hook",
  "image",
  "imaging_vello_cpu",
+ "img2bez",
  "kurbo 0.13.1",
  "linesweeper",
  "masonry",
+ "neuraltype-core",
  "norad",
  "regex",
  "runebender",
  "runebender-xilem-browser",
+ "serde",
  "serde_json",
  "tokio",
+ "toml",
  "wasm-bindgen",
  "web-time",
 ]
@@ -3055,7 +3091,7 @@ dependencies = [
 [[package]]
 name = "tree_arena"
 version = "0.2.0"
-source = "git+https://github.com/linebender/xilem?rev=b81d8d7a#b81d8d7a631849def6eeab282561439b963862e5"
+source = "git+https://github.com/eliheuer/xilem?rev=0b0b5e754ed7e024b92e246bc65d4ad8accbf0bf#0b0b5e754ed7e024b92e246bc65d4ad8accbf0bf"
 dependencies = [
  "hashbrown 0.17.1",
 ]
@@ -3591,7 +3627,7 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 [[package]]
 name = "xilem_core"
 version = "0.4.0"
-source = "git+https://github.com/linebender/xilem?rev=b81d8d7a#b81d8d7a631849def6eeab282561439b963862e5"
+source = "git+https://github.com/eliheuer/xilem?rev=0b0b5e754ed7e024b92e246bc65d4ad8accbf0bf#0b0b5e754ed7e024b92e246bc65d4ad8accbf0bf"
 dependencies = [
  "anymore",
  "hashbrown 0.17.1",

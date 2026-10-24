@@ -115,9 +115,16 @@ mod tests {
     }
 }
 
+/// The browser host has no microphone access yet.
+#[cfg(target_arch = "wasm32")]
+fn record(_capture: &Capture) -> Result<(), String> {
+    Err("the browser cannot record audio yet".into())
+}
+
 /// Open the default input device and collect its samples until `stop` is
 /// set or [`MAX_RECORDING`] passes. Runs on its own thread, which owns the
 /// stream.
+#[cfg(not(target_arch = "wasm32"))]
 fn record(capture: &Capture) -> Result<(), String> {
     use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
     let host = cpal::default_host();

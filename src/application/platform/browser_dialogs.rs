@@ -1,7 +1,8 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Desktop dialogs are unavailable in the bundled-font browser demo.
+//! Desktop dialogs are unavailable in the browser; fonts open and save through the page's
+//! File System Access host instead.
 
 use std::path::{Path, PathBuf};
 pub(crate) fn font(_: &Path) -> Option<PathBuf> {
@@ -17,6 +18,9 @@ pub(crate) fn image(_: &Path) -> Option<PathBuf> {
     None
 }
 pub(crate) fn svg(_: &Path) -> Option<PathBuf> {
+    None
+}
+pub(crate) fn save_png(_: &Path, _: &str) -> Option<PathBuf> {
     None
 }
 pub(crate) fn confirm_revert() -> bool {

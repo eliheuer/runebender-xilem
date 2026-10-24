@@ -447,7 +447,6 @@ impl Workspace {
             return false;
         };
         let (expected, undo_depth) = match &edit {
-            #[cfg(unix)]
             MetadataEdit::AgentGroup { .. } => return self.agent_metadata_step(&edit, redo),
             MetadataEdit::Rename {
                 before,
@@ -497,7 +496,6 @@ impl Workspace {
             return false;
         }
         let note = match &edit {
-            #[cfg(unix)]
             MetadataEdit::AgentGroup { .. } => return false,
             MetadataEdit::Rename { before, after, .. } => {
                 let (old, new) = if redo {
@@ -655,7 +653,6 @@ impl Workspace {
             return false;
         };
         let (expected, undo_depth) = match edit {
-            #[cfg(unix)]
             MetadataEdit::AgentGroup { .. } => return self.can_agent_metadata_step(edit, redo),
             MetadataEdit::Rename {
                 before,
