@@ -5,7 +5,7 @@
 //!
 //! The editor starts one server per selected GGUF, on a loopback port it
 //! picks, with the model's own chat template driving tool calls, and talks
-//! to it through [`LocalChatEndpoint`]. The server lives across turns and
+//! to it through [`LocalChatEndpoint`](crate::workflows::local_chat::LocalChatEndpoint). The server lives across turns and
 //! is killed when the model changes, the panel closes, or the editor
 //! quits. No model is downloaded or loaded here without a running server
 //! request; this module only runs what is already on disk.

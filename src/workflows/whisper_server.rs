@@ -13,7 +13,8 @@
 //!
 //! Audio reaches it as a 16 kHz mono WAV in one `POST /inference`; the
 //! reply is the text. This module does not touch the microphone; the
-//! editor records and hands the samples to [`WhisperServer::transcribe`].
+//! editor records and hands the samples to
+//! [`WhisperServer::transcribe`](crate::workflows::whisper_server::WhisperServer::transcribe).
 
 use std::fmt;
 use std::io::{Read as _, Write as _};
